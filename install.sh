@@ -1,0 +1,263 @@
+#!/bin/bash
+set -euo pipefail
+
+# specrails installer
+# Installs the agent workflow system into any repository.
+# Step 1 of 2: Prerequisites + scaffold. Step 2: Run /setup inside Claude Code.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m'
+
+print_header() {
+    echo ""
+    echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${CYAN}║          specrails installer v0.1           ║${NC}"
+    echo -e "${BOLD}${CYAN}║   Agent Workflow System for Claude Code      ║${NC}"
+    echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+ok()   { echo -e "  ${GREEN}✓${NC} $1"; }
+warn() { echo -e "  ${YELLOW}⚠${NC} $1"; }
+fail() { echo -e "  ${RED}✗${NC} $1"; }
+info() { echo -e "  ${BLUE}→${NC} $1"; }
+step() { echo -e "\n${BOLD}$1${NC}"; }
+
+# ─────────────────────────────────────────────
+# Phase 1: Prerequisites
+# ─────────────────────────────────────────────
+
+print_header
+
+step "Phase 1: Checking prerequisites"
+
+# 1.1 Git repository
+if [ -z "$REPO_ROOT" ]; then
+    fail "Not inside a git repository. Run this from your project's root."
+    exit 1
+fi
+ok "Git repository: $REPO_ROOT"
+
+# 1.2 Claude Code CLI
+if command -v claude &> /dev/null; then
+    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
+    ok "Claude Code CLI: $CLAUDE_VERSION"
+else
+    fail "Claude Code CLI not found."
+    echo ""
+    echo "    Install it with: npm install -g @anthropic-ai/claude-code"
+    echo "    Or see: https://docs.anthropic.com/en/docs/claude-code"
+    exit 1
+fi
+
+# 1.3 npm
+if command -v npm &> /dev/null; then
+    NPM_VERSION=$(npm --version 2>/dev/null)
+    ok "npm: v$NPM_VERSION"
+    HAS_NPM=true
+else
+    warn "npm not found. Required for OpenSpec CLI."
+    echo ""
+    read -p "    Install npm via nvm? (y/n): " INSTALL_NPM
+    if [ "$INSTALL_NPM" = "y" ] || [ "$INSTALL_NPM" = "Y" ]; then
+        info "Installing nvm + node..."
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+        export NVM_DIR="$HOME/.nvm"
+        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+        nvm install --lts
+        nvm use --lts
+        ok "npm installed: v$(npm --version)"
+        HAS_NPM=true
+    else
+        warn "Skipping npm install. OpenSpec CLI will not be available."
+        HAS_NPM=false
+    fi
+fi
+
+# 1.4 OpenSpec CLI
+if command -v openspec &> /dev/null; then
+    OPENSPEC_VERSION=$(openspec --version 2>/dev/null || echo "unknown")
+    ok "OpenSpec CLI: $OPENSPEC_VERSION"
+    HAS_OPENSPEC=true
+elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
+    ok "OpenSpec CLI: found in node_modules"
+    HAS_OPENSPEC=true
+else
+    warn "OpenSpec CLI not found."
+    if [ "$HAS_NPM" = true ]; then
+        read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC
+        if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
+            info "Installing OpenSpec CLI..."
+            npm install -g @openspec/cli 2>/dev/null && {
+                ok "OpenSpec CLI installed"
+                HAS_OPENSPEC=true
+            } || {
+                warn "Global install failed. Trying local..."
+                cd "$REPO_ROOT" && npm install @openspec/cli 2>/dev/null && {
+                    ok "OpenSpec CLI installed locally"
+                    HAS_OPENSPEC=true
+                } || {
+                    fail "Could not install OpenSpec CLI."
+                    HAS_OPENSPEC=false
+                }
+            }
+        else
+            warn "Skipping OpenSpec install. Spec-driven workflow will be limited."
+            HAS_OPENSPEC=false
+        fi
+    else
+        warn "Cannot install OpenSpec without npm."
+        HAS_OPENSPEC=false
+    fi
+fi
+
+# 1.5 GitHub CLI (optional)
+if command -v gh &> /dev/null; then
+    if gh auth status &> /dev/null; then
+        ok "GitHub CLI: authenticated"
+        HAS_GH=true
+    else
+        warn "GitHub CLI installed but not authenticated. Run: gh auth login"
+        HAS_GH=false
+    fi
+else
+    warn "GitHub CLI (gh) not found. GitHub Issues backlog will be unavailable."
+    HAS_GH=false
+fi
+
+# 1.6 JIRA CLI (optional)
+if command -v jira &> /dev/null; then
+    ok "JIRA CLI: found"
+    HAS_JIRA=true
+else
+    HAS_JIRA=false
+    # Don't warn here — JIRA is only relevant if chosen during /setup.
+    # If the user selects JIRA in /setup and it's not installed, the setup
+    # wizard will offer to install it (go-jira via brew/go, or Atlassian CLI).
+fi
+
+# ─────────────────────────────────────────────
+# Phase 2: Detect existing setup
+# ─────────────────────────────────────────────
+
+step "Phase 2: Detecting existing setup"
+
+EXISTING_SETUP=false
+
+if [ -d "$REPO_ROOT/.claude" ]; then
+    if [ -d "$REPO_ROOT/.claude/agents" ] && [ "$(ls -A "$REPO_ROOT/.claude/agents" 2>/dev/null)" ]; then
+        warn "Existing .claude/agents/ found with content"
+        EXISTING_SETUP=true
+    fi
+    if [ -d "$REPO_ROOT/.claude/commands" ] && [ "$(ls -A "$REPO_ROOT/.claude/commands" 2>/dev/null)" ]; then
+        warn "Existing .claude/commands/ found with content"
+        EXISTING_SETUP=true
+    fi
+    if [ -d "$REPO_ROOT/.claude/rules" ] && [ "$(ls -A "$REPO_ROOT/.claude/rules" 2>/dev/null)" ]; then
+        warn "Existing .claude/rules/ found with content"
+        EXISTING_SETUP=true
+    fi
+fi
+
+if [ -d "$REPO_ROOT/openspec" ]; then
+    warn "Existing openspec/ directory found"
+    EXISTING_SETUP=true
+fi
+
+if [ "$EXISTING_SETUP" = true ]; then
+    echo ""
+    warn "This repo already has some agent/command/openspec artifacts."
+    read -p "    Continue and merge with existing setup? (y/n): " CONTINUE
+    if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
+        info "Aborted. No changes made."
+        exit 0
+    fi
+else
+    ok "Clean repo — no existing .claude/ or openspec/ artifacts"
+fi
+
+# ─────────────────────────────────────────────
+# Phase 3: Install artifacts
+# ─────────────────────────────────────────────
+
+step "Phase 3: Installing specrails artifacts"
+
+# Create directory structure
+mkdir -p "$REPO_ROOT/.claude/commands"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/agents"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/commands"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/rules"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/personas"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/claude-md"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/settings"
+mkdir -p "$REPO_ROOT/.claude/setup-templates/prompts"
+
+# Copy the /setup command
+cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
+ok "Installed /setup command"
+
+# Copy templates
+cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/.claude/setup-templates/"
+ok "Installed setup templates"
+
+# Copy prompts
+if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then
+    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.claude/setup-templates/prompts/"
+    ok "Installed prompts"
+fi
+
+# Initialize OpenSpec if available and not already initialized
+if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
+    info "Initializing OpenSpec..."
+    cd "$REPO_ROOT" && openspec init 2>/dev/null && {
+        ok "OpenSpec initialized"
+    } || {
+        warn "OpenSpec init failed — you can run 'openspec init' manually later"
+    }
+fi
+
+# ─────────────────────────────────────────────
+# Phase 4: Summary & next steps
+# ─────────────────────────────────────────────
+
+step "Phase 4: Installation complete"
+
+echo ""
+echo -e "${BOLD}${GREEN}Installation summary:${NC}"
+echo ""
+echo "  Files installed:"
+echo "    .claude/commands/setup.md          ← The /setup command"
+echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
+echo ""
+
+echo -e "${BOLD}Prerequisites:${NC}"
+echo ""
+[ "$HAS_NPM" = true ]      && ok "npm"        || warn "npm (optional)"
+[ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
+[ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
+[ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
+echo ""
+
+echo -e "${BOLD}${CYAN}Next step:${NC}"
+echo ""
+echo "  1. Open Claude Code in this repo:"
+echo ""
+echo -e "     ${BOLD}cd $REPO_ROOT && claude${NC}"
+echo ""
+echo "  2. Run the setup wizard:"
+echo ""
+echo -e "     ${BOLD}/setup${NC}"
+echo ""
+echo "  Claude will analyze your codebase, ask about your users,"
+echo "  research the competitive landscape, and generate all agents,"
+echo "  commands, rules, and personas adapted to your project."
+echo ""
