@@ -1,0 +1,145 @@
+---
+name: "Update Product-Driven Backlog"
+description: "Generate new feature ideas through product discovery, create GitHub Issues"
+category: Workflow
+tags: [workflow, explore, priorities, backlog, product-discovery]
+model: opus
+---
+
+Analyze the project from a **product perspective** to generate new feature ideas. Syncs results to GitHub Issues labeled `product-driven-backlog`. Use `/product-backlog` to view current ideas.
+
+**Input:** $ARGUMENTS (optional: comma-separated areas to focus on. If empty, analyze all areas.)
+
+**IMPORTANT: This command only creates GitHub Issues.** You may read files and search code to understand current capabilities, but you must NEVER write application code.
+
+---
+
+## Areas
+
+| Area | Description | Key Paths |
+|------|-------------|-----------|
+| Core | Installer, template engine, distribution | `install.sh`, `templates/` |
+| Agents | Agent prompt design, multi-agent orchestration | `.claude/agents/`, `templates/agents/` |
+| Commands | Workflow commands, pipeline orchestration | `.claude/commands/`, `templates/commands/` |
+| Product | VPC personas, product discovery, backlog | `.claude/agents/personas/`, `templates/personas/` |
+| DX | Developer experience, setup, onboarding | `commands/setup.md`, `prompts/` |
+
+---
+
+## Execution
+
+Launch a **single** explorer subagent (`subagent_type: Explore`, `run_in_background: true`) for product discovery.
+
+The Explore agent receives this prompt:
+
+> You are a product strategist analyzing the specrails project to generate new feature ideas using the **Value Proposition Canvas** framework.
+>
+> **Your goal:** For each area, propose 2-4 new features that would significantly improve the user experience. Every feature MUST be evaluated against the project's personas.
+>
+> **Areas to analyze:** {all areas or filtered by user input}
+>
+> ### Step 0: Read Personas
+>
+> **Before anything else**, read all persona files:
+> - Read `.claude/agents/personas/the-lead-dev.md`
+> - Read `.claude/agents/personas/the-product-founder.md`
+> - Read `.claude/agents/personas/the-maintainer.md`
+>
+> These contain full Value Proposition Canvas profiles (jobs, pains, gains).
+>
+> ### Research steps
+>
+> 1. **Understand current capabilities** — Read codebase structure
+> 2. **Check existing backlog** — Avoid duplicating existing issues
+> 3. **Think through each persona's day** — For each area:
+>    - What does each persona need here?
+>    - What would a competitive tool offer?
+>    - What data is available but not surfaced?
+>
+> 4. **For each idea, produce a VPC evaluation:**
+>    - **Feature name** (short, descriptive)
+>    - **User story** ("As a [user type], I want to [action] so that [benefit]")
+>    - **Feature description** (2-3 sentences)
+>    - **VPC Fit** per persona: Jobs, Pains relieved, Gains created, Score (0-5)
+>    - **Total Persona Score**: sum of all persona scores / max possible
+>    - **Effort** (High/Medium/Low)
+>    - **Inspiration** (competitor or product pattern)
+>    - **Prerequisites**
+>    - **Area**
+
+---
+
+## Assembly — Backlog Sync
+
+After the Explore agent completes:
+
+1. **Display** results to the user.
+
+### Sync to GitHub Issues (BACKLOG_WRITE=true)
+
+2. **Fetch existing product-driven backlog items** to avoid duplicates:
+   ```bash
+   gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body
+   ```
+
+3. **Initialize backlog labels** (idempotent):
+   ```bash
+   gh label create "product-driven-backlog" --color "7B68EE" --description "Product feature ideas from VPC discovery" --force 2>/dev/null || true
+   ```
+
+4. **For each proposed feature, create a GitHub Issue** (skip duplicates):
+   ```bash
+   gh issue create --title "{Feature Name}" --label "product-driven-backlog,area:{area}" --body "$(cat <<'EOF'
+   > **This is a product feature idea.** Generated through VPC-based product discovery.
+
+   ## Overview
+
+   | Field | Value |
+   |-------|-------|
+   | **Area** | {Area} |
+   | **Persona Fit** | Alex: X/5, Sara: X/5, Kai: X/5 |
+   | **Effort** | {High/Medium/Low} — {justification} |
+   | **Inspiration** | {source or "Original idea"} |
+   | **Prerequisites** | {list or "None"} |
+
+   ## User Story
+
+   As a **{user type}**, I want to **{action}** so that **{benefit}**.
+
+   ## Feature Description
+
+   {2-3 sentence description}
+
+   ## Value Proposition Canvas
+
+   ### "Alex" — The Lead Dev (X/5)
+   - **Jobs addressed**: {list}
+   - **Pains relieved**: {list with severity}
+   - **Gains created**: {list with impact}
+
+   ### "Sara" — The Product Founder (X/5)
+   - **Jobs addressed**: {list}
+   - **Pains relieved**: {list with severity}
+   - **Gains created**: {list with impact}
+
+   ### "Kai" — The Maintainer (X/5)
+   - **Jobs addressed**: {list}
+   - **Pains relieved**: {list with severity}
+   - **Gains created**: {list with impact}
+
+   ## Implementation Notes
+
+   {Brief notes on existing infrastructure and what needs to be built}
+
+   ---
+   _Auto-generated by `/update-product-driven-backlog` on {DATE}_
+   EOF
+   )"
+   ```
+
+5. **Report** sync results:
+   ```
+   Product discovery complete:
+   - Created: {N} new feature ideas in GitHub Issues
+   - Skipped: {N} duplicates (already exist)
+   ```
