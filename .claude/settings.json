@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Agent",
+      "Skill",
+      "ToolSearch",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(openspec *)",
+      "Bash(shellcheck *)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(which *)",
+      "Bash(echo *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(cat *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)"
+    ]
+  }
+}
