@@ -56,7 +56,7 @@ export function usePipeline() {
     }
   }, [])
 
-  const { connectionStatus } = useWebSocket('ws://localhost:3001', handleMessage)
+  const { connectionStatus } = useWebSocket('ws://localhost:4200', handleMessage)
 
   return { phases, projectName, logLines, connectionStatus }
 }

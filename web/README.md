@@ -25,10 +25,10 @@ npm run dev
 ```
 
 This starts two processes concurrently:
-- **Backend server** on `http://127.0.0.1:3001`
-- **Frontend client** on `http://localhost:5173`
+- **Backend server** on `http://127.0.0.1:4200`
+- **Frontend client** on `http://localhost:4201`
 
-Open `http://localhost:5173` in your browser to view the dashboard.
+Open `http://localhost:4201` in your browser to view the dashboard.
 
 ## CLI Options
 
@@ -37,7 +37,7 @@ The server accepts these CLI flags (used with `npm run dev:server` or `tsx serve
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--project <name>` | `specrails` | Project name displayed in the dashboard header |
-| `--port <n>` | `3001` | Port the backend server listens on |
+| `--port <n>` | `4200` | Port the backend server listens on |
 
 Example:
 
@@ -64,17 +64,17 @@ To manually fire a hook event (useful for testing):
 
 ```bash
 # Mark the architect phase as running
-curl -X POST http://localhost:3001/hooks/events \
+curl -X POST http://localhost:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_start","agent":"architect"}'
 
 # Mark the architect phase as done
-curl -X POST http://localhost:3001/hooks/events \
+curl -X POST http://localhost:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_stop","agent":"architect"}'
 
 # Mark the developer phase as errored
-curl -X POST http://localhost:3001/hooks/events \
+curl -X POST http://localhost:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_error","agent":"developer"}'
 ```

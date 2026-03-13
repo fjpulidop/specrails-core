@@ -8,7 +8,7 @@ import { spawnClaude, isSpawnActive, getLogBuffer } from './spawner'
 
 // Parse CLI args
 let projectName = 'specrails'
-let port = 3001
+let port = 4200
 
 for (let i = 2; i < process.argv.length; i++) {
   if (process.argv[i] === '--project' && process.argv[i + 1]) {
