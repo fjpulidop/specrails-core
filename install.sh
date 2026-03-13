@@ -134,7 +134,30 @@ else
     HAS_GH=false
 fi
 
-# 1.6 JIRA CLI (optional)
+# 1.6 OSS detection (requires gh auth; degrades gracefully)
+IS_OSS=false
+HAS_PUBLIC_REPO=false
+HAS_CI=false
+HAS_CONTRIBUTING=false
+
+if [ "$HAS_GH" = true ]; then
+    _REPO_PRIVATE=$(gh repo view --json isPrivate --jq '.isPrivate' 2>/dev/null || echo "unknown")
+    if [ "$_REPO_PRIVATE" = "false" ]; then
+        HAS_PUBLIC_REPO=true
+    fi
+    if ls "$REPO_ROOT/.github/workflows/"*.yml > /dev/null 2>&1; then
+        HAS_CI=true
+    fi
+    if [ -f "$REPO_ROOT/CONTRIBUTING.md" ] || [ -f "$REPO_ROOT/.github/CONTRIBUTING.md" ]; then
+        HAS_CONTRIBUTING=true
+    fi
+    if [ "$HAS_PUBLIC_REPO" = true ] && [ "$HAS_CI" = true ] && [ "$HAS_CONTRIBUTING" = true ]; then
+        IS_OSS=true
+        ok "OSS project detected (public repo + CI + CONTRIBUTING.md)"
+    fi
+fi
+
+# 1.7 JIRA CLI (optional)
 if command -v jira &> /dev/null; then
     ok "JIRA CLI: found"
     HAS_JIRA=true
@@ -208,6 +231,25 @@ ok "Installed /setup command"
 # Copy templates
 cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/.claude/setup-templates/"
 ok "Installed setup templates"
+
+# Write OSS detection results for /setup
+cat > "$REPO_ROOT/.claude/setup-templates/.oss-detection.json" << EOF
+{
+  "is_oss": $IS_OSS,
+  "signals": {
+    "public_repo": $HAS_PUBLIC_REPO,
+    "has_ci": $HAS_CI,
+    "has_contributing": $HAS_CONTRIBUTING
+  }
+}
+EOF
+ok "OSS detection results written"
+
+# Copy security exemptions config (skip if already exists — preserve user exemptions)
+if [ ! -f "${REPO_ROOT}/.claude/security-exemptions.yaml" ]; then
+    cp "${SCRIPT_DIR}/templates/security/security-exemptions.yaml" "${REPO_ROOT}/.claude/security-exemptions.yaml"
+    ok "Created .claude/security-exemptions.yaml"
+fi
 
 # Copy prompts
 if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then

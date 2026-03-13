@@ -75,6 +75,31 @@ Print a setup report:
 
 ## Phase 0: Parse input and determine mode
 
+### Flag Detection
+
+Before parsing input, scan `$ARGUMENTS` for control flags:
+
+- If `--dry-run` or `--preview` is present in `$ARGUMENTS`:
+  - Set `DRY_RUN=true`
+  - Strip the flag from the arguments before further parsing
+  - Print: `[dry-run] Preview mode active — no git, PR, or backlog operations will run.`
+  - Set `CACHE_DIR=.claude/.dry-run/<kebab-case-feature-name>` (derive after parsing the remaining input)
+  - Note: if a cache already exists at `CACHE_DIR`, print `[dry-run] Overwriting existing cache at CACHE_DIR` before overwriting.
+
+- If `--apply <feature-name>` is present in `$ARGUMENTS`:
+  - Set `APPLY_MODE=true`
+  - Set `APPLY_TARGET=<feature-name>` (the argument immediately following `--apply`)
+  - Set `CACHE_DIR=.claude/.dry-run/<feature-name>`
+  - Verify `CACHE_DIR` exists. If it does not: print `[apply] Error: no cached dry-run found at CACHE_DIR` and stop.
+  - Skip Phases 1–4b. Go directly to Phase 4c (the apply path handles the rest).
+  - Strip `--apply` and the feature name before further parsing.
+
+If neither flag is present: `DRY_RUN=false`, `APPLY_MODE=false`. Pipeline runs as normal.
+
+Note: `CACHE_DIR` for `--dry-run` is finalized after the feature name is derived from the remaining input. All subsequent phases that reference `CACHE_DIR` have access to it.
+
+---
+
 **If the user passed a text description** (e.g. `"add feature X"`):
 - **Single-feature mode**. Derive a kebab-case change name.
 - Set `SINGLE_MODE = true`. No worktrees, no parallelism.
@@ -143,6 +168,23 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 
 **Read reviewer learnings:** Check `.claude/agent-memory/reviewer/common-fixes.md` and include in developer prompts.
 
+#### Dry-Run: Redirect developer writes
+
+**If `DRY_RUN=true`**, include the following in every developer agent prompt:
+
+> IMPORTANT: This is a dry-run. Write all new or modified files under:
+>   .claude/.dry-run/\<feature-name\>/
+>
+> Mirror the real destination path within this directory. For example:
+>   Real path:   src/utils/parser.ts
+>   Write to:    .claude/.dry-run/\<feature-name\>/src/utils/parser.ts
+>
+> Do NOT write to real file paths. After writing each file, append an entry
+> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using this JSON format:
+>   {"cached_path": "...", "real_path": "...", "operation": "create|modify"}
+
+**If `DRY_RUN=false`**: developer agent instructions are unchanged.
+
 #### Choosing the right developer agent
 
 All tasks currently route to the full-stack **developer** agent since the project doesn't have separate backend/frontend layers yet.
@@ -160,7 +202,9 @@ Wait for all developers to complete.
 
 ### 4a. Merge worktree changes to main repo
 
-If `SINGLE_MODE`: skip. Otherwise copy feature-specific files, merge shared files manually, clean up worktrees.
+- If `SINGLE_MODE`: skip (no worktrees were used).
+- If `DRY_RUN=true`: merge worktree outputs to `CACHE_DIR` instead of the main repo. Apply the same merge logic (copy feature-specific files, handle shared files) but destination is `CACHE_DIR/<file-path>`.
+- Otherwise: merge to main repo working tree as normal (copy feature-specific files, merge shared files manually, clean up worktrees).
 
 ### 4b. Launch Reviewer agent
 
@@ -170,7 +214,59 @@ Launch a single **reviewer** agent to validate ALL merged changes. Include:
 - Record learnings to `common-fixes.md`
 - Archive completed changes via OpenSpec
 
+**If `DRY_RUN=true`**, add the following to the reviewer agent prompt:
+
+> Note: This is a dry-run review. Developer files are under .claude/.dry-run/\<feature-name\>/.
+> Read modified files from there. Write any reviewer fixes back to CACHE_DIR (not real paths).
+> CI commands may be run — they read the real repo, but be aware developer changes are not
+> yet applied to real paths.
+
+### 4b-sec. Launch Security Reviewer agent
+
+After the reviewer agent completes, launch a **security-reviewer** agent (`subagent_type: security-reviewer`).
+
+Construct the agent invocation prompt to include:
+- **MODIFIED_FILES_LIST**: the complete list of files created or modified during this implementation run
+- **PIPELINE_CONTEXT**: brief description — feature names and change names implemented
+- The exemptions config path: `.claude/security-exemptions.yaml`
+
+Wait for the security-reviewer to complete. Parse the final line of its output:
+- `SECURITY_STATUS: BLOCKED` → set `SECURITY_BLOCKED=true`
+- `SECURITY_STATUS: WARNINGS` → set `SECURITY_BLOCKED=false`, capture warning summary
+- `SECURITY_STATUS: CLEAN` → set `SECURITY_BLOCKED=false`
+
 ### 4c. Ship — Git & backlog updates
+
+**Security gate:** If `SECURITY_BLOCKED=true`:
+1. Print all Critical findings from the security-reviewer output
+2. Do NOT create a branch, commit, push, or PR
+3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /implement."
+4. Skip to Phase 4e.
+
+### Dry-Run Gate
+
+**If `DRY_RUN=true`:**
+Print: `[dry-run] Skipping all git and backlog operations.`
+Record skipped operations to `.cache-manifest.json` under `skipped_operations`:
+- `"git: branch creation (feat/<name>)"`
+- `"git: commit"`
+- `"git: push"`
+- `"github: pr creation"` (if `GH_AVAILABLE=true`)
+- `"github: issue comment #N"` for each issue in scope (if `BACKLOG_WRITE=true`)
+
+Then skip the rest of Phase 4c and proceed directly to Phase 4e.
+
+**If `APPLY_MODE=true`:**
+1. Read `.cache-manifest.json` from `CACHE_DIR`.
+2. For each entry in `files`: copy `cached_path` to `real_path`, creating directories as needed.
+3. Print: `[apply] Copied N files from .claude/.dry-run/<feature-name>/ to real locations.`
+4. Then proceed with Phase 4c normally (GIT_AUTO logic, backlog updates) using the real files.
+5. On successful completion of Phase 4c: delete `CACHE_DIR` and print `[apply] Cache cleaned up.`
+   If Phase 4c fails: preserve `CACHE_DIR` for re-run.
+
+**Otherwise:** proceed as normal.
+
+---
 
 This phase uses **automatic** shipping (GIT_AUTO=true) and **read & write** backlog access (BACKLOG_WRITE=true).
 
@@ -216,9 +312,50 @@ Check CI status after pushing. Fix failures (up to 2 retries).
 
 ### 4e. Report
 
+**If `DRY_RUN=true`**, show this report instead of the standard pipeline table:
+
+---
+
+## Dry-Run Preview Report
+
+### Artifacts Generated
+
+| Type | Location |
+|------|----------|
+| OpenSpec proposal | openspec/changes/\<name\>/proposal.md |
+| OpenSpec design | openspec/changes/\<name\>/design.md |
+| OpenSpec tasks | openspec/changes/\<name\>/tasks.md |
+| OpenSpec context-bundle | openspec/changes/\<name\>/context-bundle.md |
+| Developer files | .claude/.dry-run/\<name\>/ (N files) |
+
+### What Would Change
+
+[For each file in `.cache-manifest.json` `files` array:]
+- `<real_path>` — [new file / modified] ([approximate line delta if available])
+
+### Operations Skipped
+
+[List items from `.cache-manifest.json` `skipped_operations` array]
+
+### Next Steps
+
+To apply these changes and ship:
 ```
-| Area | Feature | Change Name | Architect | Developer | Reviewer | Tests | CI | Status |
-|------|---------|-------------|-----------|-----------|----------|-------|----|--------|
+/implement --apply <feature-name>
+```
+
+To discard this dry run:
+```
+rm -rf .claude/.dry-run/<feature-name>/
+```
+
+---
+
+**Otherwise**, show the standard pipeline table:
+
+```
+| Area | Feature | Change Name | Architect | Developer | Reviewer | Security | Tests | CI | Status |
+|------|---------|-------------|-----------|-----------|----------|----------|-------|----|--------|
 ```
 
 Include PR URL, CI status, and backlog updates made.

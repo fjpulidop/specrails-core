@@ -44,6 +44,7 @@ When invoked via `opsx:explore`, your job is to **explore, ideate, and strategiz
 You have {{PERSONA_COUNT}} primary personas defined in `.claude/agents/personas/`. **Always read these files** at the start of any exploration session:
 
 {{PERSONA_FILE_LIST}}
+{{MAINTAINER_PERSONA_LINE}}
 
 These personas include full Value Proposition Canvas profiles (jobs, pains, gains). Use them to ground every feature evaluation in real user needs.
 
