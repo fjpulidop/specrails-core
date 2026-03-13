@@ -68,6 +68,52 @@ fail() { echo -e "  ${RED}✗${NC} $1"; }
 info() { echo -e "  ${BLUE}→${NC} $1"; }
 step() { echo -e "\n${BOLD}$1${NC}"; }
 
+generate_manifest() {
+    local version
+    version="$(cat "$SCRIPT_DIR/VERSION")"
+
+    local installed_at
+    installed_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    # Write version file
+    printf '%s\n' "$version" > "$REPO_ROOT/.specrails-version"
+
+    # Build artifact checksums for all files under templates/
+    local artifacts_json=""
+    local first=true
+    while IFS= read -r -d '' filepath; do
+        local relpath
+        relpath="templates/${filepath#"$SCRIPT_DIR/templates/"}"
+        local checksum
+        checksum="sha256:$(shasum -a 256 "$filepath" | awk '{print $1}')"
+        if [ "$first" = true ]; then
+            first=false
+        else
+            artifacts_json="${artifacts_json},"
+        fi
+        artifacts_json="${artifacts_json}
+    \"${relpath}\": \"${checksum}\""
+    done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
+
+    # Include commands/setup.md
+    local setup_checksum
+    setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
+    if [ -n "$artifacts_json" ]; then
+        artifacts_json="${artifacts_json},"
+    fi
+    artifacts_json="${artifacts_json}
+    \"commands/setup.md\": \"${setup_checksum}\""
+
+    cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
+{
+  "version": "${version}",
+  "installed_at": "${installed_at}",
+  "artifacts": {${artifacts_json}
+  }
+}
+EOF
+}
+
 # ─────────────────────────────────────────────
 # Phase 1: Prerequisites
 # ─────────────────────────────────────────────
@@ -309,6 +355,51 @@ if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
 fi
 
 # ─────────────────────────────────────────────
+# Phase 3b: Install web manager
+# ─────────────────────────────────────────────
+
+step "Phase 3b: Installing web manager (Pipeline Monitor)"
+
+WEB_MANAGER_DIR="$REPO_ROOT/.claude/web-manager"
+
+if [ -d "$WEB_MANAGER_DIR" ]; then
+    warn "Existing .claude/web-manager/ found — skipping (delete it to reinstall)"
+    HAS_WEB_MANAGER=true
+else
+    mkdir -p "$WEB_MANAGER_DIR"
+    cp -r "$SCRIPT_DIR/templates/web-manager/"* "$WEB_MANAGER_DIR/"
+    ok "Copied web manager to .claude/web-manager/"
+
+    if [ "$HAS_NPM" = true ]; then
+        info "Installing web manager dependencies..."
+        (cd "$WEB_MANAGER_DIR" && npm install --silent 2>/dev/null) && {
+            ok "Server dependencies installed"
+        } || {
+            warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+        }
+        (cd "$WEB_MANAGER_DIR/client" && npm install --silent 2>/dev/null) && {
+            ok "Client dependencies installed"
+        } || {
+            warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+        }
+        HAS_WEB_MANAGER=true
+    else
+        warn "npm not available — skipping dependency install. Run 'cd .claude/web-manager && npm install' later."
+        HAS_WEB_MANAGER=false
+    fi
+fi
+
+# ─────────────────────────────────────────────
+# Phase 3c: Write version and manifest
+# ─────────────────────────────────────────────
+
+step "Phase 3c: Writing version and manifest"
+
+generate_manifest
+ok "Written .specrails-version ($(cat "$REPO_ROOT/.specrails-version"))"
+ok "Written .specrails-manifest.json"
+
+# ─────────────────────────────────────────────
 # Phase 4: Summary & next steps
 # ─────────────────────────────────────────────
 
@@ -320,6 +411,9 @@ echo ""
 echo "  Files installed:"
 echo "    .claude/commands/setup.md          ← The /setup command"
 echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
+echo "    .claude/web-manager/              ← Pipeline Monitor dashboard"
+echo "    .specrails-version                ← Installed specrails version"
+echo "    .specrails-manifest.json          ← Artifact checksums for update detection"
 echo ""
 
 echo -e "${BOLD}Prerequisites:${NC}"
@@ -328,9 +422,10 @@ echo ""
 [ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
 [ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
 [ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
+[ "$HAS_WEB_MANAGER" = true ] && ok "Web Manager" || warn "Web Manager (npm required)"
 echo ""
 
-echo -e "${BOLD}${CYAN}Next step:${NC}"
+echo -e "${BOLD}${CYAN}Next steps:${NC}"
 echo ""
 echo "  1. Open Claude Code in this repo:"
 echo ""
@@ -339,6 +434,12 @@ echo ""
 echo "  2. Run the setup wizard:"
 echo ""
 echo -e "     ${BOLD}/setup${NC}"
+echo ""
+echo "  3. Launch the Pipeline Monitor (optional):"
+echo ""
+echo -e "     ${BOLD}cd $REPO_ROOT/.claude/web-manager && npm run dev${NC}"
+echo ""
+echo -e "     Opens at ${BOLD}http://localhost:4201${NC}"
 echo ""
 echo "  Claude will analyze your codebase, ask about your users,"
 echo "  research the competitive landscape, and generate all agents,"
