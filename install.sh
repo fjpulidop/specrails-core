@@ -58,7 +58,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     # We're inside the specrails source — ask for target repo
     echo ""
     echo -e "${YELLOW}⚠${NC}  You're running the installer from inside the specrails source repo."
-    echo "   specrails installs into a ${BOLD}target${NC} repository, not into itself."
+    echo -e "   specrails installs into a ${BOLD}target${NC} repository, not into itself."
     echo ""
     read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH
     if [[ "$TARGET_PATH" == "q" || -z "$TARGET_PATH" ]]; then
