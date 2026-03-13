@@ -142,7 +142,51 @@ Each agent's prompt should include:
 
 ### 3a.1 Identify shared file conflicts
 
-Before launching developers, scan all tasks.md files to identify **shared files** that multiple features will modify.
+**Only runs in multi-feature mode** (more than one feature). Skip entirely if `SINGLE_MODE=true`.
+
+After all architect agents complete, before launching any developer agent:
+
+#### Step 1: Extract file references
+
+For each `openspec/changes/<name>/tasks.md`, extract all paths listed under `**Files:**` entries (both `Create:` and `Modify:` lines). Normalize paths: strip leading `./`.
+
+#### Step 2: Build the shared-file registry
+
+Group file paths across all features. Any path appearing in two or more features' task lists is a **shared file**. Store as `SHARED_FILES` map: `{path: {features: [...], risk: ""}}`.
+
+#### Step 3: Classify risk
+
+For each shared file, classify risk based on file type and which regions each feature modifies (consult each feature's context-bundle.md "Exact Changes" section):
+
+| Risk | Condition |
+|------|-----------|
+| `low` | Both features only append new named sections not present in the other feature's changes |
+| `medium` | Both features modify structurally distinct regions (different `##` sections or different top-level YAML keys) |
+| `high` | Both features modify the same region (same `##` section, same YAML key subtree, or any region in shell scripts) |
+
+Shell scripts (`.sh`, `.bash`): always `high`.
+Non-existent files that two features both create: always `high`.
+
+#### Step 4: Derive MERGE_ORDER
+
+Sort features so that for any pair sharing a `high`-risk file, one appears before the other. Use topological sort; break ties alphabetically. Set `MERGE_ORDER` = sorted feature list.
+
+#### Step 5: Print pre-flight report
+
+```
+## Shared File Analysis
+
+| File | Features | Risk |
+|------|----------|------|
+| <path> | <feature-a>, <feature-b> | <risk> |
+
+Merge order: <feature-a> → <feature-b> → <feature-c>
+
+High-risk files detected. These files will be merged sequentially.
+Developers will still run in parallel — merge order applies at Phase 4a only.
+```
+
+If no shared files: print `No shared files detected. All features modify independent files.`
 
 ### 3a.2 Pre-validate architect output
 
@@ -230,9 +274,102 @@ If a test-writer agent fails or times out:
 
 ### 4a. Merge worktree changes to main repo
 
-- If `SINGLE_MODE`: skip (no worktrees were used).
-- If `DRY_RUN=true`: merge worktree outputs to `CACHE_DIR` instead of the main repo. Apply the same merge logic (copy feature-specific files, handle shared files) but destination is `CACHE_DIR/<file-path>`.
-- Otherwise: merge to main repo working tree as normal (copy feature-specific files, merge shared files manually, clean up worktrees).
+- If `SINGLE_MODE`: skip (no worktrees were used). Proceed to Phase 4b.
+- If `DRY_RUN=true`: apply the merge algorithm below, writing all outputs to `CACHE_DIR/<file-path>` instead of the main repo working tree. Do NOT clean up worktrees in dry-run mode.
+- Otherwise: apply the merge algorithm below, writing outputs to the main repo working tree. Clean up worktrees at the end.
+
+#### Merge Algorithm
+
+Process features in `MERGE_ORDER` sequence. For each feature:
+
+**Step 1: Identify changed files**
+
+```bash
+git -C <worktree-path> diff main --name-only
+```
+
+Split into `exclusive_files` (only this feature modifies them) and `shared_files_for_this_feature` (also modified by another feature in MERGE_ORDER).
+
+**Step 2: Merge exclusive files**
+
+Copy directly from worktree to target:
+```bash
+cp <worktree-path>/<file> <target>/<file>
+```
+Log: `Copied (exclusive): <file>`
+
+**Step 3: Merge shared files**
+
+For each shared file, choose strategy by file type:
+
+**Strategy A — Markdown section-aware merge** (`.md` files):
+1. Read base: current content of `<target>/<file>`.
+2. Read incoming: `<worktree-path>/<file>`.
+3. Parse both into sections using `##` heading boundaries (heading line + all content until next `##` or EOF).
+4. Build section maps: `{heading_text: content}` for base and incoming.
+5. Merge:
+   - Section in base only: keep.
+   - Section in incoming only: append to merged output.
+   - Section in both, content identical: keep base.
+   - Section in both, content differs: insert conflict markers:
+     ```
+     <<<<<<< <feature-name>
+     <incoming section content>
+     =======
+     <base section content>
+     >>>>>>> base
+     ```
+     Log: `CONFLICT: <file> — section "<heading>" requires manual resolution.`
+6. Write merged result to `<target>/<file>`.
+
+**Strategy B — Unified diff sequential apply** (all other file types):
+1. Generate incoming diff against original `main`:
+   ```bash
+   git -C <worktree-path> diff main -- <file>
+   ```
+2. Apply to current target:
+   ```bash
+   patch --forward --fuzz=3 <target>/<file> < <diff>
+   ```
+3. If `patch` succeeds: log `Merged (diff-apply): <file>`.
+4. If `patch` fails: insert conflict markers around rejected hunks. Log: `CONFLICT: <file> — N hunks rejected.`
+
+If `patch` is not available (detected in Phase -1): use Strategy A for all file types and print: `[warn] patch not available — using section-aware fallback for all shared files.`
+
+**Step 4: Record outcomes**
+
+Maintain `MERGE_REPORT`:
+- `cleanly_merged`: exclusive files + shared files with no conflicts
+- `auto_resolved`: shared files merged without conflict markers
+- `requires_resolution`: `{file, feature, regions}` for files with conflict markers
+
+**Step 5: Emit merge report**
+
+After all features are processed:
+
+```
+## Phase 4a Merge Report
+
+### Cleanly Merged
+- <file> (exclusive to <feature>)
+
+### Auto-Resolved
+- <file> (features: <a>, <b> — distinct sections)
+
+### Requires Manual Resolution
+- <file> (features: <a>, <b> — conflicting section: "<heading>")
+  Search for `<<<<<<< <feature-name>` to locate conflict markers.
+
+Pipeline will continue. Fix conflicts above before the reviewer runs CI.
+```
+
+**Step 6: Clean up worktrees** (skip if `DRY_RUN=true`)
+
+```bash
+git worktree remove <worktree-path> --force
+```
+
+Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`.
 
 ### 4b. Launch Reviewer agent
 
@@ -412,6 +549,18 @@ rm -rf .claude/.dry-run/<feature-name>/
 ```
 | Area | Feature | Change Name | Architect | Developer | Tests | Reviewer | Security | CI | Status |
 |------|---------|-------------|-----------|-----------|-------|----------|----------|----|--------|
+```
+
+If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
+
+```
+### Merge Conflicts Requiring Resolution
+
+| File | Features | Conflicting Region |
+|------|----------|-------------------|
+| <file> | <feature-a>, <feature-b> | <section heading or hunk description> |
+
+Fix these conflicts (search for `<<<<<<<` in each file), then commit the resolved files.
 ```
 
 Include the shipping mode in the report:
