@@ -281,7 +281,7 @@ Record skipped operations to `.cache-manifest.json` under `skipped_operations`:
 - `"git: push"`
 - `"github: pr creation"` (if `GH_AVAILABLE=true`)
 - `"github: issue comment #N"` for each issue in scope (if `BACKLOG_WRITE=true`)
-- `"github: issue close #N"` for each fully resolved issue (if `BACKLOG_WRITE=true`)
+- `"github: issue close #N (via PR merge)"` for each fully resolved issue (if `BACKLOG_WRITE=true`)
 
 Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 
@@ -333,13 +333,13 @@ All implementation is complete and CI checks pass.
 #### Backlog updates (both modes)
 
 **If `BACKLOG_WRITE=true`:**
-- For fully resolved issues/tickets: add a comment noting completion, reference the PR (if created), and **close the issue**:
+- For fully resolved issues/tickets: add a comment noting completion and reference the PR. Do NOT close the issue explicitly — use `Closes #N` in the PR body so GitHub/JIRA closes it automatically when the PR is merged:
   ```bash
   {{BACKLOG_COMMENT_CMD}}
-  {{BACKLOG_CLOSE_CMD}}
   ```
-  - GitHub: `gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."` then `gh issue close {number} --reason completed`
-  - JIRA: `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."` then transition to Done
+  - GitHub: `gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."`
+  - JIRA: `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."`
+  - Ensure the PR body includes `Closes #N` for each fully resolved issue (GitHub auto-closes on merge)
 - For partially resolved issues/tickets: add a comment noting progress:
   ```bash
   {{BACKLOG_PARTIAL_COMMENT_CMD}}

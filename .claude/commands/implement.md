@@ -285,7 +285,7 @@ Record skipped operations to `.cache-manifest.json` under `skipped_operations`:
 - `"git: push"`
 - `"github: pr creation"` (if `GH_AVAILABLE=true`)
 - `"github: issue comment #N"` for each issue in scope (if `BACKLOG_WRITE=true`)
-- `"github: issue close #N"` for each fully resolved issue (if `BACKLOG_WRITE=true`)
+- `"github: issue close #N (via PR merge)"` for each fully resolved issue (if `BACKLOG_WRITE=true`)
 
 Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 
@@ -330,11 +330,11 @@ This phase uses **automatic** shipping (GIT_AUTO=true) and **read & write** back
 
 #### Backlog updates
 
-- For fully resolved issues: add a comment noting completion, reference the PR, and **close the issue**:
+- For fully resolved issues: add a comment noting completion and reference the PR. Do NOT close the issue explicitly — use `Closes #N` in the PR body so GitHub closes it automatically when the PR is merged:
   ```bash
   gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."
-  gh issue close {number} --reason completed
   ```
+  - Ensure the PR body includes `Closes #N` for each fully resolved issue
 - For partially resolved issues: add a comment noting progress:
   ```bash
   gh issue comment {number} --body "Partial progress: [description]. Remaining work: [description]."
