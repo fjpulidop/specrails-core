@@ -309,6 +309,41 @@ if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
 fi
 
 # ─────────────────────────────────────────────
+# Phase 3b: Install web manager
+# ─────────────────────────────────────────────
+
+step "Phase 3b: Installing web manager (Pipeline Monitor)"
+
+WEB_MANAGER_DIR="$REPO_ROOT/.claude/web-manager"
+
+if [ -d "$WEB_MANAGER_DIR" ]; then
+    warn "Existing .claude/web-manager/ found — skipping (delete it to reinstall)"
+    HAS_WEB_MANAGER=true
+else
+    mkdir -p "$WEB_MANAGER_DIR"
+    cp -r "$SCRIPT_DIR/templates/web-manager/"* "$WEB_MANAGER_DIR/"
+    ok "Copied web manager to .claude/web-manager/"
+
+    if [ "$HAS_NPM" = true ]; then
+        info "Installing web manager dependencies..."
+        (cd "$WEB_MANAGER_DIR" && npm install --silent 2>/dev/null) && {
+            ok "Server dependencies installed"
+        } || {
+            warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+        }
+        (cd "$WEB_MANAGER_DIR/client" && npm install --silent 2>/dev/null) && {
+            ok "Client dependencies installed"
+        } || {
+            warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+        }
+        HAS_WEB_MANAGER=true
+    else
+        warn "npm not available — skipping dependency install. Run 'cd .claude/web-manager && npm install' later."
+        HAS_WEB_MANAGER=false
+    fi
+fi
+
+# ─────────────────────────────────────────────
 # Phase 4: Summary & next steps
 # ─────────────────────────────────────────────
 
@@ -320,6 +355,7 @@ echo ""
 echo "  Files installed:"
 echo "    .claude/commands/setup.md          ← The /setup command"
 echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
+echo "    .claude/web-manager/              ← Pipeline Monitor dashboard"
 echo ""
 
 echo -e "${BOLD}Prerequisites:${NC}"
@@ -328,9 +364,10 @@ echo ""
 [ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
 [ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
 [ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
+[ "$HAS_WEB_MANAGER" = true ] && ok "Web Manager" || warn "Web Manager (npm required)"
 echo ""
 
-echo -e "${BOLD}${CYAN}Next step:${NC}"
+echo -e "${BOLD}${CYAN}Next steps:${NC}"
 echo ""
 echo "  1. Open Claude Code in this repo:"
 echo ""
@@ -339,6 +376,12 @@ echo ""
 echo "  2. Run the setup wizard:"
 echo ""
 echo -e "     ${BOLD}/setup${NC}"
+echo ""
+echo "  3. Launch the Pipeline Monitor (optional):"
+echo ""
+echo -e "     ${BOLD}cd $REPO_ROOT/.claude/web-manager && npm run dev${NC}"
+echo ""
+echo -e "     Opens at ${BOLD}http://localhost:4201${NC}"
 echo ""
 echo "  Claude will analyze your codebase, ask about your users,"
 echo "  research the competitive landscape, and generate all agents,"

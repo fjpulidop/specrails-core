@@ -7,7 +7,7 @@ import { createHooksRouter, getPhaseStates, resetPhases } from './hooks'
 import { spawnClaude, isSpawnActive, getLogBuffer } from './spawner'
 
 // Parse CLI args
-let projectName = 'specrails'
+let projectName = process.env.SPECRAILS_PROJECT_NAME || require('path').basename(process.cwd())
 let port = 4200
 
 for (let i = 2; i < process.argv.length; i++) {

@@ -1,5 +1,5 @@
 {
-  "name": "specrails-web",
+  "name": "specrails-web-manager",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
