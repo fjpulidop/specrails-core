@@ -17,6 +17,42 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+# ─────────────────────────────────────────────
+# Argument parsing
+# ─────────────────────────────────────────────
+
+CUSTOM_ROOT_DIR=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --root-dir)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --root-dir requires a path argument." >&2
+                exit 1
+            fi
+            CUSTOM_ROOT_DIR="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            echo "Usage: install.sh [--root-dir <path>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
+# Override REPO_ROOT if --root-dir was provided
+if [[ -n "$CUSTOM_ROOT_DIR" ]]; then
+    REPO_ROOT="$(cd "$CUSTOM_ROOT_DIR" 2>/dev/null && pwd)" || {
+        echo "Error: --root-dir path does not exist or is not accessible: $CUSTOM_ROOT_DIR" >&2
+        exit 1
+    }
+    if [[ ! -d "$REPO_ROOT" ]]; then
+        echo "Error: --root-dir path is not a directory: $CUSTOM_ROOT_DIR" >&2
+        exit 1
+    fi
+fi
+
 print_header() {
     echo ""
     echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════╗${NC}"
@@ -41,11 +77,16 @@ print_header
 step "Phase 1: Checking prerequisites"
 
 # 1.1 Git repository
-if [ -z "$REPO_ROOT" ]; then
-    fail "Not inside a git repository. Run this from your project's root."
+if [[ -z "$REPO_ROOT" ]]; then
+    fail "Not inside a git repository and no --root-dir provided."
+    echo "  Usage: install.sh [--root-dir <path>]"
     exit 1
 fi
-ok "Git repository: $REPO_ROOT"
+if [[ -n "$CUSTOM_ROOT_DIR" ]]; then
+    ok "Install root (--root-dir): $REPO_ROOT"
+else
+    ok "Git repository root: $REPO_ROOT"
+fi
 
 # 1.2 Claude Code CLI
 if command -v claude &> /dev/null; then
