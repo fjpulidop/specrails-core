@@ -6,6 +6,192 @@ Interactive wizard to configure the full agent workflow system for this reposito
 
 ---
 
+## Mode Detection
+
+Check if `$ARGUMENTS` contains `--update`:
+- If yes → execute **Update Mode** (below), then stop. Do NOT continue to the full setup wizard.
+- If no → skip to **Phase 1** and execute the full setup wizard.
+
+---
+
+## Update Mode
+
+When `--update` is passed, execute this streamlined flow instead of the full wizard. Do not run any phases from the full wizard. When Phase U7 is complete, stop.
+
+### Phase U1: Read Update Context
+
+Read the following files to understand the current installation state:
+
+1. Read `.specrails-manifest.json` — contains agent template checksums from the last install/update. Structure:
+   ```json
+   {
+     "version": "0.2.0",
+     "installed_at": "2025-01-15T10:00:00Z",
+     "artifacts": {
+       "templates/agents/architect.md": "sha256:<checksum>",
+       "templates/agents/developer.md": "sha256:<checksum>",
+       "templates/agents/reviewer.md": "sha256:<checksum>"
+     }
+   }
+   ```
+   If this file does not exist, inform the user:
+   > "No `.specrails-manifest.json` found. This looks like a pre-versioning installation. Run `update.sh` first to initialize the manifest, then re-run `/setup --update`."
+   Then stop.
+
+2. Read `.specrails-version` — contains the current version string (e.g., `0.2.0`). If it does not exist, treat version as `0.1.0 (legacy)`.
+
+3. List all template files in `.claude/setup-templates/agents/` — these are the NEW templates from the update:
+   ```bash
+   ls .claude/setup-templates/agents/
+   ```
+
+### Phase U2: Quick Codebase Re-Analysis
+
+Perform the same analysis as Phase 1 of the full setup wizard, but silently — do not prompt the user and do not show the findings table. Just execute and store results internally.
+
+Detect:
+- **Languages**: Check for `*.py`, `*.ts`, `*.tsx`, `*.go`, `*.rs`, `*.java`, `*.kt`, `*.rb`, `*.cs`
+- **Frameworks**: Search for imports (`fastapi`, `express`, `react`, `vue`, `angular`, `django`, `spring`, `gin`, `actix`, `rails`)
+- **Directory structure**: Identify backend/frontend/core/test directories
+- **Database**: Check for SQL files, ORM configs, migration directories
+- **CI/CD**: Parse `.github/workflows/*.yml` for lint/test/build commands
+- **Naming conventions**: Read 2-3 source files per detected layer
+
+Read:
+- `README.md` (if exists)
+- `package.json` / `pyproject.toml` / `Cargo.toml` / `go.mod` / `pom.xml` (detect stack)
+- `.github/workflows/*.yml` (detect CI commands)
+
+Store all results for use in Phases U4 and U5.
+
+### Phase U3: Identify What Needs Regeneration
+
+For each agent template, find its entry in the manifest's `artifacts` map (keyed as `templates/agents/<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/agents/`:
+
+```bash
+sha256sum .claude/setup-templates/agents/<name>.md
+```
+
+Build three lists:
+
+1. **Changed agents**: agent name exists in manifest AND the current template checksum differs from the manifest checksum → mark for regeneration
+2. **New agents**: template file exists in `.claude/setup-templates/agents/` but the agent name is NOT in the manifest → mark for evaluation
+3. **Unchanged agents**: agent name exists in manifest AND checksum matches → skip
+
+Display the analysis to the user:
+
+```
+## Agent Update Analysis
+
+### Changed Templates (will be regenerated)
+- architect.md (template modified)
+- developer.md (template modified)
+
+### New Templates Available
+- frontend-developer.md
+- backend-developer.md
+
+### Unchanged (keeping current)
+- reviewer.md
+- product-manager.md
+```
+
+If there are no changed agents and no new agents, display:
+```
+All agents are already up to date. Nothing to regenerate.
+```
+Then jump to Phase U7.
+
+### Phase U4: Regenerate Changed Agents
+
+For each agent in the "changed" list:
+
+1. Read the NEW template from `.claude/setup-templates/agents/<name>.md`
+2. Use the codebase analysis from Phase U2 to fill in all `{{PLACEHOLDER}}` values, using the same substitution rules as Phase 4.1 of the full setup:
+   - `{{PROJECT_NAME}}` → project name (from README.md or directory name)
+   - `{{ARCHITECTURE_DIAGRAM}}` → detected architecture layers
+   - `{{LAYER_TAGS}}` → detected layer tags (e.g., `[backend]`, `[frontend]`, `[api]`)
+   - `{{CI_COMMANDS_BACKEND}}` → backend CI commands
+   - `{{CI_COMMANDS_FRONTEND}}` → frontend CI commands
+   - `{{LAYER_CONVENTIONS}}` → detected conventions per layer
+   - `{{PERSONA_NAMES}}` → read existing persona names from `.claude/agents/personas/` filenames
+   - `{{PERSONA_FILES}}` → paths to existing persona files in `.claude/agents/personas/`
+   - `{{DOMAIN_EXPERTISE}}` → infer from detected stack and README
+   - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase U2
+   - `{{WARNINGS}}` → read from existing `CLAUDE.md` if present
+   - `{{MEMORY_PATH}}` → `.claude/agent-memory/<agent-name>/`
+3. Write the adapted agent to `.claude/agents/<name>.md`
+4. Show: `✓ Regenerated <name>`
+
+After regenerating all changed agents, verify no unresolved placeholders remain:
+```bash
+grep -r '{{[A-Z_]*}}' .claude/agents/ 2>/dev/null || echo "OK: no broken placeholders"
+```
+
+### Phase U5: Evaluate New Agents
+
+For each agent in the "new" list:
+
+1. Read the template from `.claude/setup-templates/agents/<name>.md` to understand what stack or layer it targets (read its description and any layer-specific comments)
+2. Match against the codebase detected in Phase U2:
+   - If the template targets a layer/stack that IS present (e.g., `frontend-developer` and React was detected), prompt:
+     > "New agent available: `<name>` — your project uses [detected tech]. Add it? [Y/n]"
+   - If the template targets a layer/stack that is NOT present (e.g., `backend-developer` and no backend was detected), prompt:
+     > "New agent available: `<name>` — no [layer] detected in your project. Skip? [Y/n]"
+3. If the user accepts (or presses Enter on a pre-selected default):
+   - Generate the agent using the same template adaptation as Phase U4
+   - Create memory directory if it does not exist: `.claude/agent-memory/<name>/`
+   - Show: `✓ Added <name>`
+4. If the user declines:
+   - Show: `→ Skipped <name>`
+
+### Phase U6: Update Workflow Commands
+
+If any new agents were added in Phase U5:
+
+1. Read `.claude/commands/implement.md`
+2. Check if the file references agent names in its orchestration steps (look for `architect`, `developer`, `reviewer` etc.)
+3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `frontend-developer` or `backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
+4. Write the updated `.claude/commands/implement.md` if any changes were made
+5. Show which commands were updated, or "No command updates needed" if nothing changed
+
+This is a lightweight check — only update commands where the agent clearly belongs. Do not restructure the entire command.
+
+### Phase U7: Summary
+
+Display the final summary and stop. Do not continue to Phase 1 of the full setup wizard.
+
+```
+## Update Complete
+
+specrails updated from v<previous> to v<new>.
+
+| Action             | Count |
+|--------------------|-------|
+| Agents regenerated | N     |
+| Agents added       | N     |
+| Agents skipped     | N     |
+| Commands updated   | N     |
+
+All agents are now up to date.
+
+### Regenerated
+[list agent names, or "(none)"]
+
+### Added
+[list agent names, or "(none)"]
+
+### Skipped
+[list agent names, or "(none)"]
+```
+
+Update `.specrails-manifest.json` to reflect the new checksums for all regenerated and added agents:
+- For each regenerated agent: update its checksum entry to the new template's checksum
+- For each added agent: add a new entry with its checksum
+- Update the `version` field to the version read from `.specrails-version`
+
+---
+
 ## Phase 1: Codebase Analysis
 
 Analyze the repository to understand its architecture, stack, and conventions.
