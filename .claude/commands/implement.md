@@ -196,6 +196,38 @@ All tasks currently route to the full-stack **developer** agent since the projec
 
 Wait for all developers to complete.
 
+## Phase 3c: Write Tests
+
+Launch a **test-writer** agent for each feature immediately after its developer completes.
+
+Construct the agent invocation prompt to include:
+- **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
+- **TASK_DESCRIPTION**: the original task or feature description that drove the implementation
+
+### Launch modes
+
+**If `SINGLE_MODE`**: Launch a single test-writer agent in the foreground (`run_in_background: false`). Wait for it to complete before proceeding to Phase 4.
+
+**If multiple features (worktrees)**: Launch one test-writer agent per feature, each in its corresponding worktree (`isolation: worktree`, `run_in_background: true`). Wait for all test-writer agents to complete before proceeding to Phase 4.
+
+### Dry-run behavior
+
+**If `DRY_RUN=true`**, include in every test-writer agent prompt:
+
+> IMPORTANT: This is a dry-run. Write all new or modified test files under:
+>   .claude/.dry-run/\<feature-name\>/
+>
+> Mirror the real destination path within this directory. After writing each file, append an entry
+> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using:
+>   {"cached_path": "...", "real_path": "...", "operation": "create"}
+
+### Failure handling
+
+If a test-writer agent fails or times out:
+- Record `Tests: FAILED` for that feature in the Phase 4e report
+- Continue to Phase 4 — the test-writer failure is non-blocking
+- Include in the reviewer agent prompt: "Note: the test-writer failed for this feature. Check for coverage gaps."
+
 ## Phase 4: Merge & Review
 
 **This phase is fully autonomous.**
@@ -356,8 +388,8 @@ rm -rf .claude/.dry-run/<feature-name>/
 **Otherwise**, show the standard pipeline table:
 
 ```
-| Area | Feature | Change Name | Architect | Developer | Reviewer | Security | Tests | CI | Status |
-|------|---------|-------------|-----------|-----------|----------|----------|-------|----|--------|
+| Area | Feature | Change Name | Architect | Developer | Tests | Reviewer | Security | CI | Status |
+|------|---------|-------------|-----------|-----------|-------|----------|----------|----|--------|
 ```
 
 Include PR URL, CI status, and backlog updates made.
