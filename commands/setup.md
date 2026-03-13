@@ -293,6 +293,39 @@ How should we interact with JIRA?
 
 Set `BACKLOG_WRITE=true/false`.
 
+<!-- no separate template — this file IS the source (install.sh copies commands/setup.md directly) -->
+
+#### Project Label
+
+After the access mode selection, ask:
+
+> **Project Label (optional but recommended)**
+>
+> JIRA teams often tag all tickets for a product with a project label
+> (e.g., `PROJECT-specrails`, `PLATFORM`, `MOBILE`). This label is applied
+> to every ticket the backlog pipeline creates — making it easy to filter all
+> AI-generated backlog items across JIRA.
+>
+> Enter a project label, or press Enter to skip:
+
+If the user enters a label: set `PROJECT_LABEL=<value>`.
+If the user skips: set `PROJECT_LABEL=""`.
+
+#### Epic Link Field
+
+Ask:
+
+> **Epic Link Field (optional — advanced)**
+>
+> JIRA Next-Gen (team-managed) projects link stories to epics using the `parent`
+> field. JIRA Classic (company-managed) projects use `Epic Link` (customfield_10014).
+>
+> Which does your project use?
+> 1. `parent` — Next-Gen / team-managed **(default)**
+> 2. `customfield_10014` — Classic / company-managed
+
+Set `EPIC_LINK_FIELD` to `parent` or `customfield_10014`. Default: `parent`.
+
 Store the full configuration in `.claude/backlog-config.json`:
 ```json
 {
@@ -302,7 +335,10 @@ Store the full configuration in `.claude/backlog-config.json`:
   "jira_project_key": "PROJ",
   "issue_type": "Story",
   "auth_method": "api_token",
-  "cli_installed": true
+  "cli_installed": true,
+  "project_label": "<PROJECT_LABEL or empty string>",
+  "epic_link_field": "parent",
+  "epic_mapping": {}
 }
 ```
 
@@ -358,10 +394,14 @@ Display the full configuration summary including access modes:
 |---------|-------|
 | Backlog provider | GitHub Issues / JIRA / None |
 | Backlog access | Read & Write / Read only |
+| Project label (JIRA) | PROJECT-specrails / (none) |
+| Epic link field (JIRA) | parent / customfield_10014 |
 | Git workflow | Automatic / Manual |
 | Agents | [list] |
 | Commands | [list] |
 | Personas | [count] personas |
+
+Note: The `Project label (JIRA)` and `Epic link field (JIRA)` rows are only shown when `BACKLOG_PROVIDER=jira`.
 
 [Confirm] [Modify]
 ```

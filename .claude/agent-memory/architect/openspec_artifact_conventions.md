@@ -47,6 +47,22 @@ vpc_fit: <percent>%                  # proposal.md only
 
 5. **Non-blocking failure pattern**: New agents should be non-blocking by default. If an agent fails, the pipeline logs FAILED in the report column and continues. Only security Critical findings block Phase 4c.
 
+## Additive Provider/Mode Pattern
+
+When a feature adds a new provider or mode alongside an existing one (e.g., adding JIRA to GitHub Issues in the backlog pipeline), the pattern is:
+- Both branches remain as full prose in the generated command (no template erasure)
+- Runtime config selects which branch executes
+- New section header mirrors the existing one's style (e.g., `### If provider=github` alongside `### If provider=jira`)
+- This is the same pattern as `GIT_AUTO=true/false` in Phase 4c of `implement.md`
+
+## Context Bundle Conventions
+
+- Opens with "What You Are Building" (concise summary)
+- "Files to Change" table: path, change type, notes; includes "Do NOT modify" list
+- "Current State" section describes relevant file sections exactly as they exist NOW
+- "Exact Changes" section: verbatim prose to insert with precise location anchors ("after X block, before Y block")
+- Closes with: Existing Patterns to Follow, relevant API/tool reference, Conventions Checklist, Risks table
+
 ## Phase Numbering in implement.md
 
 Current phase map as of 2026-03-13:
