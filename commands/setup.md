@@ -71,6 +71,27 @@ Display the detected architecture to the user:
 - TypeScript: strict mode, functional components
 - Testing: pytest fixtures with scope="function"
 
+### OSS Project Detection
+
+Read `.claude/setup-templates/.oss-detection.json` if it exists.
+
+| Signal | Status |
+|--------|--------|
+| Public repository | [Yes / No / Unknown] |
+| CI workflows (.github/workflows/) | [Yes / No] |
+| CONTRIBUTING.md | [Yes / No] |
+| **Result** | **OSS detected / Not detected / Could not check** |
+
+If `is_oss: false` but at least one signal is `true`:
+> "Some OSS signals were found but not all three. Is this an open-source project? (yes/no)"
+
+If `.oss-detection.json` does not exist:
+> "Is this an open-source project? (yes/no)"
+
+When `IS_OSS=false` and no signals are present, skip OSS output entirely to avoid cluttering the display for non-OSS projects.
+
+Store the final OSS determination as `IS_OSS` for use throughout the rest of setup.
+
 [Confirm] [Modify] [Rescan]
 ```
 
@@ -83,6 +104,11 @@ Wait for user confirmation. If they want to modify, ask what to change.
 ### 2.1 Ask about target users
 
 Ask the user:
+
+> If IS_OSS=true, prepend:
+> "This is an OSS project. The **Maintainer** persona (Kai) is automatically included —
+> you do not need to add 'open-source maintainers' to your list.
+> Describe your other target user types below."
 
 > **Who are the target users of your software?**
 >
@@ -381,6 +407,18 @@ When generating each agent:
 
 ### 4.2 Generate personas
 
+If IS_OSS=true:
+1. Copy `setup-templates/personas/the-maintainer.md` to `.claude/agents/personas/the-maintainer.md`
+2. Log: "Maintainer persona included"
+3. Set MAINTAINER_INCLUDED=true for use in template substitution
+4. Set `{{MAINTAINER_PERSONA_LINE}}` = `- \`.claude/agents/personas/the-maintainer.md\` — "Kai" the Maintainer (open-source maintainer)`
+5. Increment `{{PERSONA_COUNT}}` by 1 to account for the Maintainer
+
+If IS_OSS=false:
+- Set `{{MAINTAINER_PERSONA_LINE}}` = *(empty string)*
+
+Then for each user-defined VPC persona from Phase 2.3:
+
 Write each persona to `.claude/agents/personas/`:
 - Use the VPC personas generated in Phase 2
 - File naming: kebab-case of persona nickname (e.g., `the-developer.md`, `the-admin.md`)
@@ -545,9 +583,12 @@ Display the complete installation summary:
 | product-manager | .claude/agents/product-manager.md | Opus |
 
 ### Personas Created
-| Persona | File |
-|---------|------|
-| "[Name]" — The [Role] | .claude/agents/personas/[name].md |
+| Persona | File | Source |
+|---------|------|--------|
+[If IS_OSS=true:]
+| "Kai" — The Maintainer | .claude/agents/personas/the-maintainer.md | Auto-included (OSS) |
+[For each user-generated persona:]
+| "[Name]" — The [Role] | .claude/agents/personas/[name].md | Generated |
 
 ### Commands Installed
 | Command | File |
