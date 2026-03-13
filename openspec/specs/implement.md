@@ -115,6 +115,9 @@ Variables set during flag detection (Phase 0):
 | `APPLY_MODE` | boolean | `--apply` present | Activates apply-from-cache mode |
 | `APPLY_TARGET` | string | `APPLY_MODE=true` | Feature name argument following `--apply` |
 | `CACHE_DIR` | string | Either flag present | Absolute or relative path to the cache directory |
+| `SHARED_FILES` | map | After Phase 3a.1, multi-feature only | Registry mapping file paths to `{features: [...], risk: "low"\|"medium"\|"high"}` |
+| `MERGE_ORDER` | list | After Phase 3a.1, multi-feature only | Ordered sequence of feature names for Phase 4a processing |
+| `MERGE_REPORT` | map | During Phase 4a, multi-feature only | Accumulates merge outcomes: `cleanly_merged`, `auto_resolved`, `requires_resolution` |
 
 `CACHE_DIR` for `--dry-run` is finalized after the feature name is derived from the remaining input. All phases from 3a onward can reference it.
 
@@ -126,3 +129,54 @@ Variables set during flag detection (Phase 0):
 - **CI gap in dry-run**: The reviewer runs CI against the real repo (developer changes not yet applied). CI results may not reflect the final state. The reviewer prompt explicitly notes this caveat.
 - **Developer path discipline**: Dry-run correctness depends on the developer agent writing to the cache path. The developer prompt includes an explicit prohibition: "Do NOT write to real file paths."
 - **Apply after failure**: If `--apply` fails during Phase 4c, the cache is preserved so the user can retry without re-running the full pipeline.
+
+---
+
+## Merge Behavior
+
+### Shared File Analysis (Phase 3a.1)
+
+**When multi-feature mode is active** (more than one feature is being implemented), the pipeline SHALL run a shared file analysis before launching any developer agent.
+
+The analysis MUST:
+1. Extract all file paths listed in `**Files:**` entries within each feature's `tasks.md`.
+2. Identify paths that appear in two or more features' file lists as **shared files**.
+3. Classify each shared file with a risk level: `low`, `medium`, or `high`.
+4. Derive `MERGE_ORDER`: an ordered sequence of feature names such that features with `high`-risk shared files are processed sequentially.
+5. Print a pre-flight shared file report before developer agents launch.
+
+The analysis SHALL NOT block developer agent launch.
+
+**Risk Classification Rules:**
+
+| Risk | Condition |
+|------|-----------|
+| `low` | Both features append new, named sections that do not exist in the other feature's changes |
+| `medium` | Both features modify structurally distinct regions of the same file |
+| `high` | Both features modify overlapping regions; or the file is a shell script; or both features create the same net-new file |
+
+### Merge Algorithm (Phase 4a)
+
+**When multi-feature mode is active**, Phase 4a MUST process features in `MERGE_ORDER` sequence.
+
+**For exclusive files**: copy directly from worktree to merge target.
+
+**For shared Markdown files** (`.md`): apply section-aware merging using `##` heading boundaries. Non-overlapping sections are combined additively. Overlapping sections receive conflict markers (`<<<<<<< / ======= / >>>>>>>`).
+
+**For shared non-Markdown files**: apply unified diff sequential merging using `patch --forward --fuzz=3`. Failed hunks receive conflict markers.
+
+**If `patch` is unavailable**: fall back to section-aware merge for all file types with a warning.
+
+### Merge Report
+
+Phase 4a MUST emit a merge report listing: Cleanly Merged, Auto-Resolved, and Requires Manual Resolution. Files in "Requires Manual Resolution" MUST appear in the Phase 4e final report. The reviewer agent prompt MUST include the conflict file list.
+
+### Dry-Run Compatibility
+
+When `DRY_RUN=true`, Phase 4a MUST apply the identical merge algorithm writing to `CACHE_DIR`. Merge report MUST be written to `.cache-manifest.json` under `merge_report`. Worktrees SHALL NOT be cleaned up.
+
+### Constraints
+
+- `SINGLE_MODE=true` MUST bypass Phase 3a.1 and Phase 4a smart merge entirely.
+- The merge algorithm MUST NOT create git commits, branches, or pushes.
+- Pre-existing conflict markers in a file MUST NOT be nested with new conflict markers — log a warning instead.

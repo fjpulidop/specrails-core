@@ -32,6 +32,9 @@ Error Handling
 - `GIT_AUTO` — controls automatic git ops in 4c
 - `BACKLOG_WRITE` — controls issue commenting in 4c
 - `GH_AVAILABLE` — set in Phase -1 from gh auth status
+- `SHARED_FILES` — map of `{path: {features, risk}}`, set by Phase 3a.1 in multi-feature mode
+- `MERGE_ORDER` — ordered feature list for Phase 4a, derived in Phase 3a.1
+- `MERGE_REPORT` — merge outcome accumulator: `cleanly_merged`, `auto_resolved`, `requires_resolution`
 
 **Architect output:** always goes to `openspec/changes/<name>/` (not cached in dry-run)
 **Developer output:** written to working tree (or cache in dry-run mode)
