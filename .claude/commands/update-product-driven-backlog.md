@@ -75,19 +75,50 @@ After the Explore agent completes:
 
 1. **Display** results to the user.
 
-### Sync to GitHub Issues (BACKLOG_WRITE=true)
+2. Read `.claude/backlog-config.json` and extract:
+   - `BACKLOG_PROVIDER` (`github`, `jira`, or `none`)
+   - `BACKLOG_WRITE` (from `write_access`)
 
-2. **Fetch existing product-driven backlog items** to avoid duplicates:
+### If `BACKLOG_WRITE=false` — Display only (no sync)
+
+3. **Display all proposed features** in a structured format so the user can manually create tickets:
+
+   ```
+   ## Product Discovery Results (not synced)
+
+   Backlog access is set to **read-only**. The following features were discovered
+   but NOT created in the backlog provider. Create them manually if desired.
+
+   ### Feature 1: {name}
+   - **Area:** {area}
+   - **Persona Fit:** Alex: X/5, Sara: X/5, Kai: X/5
+   - **Effort:** {level}
+   - **User Story:** As a {user}, I want to {action} so that {benefit}
+   - **Description:** {2-3 sentences}
+
+   (repeat for each feature)
+
+   ### Summary
+   | # | Feature | Alex | Sara | Kai | Total | Effort |
+   |---|---------|------|------|-----|-------|--------|
+   | 1 | ... | ... | ... | ... | ... | ... |
+   ```
+
+4. **Do NOT** create, modify, or comment on any issues/tickets.
+
+### If provider=github and BACKLOG_WRITE=true — Sync to GitHub Issues
+
+3. **Fetch existing product-driven backlog items** to avoid duplicates:
    ```bash
    gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body
    ```
 
-3. **Initialize backlog labels** (idempotent):
+4. **Initialize backlog labels** (idempotent):
    ```bash
    gh label create "product-driven-backlog" --color "7B68EE" --description "Product feature ideas from VPC discovery" --force 2>/dev/null || true
    ```
 
-4. **For each proposed feature, create a GitHub Issue** (skip duplicates):
+5. **For each proposed feature, create a GitHub Issue** (skip duplicates):
    ```bash
    gh issue create --title "{Feature Name}" --label "product-driven-backlog,area:{area}" --body "$(cat <<'EOF'
    > **This is a product feature idea.** Generated through VPC-based product discovery.
@@ -137,9 +168,126 @@ After the Explore agent completes:
    )"
    ```
 
-5. **Report** sync results:
+6. **Report** sync results:
    ```
    Product discovery complete:
    - Created: {N} new feature ideas in GitHub Issues
    - Skipped: {N} duplicates (already exist)
    ```
+
+### If provider=jira and BACKLOG_WRITE=true — Sync to JIRA
+
+Read from `.claude/backlog-config.json`:
+- `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `AUTH_METHOD`
+- `PROJECT_LABEL` (may be empty string)
+- `EPIC_MAPPING` (object mapping area name → JIRA epic key)
+- `EPIC_LINK_FIELD` (default: `"parent"`)
+- `CLI_INSTALLED`
+
+#### Step A: Authenticate
+
+If `AUTH_METHOD=api_token`: require env vars `JIRA_USER_EMAIL` and `JIRA_API_TOKEN`.
+If either is missing:
+```
+Error: JIRA_USER_EMAIL and JIRA_API_TOKEN must be set in your environment.
+See: https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/
+```
+Stop and do not proceed with sync.
+
+#### Step B: Fetch existing JIRA stories (duplicate check)
+
+```bash
+curl -s \
+  -H "Authorization: Basic $(printf '%s' "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "${JIRA_BASE_URL}/rest/api/3/search?jql=project%3D${JIRA_PROJECT_KEY}+AND+labels%3Dproduct-backlog+AND+issuetype%3DStory&fields=summary&maxResults=200"
+```
+
+Store all `summary` values. Skip any feature whose title matches an existing summary.
+
+#### Step C: Group features by area
+
+From the Explore agent output, group features into `area -> [features]`.
+Area names: strip the `area:` prefix (e.g., `area:core` → `core`).
+
+#### Step D: Ensure epics exist per area
+
+For each unique area:
+
+1. **Cache hit:** If `EPIC_MAPPING[area]` is set: use that key. Proceed to Step E.
+
+2. **JIRA search:** Search for existing epic:
+   ```bash
+   curl -s \
+     -H "Authorization: Basic $(printf '%s' "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" | base64)" \
+     -H "Content-Type: application/json" \
+     "${JIRA_BASE_URL}/rest/api/3/search?jql=project%3D${JIRA_PROJECT_KEY}+AND+issuetype%3DEpic+AND+summary+%7E+%22${AREA_NAME}%22&fields=summary,key"
+   ```
+   If found: set `EPIC_MAPPING[area] = <key>`. Proceed to Step E.
+
+3. **Create epic:**
+   ```bash
+   curl -s -X POST \
+     -H "Authorization: Basic $(printf '%s' "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" | base64)" \
+     -H "Content-Type: application/json" \
+     "${JIRA_BASE_URL}/rest/api/3/issue" \
+     --data '{
+       "fields": {
+         "project": {"key": "'"${JIRA_PROJECT_KEY}"'"},
+         "issuetype": {"name": "Epic"},
+         "summary": "'"${AREA_DISPLAY_NAME}"'",
+         "labels": ["product-backlog"]
+       }
+     }'
+   ```
+   If `PROJECT_LABEL` is non-empty, add it to the `labels` array.
+   Set `EPIC_MAPPING[area] = <returned key>`.
+
+After all areas are processed: write the updated `EPIC_MAPPING` back to `.claude/backlog-config.json`.
+
+#### Step E: Create Story tickets
+
+For each feature not in the duplicate list:
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Basic $(printf '%s' "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" | base64)" \
+  -H "Content-Type: application/json" \
+  "${JIRA_BASE_URL}/rest/api/3/issue" \
+  --data '{
+    "fields": {
+      "project": {"key": "'"${JIRA_PROJECT_KEY}"'"},
+      "issuetype": {"name": "Story"},
+      "summary": "'"${FEATURE_NAME}"'",
+      "description": {
+        "type": "doc",
+        "version": 1,
+        "content": [{
+          "type": "codeBlock",
+          "content": [{"type": "text", "text": "'"${VPC_BODY_ESCAPED}"'"}]
+        }]
+      },
+      "labels": ["product-backlog"],
+      "'"${EPIC_LINK_FIELD}"'": {"key": "'"${EPIC_KEY}"'"}
+    }
+  }'
+```
+
+If `PROJECT_LABEL` is non-empty: add it to the `labels` array.
+`VPC_BODY_ESCAPED`: the full VPC markdown body with double quotes escaped (`"`→`\"`).
+
+**Error handling:**
+- If the API returns an error about the epic key (dead key): log a warning, create the story without epic linkage, continue.
+- Any other API error: log the error message and story name, continue to next story.
+
+#### Step F: Report results
+
+```
+JIRA sync complete:
+- Epics created: {N} (area names)
+- Epics reused: {N} (area names)
+- Stories created: {N}
+- Stories skipped (duplicates): {N}
+- Stories without epic (errors): {N}
+- Project label applied: {PROJECT_LABEL} / (none — label was empty)
+```
