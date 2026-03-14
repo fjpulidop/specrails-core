@@ -65,20 +65,24 @@ When a feature adds a new provider or mode alongside an existing one (e.g., addi
 
 ## Phase Numbering in implement.md
 
-Current phase map as of 2026-03-13:
+Current phase map as of 2026-03-14:
 - Phase -1: Environment Setup
 - Phase 0: Parse input and determine mode
+  - NEW (backlog-sync-conflict): snapshot capture + gitignore advisory after BACKLOG_VIEW_CMD
 - Phase 1: Explore (parallel)
 - Phase 2: Select
+- Phase 3a.0: Pre-architect conflict check — NEW (backlog-sync-conflict)
 - Phase 3a: Architect
 - Phase 3b: Implement (developer)
 - Phase 3c: Write Tests (test-writer) — added by automated-test-writer change
+- Phase 3d: Doc Sync
 - Phase 4: Merge & Review
   - 4a: Merge worktrees
   - 4b: Reviewer
   - 4b-sec: Security Reviewer
+  - 4c.0: Pre-ship conflict check — NEW (backlog-sync-conflict)
   - 4c: Ship
   - 4d: Monitor CI
   - 4e: Report
 
-**Why:** Always check the current implement.md before assigning a new phase number — phases have been inserted between existing ones (3b → 3c) and between sub-phases (4b → 4b-sec).
+**Why:** Always check the current implement.md before assigning a new phase number — phases have been inserted between existing ones (3b → 3c) and between sub-phases (4b → 4b-sec). Sub-phases use decimal notation (3a.0, 4c.0) for guards that run before the named phase.
