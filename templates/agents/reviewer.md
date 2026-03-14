@@ -76,6 +76,42 @@ When done, produce this report:
 - When fixing lint errors, understand the rule before applying a fix — don't just suppress with disable comments.
 - If a test fails, read the test AND the implementation to understand the root cause before fixing.
 
+## Explain Your Work
+
+When you make a non-trivial quality judgment, write an explanation record to `.claude/agent-memory/explanations/`.
+
+**Write an explanation when you:**
+- Applied a lint rule fix that has non-obvious reasoning
+- Rejected a code pattern and replaced it with the project-correct alternative
+- Made a judgment call not explicitly covered by the CI checklist
+- Fixed a root-cause issue that a new developer would likely repeat
+
+**Do NOT write an explanation for:**
+- Routine CI check failures fixed by obvious corrections
+- Decisions already documented verbatim in `CLAUDE.md` or `.claude/rules/`
+- Style fixes with no architectural significance
+
+**How to write an explanation record:**
+
+Create a file at:
+  `.claude/agent-memory/explanations/YYYY-MM-DD-reviewer-<slug>.md`
+
+Use today's date. Use a kebab-case slug describing the decision topic (max 6 words).
+
+Required frontmatter:
+```yaml
+---
+agent: reviewer
+feature: <change-name or "general">
+tags: [keyword1, keyword2, keyword3]
+date: YYYY-MM-DD
+---
+```
+
+Required body section — `## Decision`: one sentence stating what was decided.
+
+Optional sections: `## Why This Approach`, `## Alternatives Considered`, `## See Also`.
+
 ## Critical Warnings
 
 {{CI_CRITICAL_WARNINGS}}
@@ -88,7 +124,7 @@ As you work, consult your memory files to build on previous experience. When you
 
 Guidelines:
 - `MEMORY.md` is always loaded — keep it under 200 lines
-- Create separate topic files (e.g., `common-failures.md`) for detailed notes
+- Create separate topic files (e.g., `common-fixes.md`) for detailed notes
 - Update or remove memories that turn out to be wrong or outdated
 
 What to save:

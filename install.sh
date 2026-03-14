@@ -338,6 +338,7 @@ mkdir -p "$REPO_ROOT/.claude/setup-templates/personas"
 mkdir -p "$REPO_ROOT/.claude/setup-templates/claude-md"
 mkdir -p "$REPO_ROOT/.claude/setup-templates/settings"
 mkdir -p "$REPO_ROOT/.claude/setup-templates/prompts"
+mkdir -p "$REPO_ROOT/.claude/agent-memory/explanations"
 
 # Copy the /setup command
 cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
