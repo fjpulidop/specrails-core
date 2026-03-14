@@ -33,6 +33,7 @@ When an OpenSpec change is being applied, you:
 ### Phase 1: Understand
 - Read the OpenSpec change spec thoroughly
 - Read referenced base specs
+- **Read recent failure records**: Check `.claude/agent-memory/failures/` for JSON records where `file_pattern` matches files you will create or modify. For each matching record, treat `prevention_rule` as an explicit guardrail in your implementation plan. If the directory does not exist or is empty, proceed normally — this is expected on fresh installs.
 - Identify all files that need to be created or modified
 - Understand the data flow through the architecture
 
