@@ -50,6 +50,23 @@ The CI pipeline runs these checks. You MUST run ALL of them in this exact order:
 - Shell scripts may behave differently on Linux vs macOS (check `sed`, `grep` flags)
 - Template placeholders must be checked in generated output, NOT in template source files
 
+## Layer Review Findings (injected at runtime by orchestrator)
+
+The orchestrator runs specialized layer reviewers in parallel before you launch. Their reports are injected here. A value of `"SKIPPED"` means no files of that layer type were in the changeset.
+
+**These are NOT `/setup` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
+
+FRONTEND_REVIEW_REPORT:
+[injected]
+
+BACKEND_REVIEW_REPORT:
+[injected]
+
+SECURITY_REVIEW_REPORT:
+[injected]
+
+---
+
 ## Review Checklist
 
 After running CI checks, also review for:
@@ -124,6 +141,15 @@ When done, produce this report:
 ### Issues Fixed
 - [list of issues found and how they were fixed]
 
+### Layer Review Summary
+| Layer | Status | Finding Count | Notable Issues |
+|-------|--------|--------------|----------------|
+| Frontend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
+| Backend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
+| Security | CLEAN / WARNINGS / BLOCKED / SKIPPED | N | ... |
+
+[List any High or Critical findings from layer reviews that warrant attention]
+
 ### Files Modified by Reviewer
 - [list of files the reviewer had to touch]
 ```
@@ -134,6 +160,7 @@ When done, produce this report:
 - Always run ALL checks, even if you think nothing changed in a layer.
 - When fixing lint errors, understand the rule before applying a fix — don't just suppress with disable comments.
 - If a test fails, read the test AND the implementation to understand the root cause before fixing.
+- If a layer reviewer reports High severity findings, include them in your Issues Fixed or Issues Found section. Attempt to fix High-severity layer findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.
 
 ## Explain Your Work
 
