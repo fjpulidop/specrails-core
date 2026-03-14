@@ -48,19 +48,30 @@ Error Handling
 
 ---
 
-## Pending pipeline change: security-reviewer agent (Issue #4)
+## Pending pipeline change: specialized-layer-reviewers (Issue #40)
 
-OpenSpec artifacts created at `openspec/changes/security-reviewer-agent/`.
+OpenSpec artifacts created at `openspec/changes/specialized-layer-reviewers/`.
 
 The planned Phase 4 structure after this change ships:
 ```
-4b.     Launch Reviewer agent (CI/quality gate)
-4b-sec. Launch Security Reviewer agent (security gate)
-4c.     Ship — blocked if SECURITY_BLOCKED=true
+4b.     Layer Dispatch and Review
+  Step 1: Layer Classification (orchestrator, no agent launch)
+  Step 2: Launch layer reviewers in parallel (run_in_background: true)
+          - frontend-reviewer (if FRONTEND_FILES non-empty)
+          - backend-reviewer  (if BACKEND_FILES non-empty)
+          - security-reviewer (always)
+  Step 3: Launch generalist reviewer (foreground) with layer reports injected
+[4b-sec removed — security-reviewer moves to 4b Step 2]
+4c.     Ship — SECURITY_BLOCKED gate stays here, unchanged
 4d.     Monitor CI
-4e.     Report (Security column added to table)
+4e.     Report (Frontend and Backend columns added to table)
 ```
 
-`SECURITY_STATUS:` (last line of security-reviewer output): `BLOCKED | WARNINGS | CLEAN`
+Status line protocols:
+- `FRONTEND_REVIEW_STATUS: ISSUES_FOUND | CLEAN` (last line)
+- `BACKEND_REVIEW_STATUS: ISSUES_FOUND | CLEAN` (last line)
+- `SECURITY_STATUS: BLOCKED | WARNINGS | CLEAN` (unchanged)
 
-New variable: `SECURITY_BLOCKED` — set from security-reviewer output, gates Phase 4c.
+Runtime injection notation for reviewer.md: use `[injected]` placeholder blocks, NOT `{{...}}` — avoids `/setup` mishandling.
+
+Layer classification: heuristic-based, matches on file extension + directory path segments. Files can be classified as both frontend and backend.

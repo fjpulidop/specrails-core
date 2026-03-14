@@ -407,13 +407,77 @@ git worktree remove <worktree-path> --force
 
 Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`.
 
-### 4b. Launch Reviewer agent
+### 4b. Layer Dispatch and Review
 
-Launch a single **reviewer** agent to validate ALL merged changes. Include:
+#### Step 1: Layer Classification
+
+Before launching any reviewer, classify `MODIFIED_FILES_LIST` into layer-specific file sets.
+
+**Frontend files** — a file is frontend if any of these conditions match:
+- Extension is one of: `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.sass`, `.less`, `.html`, `.htm`
+- Extension is `.js` or `.ts` AND path contains one of: `components/`, `pages/`, `views/`, `ui/`, `client/`, `frontend/`, `app/`
+- Path starts with: `public/`, `static/`, `assets/`
+
+Set `FRONTEND_FILES` = files matching frontend rules.
+
+**Backend files** — a file is backend if any of these conditions match:
+- Extension is one of: `.py`, `.go`, `.java`, `.rb`, `.php`, `.rs`, `.cs`, `.sql`
+- Extension is `.js` or `.ts` AND path contains one of: `server/`, `api/`, `routes/`, `controllers/`, `services/`, `models/`, `db/`, `backend/`
+- Path is under: `migrations/`, `alembic/`, `db/migrate/`
+
+Set `BACKEND_FILES` = files matching backend rules.
+
+**Overlap rule:** a file may appear in both `FRONTEND_FILES` and `BACKEND_FILES` (e.g., a Next.js API route at `pages/api/`). Both reviewers will scan it independently.
+
+If `FRONTEND_FILES` is empty: set `FRONTEND_REVIEW_REPORT = "SKIPPED"` and skip frontend-reviewer launch. Note: "No frontend files detected."
+If `BACKEND_FILES` is empty: set `BACKEND_REVIEW_REPORT = "SKIPPED"` and skip backend-reviewer launch. Note: "No backend files detected."
+
+#### Step 2: Launch Layer Reviewers in Parallel
+
+Launch all applicable layer reviewers in parallel (`run_in_background: true`):
+
+**frontend-reviewer** (if `FRONTEND_FILES` is non-empty):
+- Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
+- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+
+**backend-reviewer** (if `BACKEND_FILES` is non-empty):
+- Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
+- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+
+**security-reviewer** (always):
+- Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
+- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+- Pass the exemptions config path: `.claude/security-exemptions.yaml`
+
+Wait for all launched layer reviewers to complete before proceeding to Step 3.
+
+Parse status lines from each completed reviewer:
+- `FRONTEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `FRONTEND_STATUS`
+- `BACKEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `BACKEND_STATUS`
+- `SECURITY_STATUS: BLOCKED | WARNINGS | CLEAN` → set `SECURITY_BLOCKED=true` if `BLOCKED`, otherwise `false`
+
+If a layer reviewer fails or times out: set the relevant report variable to `"ERROR: reviewer did not complete"` and continue.
+
+#### Step 3: Launch Generalist Reviewer
+
+Construct the generalist reviewer's invocation prompt with layer reports injected. Set each variable to the full output of the corresponding reviewer, or to the string `"SKIPPED"` if that reviewer was not launched:
+
+- `FRONTEND_REVIEW_REPORT`: full output of frontend-reviewer (or `"SKIPPED"`)
+- `BACKEND_REVIEW_REPORT`: full output of backend-reviewer (or `"SKIPPED"`)
+- `SECURITY_REVIEW_REPORT`: full output of security-reviewer
+
+Include in the reviewer prompt:
 - Full CI commands
 - Cross-feature merge issue checks
-- Record learnings to `common-fixes.md`
-- Archive completed changes via OpenSpec
+- Instruction to record learnings to `common-fixes.md`
+- Instruction to archive completed changes via OpenSpec
+- The three layer report variables substituted into the `[injected]` slots in the reviewer agent template
+
+Note: if total layer report length is very large, truncate each layer report to its findings tables only (omit skipped-file logs) to stay within prompt limits.
+
+**The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
+
+Launch the **reviewer** agent (foreground, `run_in_background: false`). Wait for it to complete.
 
 **If `DRY_RUN=true`**, add the following to the reviewer agent prompt:
 
@@ -424,7 +488,7 @@ Launch a single **reviewer** agent to validate ALL merged changes. Include:
 
 ### 4b-conf. Confidence Gate
 
-After the reviewer agent completes, evaluate the confidence score before launching the security reviewer.
+After the generalist reviewer agent completes, evaluate the confidence score before proceeding to Phase 4c.
 
 **In multi-feature mode (worktrees):** run this gate once per feature immediately after that feature's reviewer completes. Each feature is evaluated independently — a block on one feature does not prevent another feature's gate from running.
 
@@ -435,7 +499,7 @@ Path: `openspec/changes/<name>/confidence-score.json`
 - If the file does not exist:
   - Set `CONFIDENCE_STATUS=MISSING`
   - Print: `[confidence] Warning: confidence-score.json not found. Proceeding without gate.`
-  - Continue to Phase 4b-sec.
+  - Continue to Phase 4c.
 
 #### Step 2 — Read config
 
@@ -451,7 +515,7 @@ Path: `.claude/confidence-config.json`
 - If `enabled: false` in the config:
   - Print: `[confidence] Gate disabled. Skipping.`
   - Set `CONFIDENCE_STATUS=DISABLED`
-  - Continue to Phase 4b-sec.
+  - Continue to Phase 4c.
 
 #### Step 3 — Compare scores
 
@@ -464,7 +528,7 @@ Path: `.claude/confidence-config.json`
 **If no breaches:**
 - Print: `[confidence] All scores meet thresholds. Proceeding.`
 - Set `CONFIDENCE_STATUS=PASS`
-- Continue to Phase 4b-sec.
+- Continue to Phase 4c.
 
 **If breaches exist and `on_breach: "block"`:**
 
@@ -472,7 +536,7 @@ Path: `.claude/confidence-config.json`
    - If `CONFIDENCE_OVERRIDE_REASON` is non-empty and `override_allowed: true` in the config:
      - Print: `[confidence] Override accepted. Reason: <CONFIDENCE_OVERRIDE_REASON>. Proceeding with gate bypassed.`
      - Set `CONFIDENCE_STATUS=OVERRIDE`
-     - Continue to Phase 4b-sec.
+     - Continue to Phase 4c.
    - If `CONFIDENCE_OVERRIDE_REASON` is non-empty but `override_allowed: false` in the config:
      - Print: `[confidence] Override is disabled in confidence-config.json.`
      - (Fall through to block below.)
@@ -480,12 +544,12 @@ Path: `.claude/confidence-config.json`
      - Print the Breach Report (see format below).
      - Set `CONFIDENCE_BLOCKED=true`
      - Set `CONFIDENCE_STATUS=BLOCKED`
-     - **Halt: do not proceed to Phase 4b-sec or Phase 4c.**
+     - **Halt: do not proceed to Phase 4c.**
 
 **If breaches exist and `on_breach: "warn"`:**
 - Print the Breach Report.
 - Set `CONFIDENCE_STATUS=WARN`
-- Continue to Phase 4b-sec.
+- Continue to Phase 4c.
 
 #### Breach Report Format
 
@@ -521,22 +585,8 @@ Pipeline halted. No git operations have been performed.
 
 When `DRY_RUN=true`, the reviewer still writes `confidence-score.json` (it is an OpenSpec artifact, not a git artifact). Phase 4b-conf still evaluates the score. If `CONFIDENCE_BLOCKED=true`, add to `.cache-manifest.json` under `skipped_operations`:
 ```
-"confidence-gate: blocked — Phase 4c and 4b-sec skipped"
+"confidence-gate: blocked — Phase 4c skipped"
 ```
-
-### 4b-sec. Launch Security Reviewer agent
-
-After the reviewer agent completes, launch a **security-reviewer** agent (`subagent_type: security-reviewer`).
-
-Construct the agent invocation prompt to include:
-- **MODIFIED_FILES_LIST**: the complete list of files created or modified during this implementation run
-- **PIPELINE_CONTEXT**: brief description — feature names and change names implemented
-- The exemptions config path: `.claude/security-exemptions.yaml`
-
-Wait for the security-reviewer to complete. Parse the final line of its output:
-- `SECURITY_STATUS: BLOCKED` → set `SECURITY_BLOCKED=true`
-- `SECURITY_STATUS: WARNINGS` → set `SECURITY_BLOCKED=false`, capture warning summary
-- `SECURITY_STATUS: CLEAN` → set `SECURITY_BLOCKED=false`
 
 ### 4c. Ship — Git & backlog updates
 
@@ -693,8 +743,8 @@ rm -rf .claude/.dry-run/<feature-name>/
 **Otherwise**, show the standard pipeline table:
 
 ```
-| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Confidence | Security | CI | Status |
-|------|---------|-------------|-----------|-----------|-------|------|----------|------------|----------|----|--------|
+| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Frontend | Backend | Confidence | Security | CI | Status |
+|------|---------|-------------|-----------|-----------|-------|------|----------|----------|---------|------------|----------|----|--------|
 ```
 
 Confidence column values:
@@ -715,6 +765,11 @@ If `CONFIDENCE_OVERRIDE_REASON` is non-empty, append a `### Confidence Override`
 
 **Reason:** <CONFIDENCE_OVERRIDE_REASON>
 ```
+
+Column values:
+- **Frontend**: `CLEAN`, `ISSUES`, or `SKIPPED` (no frontend files in changeset)
+- **Backend**: `CLEAN`, `ISSUES`, or `SKIPPED` (no backend files in changeset)
+- **Security**: `CLEAN`, `WARNINGS`, `BLOCKED`, or `SKIPPED`
 
 If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
 
