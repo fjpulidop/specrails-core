@@ -50,6 +50,16 @@ Never combine template and instance paths in a single grep for placeholder-clean
 
 ---
 
+## Generated files not auto-synced with templates
+
+**Pattern:** When a template is modified (e.g., `templates/agents/reviewer.md`, `templates/commands/implement.md`), the generated counterparts in `.claude/agents/` and `.claude/commands/` are NOT automatically updated. They only update on `/setup` re-run.
+
+**Why:** specrails uses template substitution at `/setup` time, not continuously. Template edits must be manually propagated to the generated files in `.claude/` until a hot-reload mechanism exists.
+
+**How to apply:** After any template change, always check whether the corresponding `.claude/` instance file needs the same edit applied. Read both files and apply the diff manually. This is standard reviewer responsibility for issues where the developer edited templates but not generated files.
+
+---
+
 ## find -name '*[A-Z]*' on macOS matches lowercase .md extensions
 
 **Pattern:** On macOS with certain locale settings, `find -name '*[A-Z]*'` matches filenames like `reviewer.md` because the character range `[A-Z]` can match lowercase letters or punctuation under the default locale.

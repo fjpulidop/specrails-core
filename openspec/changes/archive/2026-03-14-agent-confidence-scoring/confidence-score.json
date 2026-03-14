@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "change": "agent-confidence-scoring",
+  "agent": "reviewer",
+  "scored_at": "2026-03-14T12:00:00Z",
+  "overall": 88,
+  "aspects": {
+    "type_correctness": 95,
+    "pattern_adherence": 90,
+    "test_coverage": 70,
+    "security": 92,
+    "architectural_alignment": 90
+  },
+  "notes": {
+    "type_correctness": "confidence-config.json schema is well-typed with all required fields present. confidence-score.json schema defined in reviewer.md is consistent with the spec in confidence-scoring.md. No type mismatches found across all files.",
+    "pattern_adherence": "All new sections follow the established {{UPPER_SNAKE_CASE}} placeholder convention in templates. Heading levels are consistent (## for major sections, ### for subsections). Phase naming follows the existing 4a/4b/4b-sec pattern with 4b-conf inserted correctly between 4b and 4b-sec.",
+    "test_coverage": "No test framework exists in this repo (pre-code phase). The changes are template/markdown additions — behavioral testing is done at /implement invocation time. No automated coverage is possible at this stage.",
+    "security": "No new attack surface introduced. The confidence-config.json template contains no sensitive data. The override mechanism is gated by override_allowed flag in config, preventing uncontrolled bypass.",
+    "architectural_alignment": "The confidence gate is inserted at the correct position (Phase 4b-conf) — after the reviewer agent completes and before git operations (Phase 4c). The generated .claude/ files were not automatically synchronized with templates, which is the expected behavior — fixed by this reviewer run."
+  },
+  "flags": []
+}

@@ -80,6 +80,79 @@ When done, produce this report:
 
 {{CI_CRITICAL_WARNINGS}}
 
+## Confidence Scoring
+
+After completing all CI checks and fixes, you MUST produce a confidence score. This is non-optional. Write the score file before reporting your results.
+
+### What to assess
+
+Score yourself across five aspects, each from 0 to 100:
+
+| Aspect | What to assess |
+|--------|---------------|
+| `type_correctness` | Types, signatures, and interfaces are correct and consistent with the codebase |
+| `pattern_adherence` | Implementation follows established patterns and conventions |
+| `test_coverage` | Test coverage is adequate for the scope of changes |
+| `security` | No security regressions or new attack surface introduced |
+| `architectural_alignment` | Implementation respects architectural boundaries and design intent |
+
+Score semantics:
+- **90–100**: High confidence — solid.
+- **70–89**: Moderate confidence — worth a quick review but not alarming.
+- **50–69**: Low confidence — recommend human review of this aspect.
+- **0–49**: Very low confidence — real problem here.
+
+### How to derive the change name
+
+The change name is the kebab-case directory under `openspec/changes/` that was active during this review. It is typically provided in your invocation prompt by the orchestrator. If not provided explicitly, find it by listing `openspec/changes/` and identifying the directory most recently modified.
+
+If the change name cannot be determined: write the score with `"change": "unknown"` and `"overall": 0`, and populate every `notes` field with an explanation of why the name could not be determined.
+
+### Output file
+
+Write to:
+```
+openspec/changes/<name>/confidence-score.json
+```
+
+### Required fields
+
+- `schema_version`: always `"1"`
+- `change`: kebab-case change name
+- `agent`: always `"reviewer"`
+- `scored_at`: current ISO 8601 timestamp
+- `overall`: integer 0–100 — your aggregate confidence
+- `aspects`: object with all five aspect scores
+- `notes`: one non-empty string per aspect — must be concrete and specific, not generic boilerplate
+- `flags`: array of named concerns (e.g., `"missing-integration-test"`); empty array if none
+
+### Example
+
+```json
+{
+  "schema_version": "1",
+  "change": "my-change-name",
+  "agent": "reviewer",
+  "scored_at": "2026-03-14T12:00:00Z",
+  "overall": 82,
+  "aspects": {
+    "type_correctness": 90,
+    "pattern_adherence": 85,
+    "test_coverage": 70,
+    "security": 88,
+    "architectural_alignment": 78
+  },
+  "notes": {
+    "type_correctness": "All function signatures match the existing codebase style.",
+    "pattern_adherence": "One deviation from the established error-handling pattern in utils/parser.ts — flagged but not blocking.",
+    "test_coverage": "Integration tests are missing for the cache invalidation path. Unit coverage looks adequate.",
+    "security": "No new attack surface. Input validation follows existing patterns.",
+    "architectural_alignment": "The new module respects layer boundaries. One circular import risk noted in the design — mitigated by the developer's approach."
+  },
+  "flags": []
+}
+```
+
 # Persistent Agent Memory
 
 You have a persistent agent memory directory at `{{MEMORY_PATH}}`. Its contents persist across conversations.
