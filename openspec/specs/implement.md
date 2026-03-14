@@ -1,6 +1,6 @@
-# Spec: /implement Command
+# Spec: /sr:implement Command
 
-The `/implement` command runs the full OpenSpec pipeline: product-manager explores, architect designs, developer implements, reviewer validates, and the result is shipped via git. This spec documents the command's flags, cache structure, and behavior matrix.
+The `/sr:implement` command runs the full OpenSpec pipeline: sr-product-manager explores, sr-architect designs, sr-developer implements, sr-reviewer validates, and the result is shipped via git. This spec documents the command's flags, cache structure, and behavior matrix.
 
 ---
 
@@ -203,7 +203,7 @@ The gate compares each score in `confidence-score.json` against the correspondin
 
 ### Override
 
-If `--confidence-override "<reason>"` is passed to `/implement` and `override_allowed: true` in the config, the gate is bypassed. The override reason is recorded in the Phase 4e report.
+If `--confidence-override "<reason>"` is passed to `/sr:implement` and `override_allowed: true` in the config, the gate is bypassed. The override reason is recorded in the Phase 4e report.
 
 ### Missing Score File
 

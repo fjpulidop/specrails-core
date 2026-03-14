@@ -1,6 +1,6 @@
-# Spec: /compat-check Command
+# Spec: /sr:compat-check Command
 
-The `/compat-check` command snapshots the API surface of a specrails project and diffs it against a prior snapshot to detect breaking changes. Generates a migration guide when breaking changes are found.
+The `/sr:compat-check` command snapshots the API surface of a specrails project and diffs it against a prior snapshot to detect breaking changes. Generates a migration guide when breaking changes are found.
 
 ---
 
@@ -108,7 +108,7 @@ Snapshots are stored at `.claude/compat-snapshots/<YYYY-MM-DD>-<git-short-sha>.j
       { "command": "health-check", "flags": ["--since", "--only", "--save"], "source": "templates/commands/health-check.md" }
     ],
     "agent_names": [
-      { "name": "architect", "source": "templates/agents/architect.md" }
+      { "name": "sr-architect", "source": "templates/agents/sr-architect.md" }
     ],
     "config_keys": [
       { "key": "schema", "source": "openspec/config.yaml" }

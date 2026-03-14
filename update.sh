@@ -326,6 +326,115 @@ ok "Backed up .claude/ to .claude.specrails.backup/ (excluding node_modules)"
 NEEDS_SETUP_UPDATE=false
 FORCE_AGENTS=false
 
+do_migrate_sr_prefix() {
+    # Detect and migrate legacy installations that use unprefixed agent/command names.
+    # A legacy installation is one where .claude/agents/architect.md exists (without sr- prefix).
+    local agents_dir="$REPO_ROOT/.claude/agents"
+    local commands_dir="$REPO_ROOT/.claude/commands"
+    local memory_dir="$REPO_ROOT/.claude/agent-memory"
+
+    if [[ ! -f "$agents_dir/architect.md" ]]; then
+        return  # Nothing to migrate
+    fi
+
+    step "Migration: adding sr- prefix namespace"
+    info "Legacy installation detected (unprefixed agent names). Migrating to sr- prefix..."
+
+    local migrated_agents=0
+    local migrated_commands=0
+    local migrated_memory=0
+
+    # Migrate agent files
+    local known_agents=(
+        "architect"
+        "developer"
+        "reviewer"
+        "product-manager"
+        "product-analyst"
+        "test-writer"
+        "doc-sync"
+        "frontend-developer"
+        "backend-developer"
+        "frontend-reviewer"
+        "backend-reviewer"
+        "security-reviewer"
+    )
+
+    for agent in "${known_agents[@]}"; do
+        local src="$agents_dir/${agent}.md"
+        local dst="$agents_dir/sr-${agent}.md"
+        if [[ -f "$src" ]] && [[ ! -f "$dst" ]]; then
+            mv "$src" "$dst"
+            info "Renamed: agents/${agent}.md → agents/sr-${agent}.md"
+            ((migrated_agents++))
+        fi
+    done
+
+    # Migrate persona files in .claude/agents/personas/
+    local personas_dir="$agents_dir/personas"
+    if [[ -d "$personas_dir" ]]; then
+        while IFS= read -r -d '' persona_file; do
+            local persona_basename
+            persona_basename="$(basename "$persona_file")"
+            # Skip files already prefixed with sr-
+            if [[ "$persona_basename" == sr-* ]]; then
+                continue
+            fi
+            local persona_dst="$personas_dir/sr-${persona_basename}"
+            if [[ ! -f "$persona_dst" ]]; then
+                mv "$persona_file" "$persona_dst"
+                info "Renamed: personas/${persona_basename} → personas/sr-${persona_basename}"
+                ((migrated_agents++))
+            fi
+        done < <(find "$personas_dir" -maxdepth 1 -name "*.md" -not -name "sr-*.md" -print0 2>/dev/null)
+    fi
+
+    # Create .claude/commands/sr/ and migrate workflow commands
+    local workflow_commands=(
+        "implement"
+        "batch-implement"
+        "product-backlog"
+        "update-product-driven-backlog"
+        "health-check"
+        "compat-check"
+        "refactor-recommender"
+        "why"
+    )
+
+    if [[ -d "$commands_dir" ]]; then
+        mkdir -p "$commands_dir/sr"
+        for cmd in "${workflow_commands[@]}"; do
+            local src="$commands_dir/${cmd}.md"
+            local dst="$commands_dir/sr/${cmd}.md"
+            if [[ -f "$src" ]] && [[ ! -f "$dst" ]]; then
+                mv "$src" "$dst"
+                info "Moved: commands/${cmd}.md → commands/sr/${cmd}.md"
+                ((migrated_commands++))
+            fi
+        done
+    fi
+
+    # Migrate agent memory directories (only known agent dirs, not failures/ or explanations/)
+    if [[ -d "$memory_dir" ]]; then
+        for agent in "${known_agents[@]}"; do
+            local src="$memory_dir/${agent}"
+            local dst="$memory_dir/sr-${agent}"
+            if [[ -d "$src" ]] && [[ ! -d "$dst" ]]; then
+                mv "$src" "$dst"
+                info "Renamed: agent-memory/${agent}/ → agent-memory/sr-${agent}/"
+                ((migrated_memory++))
+            fi
+        done
+    fi
+
+    # Summary
+    if [[ "$migrated_agents" -gt 0 ]] || [[ "$migrated_commands" -gt 0 ]] || [[ "$migrated_memory" -gt 0 ]]; then
+        ok "Migration complete: ${migrated_agents} agents/personas, ${migrated_commands} commands, ${migrated_memory} memory dirs"
+    else
+        ok "Migration check complete — nothing to migrate"
+    fi
+}
+
 do_core() {
     step "Updating core artifacts (commands, skills, setup-templates)"
 
@@ -699,6 +808,7 @@ step "Phase 4: Running update (component: ${UPDATE_COMPONENT})"
 
 case "$UPDATE_COMPONENT" in
     all)
+        do_migrate_sr_prefix
         do_core
         do_web_manager
         do_agents
@@ -706,6 +816,7 @@ case "$UPDATE_COMPONENT" in
         do_stamp
         ;;
     commands)
+        do_migrate_sr_prefix
         do_core
         do_stamp
         ;;
@@ -714,11 +825,13 @@ case "$UPDATE_COMPONENT" in
         do_stamp
         ;;
     agents)
+        do_migrate_sr_prefix
         FORCE_AGENTS=true
         do_agents
         do_stamp
         ;;
     core)
+        do_migrate_sr_prefix
         do_core
         do_stamp
         ;;

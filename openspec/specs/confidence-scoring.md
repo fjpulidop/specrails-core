@@ -1,6 +1,6 @@
 # Spec: Confidence Scoring System
 
-Agents in the specrails pipeline MAY emit a structured confidence score alongside their output. The reviewer agent MUST emit a score. Future agents (developer, architect) MAY be extended in later changes.
+Agents in the specrails pipeline MAY emit a structured confidence score alongside their output. The sr-reviewer agent MUST emit a score. Future agents (sr-developer, sr-architect) MAY be extended in later changes.
 
 ---
 
@@ -12,7 +12,7 @@ Each confidence score is written to:
 openspec/changes/<name>/confidence-score.json
 ```
 
-The file MUST conform to the schema defined in `design.md` for the `agent-confidence-scoring` change. It MUST be present after the reviewer agent completes. Its absence is treated as a warning (non-blocking) by the pipeline gate.
+The file MUST conform to the schema defined in `design.md` for the `agent-confidence-scoring` change. It MUST be present after the sr-reviewer agent completes. Its absence is treated as a warning (non-blocking) by the pipeline gate.
 
 ---
 
@@ -49,7 +49,7 @@ If the config file is absent, built-in defaults apply:
 
 ## Gate Behavior
 
-The pipeline gate (Phase 4b-conf in `/implement`) evaluates scores after the reviewer completes and before git operations begin (Phase 4c).
+The pipeline gate (Phase 4b-conf in `/sr:implement`) evaluates scores after the sr-reviewer completes and before git operations begin (Phase 4c).
 
 | `on_breach` value | Behavior |
 |-------------------|----------|

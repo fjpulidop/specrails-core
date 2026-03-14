@@ -1,8 +1,18 @@
 # Developer Agent Memory
 
-- [Agent template pattern](agent-template-pattern.md) — how to create new agent templates and generated instances
-- [Implement command structure](implement-command-structure.md) — phase ordering and insertion points in the pipeline command
-- [Web manager architecture](web-manager-architecture.md) — structure of the web/ subtree: server (Express+WS) + client (React+Vite)
-- [install-sh-conventions.md](install-sh-conventions.md) — install.sh uses $REPO_ROOT (not $TARGET); shared dirs added to Phase 3 mkdir block
-- [placeholder-false-positives.md](placeholder-false-positives.md) — prose `{{PLACEHOLDER}}` in backtick code spans is documentation, not an unresolved token
-- [Generated instance gaps](generated-instance-gaps.md) — known differences between templates and generated instances (e.g., missing CLAUDE.md bullet in developer.md)
+## Key architecture facts
+
+- Agent files live in `.claude/agents/sr-*.md` — all use `sr-` prefix to avoid collisions with user-defined agents in target repos
+- Workflow command files live in `.claude/commands/sr/*.md` — the `sr/` subdir enables `/sr:command` syntax in Claude Code
+- Template agents are in `templates/agents/sr-*.md`; template commands are in `templates/commands/sr/*.md`
+- `update.sh` runs `do_migrate_sr_prefix()` before `do_core/do_agents` for `all`, `commands`, `agents`, `core` components
+
+## Patterns
+
+- Agent `name:` frontmatter field must match the file's stem exactly (e.g. `sr-architect.md` → `name: sr-architect`)
+- `subagent_type:` in command files must match the `name:` field of the target agent
+- Memory dirs are at `.claude/agent-memory/sr-<agent>/` (e.g. `sr-reviewer/common-fixes.md`)
+
+## Detailed notes
+
+- [sr-prefix-namespace explanation](../../agent-memory/explanations/) — see dated files for rationale

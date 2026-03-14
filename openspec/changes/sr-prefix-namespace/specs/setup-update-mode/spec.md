@@ -1,18 +1,4 @@
-## ADDED Requirements
-
-### Requirement: Setup --update flag
-`/setup` SHALL accept an `--update` argument that triggers surgical regeneration mode instead of the full setup wizard.
-
-#### Scenario: --update mode invoked
-- **WHEN** user runs `/setup --update`
-- **THEN** setup reads `.specrails-manifest.json`, identifies changed templates, and regenerates only affected agents/rules
-
-### Requirement: Quick codebase re-analysis
-In `--update` mode, `/setup` SHALL perform a fast codebase analysis (stack detection, conventions) without prompting the user for personas or product discovery.
-
-#### Scenario: Codebase analyzed silently
-- **WHEN** `/setup --update` runs
-- **THEN** Phase 1 (codebase analysis) executes automatically, Phases 2-3 (personas, product discovery) are skipped
+## MODIFIED Requirements
 
 ### Requirement: Selective agent regeneration
 In `--update` mode, `/setup` SHALL regenerate only the agents whose source templates have changed according to the manifest.
@@ -33,15 +19,8 @@ In `--update` mode, `/setup` SHALL evaluate new agent templates (present in spec
 - **THEN** setup informs the user but recommends skipping: "New agent available: sr-backend-developer. No backend detected — skip? [Y/n]"
 
 ### Requirement: Workflow command update
-In `--update` mode, `/setup` SHALL update workflow commands (e.g., `/sr:implement`) to reference any newly added agents.
+In `--update` mode, `/setup` SHALL update workflow commands to reference any newly added agents using sr- prefixed names.
 
 #### Scenario: New agent added to implement pipeline
-- **WHEN** a `sr-frontend-developer` agent was added during update
+- **WHEN** an `sr-frontend-developer` agent was added during update
 - **THEN** `/sr:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant
-
-### Requirement: Update summary
-At the end of `--update` mode, `/setup` SHALL display a summary of what was regenerated, added, and skipped.
-
-#### Scenario: Summary displayed
-- **WHEN** `/setup --update` completes
-- **THEN** a summary shows: agents regenerated (N), agents added (N), agents skipped (N), rules updated (N)

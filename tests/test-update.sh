@@ -225,5 +225,51 @@ test_update_cleans_backup_on_success() {
 run_test "backup cleaned up after successful update" test_update_cleans_backup_on_success
 
 # ─────────────────────────────────────────────
+# sr- prefix migration (do_migrate_sr_prefix)
+# ─────────────────────────────────────────────
+
+test_update_migrates_sr_prefix_agents() {
+    install_to_target
+    local agents_dir="$TEST_TMPDIR/target/.claude/agents"
+    # Simulate a legacy installation: place an unprefixed architect.md
+    mkdir -p "$agents_dir"
+    echo "---" > "$agents_dir/architect.md"
+    local output
+    output="$(run_update --root-dir "$TEST_TMPDIR/target" --only core --force)"
+    # architect.md should be renamed to sr-architect.md
+    assert_file_exists "$agents_dir/sr-architect.md" &&
+    assert_not_contains "$output" "Error"
+}
+run_test "do_migrate_sr_prefix renames legacy agent files" test_update_migrates_sr_prefix_agents
+
+test_update_migrates_sr_prefix_commands() {
+    install_to_target
+    local agents_dir="$TEST_TMPDIR/target/.claude/agents"
+    local commands_dir="$TEST_TMPDIR/target/.claude/commands"
+    # Simulate legacy installation: unprefixed agent + command files
+    mkdir -p "$agents_dir" "$commands_dir"
+    echo "---" > "$agents_dir/architect.md"
+    echo "# implement" > "$commands_dir/implement.md"
+    local output
+    output="$(run_update --root-dir "$TEST_TMPDIR/target" --only core --force)"
+    # implement.md should be moved to sr/implement.md
+    assert_file_exists "$commands_dir/sr/implement.md" &&
+    assert_not_contains "$output" "Error"
+}
+run_test "do_migrate_sr_prefix moves legacy commands to sr/" test_update_migrates_sr_prefix_commands
+
+test_update_migrate_idempotent() {
+    install_to_target
+    local agents_dir="$TEST_TMPDIR/target/.claude/agents"
+    # Install already has sr-prefixed agents — migration should be a no-op
+    mkdir -p "$agents_dir"
+    echo "---" > "$agents_dir/sr-architect.md"
+    local output
+    output="$(run_update --root-dir "$TEST_TMPDIR/target" --only core --force)"
+    assert_not_contains "$output" "Error"
+}
+run_test "do_migrate_sr_prefix is idempotent when sr- prefix already present" test_update_migrate_idempotent
+
+# ─────────────────────────────────────────────
 
 print_summary "update.sh"
