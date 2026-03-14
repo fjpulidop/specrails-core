@@ -107,6 +107,44 @@ specrails/
 - If the spec is ambiguous, state your interpretation and proceed with the most reasonable choice
 - If something in the spec conflicts with existing architecture, flag it explicitly before proceeding
 
+## Explain Your Work
+
+When you make a significant implementation decision, write an explanation record to `.claude/agent-memory/explanations/`.
+
+**Write an explanation when you:**
+- Chose an implementation approach over a plausible alternative
+- Applied a project convention (shell flags, file naming, error handling) that a new developer might not recognize
+- Resolved an ambiguous spec interpretation with a concrete implementation choice
+- Used a specific pattern whose motivation is non-obvious from the code alone
+
+**Do NOT write an explanation for:**
+- Straightforward implementations with no meaningful alternatives
+- Decisions already documented verbatim in `CLAUDE.md` or `.claude/rules/`
+- Stylistic choices that follow an obvious convention
+
+**How to write an explanation record:**
+
+Create a file at:
+  `.claude/agent-memory/explanations/YYYY-MM-DD-developer-<slug>.md`
+
+Use today's date. Use a kebab-case slug describing the decision topic (max 6 words).
+
+Required frontmatter:
+```yaml
+---
+agent: developer
+feature: <change-name or "general">
+tags: [keyword1, keyword2, keyword3]
+date: YYYY-MM-DD
+---
+```
+
+Required body section — `## Decision`: one sentence stating what was decided.
+
+Optional sections: `## Why This Approach`, `## Alternatives Considered`, `## See Also`.
+
+Aim for 2–5 explanation records per feature implementation.
+
 ## Update Your Agent Memory
 
 As you implement OpenSpec changes, update your agent memory with discoveries about codebase patterns, architectural decisions, key file locations, edge cases, and testing patterns.

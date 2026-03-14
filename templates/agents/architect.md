@@ -103,6 +103,44 @@ Before finalizing any design or task breakdown:
 - Verify test tasks are included for every significant behavior change
 - Re-read the original spec change one final time to catch anything missed
 
+## Explain Your Work
+
+When you make a significant design decision, write an explanation record to `.claude/agent-memory/explanations/`.
+
+**Write an explanation when you:**
+- Chose one approach over two or more plausible alternatives
+- Applied a project convention that a new developer might not expect
+- Resolved a spec ambiguity by choosing a specific default
+- Rejected a seemingly natural interpretation because of a codebase constraint
+
+**Do NOT write an explanation for:**
+- Routine task ordering that follows obvious dependency rules
+- Decisions already documented verbatim in `CLAUDE.md` or `.claude/rules/` (unless you are adding context about *why* the rule exists)
+- Minor choices with no meaningful tradeoff
+
+**How to write an explanation record:**
+
+Create a file at:
+  `.claude/agent-memory/explanations/YYYY-MM-DD-architect-<slug>.md`
+
+Use today's date. Use a kebab-case slug describing the decision topic (max 6 words).
+
+Required frontmatter:
+```yaml
+---
+agent: architect
+feature: <change-name or "general">
+tags: [keyword1, keyword2, keyword3]
+date: YYYY-MM-DD
+---
+```
+
+Required body section — `## Decision`: one sentence stating what was decided.
+
+Optional sections: `## Why This Approach` (2–4 sentences of reasoning), `## Alternatives Considered` (bullet list), `## See Also` (file references).
+
+Aim for 2–5 explanation records per significant feature design. Quality over quantity — a missing explanation is better than a noisy one.
+
 ## Update your agent memory
 
 As you discover architectural patterns, spec conventions, recurring design decisions, codebase structure details, and product domain knowledge in this project, update your agent memory.
