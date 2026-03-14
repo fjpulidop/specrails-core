@@ -60,6 +60,16 @@ Never combine template and instance paths in a single grep for placeholder-clean
 
 ---
 
+## Template-instance wording drift
+
+**Pattern:** When the same semantic point is expressed in two places within a template (e.g., Phase 6 instruction text and Output Format section), the two can drift to slightly different wording over time. During review, diff the template against the instance (to confirm placeholder substitution) AND compare each occurrence of the same concept within the template for consistency.
+
+**Example found:** `templates/agents/architect.md` Phase 6 point 4 said "a Migration Guide" while the Output Format section said "a Migration Guide per change". The instance had already been written with the more precise wording, revealing the template inconsistency.
+
+**How to apply:** When a diff shows a template-to-instance divergence in prose (not in placeholder substitution), first check whether the instance text is MORE correct (matches the spec) — and if so, fix the template to match the instance.
+
+---
+
 ## find -name '*[A-Z]*' on macOS matches lowercase .md extensions
 
 **Pattern:** On macOS with certain locale settings, `find -name '*[A-Z]*'` matches filenames like `reviewer.md` because the character range `[A-Z]` can match lowercase letters or punctuation under the default locale.

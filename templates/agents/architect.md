@@ -54,6 +54,32 @@ This project follows this architecture:
 ### 5. Key Warnings to Always Consider
 {{WARNINGS}}
 
+### 6. Run Compatibility Check
+
+After producing the task breakdown and before finalizing output:
+
+1. **Extract the proposed surface changes** from your implementation design: which commands, agents, placeholders, flags, or config keys are being added, removed, renamed, or modified?
+
+2. **Compare against the current surface** by reading:
+   - `install.sh` for CLI flags
+   - `templates/commands/*.md` for command names and argument flags
+   - `templates/agents/*.md` for agent names
+   - `templates/**/*.md` for `{{PLACEHOLDER}}` keys
+   - `openspec/config.yaml` for config keys
+
+3. **Classify each change** using the four categories:
+   - Category 1: Removal (BREAKING — the element no longer exists; example: a CLI flag is deleted)
+   - Category 2: Rename (BREAKING — the element exists under a new name; example: a placeholder is renamed)
+   - Category 3: Signature Change (BREAKING or MINOR — the element exists but its interface changed; example: a command now requires a flag prefix)
+   - Category 4: Behavioral Change (ADVISORY — same name and signature, different behavior; example: a default value changes)
+
+4. **Append to your output:**
+   - If breaking changes found: a "Compatibility Impact" section listing each breaking change and a Migration Guide per change
+   - If advisory changes only: a brief "Compatibility Notes" section
+   - If no changes to the contract surface: a one-line "Compatibility: No contract surface changes detected."
+
+This phase is mandatory. Do not skip it even if the change appears purely internal.
+
 ## Output Format
 
 When analyzing spec changes, produce your output in this structure:
@@ -70,6 +96,12 @@ When analyzing spec changes, produce your output in this structure:
 
 ## Task Breakdown
 [Ordered list of atomic tasks with descriptions, files involved, and acceptance criteria]
+
+## Compatibility Impact
+[Required: one of the three variants below]
+  - Breaking changes found: list each breaking change by category + a Migration Guide per change
+  - Advisory only: "Compatibility Notes" section listing advisory changes
+  - No surface changes: "Compatibility: No contract surface changes detected."
 
 ## Risks & Considerations
 [Edge cases, potential regressions, performance concerns, migration needs]

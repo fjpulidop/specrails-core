@@ -63,6 +63,21 @@ When a feature adds a new provider or mode alongside an existing one (e.g., addi
 - "Exact Changes" section: verbatim prose to insert with precise location anchors ("after X block, before Y block")
 - Closes with: Existing Patterns to Follow, relevant API/tool reference, Conventions Checklist, Risks table
 
+## Breaking Change Taxonomy (compat-impact-analyzer)
+
+Defined in `openspec/changes/compat-impact-analyzer/design.md`. Use this when classifying contract changes in delta-spec.md:
+
+| # | Name | Severity | Example |
+|---|------|----------|---------|
+| 1 | Removal | BREAKING (MAJOR) | CLI flag deleted, placeholder removed |
+| 2 | Rename | BREAKING (MAJOR) | Flag renamed, command renamed |
+| 3 | Signature Change | BREAKING (MINOR-MAJOR) | Arg format changes, output shape changes |
+| 4 | Behavioral Change | ADVISORY | Default value changes, phase order changes |
+
+specrails API surface = installer flags + template placeholders + command names + command arg flags + agent names + config keys.
+
+**Self-referential rule:** Every delta-spec.md SHOULD include a "Surface Impact of This Change" section that classifies the change using this taxonomy.
+
 ## Phase Numbering in implement.md
 
 Current phase map as of 2026-03-14:
