@@ -23,6 +23,7 @@ NC='\033[0m'
 
 CUSTOM_ROOT_DIR=""
 UPDATE_COMPONENT="all"
+FORCE_UPDATE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -37,7 +38,7 @@ while [[ $# -gt 0 ]]; do
         --only)
             if [[ -z "${2:-}" ]]; then
                 echo "Error: --only requires a component argument." >&2
-                echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>]" >&2
+                echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>] [--force]" >&2
                 exit 1
             fi
             UPDATE_COMPONENT="$2"
@@ -51,9 +52,13 @@ while [[ $# -gt 0 ]]; do
             esac
             shift 2
             ;;
+        --force)
+            FORCE_UPDATE=true
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>]" >&2
+            echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>] [--force]" >&2
             exit 1
             ;;
     esac
@@ -210,11 +215,63 @@ else
     ok "Git repository root: $REPO_ROOT"
 fi
 
-# Early exit if already up to date (skip for legacy migrations and agent-only runs)
-if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]]; then
-    ok "Already up to date (v${AVAILABLE_VERSION})"
-    echo ""
-    exit 0
+# Content-aware up-to-date check (skip for legacy migrations and agent-only runs)
+if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$FORCE_UPDATE" == false ]]; then
+    # Same version — check if any template content has actually changed
+    local_manifest="$REPO_ROOT/.specrails-manifest.json"
+    HAS_CHANGES=false
+
+    if [[ -f "$local_manifest" ]]; then
+        while IFS= read -r -d '' filepath; do
+            local relpath
+            relpath="templates/${filepath#"$SCRIPT_DIR/templates/"}"
+            local current_checksum
+            current_checksum="sha256:$(shasum -a 256 "$filepath" | awk '{print $1}')"
+            local manifest_checksum
+            manifest_checksum="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get(sys.argv[2], ''))
+except Exception:
+    print('')
+" "$local_manifest" "$relpath" 2>/dev/null || echo "")"
+
+            if [[ -z "$manifest_checksum" ]] || [[ "$current_checksum" != "$manifest_checksum" ]]; then
+                HAS_CHANGES=true
+                break
+            fi
+        done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
+
+        # Also check commands/setup.md
+        if [[ "$HAS_CHANGES" == false ]] && [[ -f "$SCRIPT_DIR/commands/setup.md" ]]; then
+            local setup_checksum
+            setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
+            local manifest_setup
+            manifest_setup="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get('commands/setup.md', ''))
+except Exception:
+    print('')
+" "$local_manifest" 2>/dev/null || echo "")"
+            if [[ "$setup_checksum" != "$manifest_setup" ]]; then
+                HAS_CHANGES=true
+            fi
+        fi
+    else
+        # No manifest — can't verify, assume changes exist
+        HAS_CHANGES=true
+    fi
+
+    if [[ "$HAS_CHANGES" == false ]]; then
+        ok "Already up to date (v${AVAILABLE_VERSION}) — all templates match"
+        echo ""
+        exit 0
+    else
+        info "Same version (v${AVAILABLE_VERSION}) but template content has changed — updating"
+    fi
 fi
 
 # ─────────────────────────────────────────────
