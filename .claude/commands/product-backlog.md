@@ -158,3 +158,38 @@ The product-analyst receives this prompt:
     ```
     No product-driven backlog issues found. Run `/update-product-driven-backlog` to generate feature ideas.
     ```
+
+7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
+
+   **Guard:** If `GH_AVAILABLE=false` (from Phase 0 pre-flight), print `[backlog-cache] Skipped — GH unavailable.` and return. Do not attempt the write.
+
+   **Fetch all open backlog issues in one call:**
+
+   ```bash
+   gh issue list --label "product-driven-backlog" --state open --json number,title,state,assignees,labels,body,updatedAt
+   ```
+
+   For each issue in the result, build a snapshot object:
+   - `number`: integer issue number
+   - `title`: issue title string
+   - `state`: `"open"` or `"closed"`
+   - `assignees`: array of assignee login names, sorted alphabetically
+   - `labels`: array of label names, sorted alphabetically
+   - `body_sha`: SHA-256 of the raw body string — compute with:
+     ```bash
+     echo -n "{body}" | sha256sum | cut -d' ' -f1
+     ```
+     If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
+   - `updated_at`: the `updatedAt` value from the GitHub API response
+   - `captured_at`: current local time in ISO 8601 format
+
+   **Merge strategy:** If `.claude/backlog-cache.json` already exists and is valid JSON, read it and merge: new snapshot entries overwrite existing entries by issue number key; entries for issue numbers not in the current fetch are preserved (they may be needed by an in-progress `/implement` run). If the file does not exist or is malformed, create it fresh.
+
+   Write the merged result back to `.claude/backlog-cache.json` with:
+   - `schema_version`: `"1"`
+   - `provider`: `"github"`
+   - `last_updated`: current ISO 8601 timestamp
+   - `written_by`: `"product-backlog"`
+   - `issues`: the merged map keyed by string issue number
+
+   If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.

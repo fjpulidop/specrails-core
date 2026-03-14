@@ -102,6 +102,10 @@ If none of these flags is present: `DRY_RUN=false`, `APPLY_MODE=false`, `CONFIDE
 
 Note: `CACHE_DIR` for `--dry-run` is finalized after the feature name is derived from the remaining input. All subsequent phases that reference `CACHE_DIR` have access to it.
 
+Initialize conflict-tracking variables:
+- `SNAPSHOTS_CAPTURED=false` — set to true in Phase 0 if issue snapshots are successfully written.
+- `CONFLICT_OVERRIDES=[]` — list of conflict records where the user chose to continue; appended by Phase 3a.0 and Phase 4c.0.
+
 ---
 
 **If the user passed a text description** (e.g. `"add feature X"`):
@@ -117,6 +121,72 @@ Note: `CACHE_DIR` for `--dry-run` is finalized after the feature name is derived
 - Extract area, value, effort, and feature details from each issue body.
 - If only 1 issue: set `SINGLE_MODE = true`.
 - **Skip Phase 1 and Phase 2** — go directly to confirmation table.
+
+#### Phase 0 snapshot capture
+
+After fetching issue refs, capture a baseline snapshot for conflict detection.
+
+**If `GH_AVAILABLE=true` and the input mode was issue numbers:**
+
+For each resolved issue number, run:
+
+```bash
+gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+```
+
+Build a snapshot object for each issue:
+- `number`: integer issue number
+- `title`: issue title string
+- `state`: `"open"` or `"closed"`
+- `assignees`: array of assignee login names, sorted alphabetically
+- `labels`: array of label names, sorted alphabetically
+- `body_sha`: SHA-256 of the raw body string — compute with:
+  ```bash
+  echo -n "{body}" | sha256sum | cut -d' ' -f1
+  ```
+  If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
+- `updated_at`: the `updatedAt` value from the GitHub API response
+- `captured_at`: current local time in ISO 8601 format
+
+Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
+
+```json
+{
+  "schema_version": "1",
+  "provider": "github",
+  "last_updated": "<ISO 8601 timestamp>",
+  "written_by": "implement",
+  "issues": {
+    "<number>": { <snapshot object> },
+    ...
+  }
+}
+```
+
+If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
+
+If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
+
+**If `GH_AVAILABLE=false` or input was not issue numbers:**
+
+Set `SNAPSHOTS_CAPTURED=false`. Print: `[conflict-check] Snapshot skipped — GH unavailable or non-issue input.`
+
+#### Gitignore advisory
+
+If `SNAPSHOTS_CAPTURED=true`, check whether `.gitignore` already covers the cache file:
+
+```bash
+grep -q "backlog-cache" .gitignore 2>/dev/null || \
+grep -q "\.claude/" .gitignore 2>/dev/null
+```
+
+If neither pattern is found, print:
+
+```
+[backlog-cache] Suggestion: add '.claude/backlog-cache.json' to .gitignore to avoid committing ephemeral cache state.
+```
+
+This advisory is non-blocking and suppressed when `.gitignore` already covers the file.
 
 **If the user passed area names**:
 - Check for open backlog issues. If found, filter and pick top 3.
@@ -137,6 +207,67 @@ Wait for all to complete. Read their output.
 **Only runs if Phase 1 ran.**
 
 Pick the single idea with the best impact/effort ratio from each exploration. Present to user and wait for confirmation.
+
+## Phase 3a.0: Pre-architect conflict check
+
+**Guard:** If `SNAPSHOTS_CAPTURED=false` OR `DRY_RUN=true`, print `[conflict-check] Skipped — SNAPSHOTS_CAPTURED=false (or dry-run mode).` and proceed directly to Phase 3a.
+
+Otherwise, re-fetch each issue in scope and diff against the Phase 0 snapshot:
+
+For each issue number in `ISSUE_REFS`:
+
+```bash
+gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+```
+
+If the `gh` command returns non-zero (issue deleted or inaccessible): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`.
+
+Otherwise, reconstruct a current snapshot (same shape as Phase 0: sort `assignees` and `labels`, compute `body_sha`).
+
+**Short-circuit:** If `current.updatedAt == cached.updated_at`, mark the issue as clean and skip field comparison.
+
+**Field comparison** (only when `updatedAt` differs):
+
+| Field | Conflict if... | Severity |
+|-------|----------------|----------|
+| `state` | value differs (`open` → `closed`) | CRITICAL |
+| `state` | value differs (`closed` → `open`) | WARNING |
+| `title` | string differs | WARNING |
+| `assignees` | sorted array differs | WARNING |
+| `labels` | sorted array differs | INFO |
+| `body_sha` | SHA differs | WARNING |
+
+Collect all conflicts across all issues. If none: print `[conflict-check] All issues clean (Phase 3a.0). Proceeding.` and continue to Phase 3a.
+
+**If conflicts exist**, print the following report and await user input:
+
+```
+## Backlog Conflict Detected
+
+The following issues changed since Phase 0 snapshot (captured at <captured_at>):
+
+| Issue | Field | Severity | Was | Now |
+|-------|-------|----------|-----|-----|
+| #N    | state | CRITICAL | open | closed |
+| #N    | body  | WARNING  | <sha-prefix> | <sha-prefix> |
+
+How would you like to proceed?
+  [A] Abort — stop the pipeline and exit cleanly
+  [C] Continue — proceed despite the conflicts (logged)
+
+Enter A or C:
+```
+
+For `body_sha` rows in the table, display only the first 8 characters of each SHA as the "Was" and "Now" values.
+
+**Input handling:**
+- Accept `A`, `a` (abort) or `C`, `c` (continue).
+- Re-prompt on any other input, up to 3 times total.
+- After 3 invalid inputs: print `[conflict-abort] Defaulting to abort after 3 invalid inputs.` and abort.
+
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /implement after resolving the issues.` and exit. No git state is left behind.
+
+**On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "3a.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 3a.
 
 ## Phase 3a: Architect (parallel, in main repo)
 
@@ -592,6 +723,30 @@ When `DRY_RUN=true`, the reviewer still writes `confidence-score.json` (it is an
 "confidence-gate: blocked — Phase 4c skipped"
 ```
 
+### Phase 4c.0: Pre-ship conflict check
+
+**Guard:** If `SNAPSHOTS_CAPTURED=false` OR `DRY_RUN=true`, print `[conflict-check] Skipped — SNAPSHOTS_CAPTURED=false (or dry-run mode).` and proceed directly to Phase 4c.
+
+This check is independent of Phase 3a.0. Even if the user chose to continue through a conflict at Phase 3a.0, this gate re-checks all in-scope issues against the Phase 0 snapshot. It is the final gate before any code reaches git.
+
+Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
+
+```bash
+gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+```
+
+If the cache file is missing or malformed JSON at this point: log `[conflict-check] Warning: cache file missing or unreadable. Skipping diff for this run.` and proceed to Phase 4c (treat as clean).
+
+Apply the same short-circuit (`updatedAt` match → clean), field comparison, and severity classification as Phase 3a.0.
+
+If all issues are clean: print `[conflict-check] All issues clean (Phase 4c.0). Proceeding.` and continue.
+
+If conflicts exist: print the same conflict report format as Phase 3a.0 (with `Phase 4c.0` context) and await `A`/`C` input (same re-prompt and default-abort logic).
+
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /implement after resolving the issues.` and exit. No git operations have been performed at this point.
+
+**On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "4c.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 4c.
+
 ### 4c. Ship — Git & backlog updates
 
 **Security gate:** If `SECURITY_BLOCKED=true`:
@@ -721,8 +876,8 @@ rm -rf .claude/.dry-run/<feature-name>/
 **Otherwise**, show the standard pipeline table:
 
 ```
-| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Frontend | Backend | Confidence | Security | CI | Status |
-|------|---------|-------------|-----------|-----------|-------|------|----------|----------|---------|------------|----------|----|--------|
+| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Frontend | Backend | Confidence | Security | CI | Conflicts | Status |
+|------|---------|-------------|-----------|-----------|-------|------|----------|----------|---------|------------|----------|----|-----------|--------|
 ```
 
 Confidence column values:
@@ -749,6 +904,11 @@ Column values:
 - **Backend**: `CLEAN`, `ISSUES`, or `SKIPPED` (no backend files in changeset)
 - **Security**: `CLEAN`, `WARNINGS`, `BLOCKED`, or `SKIPPED`
 
+The `Conflicts` column values:
+- `skipped` — `SNAPSHOTS_CAPTURED=false` (non-issue input or GH unavailable)
+- `clean` — both conflict checks ran and found no changes
+- `overridden (N)` — user chose Continue at one or both gates; N is the total number of conflict records in `CONFLICT_OVERRIDES`
+
 If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
 
 ```
@@ -760,6 +920,20 @@ If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
 
 Fix these conflicts (search for `<<<<<<<` in each file), then commit the resolved files.
 ```
+
+If `CONFLICT_OVERRIDES` is non-empty, print:
+
+```
+## Conflict Overrides
+
+The following backlog conflicts were detected but overridden by the user:
+
+| Phase | Issue | Field | Severity | Was | Now |
+|-------|-------|-------|----------|-----|-----|
+| 3a.0  | #42   | state | CRITICAL | open | closed |
+```
+
+If `CONFLICT_OVERRIDES` is empty or `SNAPSHOTS_CAPTURED=false`: omit the `## Conflict Overrides` section entirely. Do not print an empty table or a "No conflict overrides" line.
 
 Include PR URL, CI status, and backlog updates made.
 
