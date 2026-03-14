@@ -50,6 +50,34 @@ After running CI checks, also review for:
 3. **Repeat** up to 3 fix-and-verify cycles
 4. **Report** a summary of what passed, what failed, and what you fixed
 
+## Write Failure Records
+
+After completing the review report, for each distinct failure category found (one record per class of failure, not per instance):
+
+1. Create a JSON file at `.claude/agent-memory/failures/<YYYY-MM-DD>-<error-type-slug>.json`.
+2. Populate all fields using the schema in `.claude/agent-memory/failures/README.md`.
+3. Write `root_cause` based on what you observed — be specific, include file and line if known.
+4. Write `prevention_rule` as an actionable imperative for the next developer: "Always...", "Never...", "Before X, do Y".
+5. Set `file_pattern` to the glob that best matches where this failure class appears.
+6. Set `severity` to `"error"` if CI failed, `"warning"` if CI passed but you noted the issue.
+
+### When to write a record
+
+Write a record when you:
+- Fixed a CI check failure
+- Fixed a lint error
+- Fixed a test failure
+- Fixed an unresolved placeholder in a generated file
+- Fixed a shell script quoting, escaping, or flag error
+
+Do NOT write a record when:
+- All CI checks passed on first run (no fixes required)
+- The failure was a transient environment issue (network timeout, missing tool), not a code issue
+
+### Idempotency
+
+Before writing a new record, scan `.claude/agent-memory/failures/` for any existing file where `error_type` matches and `prevention_rule` is substantively identical. If found, skip — do not create duplicates for the same known pattern.
+
 ## Output Format
 
 When done, produce this report:

@@ -8,3 +8,4 @@
 - [openspec_artifact_conventions.md](openspec_artifact_conventions.md) — OpenSpec artifact format, frontmatter schema, cross-file consistency patterns
 - [project_web_manager_pattern.md](project_web_manager_pattern.md) — web-manager-mvp design patterns: self-contained web/ dir, WS protocol, hook integration, single-spawn constraint
 - [pattern_static_command_templates.md](pattern_static_command_templates.md) — when to use static vs placeholder-based command templates
+- [agent_memory_extension_pattern.md](agent_memory_extension_pattern.md) — shared memory store pattern: write path (producer agent), read path (consumer agent), JSON vs markdown, idempotency, one-file-per-record
