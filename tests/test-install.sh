@@ -1,0 +1,97 @@
+#!/bin/bash
+# Tests for install.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/test-helpers.sh"
+
+echo ""
+echo -e "${BOLD}Running install.sh tests${NC}"
+echo ""
+
+# ─────────────────────────────────────────────
+# Syntax
+# ─────────────────────────────────────────────
+
+test_install_syntax() {
+    bash -n "$SPECRAILS_DIR/install.sh"
+}
+run_test "syntax check passes" test_install_syntax
+
+# ─────────────────────────────────────────────
+# Argument parsing
+# ─────────────────────────────────────────────
+
+test_install_unknown_arg() {
+    local output
+    output="$(bash "$SPECRAILS_DIR/install.sh" --bogus 2>&1 || true)"
+    assert_contains "$output" "Unknown argument"
+}
+run_test "--bogus flag rejected" test_install_unknown_arg
+
+test_install_root_dir_missing_value() {
+    local output
+    output="$(bash "$SPECRAILS_DIR/install.sh" --root-dir 2>&1 || true)"
+    assert_contains "$output" "requires a path"
+}
+run_test "--root-dir without value rejected" test_install_root_dir_missing_value
+
+# ─────────────────────────────────────────────
+# Fresh install into target repo
+# ─────────────────────────────────────────────
+
+test_install_fresh() {
+    local output
+    output="$(bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
+    assert_contains "$output" "Installation complete" &&
+    assert_file_exists "$TEST_TMPDIR/target/.specrails-version" &&
+    assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json" &&
+    assert_dir_exists "$TEST_TMPDIR/target/.claude/commands" &&
+    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates"
+}
+run_test "fresh install creates expected structure" test_install_fresh
+
+test_install_creates_version_file() {
+    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    local version
+    version="$(cat "$TEST_TMPDIR/target/.specrails-version" | tr -d '[:space:]')"
+    local expected
+    expected="$(cat "$SPECRAILS_DIR/VERSION" | tr -d '[:space:]')"
+    assert_eq "$expected" "$version" "version file should match VERSION"
+}
+run_test "version file matches VERSION" test_install_creates_version_file
+
+test_install_manifest_valid_json() {
+    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.specrails-manifest.json'))"
+}
+run_test "manifest is valid JSON" test_install_manifest_valid_json
+
+# ─────────────────────────────────────────────
+# Double install (should warn)
+# ─────────────────────────────────────────────
+
+test_install_double() {
+    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    local output
+    output="$(bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1 || true)"
+    assert_contains "$output" "already"
+}
+run_test "double install warns about existing installation" test_install_double
+
+# ─────────────────────────────────────────────
+# Non-git directory (pipe 'n' to decline interactive prompt)
+# ─────────────────────────────────────────────
+
+test_install_source_repo_detection() {
+    # Running install.sh from within specrails source should detect it
+    # and warn about source repo (since SCRIPT_DIR == REPO_ROOT area)
+    local output
+    output="$(echo "q" | bash "$SPECRAILS_DIR/install.sh" 2>&1 || true)"
+    assert_contains "$output" "specrails source repo"
+}
+run_test "detects running from specrails source repo" test_install_source_repo_detection
+
+# ─────────────────────────────────────────────
+
+print_summary "install.sh"

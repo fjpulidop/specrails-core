@@ -5,7 +5,19 @@ set -euo pipefail
 # Installs the agent workflow system into any repository.
 # Step 1 of 2: Prerequisites + scaffold. Step 2: Run /setup inside Claude Code.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Detect pipe mode (curl | bash) vs local execution
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then
+    # Running via pipe — clone repo to temp dir
+    SPECRAILS_TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "$SPECRAILS_TMPDIR"' EXIT
+    git clone --depth 1 https://github.com/fjpulidop/specrails.git "$SPECRAILS_TMPDIR/specrails" 2>/dev/null || {
+        echo "Error: failed to clone specrails repository." >&2
+        exit 1
+    }
+    SCRIPT_DIR="$SPECRAILS_TMPDIR/specrails"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 
 # Colors
