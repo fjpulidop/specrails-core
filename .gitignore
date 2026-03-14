@@ -1,1 +1,3 @@
 .claude/.dry-run/
+.claude/health-history/
+.claude/compat-snapshots/
