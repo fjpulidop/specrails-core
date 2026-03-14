@@ -43,11 +43,58 @@ The product-analyst receives this prompt:
    - **Description**: from the body's "Feature Description" section
    - **User Story**: from the body's "User Story" section
 
-3. **Group by area**.
+3. **Parse prerequisites for each issue:**
+   - Locate the row whose first cell matches `**Prerequisites**` in the issue body's Overview table.
+   - If the cell value is `None`, `-`, or empty: set `prereqs = []` for this issue.
+   - Otherwise: extract all tokens matching `#\d+` from the cell and set `prereqs = [<numbers>]`.
+   - If a prerequisite number does not appear in the fetched issue list, treat it as already satisfied (externally closed). Do not include it in the DAG.
 
-4. **Sort within each area by Total Persona Score (descending)**, then by Effort (Low > Medium > High) as tiebreaker.
+4. **Build dependency graph and detect cycles:**
+   - Construct a directed graph where edge `(A → B)` means "issue A must complete before issue B".
+   - For each issue with a non-empty `prereqs` list, add an edge from each prerequisite to the issue.
+   - Run depth-first cycle detection:
+     - Maintain `visited` and `rec_stack` sets.
+     - For each unvisited node, run DFS. If a node in `rec_stack` is encountered, a cycle exists.
+   - Collect all cycle members into `CYCLE_MEMBERS`.
+   - If `CYCLE_MEMBERS` is non-empty, prepare a warning block to render before the backlog table:
+     ```
+     > **Warning: Circular dependency detected in backlog.**
+     > The following issues form a cycle and cannot be safely ordered:
+     > #A -> #B -> #A
+     > Review these issues and correct the Prerequisites fields.
+     ```
+   - Compute `in_degree[issue]` for all issues (count of prerequisite edges pointing to each issue from other open backlog issues).
 
-5. **Display** as a formatted table per area, then **propose the top 3 items** for implementation:
+5. **Compute safe implementation order (Kahn's topological sort):**
+   - Exclude `CYCLE_MEMBERS` from this computation.
+   - Initialize `ready` = all non-cycle issues where `in_degree == 0`.
+   - Sort `ready` by Total Persona Score descending.
+   - Build `WAVES = []`:
+     ```
+     while ready is non-empty:
+         WAVES.append(copy of ready)
+         next_ready = []
+         for each issue in ready:
+             for each dependent D of issue (edges issue → D):
+                 in_degree[D] -= 1
+                 if in_degree[D] == 0: next_ready.append(D)
+         sort next_ready by Total Persona Score descending
+         ready = next_ready
+     ```
+   - Store `WAVE_1 = WAVES[0]` (the set of immediately startable features).
+
+6. **Group by area**.
+
+7. **Sort within each area by Total Persona Score (descending)**, then by Effort (Low > Medium > High) as tiebreaker.
+
+8. **Display** as a formatted table per area, then **propose the top 3 items from `WAVE_1`** (features with all prerequisites satisfied) for implementation. If fewer than 3 are in `WAVE_1`, show as many as available and add: "Note: Only {N} feature(s) are available to start immediately — remaining features have unmet prerequisites."
+
+   [If `CYCLE_MEMBERS` is non-empty, render the cycle warning block immediately before the first area table.]
+
+   Render each area table with the following format:
+   - Append `[blocked]` to the issue title cell if `in_degree[issue] > 0` and the issue is not in `CYCLE_MEMBERS`.
+   - Append `[cycle]` to the issue title cell if the issue is in `CYCLE_MEMBERS`.
+   - `Prereqs` cell: list prerequisite issue numbers as `#N, #M`, or `—` if none.
 
    ```
    ## Product-Driven Backlog
@@ -57,9 +104,10 @@ The product-analyst receives this prompt:
 
    ### {Area Name}
 
-   | # | Issue | Alex | Sara | Kai | Total | Effort |
-   |---|-------|------|------|-----|-------|--------|
-   | 1 | #42 Feature name | X/5 | X/5 | X/5 | X/15 | Low |
+   | # | Issue | Alex | Sara | Kai | Total | Effort | Prereqs |
+   |---|-------|------|------|-----|-------|--------|---------|
+   | 1 | #42 Feature name [blocked] | X/5 | X/5 | X/5 | X/15 | Low | #12, #17 |
+   | 2 | #43 Other feature | X/5 | X/5 | X/5 | X/15 | High | — |
 
    ---
 
@@ -78,7 +126,35 @@ The product-analyst receives this prompt:
    Run `/implement` to start implementing these items.
    ```
 
-6. If no issues exist:
+9. **Render Safe Implementation Order section** after the Recommended Next Sprint table:
+
    ```
-   No product-driven backlog issues found. Run `/update-product-driven-backlog` to generate feature ideas.
+   ---
+
+   ## Safe Implementation Order
+
+   Features grouped by wave. All features in a wave can start in parallel.
+   Features in wave N must complete before wave N+1 begins.
+
+   | Wave | Issue | Title | Prereqs | Score | Effort |
+   |------|-------|-------|---------|-------|--------|
+   | 1    | #N    | ...   | —       | X/15 | Low |
+   | 2    | #M    | ...   | #N      | X/15 | Medium |
+
+   To implement in this order:
+     /batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
+
+   [If no edges exist in the DAG, omit the --deps clause:]
+     /batch-implement <issue-refs>
+
+   [If CYCLE_MEMBERS is non-empty, append:]
+   Cycle members excluded from ordering: #A, #B
+   Fix the Prerequisites fields in these issues to include them.
    ```
+
+   Issue refs in the `/batch-implement` command are listed in wave order (wave 1 first, then wave 2, etc.), sorted by persona score within each wave. The `--deps` string is constructed from all edges in the DAG: `"A -> B"` for each edge, comma-separated. If the backlog has no dependencies at all (DAG has no edges), the section still renders showing all features in wave 1 and the `--deps` clause is omitted.
+
+10. If no issues exist:
+    ```
+    No product-driven backlog issues found. Run `/update-product-driven-backlog` to generate feature ideas.
+    ```
