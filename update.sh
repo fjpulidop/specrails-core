@@ -847,6 +847,12 @@ UPDATE_SUCCESS=true
 rm -rf "$BACKUP_DIR"
 ok "Backup removed"
 
+# Clean up setup-templates if no /setup re-run is needed
+if [[ "$NEEDS_SETUP_UPDATE" != true ]] && [[ -d "$REPO_ROOT/.claude/setup-templates" ]]; then
+    rm -rf "$REPO_ROOT/.claude/setup-templates"
+    ok "Cleaned up setup-templates (no /setup re-run needed)"
+fi
+
 echo ""
 echo -e "${BOLD}${GREEN}Update complete — v${INSTALLED_VERSION} → v${AVAILABLE_VERSION}${NC}"
 echo ""
