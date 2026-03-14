@@ -223,11 +223,8 @@ if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == fals
 
     if [[ -f "$local_manifest" ]]; then
         while IFS= read -r -d '' filepath; do
-            local relpath
             relpath="templates/${filepath#"$SCRIPT_DIR/templates/"}"
-            local current_checksum
             current_checksum="sha256:$(shasum -a 256 "$filepath" | awk '{print $1}')"
-            local manifest_checksum
             manifest_checksum="$(python3 -c "
 import json, sys
 try:
@@ -245,9 +242,7 @@ except Exception:
 
         # Also check commands/setup.md
         if [[ "$HAS_CHANGES" == false ]] && [[ -f "$SCRIPT_DIR/commands/setup.md" ]]; then
-            local setup_checksum
             setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
-            local manifest_setup
             manifest_setup="$(python3 -c "
 import json, sys
 try:
