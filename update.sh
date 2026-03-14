@@ -5,7 +5,18 @@ set -euo pipefail
 # Updates an existing specrails installation in a target repository.
 # Preserves project-specific customizations (agents, personas, rules).
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Detect pipe mode (curl | bash) vs local execution
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then
+    SPECRAILS_TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "$SPECRAILS_TMPDIR"' EXIT
+    git clone --depth 1 https://github.com/fjpulidop/specrails.git "$SPECRAILS_TMPDIR/specrails" 2>/dev/null || {
+        echo "Error: failed to clone specrails repository." >&2
+        exit 1
+    }
+    SCRIPT_DIR="$SPECRAILS_TMPDIR/specrails"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 
 # Colors
