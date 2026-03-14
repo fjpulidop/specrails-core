@@ -323,34 +323,125 @@ FORCE_AGENTS=false
 do_core() {
     step "Updating core artifacts (commands, skills, setup-templates)"
 
-    # Update /setup command
+    local manifest_file="$REPO_ROOT/.specrails-manifest.json"
+    local updated_count=0
+    local added_count=0
+
+    # Helper: check if a source file differs from its manifest checksum
+    # Returns 0 (true) if file is new or changed, 1 if unchanged
+    _file_changed() {
+        local source_file="$1"
+        local manifest_key="$2"
+
+        if [[ ! -f "$manifest_file" ]]; then
+            return 0  # No manifest — assume changed
+        fi
+
+        local current_checksum
+        current_checksum="sha256:$(shasum -a 256 "$source_file" | awk '{print $1}')"
+        local manifest_checksum
+        manifest_checksum="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get(sys.argv[2], ''))
+except Exception:
+    print('')
+" "$manifest_file" "$manifest_key" 2>/dev/null || echo "")"
+
+        if [[ -z "$manifest_checksum" ]]; then
+            return 0  # New file
+        elif [[ "$current_checksum" != "$manifest_checksum" ]]; then
+            return 0  # Changed
+        fi
+        return 1  # Unchanged
+    }
+
+    # Update /setup command (selective)
     mkdir -p "$REPO_ROOT/.claude/commands"
-    cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
-    ok "Updated /setup command"
-
-    # Update setup templates
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/agents"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/commands"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/rules"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/personas"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/claude-md"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/settings"
-    mkdir -p "$REPO_ROOT/.claude/setup-templates/prompts"
-    cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/.claude/setup-templates/"
-    ok "Updated setup templates"
-
-    # Update prompts
-    if [[ -d "$SCRIPT_DIR/prompts" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]]; then
-        mkdir -p "$REPO_ROOT/.claude/setup-templates/prompts"
-        cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.claude/setup-templates/prompts/"
-        ok "Updated prompts"
+    if _file_changed "$SCRIPT_DIR/commands/setup.md" "commands/setup.md"; then
+        cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
+        ok "Updated /setup command"
+        ((updated_count++))
     fi
 
-    # Update skills
+    # Update setup templates (selective — only copy changed/new files)
+    while IFS= read -r -d '' filepath; do
+        local relpath
+        relpath="templates/${filepath#"$SCRIPT_DIR/templates/"}"
+
+        if _file_changed "$filepath" "$relpath"; then
+            local dest="$REPO_ROOT/.claude/setup-templates/${filepath#"$SCRIPT_DIR/templates/"}"
+            mkdir -p "$(dirname "$dest")"
+            cp "$filepath" "$dest"
+
+            # Determine if new or changed
+            local manifest_checksum
+            manifest_checksum="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get(sys.argv[2], ''))
+except Exception:
+    print('')
+" "$manifest_file" "$relpath" 2>/dev/null || echo "")"
+            if [[ -z "$manifest_checksum" ]]; then
+                info "New: $relpath"
+                ((added_count++))
+            else
+                info "Changed: $relpath"
+                ((updated_count++))
+            fi
+        fi
+    done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
+
+    # Update prompts (selective)
+    if [[ -d "$SCRIPT_DIR/prompts" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]]; then
+        while IFS= read -r -d '' filepath; do
+            local relpath
+            relpath="prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
+            local dest="$REPO_ROOT/.claude/setup-templates/prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
+
+            # Prompts aren't in manifest yet — compare directly with destination
+            if [[ ! -f "$dest" ]] || ! diff -q "$filepath" "$dest" &>/dev/null; then
+                mkdir -p "$(dirname "$dest")"
+                cp "$filepath" "$dest"
+                if [[ ! -f "$dest" ]]; then
+                    info "New prompt: $relpath"
+                    ((added_count++))
+                else
+                    info "Changed prompt: $relpath"
+                    ((updated_count++))
+                fi
+            fi
+        done < <(find "$SCRIPT_DIR/prompts" -type f -print0 | sort -z)
+    fi
+
+    # Update skills (selective)
     if [[ -d "$SCRIPT_DIR/.claude/skills" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/.claude/skills" 2>/dev/null)" ]]; then
-        mkdir -p "$REPO_ROOT/.claude/skills"
-        cp -r "$SCRIPT_DIR/.claude/skills/"* "$REPO_ROOT/.claude/skills/"
-        ok "Updated skills"
+        while IFS= read -r -d '' filepath; do
+            local relpath
+            relpath=".claude/skills/${filepath#"$SCRIPT_DIR/.claude/skills/"}"
+            local dest="$REPO_ROOT/$relpath"
+
+            if [[ ! -f "$dest" ]] || ! diff -q "$filepath" "$dest" &>/dev/null; then
+                mkdir -p "$(dirname "$dest")"
+                cp "$filepath" "$dest"
+                if [[ ! -f "$dest" ]]; then
+                    info "New skill: $relpath"
+                    ((added_count++))
+                else
+                    info "Changed skill: $relpath"
+                    ((updated_count++))
+                fi
+            fi
+        done < <(find "$SCRIPT_DIR/.claude/skills" -type f -print0 | sort -z)
+    fi
+
+    if [[ "$updated_count" -eq 0 ]] && [[ "$added_count" -eq 0 ]]; then
+        ok "All core artifacts unchanged"
+    else
+        ok "Core update: ${updated_count} changed, ${added_count} new"
     fi
 }
 
@@ -358,37 +449,72 @@ do_web_manager() {
     step "Updating web manager (Pipeline Monitor)"
 
     local web_manager_dir="$REPO_ROOT/.claude/web-manager"
+    local source_dir="$SCRIPT_DIR/templates/web-manager"
     local has_npm=false
     if command -v npm &>/dev/null; then
         has_npm=true
     fi
 
+    if [[ ! -d "$source_dir" ]]; then
+        ok "No web manager template found — skipping"
+        return
+    fi
+
     if [[ -d "$web_manager_dir" ]]; then
-        # Already installed — rsync to update files, skip node_modules
+        # Already installed — check for actual changes (excluding node_modules)
+        local wm_changes
+        wm_changes="$(diff -rq --exclude='node_modules' --exclude='.DS_Store' "$source_dir" "$web_manager_dir" 2>/dev/null || true)"
+
+        if [[ -z "$wm_changes" ]]; then
+            ok "Web manager unchanged — skipping"
+            return
+        fi
+
+        local wm_changed_count
+        wm_changed_count="$(echo "$wm_changes" | wc -l | tr -d ' ')"
+        info "${wm_changed_count} web manager file(s) changed — syncing"
+
         rsync -a --delete --exclude='node_modules' \
-            "$SCRIPT_DIR/templates/web-manager/" "$web_manager_dir/"
+            "$source_dir/" "$web_manager_dir/"
         ok "Synced web manager files (node_modules preserved)"
 
+        # Only re-run npm install if package.json changed
+        local needs_server_install=false
+        local needs_client_install=false
+        if echo "$wm_changes" | grep -q "package.json" 2>/dev/null; then
+            if echo "$wm_changes" | grep -q "client/package.json" 2>/dev/null; then
+                needs_client_install=true
+            fi
+            # Check for root package.json (not client/)
+            if echo "$wm_changes" | grep -v "client/" | grep -q "package.json" 2>/dev/null; then
+                needs_server_install=true
+            fi
+        fi
+
         if [[ "$has_npm" == true ]]; then
-            info "Re-running npm install for server..."
-            (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
-                ok "Server dependencies updated"
-            } || {
-                warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
-            }
-            info "Re-running npm install for client..."
-            (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
-                ok "Client dependencies updated"
-            } || {
-                warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
-            }
-        else
-            warn "npm not found — skipping dependency install. Run 'cd .claude/web-manager && npm install' manually."
+            if [[ "$needs_server_install" == true ]]; then
+                info "Re-running npm install for server (package.json changed)..."
+                (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
+                    ok "Server dependencies updated"
+                } || {
+                    warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+                }
+            fi
+            if [[ "$needs_client_install" == true ]]; then
+                info "Re-running npm install for client (package.json changed)..."
+                (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
+                    ok "Client dependencies updated"
+                } || {
+                    warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+                }
+            fi
+        elif [[ "$needs_server_install" == true ]] || [[ "$needs_client_install" == true ]]; then
+            warn "npm not found — package.json changed but cannot install. Run 'cd .claude/web-manager && npm install' manually."
         fi
     else
         # Not installed — full install
         mkdir -p "$web_manager_dir"
-        cp -r "$SCRIPT_DIR/templates/web-manager/"* "$web_manager_dir/"
+        cp -r "$source_dir/"* "$web_manager_dir/"
         ok "Installed web manager to .claude/web-manager/"
 
         if [[ "$has_npm" == true ]]; then
