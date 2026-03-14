@@ -259,7 +259,7 @@ For `body_sha` rows in the table, display only the first 8 characters of each SH
 - Re-prompt on any other input, up to 3 times total.
 - After 3 invalid inputs: print `[conflict-abort] Defaulting to abort after 3 invalid inputs.` and abort.
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /implement after resolving the issues.` and exit. No git state is left behind.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /sr:implement after resolving the issues.` and exit. No git state is left behind.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "3a.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 3a.
 
@@ -739,7 +739,7 @@ If all issues are clean: print `[conflict-check] All issues clean (Phase 4c.0). 
 
 If conflicts exist: print the same conflict report format as Phase 3a.0 (with `Phase 4c.0` context) and await `A`/`C` input (same re-prompt and default-abort logic).
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /implement after resolving the issues.` and exit. No git operations have been performed at this point.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /sr:implement after resolving the issues.` and exit. No git operations have been performed at this point.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "4c.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 4c.
 
@@ -748,7 +748,7 @@ If conflicts exist: print the same conflict report format as Phase 3a.0 (with `P
 **Security gate:** If `SECURITY_BLOCKED=true`:
 1. Print all Critical findings from the security-reviewer output
 2. Do NOT create a branch, commit, push, or PR
-3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /implement."
+3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /sr:implement."
 4. Skip to Phase 4e.
 
 ### Dry-Run Gate
@@ -885,7 +885,7 @@ If `GIT_AUTO=false`: skip — the user will push and monitor CI themselves.
 
 To apply these changes and ship:
 ```
-/implement --apply <feature-name>
+/sr:implement --apply <feature-name>
 ```
 
 To discard this dry run:

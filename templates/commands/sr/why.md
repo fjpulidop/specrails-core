@@ -1,4 +1,4 @@
-# /why — In-Context Help
+# /sr:why — In-Context Help
 
 Searches explanation records written by sr-architect, sr-developer, and sr-reviewer agents
 during the OpenSpec implementation pipeline.

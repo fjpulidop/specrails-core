@@ -37,7 +37,7 @@ Scan `$ARGUMENTS` for control flags:
 
 **If `DRY_RUN=true`**, print:
 ```
-[dry-run] Preview mode active — /implement will be called with --dry-run for each wave.
+[dry-run] Preview mode active — /sr:implement will be called with --dry-run for each wave.
 ```
 
 ### Step 3: Fetch issue titles
@@ -246,12 +246,12 @@ Dry-run: <yes / no>
 | # | Feature | Title | Wave | Status | Notes |
 |---|---------|-------|------|--------|-------|
 | 1 | #85     | <title> | 1  | done   |       |
-| 2 | #71     | <title> | 1  | failed | see /implement output |
+| 2 | #71     | <title> | 1  | failed | see /sr:implement output |
 | 3 | #63     | <title> | 2  | blocked| depends on #71 |
 
 ### Merge Conflicts
 
-[List any merge conflicts reported by /implement across all waves. If none: "No merge conflicts detected."]
+[List any merge conflicts reported by /sr:implement across all waves. If none: "No merge conflicts detected."]
 
 | Feature | File | Conflicting Region |
 |---------|------|--------------------|
