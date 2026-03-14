@@ -71,6 +71,34 @@ if [[ -n "$CUSTOM_ROOT_DIR" ]]; then
     fi
 fi
 
+# Detect if running from within the specrails source repo itself
+if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/templates" && "$SCRIPT_DIR" == "$REPO_ROOT"* ]]; then
+    # We're inside the specrails source — ask for target repo
+    echo ""
+    echo -e "${YELLOW}⚠${NC}  You're running the updater from inside the specrails source repo."
+    echo -e "   specrails updates a ${BOLD}target${NC} repository, not itself."
+    echo ""
+    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH
+    if [[ "$TARGET_PATH" == "q" || -z "$TARGET_PATH" ]]; then
+        echo "   Aborted. No changes made."
+        exit 0
+    fi
+    # Expand ~ and resolve path
+    TARGET_PATH="${TARGET_PATH/#\~/$HOME}"
+    REPO_ROOT="$(cd "$TARGET_PATH" 2>/dev/null && pwd)" || {
+        echo "Error: path does not exist or is not accessible: $TARGET_PATH" >&2
+        exit 1
+    }
+    if [[ ! -d "$REPO_ROOT/.git" ]]; then
+        echo -e "${YELLOW}⚠${NC}  Warning: $REPO_ROOT does not appear to be a git repository."
+        read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT
+        if [[ "$CONTINUE_NOGIT" != "y" && "$CONTINUE_NOGIT" != "Y" ]]; then
+            echo "   Aborted. No changes made."
+            exit 0
+        fi
+    fi
+fi
+
 # ─────────────────────────────────────────────
 # Helpers
 # ─────────────────────────────────────────────
