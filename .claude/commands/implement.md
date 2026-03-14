@@ -94,7 +94,11 @@ Before parsing input, scan `$ARGUMENTS` for control flags:
   - Skip Phases 1–4b. Go directly to Phase 4c (the apply path handles the rest).
   - Strip `--apply` and the feature name before further parsing.
 
-If neither flag is present: `DRY_RUN=false`, `APPLY_MODE=false`. Pipeline runs as normal.
+- If `--confidence-override "<reason>"` is present in `$ARGUMENTS`:
+  - Set `CONFIDENCE_OVERRIDE_REASON=<reason>` (the quoted string immediately following `--confidence-override`)
+  - Strip `--confidence-override` and the reason before further parsing.
+
+If none of these flags is present: `DRY_RUN=false`, `APPLY_MODE=false`, `CONFIDENCE_OVERRIDE_REASON=""`. Pipeline runs as normal.
 
 Note: `CACHE_DIR` for `--dry-run` is finalized after the feature name is derived from the remaining input. All subsequent phases that reference `CACHE_DIR` have access to it.
 
@@ -422,6 +426,108 @@ Launch a single **reviewer** agent to validate ALL merged changes. Include:
 > CI commands may be run — they read the real repo, but be aware developer changes are not
 > yet applied to real paths.
 
+### 4b-conf. Confidence Gate
+
+After the reviewer agent completes, evaluate the confidence score before launching the security reviewer.
+
+**In multi-feature mode (worktrees):** run this gate once per feature immediately after that feature's reviewer completes. Each feature is evaluated independently — a block on one feature does not prevent another feature's gate from running.
+
+#### Step 1 — Read score file
+
+Path: `openspec/changes/<name>/confidence-score.json`
+
+- If the file does not exist:
+  - Set `CONFIDENCE_STATUS=MISSING`
+  - Print: `[confidence] Warning: confidence-score.json not found. Proceeding without gate.`
+  - Continue to Phase 4b-sec.
+
+#### Step 2 — Read config
+
+Path: `.claude/confidence-config.json`
+
+- If the file does not exist:
+  - Use built-in defaults (overall: 70; type_correctness: 60; pattern_adherence: 60; test_coverage: 60; security: 75; architectural_alignment: 60).
+  - Print:
+    ```
+    [confidence] No confidence-config.json found. Using built-in defaults.
+    [confidence] To customize thresholds, create .claude/confidence-config.json.
+    ```
+- If `enabled: false` in the config:
+  - Print: `[confidence] Gate disabled. Skipping.`
+  - Set `CONFIDENCE_STATUS=DISABLED`
+  - Continue to Phase 4b-sec.
+
+#### Step 3 — Compare scores
+
+- Check `overall` against `thresholds.overall`.
+- Check each of the five aspects against `thresholds.aspects.<aspect>`.
+- Collect all breaches as a list: `{aspect, actual_score, threshold, delta}`.
+
+#### Step 4 — Apply on_breach
+
+**If no breaches:**
+- Print: `[confidence] All scores meet thresholds. Proceeding.`
+- Set `CONFIDENCE_STATUS=PASS`
+- Continue to Phase 4b-sec.
+
+**If breaches exist and `on_breach: "block"`:**
+
+1. Check for `--confidence-override`:
+   - If `CONFIDENCE_OVERRIDE_REASON` is non-empty and `override_allowed: true` in the config:
+     - Print: `[confidence] Override accepted. Reason: <CONFIDENCE_OVERRIDE_REASON>. Proceeding with gate bypassed.`
+     - Set `CONFIDENCE_STATUS=OVERRIDE`
+     - Continue to Phase 4b-sec.
+   - If `CONFIDENCE_OVERRIDE_REASON` is non-empty but `override_allowed: false` in the config:
+     - Print: `[confidence] Override is disabled in confidence-config.json.`
+     - (Fall through to block below.)
+   - If `CONFIDENCE_OVERRIDE_REASON` is empty or override was rejected:
+     - Print the Breach Report (see format below).
+     - Set `CONFIDENCE_BLOCKED=true`
+     - Set `CONFIDENCE_STATUS=BLOCKED`
+     - **Halt: do not proceed to Phase 4b-sec or Phase 4c.**
+
+**If breaches exist and `on_breach: "warn"`:**
+- Print the Breach Report.
+- Set `CONFIDENCE_STATUS=WARN`
+- Continue to Phase 4b-sec.
+
+#### Breach Report Format
+
+```
+## Confidence Gate: BLOCKED
+
+The reviewer's confidence scores do not meet configured thresholds.
+
+| Aspect | Score | Threshold | Delta |
+|--------|-------|-----------|-------|
+| <aspect> | <actual> | <threshold> | <delta (negative)> |
+
+### Reviewer Notes on Low-Scoring Aspects
+
+**<aspect> (<score>):** <note from confidence-score.json>
+
+### Flags
+
+- <flag-1>
+- <flag-2>
+(omit this section if flags array is empty)
+
+### Next Steps
+
+1. Address the concerns above and re-run `/implement`.
+2. Or, if you have reviewed the concerns and accept the risk, re-run with an override:
+   `/implement #N --confidence-override "reason"`
+
+Pipeline halted. No git operations have been performed.
+```
+
+#### Dry-Run Behavior
+
+When `DRY_RUN=true`, the reviewer still writes `confidence-score.json` (it is an OpenSpec artifact, not a git artifact). Phase 4b-conf still evaluates the score. If `CONFIDENCE_BLOCKED=true`, add to `.cache-manifest.json` under `skipped_operations`:
+```
+"confidence-gate: blocked — Phase 4c and 4b-sec skipped"
+```
+
 ### 4b-sec. Launch Security Reviewer agent
 
 After the reviewer agent completes, launch a **security-reviewer** agent (`subagent_type: security-reviewer`).
@@ -536,6 +642,14 @@ Check CI status after pushing. Fix failures (up to 2 retries).
 [For each file in `.cache-manifest.json` `files` array:]
 - `<real_path>` — [new file / modified] ([approximate line delta if available])
 
+### Confidence
+
+| | |
+|-|--|
+| Score file | `openspec/changes/<name>/confidence-score.json` |
+| Gate result | `<CONFIDENCE_STATUS>` (PASS / WARN / BLOCKED / OVERRIDE / MISSING / DISABLED) |
+| Overall score | `<overall score from confidence-score.json, or N/A if MISSING/DISABLED>` |
+
 ### Operations Skipped
 
 [List items from `.cache-manifest.json` `skipped_operations` array]
@@ -557,8 +671,27 @@ rm -rf .claude/.dry-run/<feature-name>/
 **Otherwise**, show the standard pipeline table:
 
 ```
-| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Security | CI | Status |
-|------|---------|-------------|-----------|-----------|-------|----------|----------|----|--------|
+| Area | Feature | Change Name | Architect | Developer | Tests | Docs | Reviewer | Confidence | Security | CI | Status |
+|------|---------|-------------|-----------|-----------|-------|------|----------|------------|----------|----|--------|
+```
+
+Confidence column values:
+
+| Value | Meaning |
+|-------|---------|
+| `PASS (82)` | All scores met thresholds; overall score shown in parens |
+| `WARN (62)` | Scores below threshold but `on_breach=warn`; overall score in parens |
+| `BLOCKED (62)` | Gate blocked the pipeline; overall score in parens |
+| `OVERRIDE (62)` | Gate bypassed by `--confidence-override`; overall score in parens |
+| `MISSING` | `confidence-score.json` not found after reviewer completed |
+| `DISABLED` | Gate disabled via `enabled: false` in config |
+
+If `CONFIDENCE_OVERRIDE_REASON` is non-empty, append a `### Confidence Override` section below the table:
+
+```
+### Confidence Override
+
+**Reason:** <CONFIDENCE_OVERRIDE_REASON>
 ```
 
 If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:

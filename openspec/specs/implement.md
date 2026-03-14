@@ -180,3 +180,43 @@ When `DRY_RUN=true`, Phase 4a MUST apply the identical merge algorithm writing t
 - `SINGLE_MODE=true` MUST bypass Phase 3a.1 and Phase 4a smart merge entirely.
 - The merge algorithm MUST NOT create git commits, branches, or pushes.
 - Pre-existing conflict markers in a file MUST NOT be nested with new conflict markers — log a warning instead.
+
+---
+
+## Confidence Gate (Phase 4b-conf)
+
+### Position in Pipeline
+
+Phase 4b-conf runs AFTER Phase 4b (reviewer) and BEFORE Phase 4c (git operations).
+
+### Inputs
+
+- `openspec/changes/<name>/confidence-score.json` — written by the reviewer agent
+- `.claude/confidence-config.json` — threshold configuration (falls back to built-in defaults if absent)
+
+### Behavior
+
+The gate compares each score in `confidence-score.json` against the corresponding threshold in `confidence-config.json`. If any score falls below its threshold:
+
+- `on_breach: "block"` (default): pipeline halts before Phase 4c. A breach report is printed.
+- `on_breach: "warn"`: breach report is printed, pipeline continues.
+
+### Override
+
+If `--confidence-override "<reason>"` is passed to `/implement` and `override_allowed: true` in the config, the gate is bypassed. The override reason is recorded in the Phase 4e report.
+
+### Missing Score File
+
+If `confidence-score.json` does not exist after the reviewer completes, the gate prints a warning and proceeds. `CONFIDENCE_STATUS=MISSING` is recorded in the Phase 4e report.
+
+### Disabled Gate
+
+If `enabled: false` in the config, the gate is skipped entirely.
+
+### Dry-Run Compatibility
+
+When `DRY_RUN=true`, the gate still evaluates scores. If `CONFIDENCE_BLOCKED=true`, it records the block in `.cache-manifest.json` under `skipped_operations`.
+
+### Multi-Feature Mode
+
+In multi-feature mode, each feature's confidence score is evaluated independently after its reviewer completes. A block on one feature does not block other features from proceeding to Phase 4c. Each feature's gate outcome is recorded independently in the Phase 4e report.
