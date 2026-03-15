@@ -562,8 +562,13 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 | Command | Purpose | Requires |
 |---------|---------|----------|
 | /sr:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
+| /sr:batch-implement | Orchestrate multiple features in dependency-aware waves | sr-architect + sr-developer + sr-reviewer |
 | /sr:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
 | /sr:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
+| /sr:health-check | Run tests, linting, coverage, complexity, and dependency audit | None |
+| /sr:compat-check | Snapshot API surface and detect breaking changes | None |
+| /sr:refactor-recommender | Scan for refactoring opportunities ranked by impact/effort | None |
+| /sr:why | Search past architectural decisions from agent memory | None |
 
 [All] [Custom selection]
 ```
@@ -654,8 +659,13 @@ Write each persona to `.claude/agents/personas/`:
 
 For each selected command, read the template and adapt:
 - `setup-templates/commands/sr/implement.md` → `.claude/commands/sr/implement.md`
+- `setup-templates/commands/sr/batch-implement.md` → `.claude/commands/sr/batch-implement.md`
 - `setup-templates/commands/sr/product-backlog.md` → `.claude/commands/sr/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
 - `setup-templates/commands/sr/update-product-driven-backlog.md` → `.claude/commands/sr/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/sr/health-check.md` → `.claude/commands/sr/health-check.md`
+- `setup-templates/commands/sr/compat-check.md` → `.claude/commands/sr/compat-check.md`
+- `setup-templates/commands/sr/refactor-recommender.md` → `.claude/commands/sr/refactor-recommender.md`
+- `setup-templates/commands/sr/why.md` → `.claude/commands/sr/why.md`
 
 Adapt:
 - CI commands to match detected stack
@@ -821,8 +831,15 @@ Display the complete installation summary:
 | Command | File |
 |---------|------|
 | /sr:implement | .claude/commands/sr/implement.md |
+| /sr:batch-implement | .claude/commands/sr/batch-implement.md |
 | /sr:product-backlog | .claude/commands/sr/product-backlog.md |
 | /sr:update-product-driven-backlog | .claude/commands/sr/update-product-driven-backlog.md |
+| /sr:health-check | .claude/commands/sr/health-check.md |
+| /sr:compat-check | .claude/commands/sr/compat-check.md |
+| /sr:refactor-recommender | .claude/commands/sr/refactor-recommender.md |
+| /sr:why | .claude/commands/sr/why.md |
+
+Note: Only commands selected during setup are shown. Backlog commands are excluded if no backlog provider was configured.
 
 ### Rules Created
 | Layer | File |
