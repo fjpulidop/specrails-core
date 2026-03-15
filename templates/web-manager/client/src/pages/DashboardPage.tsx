@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { usePipeline } from '../hooks/usePipeline'
-import { ActiveJobCard } from '../components/ActiveJobCard'
 import { CommandGrid } from '../components/CommandGrid'
 import { RecentJobs } from '../components/RecentJobs'
 import { ImplementWizard } from '../components/ImplementWizard'
@@ -53,19 +52,8 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Find active job from queue state
-  const activeJob = queueState.jobs.find((j) => j.id === queueState.activeJobId) ?? null
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      {/* Active Job */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Active Job
-        </h2>
-        <ActiveJobCard activeJob={activeJob} phases={phases} phaseDefinitions={phaseDefinitions} />
-      </section>
-
       {/* Commands */}
       <section>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
