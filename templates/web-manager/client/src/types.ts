@@ -1,5 +1,11 @@
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
 
+export interface PhaseDefinition {
+  key: string
+  label: string
+  description: string
+}
+
 export interface JobSummary {
   id: string
   command: string

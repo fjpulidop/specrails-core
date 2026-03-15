@@ -1,12 +1,14 @@
 import fs from 'fs'
 import path from 'path'
 import { execSync } from 'child_process'
+import type { PhaseDefinition } from './types'
 
 export interface CommandInfo {
   id: string
   name: string
   description: string
   slug: string
+  phases: PhaseDefinition[]
 }
 
 export interface IssueTrackerInfo {
@@ -71,17 +73,85 @@ function getGitRepoName(): string | null {
   return null
 }
 
-function parseFrontmatter(content: string): Record<string, string> {
-  const result: Record<string, string> = {}
+interface ParsedFrontmatter {
+  scalars: Record<string, string>
+  phases: PhaseDefinition[]
+}
+
+function parseFrontmatter(content: string): ParsedFrontmatter {
+  const result: ParsedFrontmatter = { scalars: {}, phases: [] }
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/)
   if (!match) return result
 
-  for (const line of match[1].split('\n')) {
+  const lines = match[1].split('\n')
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
     const colonIdx = line.indexOf(':')
-    if (colonIdx === -1) continue
+    if (colonIdx === -1) { i++; continue }
+
     const key = line.slice(0, colonIdx).trim()
-    const value = line.slice(colonIdx + 1).trim().replace(/^["']|["']$/g, '')
-    if (key) result[key] = value
+    const rawValue = line.slice(colonIdx + 1).trim()
+
+    if (!key) { i++; continue }
+
+    // Array field: value is empty, subsequent lines start with "  - "
+    if (rawValue === '' && i + 1 < lines.length && lines[i + 1].startsWith('  - ')) {
+      i++
+      if (key === 'phases') {
+        const items: PhaseDefinition[] = []
+        let current: Partial<PhaseDefinition> | null = null
+
+        while (i < lines.length) {
+          const aLine = lines[i]
+          if (aLine.startsWith('  - ')) {
+            // New array item — flush current
+            if (current) items.push(current as PhaseDefinition)
+            current = {}
+            // Parse the inline key: value after "  - "
+            const rest = aLine.slice(4)
+            const aColon = rest.indexOf(':')
+            if (aColon !== -1) {
+              const aKey = rest.slice(0, aColon).trim()
+              const aVal = rest.slice(aColon + 1).trim().replace(/^["']|["']$/g, '')
+              ;(current as Record<string, string>)[aKey] = aVal
+            }
+            i++
+          } else if (aLine.startsWith('    ') && !aLine.startsWith('    - ')) {
+            // Continuation key: value for current item
+            if (current) {
+              const aColon = aLine.indexOf(':')
+              if (aColon !== -1) {
+                const aKey = aLine.slice(0, aColon).trim()
+                const aVal = aLine.slice(aColon + 1).trim().replace(/^["']|["']$/g, '')
+                ;(current as Record<string, string>)[aKey] = aVal
+              }
+            }
+            i++
+          } else {
+            break
+          }
+        }
+
+        if (current) items.push(current as PhaseDefinition)
+
+        result.phases = items.filter(
+          (item): item is PhaseDefinition =>
+            typeof item.key === 'string' &&
+            typeof item.label === 'string' &&
+            typeof item.description === 'string'
+        )
+      } else {
+        // Skip unknown array fields
+        while (i < lines.length && (lines[i].startsWith('  - ') || lines[i].startsWith('    '))) {
+          i++
+        }
+      }
+    } else {
+      result.scalars[key] = rawValue.replace(/^["']|["']$/g, '')
+      i++
+    }
   }
 
   return result
@@ -105,12 +175,14 @@ function scanCommands(commandsDir: string): CommandInfo[] {
     const slug = file.replace(/\.md$/, '')
     let name = slug
     let description = ''
+    let phases: PhaseDefinition[] = []
 
     try {
       const content = fs.readFileSync(path.join(commandsDir, file), 'utf-8')
       const fm = parseFrontmatter(content)
-      if (fm.name) name = fm.name
-      if (fm.description) description = fm.description
+      if (fm.scalars.name) name = fm.scalars.name
+      if (fm.scalars.description) description = fm.scalars.description
+      phases = fm.phases
     } catch {
       // Use filename-derived name if frontmatter parsing fails
     }
@@ -120,6 +192,7 @@ function scanCommands(commandsDir: string): CommandInfo[] {
       name,
       description,
       slug,
+      phases,
     }
   })
 }

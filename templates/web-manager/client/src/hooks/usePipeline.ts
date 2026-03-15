@@ -1,16 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useWebSocket } from './useWebSocket'
-import type { JobSummary } from '../types'
+import type { JobSummary, PhaseDefinition } from '../types'
 
-export type PhaseName = 'architect' | 'developer' | 'reviewer' | 'ship'
 export type PhaseState = 'idle' | 'running' | 'done' | 'error'
-
-export interface PhaseMap {
-  architect: PhaseState
-  developer: PhaseState
-  reviewer: PhaseState
-  ship: PhaseState
-}
+export type PhaseMap = Record<string, PhaseState>
 
 export interface LogLine {
   source: 'stdout' | 'stderr'
@@ -35,21 +28,18 @@ export interface QueueState {
   paused: boolean
 }
 
-const INITIAL_PHASES: PhaseMap = {
-  architect: 'idle',
-  developer: 'idle',
-  reviewer: 'idle',
-  ship: 'idle',
-}
-
 const INITIAL_QUEUE: QueueState = {
   jobs: [],
   activeJobId: null,
   paused: false,
 }
 
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS_URL = `${wsProtocol}//${window.location.host}`
+
 export function usePipeline() {
-  const [phases, setPhases] = useState<PhaseMap>(INITIAL_PHASES)
+  const [phaseDefinitions, setPhaseDefinitions] = useState<PhaseDefinition[]>([])
+  const [phases, setPhases] = useState<PhaseMap>({})
   const [projectName, setProjectName] = useState('')
   const [logLines, setLogLines] = useState<LogLine[]>([])
   const [recentJobs, setRecentJobs] = useState<JobSummary[]>([])
@@ -60,7 +50,13 @@ export function usePipeline() {
 
     if (msg.type === 'init') {
       setProjectName((msg.projectName as string) ?? '')
-      setPhases((msg.phases as PhaseMap) ?? INITIAL_PHASES)
+      const defs = (msg.phaseDefinitions ?? []) as PhaseDefinition[]
+      setPhaseDefinitions(defs)
+      const initialPhases: PhaseMap = {}
+      for (const def of defs) {
+        initialPhases[def.key] = ((msg.phases as Record<string, PhaseState>)?.[def.key]) ?? 'idle'
+      }
+      setPhases(initialPhases)
       const buf = (msg.logBuffer as LogLine[]) ?? []
       setLogLines(buf)
       setRecentJobs((msg.recentJobs as JobSummary[]) ?? [])
@@ -69,7 +65,7 @@ export function usePipeline() {
     } else if (msg.type === 'phase') {
       setPhases((prev) => ({
         ...prev,
-        [msg.phase as PhaseName]: msg.state as PhaseState,
+        [msg.phase as string]: msg.state as PhaseState,
       }))
     } else if (msg.type === 'log') {
       setLogLines((prev) => [
@@ -90,7 +86,7 @@ export function usePipeline() {
     }
   }, [])
 
-  const { connectionStatus } = useWebSocket('ws://localhost:4200', handleMessage)
+  const { connectionStatus } = useWebSocket(WS_URL, handleMessage)
 
-  return { phases, projectName, logLines, connectionStatus, recentJobs, queueState }
+  return { phases, phaseDefinitions, projectName, logLines, connectionStatus, recentJobs, queueState }
 }

@@ -1,5 +1,11 @@
-export type PhaseName = 'architect' | 'developer' | 'reviewer' | 'ship'
+export type PhaseName = string
 export type PhaseState = 'idle' | 'running' | 'done' | 'error'
+
+export interface PhaseDefinition {
+  key: string
+  label: string
+  description: string
+}
 
 export interface LogMessage {
   type: 'log'
@@ -86,6 +92,7 @@ export interface InitMessage {
   type: 'init'
   projectName: string
   phases: Record<PhaseName, PhaseState>
+  phaseDefinitions: PhaseDefinition[]
   logBuffer: LogMessage[]
   recentJobs: JobSummary[]
   queue: {
@@ -95,5 +102,15 @@ export interface InitMessage {
   }
 }
 
-export type WsMessage = LogMessage | PhaseMessage | InitMessage | QueueMessage
+export interface EventMessage {
+  type: 'event'
+  jobId: string
+  event_type: string
+  source: string
+  payload: string
+  timestamp: string
+  seq: number
+}
+
+export type WsMessage = LogMessage | PhaseMessage | InitMessage | QueueMessage | EventMessage
 

@@ -9,15 +9,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/toolti
 import { PipelineProgress } from '../components/PipelineProgress'
 import { LogViewer } from '../components/LogViewer'
 import { useWebSocket } from '../hooks/useWebSocket'
-import type { JobSummary, EventRow } from '../types'
-import type { PhaseMap } from '../hooks/usePipeline'
+import type { JobSummary, EventRow, PhaseDefinition } from '../types'
+import type { PhaseMap, PhaseState } from '../hooks/usePipeline'
 
-const INITIAL_PHASES: PhaseMap = {
-  architect: 'idle',
-  developer: 'idle',
-  reviewer: 'idle',
-  ship: 'idle',
-}
+const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+const WS_URL = `${wsProtocol}//${window.location.host}`
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'running' | 'queued' | 'failed' | 'canceled'
 
@@ -33,7 +29,8 @@ export default function JobDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [job, setJob] = useState<JobSummary | null>(null)
   const [events, setEvents] = useState<EventRow[]>([])
-  const [phases, setPhases] = useState<PhaseMap>(INITIAL_PHASES)
+  const [phaseDefinitions, setPhaseDefinitions] = useState<PhaseDefinition[]>([])
+  const [phases, setPhases] = useState<PhaseMap>({})
   const [isLoading, setIsLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
@@ -64,12 +61,31 @@ export default function JobDetailPage() {
   const handleMessage = useCallback((data: unknown) => {
     const msg = data as { type: string } & Record<string, unknown>
 
-    if (msg.type === 'log' && msg.processId === id) {
-      // Live log line — create a synthetic event row
+    if (msg.type === 'init') {
+      const defs = (msg.phaseDefinitions ?? []) as PhaseDefinition[]
+      setPhaseDefinitions(defs)
+      const initPhases: PhaseMap = {}
+      for (const def of defs) {
+        initPhases[def.key] = ((msg.phases as Record<string, string>)?.[def.key] as PhaseState) ?? 'idle'
+      }
+      setPhases(initPhases)
+    } else if (msg.type === 'event' && msg.jobId === id) {
+      const eventRow: EventRow = {
+        id: Date.now(),
+        job_id: id ?? '',
+        seq: 0,
+        event_type: msg.event_type as string,
+        source: msg.source as string,
+        payload: msg.payload as string,
+        timestamp: msg.timestamp as string,
+      }
+      setEvents((prev) => [...prev, eventRow])
+    } else if (msg.type === 'log' && msg.processId === id) {
+      // Fallback: live log line as synthetic event row
       const syntheticEvent: EventRow = {
         id: Date.now(),
         job_id: id ?? '',
-        seq: events.length,
+        seq: 0,
         event_type: 'log',
         source: msg.source as string,
         payload: JSON.stringify({ line: msg.line }),
@@ -77,8 +93,8 @@ export default function JobDetailPage() {
       }
       setEvents((prev) => [...prev, syntheticEvent])
     } else if (msg.type === 'phase') {
-      const phaseName = msg.phase as keyof PhaseMap
-      const phaseState = msg.state as 'idle' | 'running' | 'done' | 'error'
+      const phaseName = msg.phase as string
+      const phaseState = msg.state as PhaseState
       setPhases((prev) => ({ ...prev, [phaseName]: phaseState }))
     } else if (msg.type === 'queue') {
       // Refresh job status from queue state
@@ -88,9 +104,9 @@ export default function JobDetailPage() {
         setJob((prev) => prev ? { ...prev, status: matchingJob.status as JobSummary['status'] } : prev)
       }
     }
-  }, [id, events.length, job])
+  }, [id, job])
 
-  useWebSocket('ws://localhost:4200', handleMessage)
+  useWebSocket(WS_URL, handleMessage)
 
   async function handleCancel() {
     if (!id) return
@@ -196,7 +212,7 @@ export default function JobDetailPage() {
         </div>
 
         {/* Pipeline progress */}
-        <PipelineProgress phases={phases} />
+        <PipelineProgress phases={phases} phaseDefinitions={phaseDefinitions} />
       </div>
 
       {/* Log viewer */}

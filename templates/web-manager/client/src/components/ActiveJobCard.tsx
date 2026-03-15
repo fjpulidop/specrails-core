@@ -6,18 +6,13 @@ import { Card, CardContent } from './ui/card'
 import { Button } from './ui/button'
 import { Badge } from './ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import type { PhaseMap, QueueJob } from '../hooks/usePipeline'
-
-const PHASES: Array<{ key: keyof PhaseMap; label: string; description: string }> = [
-  { key: 'architect', label: 'Architect', description: 'Analyzes requirements and designs the solution approach' },
-  { key: 'developer', label: 'Developer', description: 'Implements the changes across all relevant files' },
-  { key: 'reviewer', label: 'Reviewer', description: 'Reviews the implementation for quality and correctness' },
-  { key: 'ship', label: 'Ship', description: 'Creates the PR and finalizes the changes' },
-]
+import type { PhaseMap, PhaseState, QueueJob } from '../hooks/usePipeline'
+import type { PhaseDefinition } from '../types'
 
 interface ActiveJobCardProps {
   activeJob: QueueJob | null
   phases: PhaseMap
+  phaseDefinitions: PhaseDefinition[]
 }
 
 function formatDuration(startedAt: string): string {
@@ -28,7 +23,7 @@ function formatDuration(startedAt: string): string {
   return mins > 0 ? `${mins}m ${remaining}s` : `${secs}s`
 }
 
-export function ActiveJobCard({ activeJob, phases }: ActiveJobCardProps) {
+export function ActiveJobCard({ activeJob, phases, phaseDefinitions }: ActiveJobCardProps) {
   const [elapsed, setElapsed] = useState<string>('')
 
   useEffect(() => {
@@ -85,45 +80,47 @@ export function ActiveJobCard({ activeJob, phases }: ActiveJobCardProps) {
         </div>
 
         {/* Pipeline phases */}
-        <div className="flex items-center gap-1">
-          {PHASES.map((phase, idx) => {
-            const state = phases[phase.key]
-            return (
-              <div key={phase.key} className="flex items-center">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div
-                      className="flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-default"
-                      style={{
-                        background: state === 'running' ? 'hsl(213 72% 59% / 0.15)'
-                          : state === 'done' ? 'hsl(142 71% 45% / 0.1)'
-                          : state === 'error' ? 'hsl(0 72% 51% / 0.1)'
-                          : 'transparent',
-                        color: state === 'running' ? 'hsl(213 72% 59%)'
-                          : state === 'done' ? 'hsl(142 71% 45%)'
-                          : state === 'error' ? 'hsl(0 72% 51%)'
-                          : 'hsl(215 20% 55%)',
-                      }}
-                    >
-                      {state === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-                      {state === 'done' && <CheckCircle2 className="w-2.5 h-2.5" />}
-                      {state === 'error' && <XCircle className="w-2.5 h-2.5" />}
-                      {state === 'idle' && <div className="w-2.5 h-2.5 rounded-full border border-current opacity-40" />}
-                      <span>{phase.label}</span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="font-medium">{phase.label}</p>
-                    <p className="text-muted-foreground max-w-[200px]">{phase.description}</p>
-                  </TooltipContent>
-                </Tooltip>
-                {idx < PHASES.length - 1 && (
-                  <div className="w-4 h-px bg-border mx-0.5" />
-                )}
-              </div>
-            )
-          })}
-        </div>
+        {phaseDefinitions.length > 0 && (
+          <div className="flex items-center gap-1">
+            {phaseDefinitions.map((phaseDef, idx) => {
+              const state: PhaseState = phases[phaseDef.key] ?? 'idle'
+              return (
+                <div key={phaseDef.key} className="flex items-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] cursor-default"
+                        style={{
+                          background: state === 'running' ? 'hsl(213 72% 59% / 0.15)'
+                            : state === 'done' ? 'hsl(142 71% 45% / 0.1)'
+                            : state === 'error' ? 'hsl(0 72% 51% / 0.1)'
+                            : 'transparent',
+                          color: state === 'running' ? 'hsl(213 72% 59%)'
+                            : state === 'done' ? 'hsl(142 71% 45%)'
+                            : state === 'error' ? 'hsl(0 72% 51%)'
+                            : 'hsl(215 20% 55%)',
+                        }}
+                      >
+                        {state === 'running' && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                        {state === 'done' && <CheckCircle2 className="w-2.5 h-2.5" />}
+                        {state === 'error' && <XCircle className="w-2.5 h-2.5" />}
+                        {state === 'idle' && <div className="w-2.5 h-2.5 rounded-full border border-current opacity-40" />}
+                        <span>{phaseDef.label}</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="font-medium">{phaseDef.label}</p>
+                      <p className="text-muted-foreground max-w-[200px]">{phaseDef.description}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  {idx < phaseDefinitions.length - 1 && (
+                    <div className="w-4 h-px bg-border mx-0.5" />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between">

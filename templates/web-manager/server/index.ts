@@ -3,7 +3,7 @@ import path from 'path'
 import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { WsMessage } from './types'
-import { createHooksRouter, getPhaseStates } from './hooks'
+import { createHooksRouter, getPhaseStates, getPhaseDefinitions } from './hooks'
 import { QueueManager, ClaudeNotFoundError, JobNotFoundError, JobAlreadyTerminalError } from './queue-manager'
 import { initDb, listJobs, getJob, getJobEvents, getStats } from './db'
 import { getConfig, fetchIssues } from './config'
@@ -69,6 +69,14 @@ function broadcast(msg: WsMessage): void {
 
 const queueManager = new QueueManager(broadcast, db)
 
+// Load commands so QueueManager can resolve per-command phase definitions
+try {
+  const initialConfig = getConfig(process.cwd(), db, projectName)
+  queueManager.setCommands(initialConfig.commands)
+} catch {
+  console.warn('[init] failed to load commands for phase resolution')
+}
+
 server.on('upgrade', (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (ws) => {
     wss.emit('connection', ws, request)
@@ -82,6 +90,7 @@ wss.on('connection', (ws: WebSocket) => {
     type: 'init',
     projectName,
     phases: getPhaseStates(),
+    phaseDefinitions: getPhaseDefinitions(),
     logBuffer: queueManager.getLogBuffer().slice(-500),
     recentJobs: listJobs(db, { limit: 10 }).jobs,
     queue: {
