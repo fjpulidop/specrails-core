@@ -5,7 +5,7 @@ import { WebSocketServer, WebSocket } from 'ws'
 import type { WsMessage } from './types'
 import { createHooksRouter, getPhaseStates, getPhaseDefinitions } from './hooks'
 import { QueueManager, ClaudeNotFoundError, JobNotFoundError, JobAlreadyTerminalError } from './queue-manager'
-import { initDb, listJobs, getJob, getJobEvents, getStats } from './db'
+import { initDb, listJobs, getJob, getJobEvents, getStats, purgeJobs } from './db'
 import { getConfig, fetchIssues } from './config'
 
 // Read package.json version once at startup
@@ -204,7 +204,19 @@ app.get('/api/jobs/:id', (req, res) => {
   const job = getJob(db, req.params.id)
   if (!job) { res.status(404).json({ error: 'Job not found' }); return }
   const events = getJobEvents(db, req.params.id)
-  res.json({ job, events })
+  const phaseDefinitions = queueManager.phasesForCommand(job.command)
+  res.json({ job, events, phaseDefinitions })
+})
+
+app.delete('/api/jobs', (req, res) => {
+  try {
+    const { from, to } = req.body ?? {}
+    const deleted = purgeJobs(db, { from, to })
+    res.json({ ok: true, deleted })
+  } catch (err) {
+    console.error('[purge] error:', err)
+    res.status(500).json({ error: 'Failed to purge jobs' })
+  }
 })
 
 app.get('/api/stats', (_req, res) => {

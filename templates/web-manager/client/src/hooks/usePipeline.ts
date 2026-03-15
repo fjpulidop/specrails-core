@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useWebSocket } from './useWebSocket'
+import { WS_URL } from '../lib/ws-url'
 import type { JobSummary, PhaseDefinition } from '../types'
 
 export type PhaseState = 'idle' | 'running' | 'done' | 'error'
@@ -33,9 +34,6 @@ const INITIAL_QUEUE: QueueState = {
   activeJobId: null,
   paused: false,
 }
-
-const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const WS_URL = `${wsProtocol}//${window.location.host}`
 
 export function usePipeline() {
   const [phaseDefinitions, setPhaseDefinitions] = useState<PhaseDefinition[]>([])

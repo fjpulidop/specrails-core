@@ -15,6 +15,11 @@ export interface JobSummary {
   total_cost_usd?: number | null
   duration_ms?: number | null
   model?: string | null
+  tokens_in?: number | null
+  tokens_out?: number | null
+  tokens_cache_read?: number | null
+  tokens_cache_create?: number | null
+  num_turns?: number | null
 }
 
 export interface EventRow {

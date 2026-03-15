@@ -3,8 +3,8 @@ import { createInterface } from 'readline'
 import { v4 as uuidv4 } from 'uuid'
 import treeKill from 'tree-kill'
 import type { WsMessage, LogMessage, Job, PhaseDefinition } from './types'
-import { resetPhases, setActivePhases } from './hooks'
-import { createJob, finishJob, appendEvent } from './db'
+import { resetPhases, setActivePhases, setPhaseState } from './hooks'
+import { createJob, finishJob, appendEvent, upsertPhase } from './db'
 import type { JobResult } from './db'
 import type { CommandInfo } from './config'
 
@@ -218,6 +218,10 @@ export class QueueManager {
     return [...this._logBuffer]
   }
 
+  phasesForCommand(command: string): PhaseDefinition[] {
+    return this._phasesForCommand(command)
+  }
+
   // ─── Private methods ────────────────────────────────────────────────────────
 
   private _phasesForCommand(command: string): PhaseDefinition[] {
@@ -251,6 +255,12 @@ export class QueueManager {
     const commandPhases = this._phasesForCommand(job.command)
     if (commandPhases.length > 0) {
       setActivePhases(commandPhases, this._broadcast)
+      // Auto-start the first phase when the job begins
+      const firstPhase = commandPhases[0].key
+      setPhaseState(firstPhase, 'running', this._broadcast)
+      if (this._db) {
+        upsertPhase(this._db, jobId, firstPhase, 'running')
+      }
     } else {
       resetPhases(this._broadcast)
     }
@@ -417,6 +427,15 @@ export class QueueManager {
       emitLine('stdout', `[process exited with code ${code ?? 'unknown'}${costStr}]`)
     } else {
       emitLine('stdout', `[process exited with code ${code ?? 'unknown'}]`)
+    }
+
+    // Auto-complete phases based on exit status
+    const commandPhases = this._phasesForCommand(job.command)
+    if (commandPhases.length > 0) {
+      const phaseState = finalStatus === 'completed' ? 'done' : finalStatus === 'canceled' ? 'idle' : 'error'
+      for (const phase of commandPhases) {
+        setPhaseState(phase.key, phaseState, this._broadcast)
+      }
     }
 
     this._broadcastQueueState()

@@ -1,27 +1,64 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
 @theme inline {
-  --color-background: hsl(222 84% 5%);
-  --color-foreground: hsl(210 40% 98%);
-  --color-card: hsl(222 84% 7%);
-  --color-card-foreground: hsl(210 40% 98%);
-  --color-popover: hsl(222 84% 6%);
-  --color-popover-foreground: hsl(210 40% 98%);
-  --color-primary: hsl(210 40% 98%);
-  --color-primary-foreground: hsl(222 84% 5%);
-  --color-secondary: hsl(217 33% 17%);
-  --color-secondary-foreground: hsl(210 40% 98%);
-  --color-muted: hsl(217 33% 17%);
-  --color-muted-foreground: hsl(215 20% 55%);
-  --color-accent: hsl(217 33% 20%);
-  --color-accent-foreground: hsl(210 40% 98%);
-  --color-destructive: hsl(0 72% 51%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(217 33% 17%);
-  --color-input: hsl(217 33% 17%);
-  --color-ring: hsl(212 72% 59%);
-  --radius: 0.5rem;
+  --color-background: hsl(231 15% 18%);
+  --color-background-darker: hsl(234 16% 14%);
+  --color-foreground: hsl(60 30% 96%);
+  --color-card: hsl(232 14% 31%);
+  --color-card-foreground: hsl(60 30% 96%);
+  --color-popover: hsl(232 14% 24%);
+  --color-popover-foreground: hsl(60 30% 96%);
+  --color-primary: hsl(265 89% 78%);
+  --color-primary-foreground: hsl(231 15% 18%);
+  --color-secondary: hsl(326 100% 74%);
+  --color-secondary-foreground: hsl(231 15% 18%);
+  --color-muted: hsl(232 14% 31%);
+  --color-muted-foreground: hsl(225 27% 51%);
+  --color-accent: hsl(232 14% 24%);
+  --color-accent-foreground: hsl(60 30% 96%);
+  --color-destructive: hsl(0 100% 67%);
+  --color-destructive-foreground: hsl(60 30% 96%);
+  --color-border: hsl(225 27% 35%);
+  --color-input: hsl(232 14% 24%);
+  --color-ring: hsl(265 89% 78%);
+  --radius: 0.75rem;
+
+  /* Dracula semantic color tokens */
+  --color-dracula-purple: hsl(265 89% 78%);
+  --color-dracula-cyan: hsl(191 97% 77%);
+  --color-dracula-green: hsl(135 94% 65%);
+  --color-dracula-pink: hsl(326 100% 74%);
+  --color-dracula-orange: hsl(31 100% 71%);
+  --color-dracula-red: hsl(0 100% 67%);
+  --color-dracula-yellow: hsl(65 92% 76%);
+  --color-dracula-comment: hsl(225 27% 51%);
+  --color-dracula-current: hsl(232 14% 31%);
+  --color-dracula-darker: hsl(234 16% 14%);
+}
+
+:root {
+  /* Raw HSL values for use in glass/gradient/glow utilities */
+  --dracula-bg: 231 15% 18%;
+  --dracula-darker: 234 16% 14%;
+  --dracula-current: 232 14% 31%;
+  --dracula-fg: 60 30% 96%;
+  --dracula-comment: 225 27% 51%;
+  --dracula-cyan: 191 97% 77%;
+  --dracula-green: 135 94% 65%;
+  --dracula-orange: 31 100% 71%;
+  --dracula-pink: 326 100% 74%;
+  --dracula-purple: 265 89% 78%;
+  --dracula-red: 0 100% 67%;
+  --dracula-yellow: 65 92% 76%;
+
+  --gradient-primary: linear-gradient(135deg, hsl(265 89% 78%), hsl(326 100% 74%));
+  --gradient-primary-hover: linear-gradient(135deg, hsl(265 89% 72%), hsl(326 100% 68%));
+
+  --glass-bg: 232 14% 31% / 0.3;
+  --glass-border: 225 27% 51% / 0.3;
 }
 
 @layer base {
@@ -29,13 +66,14 @@
   *::before,
   *::after {
     box-sizing: border-box;
+    border-color: hsl(var(--dracula-comment) / 0.3);
   }
 
   body {
-    background-color: hsl(222 84% 5%);
-    color: hsl(210 40% 98%);
-    font-family: 'DM Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace;
-    font-size: 13px;
+    background-color: hsl(var(--dracula-bg));
+    color: hsl(var(--dracula-fg));
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
     line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -48,34 +86,99 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: hsl(222 84% 5%);
+    background: hsl(var(--dracula-bg));
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(217 33% 25%);
+    background: hsl(var(--dracula-comment) / 0.4);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(217 33% 35%);
+    background: hsl(var(--dracula-comment) / 0.6);
+  }
+}
+
+@layer components {
+  .font-mono {
+    font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+  }
+
+  .glass-card {
+    background: hsl(var(--glass-bg));
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--glass-border));
+    border-radius: 0.75rem;
+    transition: all 300ms;
+  }
+
+  .glass-card:hover {
+    border-color: hsl(var(--dracula-comment) / 0.6);
+  }
+
+  .gradient-text {
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .gradient-btn {
+    background: var(--gradient-primary);
+    color: hsl(var(--dracula-bg));
+    font-weight: 600;
+    transition: all 300ms;
+  }
+
+  .gradient-btn:hover {
+    background: var(--gradient-primary-hover);
+    box-shadow: 0 0 30px hsl(var(--dracula-purple) / 0.3);
+  }
+
+  .glow-purple { box-shadow: 0 0 20px hsl(var(--dracula-purple) / 0.2); }
+  .glow-cyan { box-shadow: 0 0 20px hsl(var(--dracula-cyan) / 0.2); }
+  .glow-green { box-shadow: 0 0 20px hsl(var(--dracula-green) / 0.2); }
+  .glow-pink { box-shadow: 0 0 20px hsl(var(--dracula-pink) / 0.2); }
+  .glow-orange { box-shadow: 0 0 20px hsl(var(--dracula-orange) / 0.2); }
+  .glow-red { box-shadow: 0 0 20px hsl(var(--dracula-red) / 0.2); }
+
+  .terminal {
+    background-color: hsl(var(--dracula-darker));
+    border: 1px solid hsl(var(--glass-border));
+    border-radius: 0.75rem;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+
+  .terminal ::-webkit-scrollbar {
+    width: 6px;
+  }
+  .terminal ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .terminal ::-webkit-scrollbar-thumb {
+    background: hsl(var(--dracula-comment) / 0.4);
+    border-radius: 3px;
+  }
+  .terminal ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--dracula-comment) / 0.6);
   }
 }
 
 /* Log viewer markdown tables */
 .prose table {
   border-collapse: collapse;
-  border: 1px solid hsl(217 33% 17%);
+  border: 1px solid hsl(var(--dracula-comment) / 0.3);
   border-radius: 0.375rem;
   overflow: hidden;
   width: 100%;
 }
 
 .prose thead tr {
-  background: hsl(217 33% 12%);
+  background: hsl(var(--dracula-current));
 }
 
 .prose tbody tr:nth-child(even) {
-  background: hsl(217 33% 9%);
+  background: hsl(var(--dracula-darker));
 }
 
 .prose tbody tr:nth-child(odd) {
@@ -84,5 +187,5 @@
 
 .prose th,
 .prose td {
-  border: 1px solid hsl(217 33% 17%);
+  border: 1px solid hsl(var(--dracula-comment) / 0.3);
 }

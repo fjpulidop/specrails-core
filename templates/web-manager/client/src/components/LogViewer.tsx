@@ -146,7 +146,7 @@ export function LogViewer({ events, isLoading }: LogViewerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Filter bar */}
-      <div className="px-4 py-2 border-b border-border flex items-center gap-2">
+      <div className="px-4 py-2 border-b border-border/30 flex items-center gap-2">
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
           <Input
@@ -164,11 +164,11 @@ export function LogViewer({ events, isLoading }: LogViewerProps) {
       {/* Log content */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto p-2 text-xs relative"
+        className="terminal flex-1 overflow-y-auto p-2 text-xs relative"
         onScroll={handleScroll}
       >
         {filtered.map((line, idx) => (
-          <LogLine key={line.id} line={line} even={idx % 2 === 0} />
+          <LogLine key={line.id} line={line} rowIdx={idx} />
         ))}
         <div ref={bottomRef} />
       </div>
@@ -189,16 +189,18 @@ export function LogViewer({ events, isLoading }: LogViewerProps) {
   )
 }
 
-const LogLine = memo(function LogLine({ line, even }: { line: FormattedLine; even: boolean }) {
+const LogLine = memo(function LogLine({ line, rowIdx }: { line: FormattedLine; rowIdx: number }) {
   const isMarkdown = line.type === 'assistant'
+  const isPhaseEntry = line.type === 'phase'
+  const isResultEntry = line.type === 'result'
 
   return (
     <div
       className={cn(
         'flex items-start gap-2 group px-2 py-1 rounded-sm',
-        even ? 'bg-muted/20' : 'bg-transparent',
-        line.type === 'phase' && 'bg-primary/5 border-l-2 border-primary/40 mt-3 mb-1 py-2',
-        line.type === 'result' && 'bg-emerald-500/5 border-l-2 border-emerald-500/40 mt-2 py-2',
+        rowIdx % 2 === 0 ? 'bg-dracula-current/10' : 'bg-transparent',
+        isPhaseEntry && 'bg-primary/5 border-l-2 border-primary/40 mt-3 mb-1 py-2',
+        isResultEntry && 'bg-dracula-green/5 border-l-2 border-dracula-green/40 mt-2 py-2',
       )}
     >
       {line.timestamp && (
@@ -218,15 +220,15 @@ const LogLine = memo(function LogLine({ line, even }: { line: FormattedLine; eve
             prose-p:my-1 prose-p:leading-relaxed
             prose-headings:mt-2 prose-headings:mb-1 prose-headings:text-sm prose-headings:font-semibold
             prose-ul:my-1 prose-ol:my-1 prose-li:my-0
-            prose-code:text-cyan-300 prose-code:text-[11px] prose-code:bg-muted/40 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-            prose-pre:my-1 prose-pre:bg-muted/30 prose-pre:rounded-md prose-pre:p-2 prose-pre:text-[11px]
+            prose-code:text-dracula-cyan prose-code:text-[11px] prose-code:bg-dracula-current/40 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
+            prose-pre:my-1 prose-pre:bg-dracula-darker prose-pre:rounded-md prose-pre:p-2 prose-pre:text-[11px]
             prose-strong:text-foreground prose-em:text-foreground/70
-            prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline
+            prose-a:text-dracula-purple prose-a:no-underline hover:prose-a:underline
             prose-table:my-2 prose-table:text-[11px]
-            prose-thead:border-border prose-thead:bg-muted/30
+            prose-thead:border-border/30 prose-thead:bg-dracula-current
             prose-th:px-3 prose-th:py-1.5 prose-th:text-left prose-th:font-semibold prose-th:text-foreground/90
-            prose-td:px-3 prose-td:py-1.5 prose-td:border-border
-            prose-tr:border-border
+            prose-td:px-3 prose-td:py-1.5 prose-td:border-border/30
+            prose-tr:border-border/30
             text-foreground/80"
         >
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{line.content}</ReactMarkdown>
@@ -236,9 +238,9 @@ const LogLine = memo(function LogLine({ line, even }: { line: FormattedLine; eve
           className={cn(
             'flex-1 break-all leading-relaxed whitespace-pre-wrap font-mono',
             line.type === 'phase' && 'text-foreground font-semibold text-[13px]',
-            line.type === 'tool-use' && 'text-cyan-400/80 text-[11px]',
-            line.type === 'stderr' && 'text-orange-400',
-            line.type === 'result' && 'text-emerald-400 font-medium',
+            line.type === 'tool-use' && 'text-dracula-cyan/80 text-[11px]',
+            line.type === 'stderr' && 'text-dracula-orange',
+            line.type === 'result' && 'text-dracula-green font-medium',
             line.type === 'log' && 'text-foreground/60',
             line.type === 'plain' && 'text-foreground/70',
             line.type === 'tool-result' && 'text-muted-foreground/50'

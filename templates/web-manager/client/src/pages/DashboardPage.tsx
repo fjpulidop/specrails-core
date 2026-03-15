@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { usePipeline } from '../hooks/usePipeline'
-import { ActiveJobCard } from '../components/ActiveJobCard'
 import { CommandGrid } from '../components/CommandGrid'
 import { RecentJobs } from '../components/RecentJobs'
+import { JobDetailModal } from '../components/JobDetailModal'
 import { ImplementWizard } from '../components/ImplementWizard'
 import { BatchImplementWizard } from '../components/BatchImplementWizard'
 import type { CommandInfo, JobSummary } from '../types'
 
 export default function DashboardPage() {
-  const { phases, phaseDefinitions, queueState, recentJobs } = usePipeline()
+  const { recentJobs } = usePipeline()
+  const { id: routeJobId } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [commands, setCommands] = useState<CommandInfo[]>([])
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
   const [wizardOpen, setWizardOpen] = useState<string | null>(null)
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(routeJobId ?? null)
+
+  // Sync route param to modal state
+  useEffect(() => {
+    setSelectedJobId(routeJobId ?? null)
+  }, [routeJobId])
 
   // Load commands from config
   useEffect(() => {
@@ -39,7 +48,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function refreshJobs() {
       try {
-        const res = await fetch('/api/jobs?limit=10')
+        const res = await fetch('/api/jobs?limit=50')
         if (!res.ok) return
         const data = await res.json() as { jobs: JobSummary[] }
         setJobs(data.jobs)
@@ -53,22 +62,32 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Find active job from queue state
-  const activeJob = queueState.jobs.find((j) => j.id === queueState.activeJobId) ?? null
+  async function handleJobsCleared() {
+    try {
+      const res = await fetch('/api/jobs?limit=50')
+      if (!res.ok) return
+      const data = await res.json() as { jobs: JobSummary[] }
+      setJobs(data.jobs)
+    } catch {
+      // ignore
+    }
+  }
+
+  function handleOpenJob(jobId: string) {
+    setSelectedJobId(jobId)
+    navigate(`/jobs/${jobId}`, { replace: true })
+  }
+
+  function handleCloseJob() {
+    setSelectedJobId(null)
+    navigate('/', { replace: true })
+  }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      {/* Active Job */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Active Job
-        </h2>
-        <ActiveJobCard activeJob={activeJob} phases={phases} phaseDefinitions={phaseDefinitions} />
-      </section>
-
+    <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
       {/* Commands */}
       <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+        <h2 className="text-xs font-semibold gradient-text uppercase tracking-wider mb-3">
           Commands
         </h2>
         <CommandGrid
@@ -77,12 +96,17 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* Recent Jobs */}
+      {/* Jobs */}
       <section>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Recent Jobs
+          Jobs
         </h2>
-        <RecentJobs jobs={jobs} isLoading={isLoadingJobs} />
+        <RecentJobs
+          jobs={jobs}
+          isLoading={isLoadingJobs}
+          onJobsCleared={handleJobsCleared}
+          onOpenJob={handleOpenJob}
+        />
       </section>
 
       {/* Wizards */}
@@ -94,6 +118,11 @@ export default function DashboardPage() {
         open={wizardOpen === 'batch-implement'}
         onClose={() => setWizardOpen(null)}
       />
+
+      {/* Job detail modal */}
+      {selectedJobId && (
+        <JobDetailModal jobId={selectedJobId} onClose={handleCloseJob} />
+      )}
     </div>
   )
 }

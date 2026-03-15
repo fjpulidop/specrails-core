@@ -63,6 +63,22 @@ export function setActivePhases(
   }
 }
 
+export function setPhaseState(
+  phase: string,
+  state: PhaseState,
+  broadcast: (msg: WsMessage) => void
+): void {
+  if (activePhaseKeys.includes(phase)) {
+    phases[phase] = state
+    broadcast({
+      type: 'phase',
+      phase,
+      state,
+      timestamp: new Date().toISOString(),
+    })
+  }
+}
+
 export function resetPhases(broadcast: (msg: WsMessage) => void): void {
   for (const key of activePhaseKeys) {
     phases[key] = 'idle'
