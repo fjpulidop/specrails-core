@@ -74,7 +74,7 @@ curl -sf http://127.0.0.1:4200/api/state >/dev/null 2>&1
 ```
 
 - If reachable: set `WEB_MANAGER=true`. Print: `| Pipeline Monitor | ok | http://127.0.0.1:4200 |`
-- If not reachable: set `WEB_MANAGER=false`. Print: `| Pipeline Monitor | off | start with: cd .claude/web-manager && npm run dev |`
+- If not reachable: set `WEB_MANAGER=false`. Print: `| Pipeline Monitor | off | start with: cd specrails/web-manager && npm run dev |`
 
 **Web Manager notification helper:** Throughout this pipeline, use the following pattern to notify the web manager of phase transitions. Always fire-and-forget — never let a notification failure block the pipeline.
 

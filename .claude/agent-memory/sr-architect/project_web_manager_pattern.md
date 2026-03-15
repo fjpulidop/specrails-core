@@ -27,9 +27,11 @@ Claude Code hooks POST to `http://localhost:3001/hooks/events`. Payload: `{ even
 
 Hook setup in target repos is manual (documented in web/README.md). MVP does not auto-configure hooks.
 
-## Single-spawn constraint
+## Single-spawn constraint (pre-job-queueing)
 
-Only one `claude` process active at a time. Concurrent spawn attempts return HTTP 409. This is a design constraint, not a technical limitation — sequential pipeline commands are the valid use case.
+Only one `claude` process active at a time. This is a design constraint, not a technical limitation — sequential pipeline commands are the valid use case.
+
+**After job-queueing (#59):** Concurrent spawn attempts no longer return 409. Commands are queued and auto-started sequentially. The constraint is preserved (one running process), but the rejection is replaced with a queue. See `web_manager_queue_patterns.md`.
 
 ## `--dangerously-skip-permissions` per-spawn
 

@@ -177,6 +177,30 @@ generate_manifest() {
     artifacts_json="${artifacts_json}
     \"commands/setup.md\": \"${setup_checksum}\""
 
+    # Include prompts/
+    if [[ -d "$SCRIPT_DIR/prompts" ]]; then
+        while IFS= read -r -d '' filepath; do
+            local relpath
+            relpath="prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
+            local checksum
+            checksum="sha256:$(shasum -a 256 "$filepath" | awk '{print $1}')"
+            artifacts_json="${artifacts_json},
+    \"${relpath}\": \"${checksum}\""
+        done < <(find "$SCRIPT_DIR/prompts" -type f -print0 | sort -z)
+    fi
+
+    # Include .claude/skills/
+    if [[ -d "$SCRIPT_DIR/.claude/skills" ]]; then
+        while IFS= read -r -d '' filepath; do
+            local relpath
+            relpath=".claude/skills/${filepath#"$SCRIPT_DIR/.claude/skills/"}"
+            local checksum
+            checksum="sha256:$(shasum -a 256 "$filepath" | awk '{print $1}')"
+            artifacts_json="${artifacts_json},
+    \"${relpath}\": \"${checksum}\""
+        done < <(find "$SCRIPT_DIR/.claude/skills" -type f -print0 | sort -z)
+    fi
+
     cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
 {
   "version": "${version}",
@@ -510,43 +534,62 @@ except Exception:
         fi
     done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
 
-    # Update prompts (selective)
+    # Update prompts (selective — uses manifest checksums)
     if [[ -d "$SCRIPT_DIR/prompts" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]]; then
         while IFS= read -r -d '' filepath; do
             local relpath
             relpath="prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
-            local dest="$REPO_ROOT/.claude/setup-templates/prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
 
-            # Prompts aren't in manifest yet — compare directly with destination
-            if [[ ! -f "$dest" ]] || ! diff -q "$filepath" "$dest" &>/dev/null; then
+            if _file_changed "$filepath" "$relpath"; then
+                local dest="$REPO_ROOT/.claude/setup-templates/prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
                 mkdir -p "$(dirname "$dest")"
                 cp "$filepath" "$dest"
-                if [[ ! -f "$dest" ]]; then
-                    info "New prompt: $relpath"
+
+                local manifest_checksum
+                manifest_checksum="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get(sys.argv[2], ''))
+except Exception:
+    print('')
+" "$manifest_file" "$relpath" 2>/dev/null || echo "")"
+                if [[ -z "$manifest_checksum" ]]; then
+                    info "New: $relpath"
                     ((added_count++))
                 else
-                    info "Changed prompt: $relpath"
+                    info "Changed: $relpath"
                     ((updated_count++))
                 fi
             fi
         done < <(find "$SCRIPT_DIR/prompts" -type f -print0 | sort -z)
     fi
 
-    # Update skills (selective)
+    # Update skills (selective — uses manifest checksums)
     if [[ -d "$SCRIPT_DIR/.claude/skills" ]] && [[ -n "$(ls -A "$SCRIPT_DIR/.claude/skills" 2>/dev/null)" ]]; then
         while IFS= read -r -d '' filepath; do
             local relpath
             relpath=".claude/skills/${filepath#"$SCRIPT_DIR/.claude/skills/"}"
-            local dest="$REPO_ROOT/$relpath"
 
-            if [[ ! -f "$dest" ]] || ! diff -q "$filepath" "$dest" &>/dev/null; then
+            if _file_changed "$filepath" "$relpath"; then
+                local dest="$REPO_ROOT/$relpath"
                 mkdir -p "$(dirname "$dest")"
                 cp "$filepath" "$dest"
-                if [[ ! -f "$dest" ]]; then
-                    info "New skill: $relpath"
+
+                local manifest_checksum
+                manifest_checksum="$(python3 -c "
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+    print(data['artifacts'].get(sys.argv[2], ''))
+except Exception:
+    print('')
+" "$manifest_file" "$relpath" 2>/dev/null || echo "")"
+                if [[ -z "$manifest_checksum" ]]; then
+                    info "New: $relpath"
                     ((added_count++))
                 else
-                    info "Changed skill: $relpath"
+                    info "Changed: $relpath"
                     ((updated_count++))
                 fi
             fi
@@ -563,7 +606,7 @@ except Exception:
 do_web_manager() {
     step "Updating web manager (Pipeline Monitor)"
 
-    local web_manager_dir="$REPO_ROOT/.claude/web-manager"
+    local web_manager_dir="$REPO_ROOT/specrails/web-manager"
     local source_dir="$SCRIPT_DIR/templates/web-manager"
     local has_npm=false
     if command -v npm &>/dev/null; then
@@ -612,7 +655,7 @@ do_web_manager() {
                 (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
                     ok "Server dependencies updated"
                 } || {
-                    warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+                    warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
                 }
             fi
             if [[ "$needs_client_install" == true ]]; then
@@ -620,32 +663,32 @@ do_web_manager() {
                 (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
                     ok "Client dependencies updated"
                 } || {
-                    warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+                    warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
                 }
             fi
         elif [[ "$needs_server_install" == true ]] || [[ "$needs_client_install" == true ]]; then
-            warn "npm not found — package.json changed but cannot install. Run 'cd .claude/web-manager && npm install' manually."
+            warn "npm not found — package.json changed but cannot install. Run 'cd specrails/web-manager && npm install' manually."
         fi
     else
         # Not installed — full install
         mkdir -p "$web_manager_dir"
         cp -r "$source_dir/"* "$web_manager_dir/"
-        ok "Installed web manager to .claude/web-manager/"
+        ok "Installed web manager to specrails/web-manager/"
 
         if [[ "$has_npm" == true ]]; then
             info "Installing web manager dependencies..."
             (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
                 ok "Server dependencies installed"
             } || {
-                warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+                warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
             }
             (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
                 ok "Client dependencies installed"
             } || {
-                warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+                warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
             }
         else
-            warn "npm not available — skipping dependency install. Run 'cd .claude/web-manager && npm install' later."
+            warn "npm not available — skipping dependency install. Run 'cd specrails/web-manager && npm install' later."
         fi
     fi
 }

@@ -70,6 +70,18 @@ Never combine template and instance paths in a single grep for placeholder-clean
 
 ---
 
+## API response field name mismatch between server and client (mock-masked bug)
+
+**Pattern:** A server returns `{ jobId }` from an endpoint, but the client parses `{ processId }`. The unit test uses a hand-rolled mock that returns `{ processId }` to match the client's _expectation_, so all tests pass but the production integration is broken.
+
+**Root cause (2026-03-15):** `/api/spawn` in `server/index.ts` returns `{ jobId, position }`. `cli/srm.ts` parsed `{ processId }` — undefined in production. Log filtering silently passed no lines, and `/api/jobs/undefined` returned 404.
+
+**How to detect:** When reviewing CLI/client code that calls internal API endpoints, always cross-reference the exact field names used in both the server response (`res.json(...)`) and the client parse (`JSON.parse(...) as { field }`). The mock in tests should mirror the real server response exactly — if the mock returns different field names than the server, it is hiding an API contract bug.
+
+**Fix pattern:** Accept both `jobId` and legacy `processId` during the transition, then remove the fallback once all callers are updated.
+
+---
+
 ## find -name '*[A-Z]*' on macOS matches lowercase .md extensions
 
 **Pattern:** On macOS with certain locale settings, `find -name '*[A-Z]*'` matches filenames like `reviewer.md` because the character range `[A-Z]` can match lowercase letters or punctuation under the default locale.
