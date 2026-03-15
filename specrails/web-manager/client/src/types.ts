@@ -1,5 +1,11 @@
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
 
+export interface PhaseDefinition {
+  key: string
+  label: string
+  description: string
+}
+
 export interface JobSummary {
   id: string
   command: string
@@ -9,6 +15,11 @@ export interface JobSummary {
   total_cost_usd?: number | null
   duration_ms?: number | null
   model?: string | null
+  tokens_in?: number | null
+  tokens_out?: number | null
+  tokens_cache_read?: number | null
+  tokens_cache_create?: number | null
+  num_turns?: number | null
 }
 
 export interface EventRow {

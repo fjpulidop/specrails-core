@@ -13,7 +13,7 @@ export function RootLayout() {
 
   return (
     <TooltipProvider delayDuration={400}>
-      <div className="flex flex-col h-screen overflow-hidden bg-background">
+      <div className="flex flex-col h-screen overflow-hidden bg-background font-sans">
         <Navbar />
         <div className="flex flex-1 overflow-hidden">
           <main className="flex-1 overflow-auto">
@@ -28,7 +28,7 @@ export function RootLayout() {
         theme="dark"
         toastOptions={{
           classNames: {
-            toast: 'bg-card border border-border text-foreground text-xs',
+            toast: 'glass-card border border-border/30 text-foreground text-xs',
             description: 'text-muted-foreground',
           },
         }}
