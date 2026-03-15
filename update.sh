@@ -251,7 +251,7 @@ else
 fi
 
 # Content-aware up-to-date check (skip for legacy migrations and agent-only runs)
-if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$FORCE_UPDATE" == false ]]; then
+if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$UPDATE_COMPONENT" != "web-manager" ]] && [[ "$FORCE_UPDATE" == false ]]; then
     # Same version — check if any template content has actually changed
     local_manifest="$REPO_ROOT/.specrails-manifest.json"
     HAS_CHANGES=false
@@ -621,7 +621,7 @@ do_web_manager() {
     if [[ -d "$web_manager_dir" ]]; then
         # Already installed — check for actual changes (excluding node_modules)
         local wm_changes
-        wm_changes="$(diff -rq --exclude='node_modules' --exclude='.DS_Store' "$source_dir" "$web_manager_dir" 2>/dev/null || true)"
+        wm_changes="$(diff -rq --exclude='node_modules' --exclude='.DS_Store' --exclude='package-lock.json' --exclude='data' --exclude='.env' --exclude='.gitignore' --exclude='dist' --exclude='*.db' "$source_dir" "$web_manager_dir" 2>/dev/null || true)"
 
         if [[ -z "$wm_changes" ]]; then
             ok "Web manager unchanged — skipping"
@@ -632,7 +632,15 @@ do_web_manager() {
         wm_changed_count="$(echo "$wm_changes" | wc -l | tr -d ' ')"
         info "${wm_changed_count} web manager file(s) changed — syncing"
 
-        rsync -a --delete --exclude='node_modules' \
+        rsync -a --delete \
+            --exclude='node_modules' \
+            --exclude='package-lock.json' \
+            --exclude='data' \
+            --exclude='.env' \
+            --exclude='.gitignore' \
+            --exclude='dist' \
+            --exclude='*.db' \
+            --exclude='.DS_Store' \
             "$source_dir/" "$web_manager_dir/"
         ok "Synced web manager files (node_modules preserved)"
 
