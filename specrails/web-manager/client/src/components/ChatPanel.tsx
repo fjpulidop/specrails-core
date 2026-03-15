@@ -31,7 +31,7 @@ export function ChatPanel({ chat }: ChatPanelProps) {
   if (!isPanelOpen) {
     return (
       <div
-        className="flex w-10 shrink-0 cursor-pointer flex-col items-center border-l border-border/30 bg-background/80 backdrop-blur-sm pt-8"
+        className="flex w-10 shrink-0 cursor-pointer flex-col items-center border-l border-border/30 bg-background/80 backdrop-blur-sm pt-6"
         onClick={togglePanel}
         title="Open chat"
       >
