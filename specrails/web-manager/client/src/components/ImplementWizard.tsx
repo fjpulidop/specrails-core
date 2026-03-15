@@ -63,39 +63,32 @@ export function ImplementWizard({ open, onClose }: ImplementWizardProps) {
   }
 
   async function handleSubmit() {
-    const commands: string[] = []
+    let command: string
 
     if (state.path === 'from-issues') {
       if (state.selectedIssues.length === 0) {
         toast.error('Please select at least one issue')
         return
       }
-      for (const issue of state.selectedIssues) {
-        commands.push(`/sr:implement #${issue}`)
-      }
+      command = `/sr:implement ${state.selectedIssues.map((n) => `#${n}`).join(' ')}`
     } else {
       if (!state.freeFormTitle.trim()) {
         toast.error('Please enter a feature title')
         return
       }
       const desc = state.freeFormDescription.trim()
-      commands.push(`/sr:implement ${state.freeFormTitle.trim()}${desc ? `\n\n${desc}` : ''}`)
+      command = `/sr:implement ${state.freeFormTitle.trim()}${desc ? `\n\n${desc}` : ''}`
     }
 
     try {
-      for (const command of commands) {
-        const res = await fetch('/api/spawn', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ command }),
-        })
-        const data = await res.json() as { jobId?: string; error?: string }
-        if (!res.ok) throw new Error(data.error ?? 'Failed to queue job')
-      }
-      toast.success(
-        commands.length === 1 ? 'Job queued' : `${commands.length} jobs queued`,
-        { description: commands.join(', ') }
-      )
+      const res = await fetch('/api/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command }),
+      })
+      const data = await res.json() as { jobId?: string; error?: string }
+      if (!res.ok) throw new Error(data.error ?? 'Failed to queue job')
+      toast.success('Job queued', { description: command })
       handleClose()
     } catch (err) {
       toast.error('Failed to queue job', { description: (err as Error).message })
