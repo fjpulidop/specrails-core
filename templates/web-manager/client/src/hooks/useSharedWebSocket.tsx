@@ -27,50 +27,57 @@ export function SharedWebSocketProvider({ url, children }: { url: string; childr
   const retryCountRef = useRef(0)
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const connect = useCallback(() => {
-    const ws = new WebSocket(url)
-    wsRef.current = ws
-    setConnectionStatus('connecting')
-
-    ws.onopen = () => {
-      retryCountRef.current = 0
-      setConnectionStatus('connected')
-    }
-
-    ws.onmessage = (event) => {
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(event.data as string)
-      } catch {
-        return
-      }
-      // Fan-out to all registered handlers
-      for (const handler of handlers.current.values()) {
-        handler(parsed)
-      }
-    }
-
-    ws.onclose = () => {
-      wsRef.current = null
-      const attempt = retryCountRef.current
-      if (attempt >= BACKOFF_DELAYS.length) {
-        setConnectionStatus('disconnected')
-        return
-      }
-      setConnectionStatus('connecting')
-      const delay = BACKOFF_DELAYS[attempt]
-      retryCountRef.current += 1
-      retryTimeoutRef.current = setTimeout(connect, delay)
-    }
-  }, [url])
-
   useEffect(() => {
+    let disposed = false
+
+    function connect() {
+      if (disposed) return
+      const ws = new WebSocket(url)
+      wsRef.current = ws
+      setConnectionStatus('connecting')
+
+      ws.onopen = () => {
+        if (disposed) { ws.close(); return }
+        retryCountRef.current = 0
+        setConnectionStatus('connected')
+      }
+
+      ws.onmessage = (event) => {
+        if (disposed) return
+        let parsed: unknown
+        try {
+          parsed = JSON.parse(event.data as string)
+        } catch {
+          return
+        }
+        // Fan-out to all registered handlers
+        for (const handler of handlers.current.values()) {
+          handler(parsed)
+        }
+      }
+
+      ws.onclose = () => {
+        if (disposed) return
+        wsRef.current = null
+        const attempt = retryCountRef.current
+        if (attempt >= BACKOFF_DELAYS.length) {
+          setConnectionStatus('disconnected')
+          return
+        }
+        setConnectionStatus('connecting')
+        const delay = BACKOFF_DELAYS[attempt]
+        retryCountRef.current += 1
+        retryTimeoutRef.current = setTimeout(connect, delay)
+      }
+    }
+
     connect()
     return () => {
+      disposed = true
       if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current)
       wsRef.current?.close()
     }
-  }, [connect])
+  }, [url])
 
   const registerHandler = useCallback((id: string, fn: (msg: unknown) => void) => {
     handlers.current.set(id, fn)
