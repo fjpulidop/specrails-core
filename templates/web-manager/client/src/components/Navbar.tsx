@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Settings, ExternalLink, Activity, LayoutDashboard, BarChart3 } from 'lucide-react'
+import { Settings, ExternalLink, LayoutDashboard, BarChart3 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
@@ -11,8 +11,7 @@ export function Navbar() {
         to="/"
         className="flex items-center gap-2 text-foreground hover:text-foreground/80 transition-colors"
       >
-        <Activity className="w-4 h-4 text-blue-400" />
-        <span className="font-semibold text-sm tracking-tight">specrails</span>
+        <span className="font-mono text-sm font-bold"><span className="text-dracula-purple">spec</span><span className="text-dracula-pink">rails</span></span>
         <span className="text-muted-foreground text-xs font-normal">/ manager</span>
       </NavLink>
 
