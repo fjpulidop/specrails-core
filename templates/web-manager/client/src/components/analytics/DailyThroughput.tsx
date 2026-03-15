@@ -81,8 +81,8 @@ export function DailyThroughput({ data }: DailyThroughputProps) {
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend formatter={(v: string) => <span className="text-xs capitalize">{v}</span>} />
-          <Bar dataKey="completed" name="Completed" stackId="a" fill={DRACULA.green} />
-          <Bar dataKey="failed"    name="Failed"    stackId="a" fill={DRACULA.red} />
+          <Bar dataKey="completed" name="Completed" stackId="a" fill={DRACULA.purple} />
+          <Bar dataKey="failed"    name="Failed"    stackId="a" fill={DRACULA.pink} />
           <Bar dataKey="canceled"  name="Canceled"  stackId="a" fill={DRACULA.orange} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
