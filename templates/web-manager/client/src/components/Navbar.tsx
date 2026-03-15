@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Settings, ExternalLink, LayoutDashboard, BarChart3 } from 'lucide-react'
+import { Settings, BookOpen, LayoutDashboard, BarChart3 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
@@ -53,15 +53,15 @@ export function Navbar() {
         <Tooltip>
           <TooltipTrigger asChild>
             <a
-              href="https://specrails.dev"
+              href="https://specrails.dev/docs"
               target="_blank"
               rel="noopener noreferrer"
               className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <BookOpen className="w-3.5 h-3.5" />
             </a>
           </TooltipTrigger>
-          <TooltipContent>specrails.dev</TooltipContent>
+          <TooltipContent>Docs</TooltipContent>
         </Tooltip>
 
         <Tooltip>
