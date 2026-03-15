@@ -12,7 +12,7 @@ The specrails web manager is a locally-run dashboard that monitors and controls 
 ## Setup
 
 ```bash
-cd .claude/web-manager
+cd specrails/web-manager
 npm install
 ```
 
@@ -23,13 +23,13 @@ This installs both the server dependencies (Express, WebSocket) and the client d
 **Always start from your project root**, not from inside the web-manager directory. This ensures the project name is detected correctly:
 
 ```bash
-cd .claude/web-manager && npm run dev
+cd specrails/web-manager && npm run dev
 ```
 
 Or specify the project name explicitly:
 
 ```bash
-cd .claude/web-manager && SPECRAILS_PROJECT_NAME=my-project npm run dev
+cd specrails/web-manager && SPECRAILS_PROJECT_NAME=my-project npm run dev
 ```
 
 This starts two processes concurrently:

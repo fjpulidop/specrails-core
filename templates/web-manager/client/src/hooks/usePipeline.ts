@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useWebSocket } from './useWebSocket'
-import type { Job } from '../components/JobQueueSidebar'
+import type { JobSummary } from '../types'
 
-type PhaseName = 'architect' | 'developer' | 'reviewer' | 'ship'
-type PhaseState = 'idle' | 'running' | 'done' | 'error'
+export type PhaseName = 'architect' | 'developer' | 'reviewer' | 'ship'
+export type PhaseState = 'idle' | 'running' | 'done' | 'error'
 
 export interface PhaseMap {
   architect: PhaseState
@@ -19,16 +19,18 @@ export interface LogLine {
   processId: string
 }
 
-export interface JobSummary {
+export interface QueueJob {
   id: string
   command: string
-  started_at: string
   status: 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
-  total_cost_usd: number | null
+  queuePosition: number | null
+  startedAt: string | null
+  finishedAt: string | null
+  exitCode: number | null
 }
 
 export interface QueueState {
-  jobs: Job[]
+  jobs: QueueJob[]
   activeJobId: string | null
   paused: boolean
 }
@@ -81,7 +83,7 @@ export function usePipeline() {
       ])
     } else if (msg.type === 'queue') {
       setQueueState({
-        jobs: (msg.jobs as Job[]) ?? [],
+        jobs: (msg.jobs as QueueJob[]) ?? [],
         activeJobId: (msg.activeJobId as string | null) ?? null,
         paused: (msg.paused as boolean) ?? false,
       })

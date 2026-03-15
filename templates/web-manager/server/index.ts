@@ -6,6 +6,7 @@ import type { WsMessage } from './types'
 import { createHooksRouter, getPhaseStates } from './hooks'
 import { QueueManager, ClaudeNotFoundError, JobNotFoundError, JobAlreadyTerminalError } from './queue-manager'
 import { initDb, listJobs, getJob, getJobEvents, getStats } from './db'
+import { getConfig, fetchIssues } from './config'
 
 // Read package.json version once at startup
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -23,13 +24,13 @@ function resolveProjectName(): string {
   if (process.env.SPECRAILS_PROJECT_NAME) {
     return process.env.SPECRAILS_PROJECT_NAME
   }
-  // The web-manager lives at <project>/.claude/web-manager/
+  // The web-manager lives at <project>/specrails/web-manager/
   // Walk up two levels to find the project root
   const cwd = process.cwd()
   const parentDir = path.basename(path.resolve(cwd, '../..'))
   const immediateParent = path.basename(path.resolve(cwd, '..'))
-  // If we're inside .claude/web-manager, use the grandparent directory name
-  if (immediateParent === '.claude') {
+  // If we're inside specrails/web-manager, use the grandparent directory name
+  if (immediateParent === 'specrails') {
     return parentDir
   }
   return path.basename(cwd)
@@ -199,6 +200,51 @@ app.get('/api/jobs/:id', (req, res) => {
 
 app.get('/api/stats', (_req, res) => {
   res.json(getStats(db))
+})
+
+app.get('/api/config', (_req, res) => {
+  try {
+    const config = getConfig(process.cwd(), db, projectName)
+    res.json(config)
+  } catch (err) {
+    console.error('[config] error:', err)
+    res.status(500).json({ error: 'Failed to read config' })
+  }
+})
+
+app.post('/api/config', (req, res) => {
+  const { active, labelFilter } = req.body ?? {}
+  try {
+    if (active !== undefined) {
+      db.prepare(`INSERT OR REPLACE INTO queue_state (key, value) VALUES ('config.active_tracker', ?)`).run(active ?? '')
+    }
+    if (labelFilter !== undefined) {
+      db.prepare(`INSERT OR REPLACE INTO queue_state (key, value) VALUES ('config.label_filter', ?)`).run(labelFilter ?? '')
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('[config] persist error:', err)
+    res.status(500).json({ error: 'Failed to persist config' })
+  }
+})
+
+app.get('/api/issues', (_req, res) => {
+  try {
+    const config = getConfig(process.cwd(), db, projectName)
+    const tracker = config.issueTracker.active
+    if (!tracker) {
+      res.status(503).json({ error: 'No issue tracker configured', trackers: config.issueTracker })
+      return
+    }
+
+    const search = _req.query.search as string | undefined
+    const label = _req.query.label as string | undefined
+    const issues = fetchIssues(tracker, { search, label, repo: config.project.repo })
+    res.json(issues)
+  } catch (err) {
+    console.error('[issues] error:', err)
+    res.status(500).json({ error: 'Failed to fetch issues' })
+  }
 })
 
 server.listen(port, '127.0.0.1', () => {

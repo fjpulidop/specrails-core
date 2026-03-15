@@ -342,6 +342,7 @@ fi
 step "Phase 3: Installing specrails artifacts"
 
 # Create directory structure
+mkdir -p "$REPO_ROOT/specrails"
 mkdir -p "$REPO_ROOT/.claude/commands"
 mkdir -p "$REPO_ROOT/.claude/setup-templates/agents"
 mkdir -p "$REPO_ROOT/.claude/setup-templates/commands"
@@ -401,31 +402,31 @@ fi
 
 step "Phase 3b: Installing web manager (Pipeline Monitor)"
 
-WEB_MANAGER_DIR="$REPO_ROOT/.claude/web-manager"
+WEB_MANAGER_DIR="$REPO_ROOT/specrails/web-manager"
 
 if [ -d "$WEB_MANAGER_DIR" ]; then
-    warn "Existing .claude/web-manager/ found — skipping (delete it to reinstall)"
+    warn "Existing specrails/web-manager/ found — skipping (delete it to reinstall)"
     HAS_WEB_MANAGER=true
 else
     mkdir -p "$WEB_MANAGER_DIR"
     cp -r "$SCRIPT_DIR/templates/web-manager/"* "$WEB_MANAGER_DIR/"
-    ok "Copied web manager to .claude/web-manager/"
+    ok "Copied web manager to specrails/web-manager/"
 
     if [ "$HAS_NPM" = true ]; then
         info "Installing web manager dependencies..."
         (cd "$WEB_MANAGER_DIR" && npm install --silent 2>/dev/null) && {
             ok "Server dependencies installed"
         } || {
-            warn "Server dependency install failed — run 'cd .claude/web-manager && npm install' manually"
+            warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
         }
         (cd "$WEB_MANAGER_DIR/client" && npm install --silent 2>/dev/null) && {
             ok "Client dependencies installed"
         } || {
-            warn "Client dependency install failed — run 'cd .claude/web-manager/client && npm install' manually"
+            warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
         }
         HAS_WEB_MANAGER=true
     else
-        warn "npm not available — skipping dependency install. Run 'cd .claude/web-manager && npm install' later."
+        warn "npm not available — skipping dependency install. Run 'cd specrails/web-manager && npm install' later."
         HAS_WEB_MANAGER=false
     fi
 fi
@@ -452,7 +453,7 @@ echo ""
 echo "  Files installed:"
 echo "    .claude/commands/setup.md          ← The /setup command"
 echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
-echo "    .claude/web-manager/              ← Pipeline Monitor dashboard"
+echo "    specrails/web-manager/            ← Pipeline Monitor dashboard"
 echo "    .specrails-version                ← Installed specrails version"
 echo "    .specrails-manifest.json          ← Artifact checksums for update detection"
 echo ""
@@ -478,7 +479,7 @@ echo -e "     ${BOLD}/setup${NC}"
 echo ""
 echo "  3. Launch the Pipeline Monitor (optional):"
 echo ""
-echo -e "     ${BOLD}cd $REPO_ROOT/.claude/web-manager && npm run dev${NC}"
+echo -e "     ${BOLD}cd $REPO_ROOT/specrails/web-manager && npm run dev${NC}"
 echo ""
 echo -e "     Opens at ${BOLD}http://localhost:4201${NC}"
 echo ""

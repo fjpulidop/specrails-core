@@ -16,6 +16,15 @@
 - `/api/jobs` and `/api/jobs/:id` were already real endpoints (#57 landed first); Task 10 (501 stubs) was skipped
 - `srm.ts` uses `require.main === module` guard to avoid running `main()` when imported in tests
 
+## Web-Manager UI Redesign notes (2026-03-15)
+
+- Web-manager installation path changed from `.claude/web-manager/` to `specrails/web-manager/` — check install.sh, update.sh, server/index.ts `resolveProjectName()`
+- Client Tailwind v4: use `@theme inline` with `--color-*` variables in globals.css; add `"type": "module"` to client package.json
+- shadcn/ui components are hand-written in `client/src/components/ui/` (no CLI)
+- `server/config.ts`: new config detection module; tested with `vi.spyOn(fs, ...)` not `vi.mock('fs', ...)`
+- `client/src/types.ts`: shared client type definitions
+- Old components (AgentActivity, CommandInput, JobQueueSidebar etc.) removed; `useQueue.ts` removed
+
 ## SQLite / better-sqlite3 notes
 
 - Use `type DbInstance = InstanceType<typeof Database>` — `Database.Database` doesn't work due to `export =` style

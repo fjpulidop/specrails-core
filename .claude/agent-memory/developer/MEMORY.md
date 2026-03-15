@@ -23,6 +23,18 @@
 - HTTP 202 (not 200) for `POST /api/spawn`; response body is `{ jobId, position }` not `{ processId }`
 - `activeJobRef` in index.ts replaced by static `{ current: null }` passed to hooksRouter — hooks.ts uses optional chaining so phase persistence still works when activeJobId is available
 
+## Web-Manager UI Redesign notes (2026-03-15)
+
+- Web-manager now lives at `<project>/specrails/web-manager/` (not `.claude/web-manager/`) — `resolveProjectName()` checks `immediateParent === 'specrails'`
+- Client uses Tailwind v4 + `@theme inline` CSS-first config (no `tailwind.config.js`); must add `"type": "module"` to client `package.json` for `@tailwindcss/vite` (ESM-only)
+- shadcn/ui components created manually in `client/src/components/ui/` — no `npx shadcn init` (can't run interactively in templates)
+- `server/config.ts` — new module for CLI detection (gh/jira), command scanning, git remote parsing
+- `config.test.ts` — use `vi.spyOn(fs, 'existsSync')` not `vi.mock('fs', ...)` for per-test fs mocking
+- `server/index.test.ts` mocks `./config` module at top-level with `vi.mock('./config', ...)` — imports `getConfig` and `fetchIssues` as typed mock fns
+- `client/src/types.ts` — shared client types (JobSummary, EventRow, CommandInfo, ProjectConfig, IssueItem)
+- `usePipeline.ts` updated to use local `QueueJob` type (no longer imports from deleted `JobQueueSidebar`)
+- Old components removed: AgentActivity, CommandInput, JobHistory, JobQueueSidebar, LogStream, PipelineSidebar, SearchBox, StatsBar, useQueue hook
+
 ## Detailed notes
 
 - [sr-prefix-namespace explanation](../../agent-memory/explanations/) — see dated files for rationale

@@ -1,5 +1,24 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
+// Mock config module for endpoint tests
+vi.mock('./config', () => ({
+  getConfig: vi.fn().mockReturnValue({
+    project: { name: 'test-project', repo: 'owner/test-project' },
+    issueTracker: {
+      github: { available: true, authenticated: true },
+      jira: { available: false, authenticated: false },
+      active: 'github',
+      labelFilter: '',
+    },
+    commands: [
+      { id: 'implement', name: 'Implement', description: 'Implement a feature', slug: 'implement' },
+    ],
+  }),
+  fetchIssues: vi.fn().mockReturnValue([
+    { number: 1, title: 'Test issue', labels: ['bug'], body: 'Description', url: 'https://github.com/...' },
+  ]),
+}))
+
 // Mock QueueManager so routes are tested without spawning real processes
 vi.mock('./queue-manager', async () => {
   const ClaudeNotFoundError = class extends Error {
@@ -43,6 +62,10 @@ import { createHooksRouter, getPhaseStates, resetPhases } from './hooks'
 import { QueueManager, ClaudeNotFoundError, JobNotFoundError, JobAlreadyTerminalError } from './queue-manager'
 import { initDb, listJobs, getJob, getJobEvents, getStats } from './db'
 import type { DbInstance } from './db'
+import { getConfig, fetchIssues } from './config'
+
+const mockGetConfig = getConfig as ReturnType<typeof vi.fn>
+const mockFetchIssues = fetchIssues as ReturnType<typeof vi.fn>
 
 // Typed helper so tests can call methods without TS complaints
 type MockQueueManager = {
@@ -164,6 +187,47 @@ function createTestApp() {
 
   app.get('/api/stats', (_req, res) => {
     res.json(getStats(db))
+  })
+
+  app.get('/api/config', (_req, res) => {
+    try {
+      const config = getConfig(process.cwd(), db, 'test-project')
+      res.json(config)
+    } catch {
+      res.status(500).json({ error: 'Failed to read config' })
+    }
+  })
+
+  app.post('/api/config', (req, res) => {
+    const { active, labelFilter } = req.body ?? {}
+    try {
+      if (active !== undefined) {
+        db.prepare(`INSERT OR REPLACE INTO queue_state (key, value) VALUES ('config.active_tracker', ?)`).run(active ?? '')
+      }
+      if (labelFilter !== undefined) {
+        db.prepare(`INSERT OR REPLACE INTO queue_state (key, value) VALUES ('config.label_filter', ?)`).run(labelFilter ?? '')
+      }
+      res.json({ ok: true })
+    } catch {
+      res.status(500).json({ error: 'Failed to persist config' })
+    }
+  })
+
+  app.get('/api/issues', (req, res) => {
+    try {
+      const config = getConfig(process.cwd(), db, 'test-project')
+      const tracker = config.issueTracker.active
+      if (!tracker) {
+        res.status(503).json({ error: 'No issue tracker configured', trackers: config.issueTracker })
+        return
+      }
+      const search = req.query.search as string | undefined
+      const label = req.query.label as string | undefined
+      const issues = fetchIssues(tracker, { search, label, repo: config.project.repo })
+      res.json(issues)
+    } catch {
+      res.status(500).json({ error: 'Failed to fetch issues' })
+    }
   })
 
   return { app, broadcast, db, queueManager }
@@ -396,6 +460,79 @@ describe('API endpoints', () => {
       expect(res.status).toBe(200)
       expect(res.body.totalJobs).toBe(0)
       expect(res.body.jobsToday).toBe(0)
+    })
+  })
+
+  describe('GET /api/config', () => {
+    it('returns config with project, issueTracker, and commands', async () => {
+      const res = await request(app).get('/api/config')
+
+      expect(res.status).toBe(200)
+      expect(res.body).toHaveProperty('project')
+      expect(res.body).toHaveProperty('issueTracker')
+      expect(res.body).toHaveProperty('commands')
+      expect(res.body.project.name).toBe('test-project')
+      expect(res.body.issueTracker.active).toBe('github')
+      expect(Array.isArray(res.body.commands)).toBe(true)
+    })
+
+    it('returns 500 when config detection throws', async () => {
+      mockGetConfig.mockImplementationOnce(() => { throw new Error('detection failed') })
+
+      const res = await request(app).get('/api/config')
+
+      expect(res.status).toBe(500)
+      expect(res.body.error).toBe('Failed to read config')
+    })
+  })
+
+  describe('POST /api/config', () => {
+    it('persists active tracker setting and returns ok', async () => {
+      const res = await request(app).post('/api/config').send({ active: 'github' })
+
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ ok: true })
+    })
+
+    it('persists label filter setting and returns ok', async () => {
+      const res = await request(app).post('/api/config').send({ labelFilter: 'feature' })
+
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ ok: true })
+    })
+  })
+
+  describe('GET /api/issues', () => {
+    it('returns issues list when tracker is configured', async () => {
+      const res = await request(app).get('/api/issues')
+
+      expect(res.status).toBe(200)
+      expect(Array.isArray(res.body)).toBe(true)
+      expect(res.body[0]).toHaveProperty('number')
+      expect(res.body[0]).toHaveProperty('title')
+      expect(res.body[0]).toHaveProperty('labels')
+    })
+
+    it('returns 503 when no tracker is configured', async () => {
+      mockGetConfig.mockReturnValueOnce({
+        project: { name: 'test', repo: null },
+        issueTracker: { github: { available: false, authenticated: false }, jira: { available: false, authenticated: false }, active: null, labelFilter: '' },
+        commands: [],
+      })
+
+      const res = await request(app).get('/api/issues')
+
+      expect(res.status).toBe(503)
+      expect(res.body.error).toBe('No issue tracker configured')
+    })
+
+    it('passes search query param to fetchIssues', async () => {
+      await request(app).get('/api/issues?search=bug')
+
+      expect(mockFetchIssues).toHaveBeenCalledWith(
+        'github',
+        expect.objectContaining({ search: 'bug' })
+      )
     })
   })
 })
