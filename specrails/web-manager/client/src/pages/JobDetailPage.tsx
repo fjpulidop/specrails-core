@@ -11,9 +11,7 @@ import { LogViewer } from '../components/LogViewer'
 import { useWebSocket } from '../hooks/useWebSocket'
 import type { JobSummary, EventRow, PhaseDefinition } from '../types'
 import type { PhaseMap, PhaseState } from '../hooks/usePipeline'
-
-const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const WS_URL = `${wsProtocol}//${window.location.host}`
+import { WS_URL } from '../lib/ws-url'
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'running' | 'queued' | 'failed' | 'canceled'
 
@@ -100,11 +98,11 @@ export default function JobDetailPage() {
       // Refresh job status from queue state
       const jobs = msg.jobs as Array<{ id: string; status: string }> | undefined
       const matchingJob = jobs?.find((j) => j.id === id)
-      if (matchingJob && job) {
+      if (matchingJob) {
         setJob((prev) => prev ? { ...prev, status: matchingJob.status as JobSummary['status'] } : prev)
       }
     }
-  }, [id, job])
+  }, [id])
 
   useWebSocket(WS_URL, handleMessage)
 
