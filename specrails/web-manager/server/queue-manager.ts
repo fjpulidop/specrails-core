@@ -59,13 +59,10 @@ function extractDisplayText(event: Record<string, unknown>): string | null {
     const input = JSON.stringify((event as Record<string, unknown>).input ?? {})
     return `[tool: ${name}] ${input.slice(0, 120)}`
   }
-  if (type === 'tool_result' || type === 'system_prompt') {
+  if (type === 'tool_result' || type === 'system_prompt' || type === 'user' || type === 'system' || type === 'result') {
     return null
   }
-  if (type === 'result') {
-    return null
-  }
-  return JSON.stringify(event).slice(0, 200)
+  return null
 }
 
 const TERMINAL_STATUSES = new Set(['completed', 'failed', 'canceled'])
