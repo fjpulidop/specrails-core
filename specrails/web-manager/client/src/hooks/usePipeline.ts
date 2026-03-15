@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { useWebSocket } from './useWebSocket'
+import { useState, useCallback, useLayoutEffect } from 'react'
+import { useSharedWebSocket } from './useSharedWebSocket'
 import type { JobSummary, PhaseDefinition } from '../types'
 
 export type PhaseState = 'idle' | 'running' | 'done' | 'error'
@@ -33,9 +33,6 @@ const INITIAL_QUEUE: QueueState = {
   activeJobId: null,
   paused: false,
 }
-
-const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const WS_URL = `${wsProtocol}//${window.location.host}`
 
 export function usePipeline() {
   const [phaseDefinitions, setPhaseDefinitions] = useState<PhaseDefinition[]>([])
@@ -86,7 +83,15 @@ export function usePipeline() {
     }
   }, [])
 
-  const { connectionStatus } = useWebSocket(WS_URL, handleMessage)
+  const { registerHandler, unregisterHandler, connectionStatus } = useSharedWebSocket()
+
+  // useLayoutEffect ensures the handler is registered synchronously before
+  // the browser paints, eliminating the frame gap where an 'init' message
+  // could arrive before the handler is registered.
+  useLayoutEffect(() => {
+    registerHandler('pipeline', handleMessage)
+    return () => unregisterHandler('pipeline')
+  }, [handleMessage, registerHandler, unregisterHandler])
 
   return { phases, phaseDefinitions, projectName, logLines, connectionStatus, recentJobs, queueState }
 }

@@ -56,3 +56,15 @@ A persistent status bar at the bottom of all views SHALL show connection status 
 #### Scenario: Disconnected
 - **WHEN** WebSocket connection is lost
 - **THEN** status bar SHALL show a red dot with "Disconnected" and retry information
+
+### Requirement: Navbar has three primary navigation links
+
+The navbar SHALL contain primary navigation links: Home (→ `/`) and Analytics (→ `/analytics`) as center nav items, and Settings (→ `/settings`) as a right-side icon.
+
+#### Scenario: Analytics link in navbar
+- **WHEN** the navbar renders
+- **THEN** it SHALL display an "Analytics" link that navigates to `/analytics` and applies the active highlight style when on the analytics route
+
+#### Scenario: Home link active state
+- **WHEN** user is on the root path `/`
+- **THEN** the Home nav link SHALL apply the active highlight style, and SHALL NOT highlight when on `/analytics` or `/settings`

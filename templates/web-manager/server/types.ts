@@ -62,6 +62,75 @@ export interface StatsRow {
   avgDurationMs: number | null
 }
 
+export type AnalyticsPeriod = '7d' | '30d' | '90d' | 'all' | 'custom'
+
+export interface AnalyticsOpts {
+  period: AnalyticsPeriod
+  from?: string
+  to?: string
+}
+
+export interface AnalyticsResponse {
+  period: {
+    label: string
+    from: string | null
+    to: string | null
+  }
+  kpi: {
+    totalCostUsd: number
+    totalJobs: number
+    successRate: number
+    avgDurationMs: number | null
+    costDelta: number | null
+    jobsDelta: number | null
+    successRateDelta: number | null
+    avgDurationDelta: number | null
+  }
+  costTimeline: Array<{ date: string; costUsd: number }>
+  statusBreakdown: Array<{ status: string; count: number }>
+  durationHistogram: Array<{ bucket: string; count: number }>
+  durationPercentiles: { p50: number | null; p75: number | null; p95: number | null }
+  tokenEfficiency: Array<{
+    command: string
+    tokensOut: number
+    tokensCacheRead: number
+    totalTokens: number
+  }>
+  commandPerformance: Array<{
+    command: string
+    totalRuns: number
+    successRate: number
+    avgCostUsd: number | null
+    avgDurationMs: number | null
+    totalCostUsd: number
+  }>
+  dailyThroughput: Array<{ date: string; completed: number; failed: number; canceled: number }>
+  costPerCommand: Array<{ command: string; totalCostUsd: number; jobCount: number }>
+  bonusMetrics: {
+    costPerSuccess: number | null
+    apiEfficiencyPct: number | null
+    failureCostUsd: number
+    modelBreakdown: Array<{ model: string; jobCount: number; totalCostUsd: number }>
+  }
+}
+
+export interface ChatConversationRow {
+  id: string
+  title: string | null
+  model: string
+  session_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ChatMessageRow {
+  id: number
+  conversation_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
 export interface JobSummary {
   id: string
   command: string
@@ -112,5 +181,43 @@ export interface EventMessage {
   seq: number
 }
 
-export type WsMessage = LogMessage | PhaseMessage | InitMessage | QueueMessage | EventMessage
+export interface ChatStreamMessage {
+  type: 'chat_stream'
+  conversationId: string
+  delta: string
+  timestamp: string
+}
+
+export interface ChatDoneMessage {
+  type: 'chat_done'
+  conversationId: string
+  fullText: string
+  timestamp: string
+}
+
+export interface ChatErrorMessage {
+  type: 'chat_error'
+  conversationId: string
+  error: string
+  timestamp: string
+}
+
+export interface ChatCommandProposalMessage {
+  type: 'chat_command_proposal'
+  conversationId: string
+  command: string
+  timestamp: string
+}
+
+export interface ChatTitleUpdateMessage {
+  type: 'chat_title_update'
+  conversationId: string
+  title: string
+  timestamp: string
+}
+
+export type WsMessage =
+  | LogMessage | PhaseMessage | InitMessage | QueueMessage | EventMessage
+  | ChatStreamMessage | ChatDoneMessage | ChatErrorMessage
+  | ChatCommandProposalMessage | ChatTitleUpdateMessage
 
