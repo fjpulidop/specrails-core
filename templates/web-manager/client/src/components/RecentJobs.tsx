@@ -1,8 +1,7 @@
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { formatDistanceToNow } from 'date-fns'
 import { Badge } from './ui/badge'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
-import { Button } from './ui/button'
 import type { JobSummary, JobStatus } from '../types'
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'running' | 'queued' | 'failed' | 'canceled'
@@ -35,6 +34,7 @@ interface RecentJobsProps {
 }
 
 export function RecentJobs({ jobs, isLoading }: RecentJobsProps) {
+  const navigate = useNavigate()
   if (isLoading) {
     return (
       <div className="space-y-1">
@@ -65,7 +65,8 @@ export function RecentJobs({ jobs, isLoading }: RecentJobsProps) {
         return (
           <div
             key={job.id}
-            className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent/50 transition-colors group"
+            className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-accent/50 transition-colors cursor-pointer group"
+            onClick={() => navigate(`/jobs/${job.id}`)}
           >
             {/* Status badge */}
             <Tooltip>
@@ -88,20 +89,6 @@ export function RecentJobs({ jobs, isLoading }: RecentJobsProps) {
               <span>{formatRelTime(job.started_at)}</span>
             </div>
 
-            {/* View link */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  asChild
-                  className="h-6 px-2 opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  <Link to={`/jobs/${job.id}`}>View</Link>
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>View job logs and details</TooltipContent>
-            </Tooltip>
           </div>
         )
       })}
