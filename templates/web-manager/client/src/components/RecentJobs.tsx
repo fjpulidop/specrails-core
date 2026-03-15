@@ -169,6 +169,18 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
         </Tooltip>
       </div>
 
+      {/* Column headers */}
+      <div className="flex items-center gap-3 px-3 py-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="w-14">Status</span>
+        <span className="flex-1 min-w-0">Command</span>
+        <div className="flex items-center gap-3 shrink-0">
+          <span className="w-10 text-right">Duration</span>
+          <span className="w-10 text-right">Tokens</span>
+          <span className="w-12 text-right">Cost</span>
+          <span className="w-16 text-right">Started</span>
+        </div>
+      </div>
+
       {/* Job rows */}
       <div className="space-y-0.5">
         {filteredJobs.map((job) => {
@@ -200,10 +212,10 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
 
               {/* Meta */}
               <div className="flex items-center gap-3 text-[10px] text-muted-foreground shrink-0">
-                {duration && <span>{duration}</span>}
-                {tokens && <span>{tokens} tok</span>}
-                {cost && <span>{cost}</span>}
-                <span>{formatRelTime(job.started_at)}</span>
+                <span className="w-10 text-right">{duration ?? '—'}</span>
+                <span className="w-10 text-right">{tokens ? `${tokens}` : '—'}</span>
+                <span className="w-12 text-right">{cost ?? '—'}</span>
+                <span className="w-16 text-right">{formatRelTime(job.started_at)}</span>
               </div>
             </div>
           )
