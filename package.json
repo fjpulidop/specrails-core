@@ -1,0 +1,34 @@
+{
+  "name": "specrails",
+  "version": "0.2.1",
+  "description": "Agent Workflow System installer for Claude Code",
+  "bin": {
+    "specrails": "bin/specrails.js"
+  },
+  "files": [
+    "bin/",
+    "install.sh",
+    "update.sh",
+    "templates/",
+    "prompts/",
+    ".claude/skills/",
+    "commands/",
+    "VERSION"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fjpulidop/specrails.git"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-agents",
+    "workflow",
+    "developer-tools"
+  ],
+  "license": "MIT",
+  "author": "fjpulidop"
+}

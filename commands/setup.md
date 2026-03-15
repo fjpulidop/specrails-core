@@ -44,6 +44,7 @@ Read the following files to understand the current installation state:
    ```bash
    ls .claude/setup-templates/agents/
    ```
+   Template files are named with `sr-` prefix (e.g., `sr-architect.md`, `sr-developer.md`).
 
 ### Phase U2: Quick Codebase Re-Analysis
 
@@ -66,10 +67,10 @@ Store all results for use in Phases U4 and U5.
 
 ### Phase U3: Identify What Needs Regeneration
 
-For each agent template, find its entry in the manifest's `artifacts` map (keyed as `templates/agents/<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/agents/`:
+For each agent template, find its entry in the manifest's `artifacts` map (keyed as `templates/agents/sr-<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/agents/`:
 
 ```bash
-sha256sum .claude/setup-templates/agents/<name>.md
+sha256sum .claude/setup-templates/agents/sr-<name>.md
 ```
 
 Build three lists:
@@ -84,16 +85,16 @@ Display the analysis to the user:
 ## Agent Update Analysis
 
 ### Changed Templates (will be regenerated)
-- architect.md (template modified)
-- developer.md (template modified)
+- sr-architect.md (template modified)
+- sr-developer.md (template modified)
 
 ### New Templates Available
-- frontend-developer.md
-- backend-developer.md
+- sr-frontend-developer.md
+- sr-backend-developer.md
 
 ### Unchanged (keeping current)
-- reviewer.md
-- product-manager.md
+- sr-reviewer.md
+- sr-product-manager.md
 ```
 
 If there are no changed agents and no new agents, display:
@@ -106,7 +107,7 @@ Then jump to Phase U7.
 
 For each agent in the "changed" list:
 
-1. Read the NEW template from `.claude/setup-templates/agents/<name>.md`
+1. Read the NEW template from `.claude/setup-templates/agents/sr-<name>.md`
 2. Use the codebase analysis from Phase U2 to fill in all `{{PLACEHOLDER}}` values, using the same substitution rules as Phase 4.1 of the full setup:
    - `{{PROJECT_NAME}}` → project name (from README.md or directory name)
    - `{{ARCHITECTURE_DIAGRAM}}` → detected architecture layers
@@ -119,43 +120,43 @@ For each agent in the "changed" list:
    - `{{DOMAIN_EXPERTISE}}` → infer from detected stack and README
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase U2
    - `{{WARNINGS}}` → read from existing `CLAUDE.md` if present
-   - `{{MEMORY_PATH}}` → `.claude/agent-memory/<agent-name>/`
-3. Write the adapted agent to `.claude/agents/<name>.md`
-4. Show: `✓ Regenerated <name>`
+   - `{{MEMORY_PATH}}` → `.claude/agent-memory/sr-<agent-name>/`
+3. Write the adapted agent to `.claude/agents/sr-<name>.md`
+4. Show: `✓ Regenerated sr-<name>`
 
 After regenerating all changed agents, verify no unresolved placeholders remain:
 ```bash
-grep -r '{{[A-Z_]*}}' .claude/agents/ 2>/dev/null || echo "OK: no broken placeholders"
+grep -r '{{[A-Z_]*}}' .claude/agents/sr-*.md 2>/dev/null || echo "OK: no broken placeholders"
 ```
 
 ### Phase U5: Evaluate New Agents
 
 For each agent in the "new" list:
 
-1. Read the template from `.claude/setup-templates/agents/<name>.md` to understand what stack or layer it targets (read its description and any layer-specific comments)
+1. Read the template from `.claude/setup-templates/agents/sr-<name>.md` to understand what stack or layer it targets (read its description and any layer-specific comments)
 2. Match against the codebase detected in Phase U2:
-   - If the template targets a layer/stack that IS present (e.g., `frontend-developer` and React was detected), prompt:
-     > "New agent available: `<name>` — your project uses [detected tech]. Add it? [Y/n]"
-   - If the template targets a layer/stack that is NOT present (e.g., `backend-developer` and no backend was detected), prompt:
-     > "New agent available: `<name>` — no [layer] detected in your project. Skip? [Y/n]"
+   - If the template targets a layer/stack that IS present (e.g., `sr-frontend-developer` and React was detected), prompt:
+     > "New agent available: `sr-<name>` — your project uses [detected tech]. Add it? [Y/n]"
+   - If the template targets a layer/stack that is NOT present (e.g., `sr-backend-developer` and no backend was detected), prompt:
+     > "New agent available: `sr-<name>` — no [layer] detected in your project. Skip? [Y/n]"
 3. If the user accepts (or presses Enter on a pre-selected default):
    - Generate the agent using the same template adaptation as Phase U4
-   - Create memory directory if it does not exist: `.claude/agent-memory/<name>/`
-   - Show: `✓ Added <name>`
+   - Create memory directory if it does not exist: `.claude/agent-memory/sr-<name>/`
+   - Show: `✓ Added sr-<name>`
 4. If the user declines:
-   - Show: `→ Skipped <name>`
+   - Show: `→ Skipped sr-<name>`
 
 ### Phase U6: Update Workflow Commands
 
 If any new agents were added in Phase U5:
 
-1. Read `.claude/commands/implement.md`
-2. Check if the file references agent names in its orchestration steps (look for `architect`, `developer`, `reviewer` etc.)
-3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `frontend-developer` or `backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
-4. Write the updated `.claude/commands/implement.md` if any changes were made
+1. Read `.claude/commands/sr/implement.md`
+2. Check if the file references agent names in its orchestration steps (look for `sr-architect`, `sr-developer`, `sr-reviewer` etc.)
+3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `sr-frontend-developer` or `sr-backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
+4. Write the updated `.claude/commands/sr/implement.md` if any changes were made
 5. Show which commands were updated, or "No command updates needed" if nothing changed
 
-This is a lightweight check — only update commands where the agent clearly belongs. Do not restructure the entire command.
+This is a lightweight check — only update commands where the sr- agent clearly belongs. Do not restructure the entire command.
 
 ### Phase U7: Summary
 
@@ -375,13 +376,13 @@ Which agents do you want to install?
 
 | Agent | Purpose | Model | Required |
 |-------|---------|-------|----------|
-| Architect | Design features, create implementation plans | Sonnet | Yes |
-| Developer (full-stack) | Implement features across all layers | Sonnet | Yes |
-| Reviewer | CI/CD quality gate, fix issues | Sonnet | Yes |
-| Product Manager | Product discovery, ideation, VPC evaluation | Opus | Recommended |
-| Product Analyst | Read-only backlog analysis | Haiku | Recommended |
-| Backend Developer | Specialized backend implementation | Sonnet | If backend layer exists |
-| Frontend Developer | Specialized frontend implementation | Sonnet | If frontend layer exists |
+| sr-architect | Design features, create implementation plans | Sonnet | Yes |
+| sr-developer (full-stack) | Implement features across all layers | Sonnet | Yes |
+| sr-reviewer | CI/CD quality gate, fix issues | Sonnet | Yes |
+| sr-product-manager | Product discovery, ideation, VPC evaluation | Opus | Recommended |
+| sr-product-analyst | Read-only backlog analysis | Haiku | Recommended |
+| sr-backend-developer | Specialized backend implementation | Sonnet | If backend layer exists |
+| sr-frontend-developer | Specialized frontend implementation | Sonnet | If frontend layer exists |
 
 [All] [Required only] [Custom selection]
 ```
@@ -530,8 +531,8 @@ Store the full configuration in `.claude/backlog-config.json`:
 
 #### If None
 
-- Skip `/product-backlog` and `/update-product-driven-backlog` commands.
-- The `/implement` command will still work with text descriptions.
+- Skip `/sr:product-backlog` and `/sr:update-product-driven-backlog` commands.
+- The `/sr:implement` command will still work with text descriptions.
 
 ### 3.3 Git & shipping workflow
 
@@ -560,9 +561,9 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 
 | Command | Purpose | Requires |
 |---------|---------|----------|
-| /implement | Full pipeline: architect → develop → review → ship | Architect + Developer + Reviewer |
-| /product-backlog | View prioritized backlog with VPC scores | Product Analyst + Backlog provider |
-| /update-product-driven-backlog | Generate new feature ideas via product discovery | Product Manager + Backlog provider |
+| /sr:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
+| /sr:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
+| /sr:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
 
 [All] [Custom selection]
 ```
@@ -605,13 +606,13 @@ Read each template from `.claude/setup-templates/` and generate the final files 
 For each selected agent, read the template and generate the adapted version:
 
 **Template → Output mapping:**
-- `setup-templates/agents/architect.md` → `.claude/agents/architect.md`
-- `setup-templates/agents/developer.md` → `.claude/agents/developer.md`
-- `setup-templates/agents/reviewer.md` → `.claude/agents/reviewer.md`
-- `setup-templates/agents/product-manager.md` → `.claude/agents/product-manager.md`
-- `setup-templates/agents/product-analyst.md` → `.claude/agents/product-analyst.md`
-- `setup-templates/agents/backend-developer.md` → `.claude/agents/backend-developer.md` (if backend layer)
-- `setup-templates/agents/frontend-developer.md` → `.claude/agents/frontend-developer.md` (if frontend layer)
+- `setup-templates/agents/sr-architect.md` → `.claude/agents/sr-architect.md`
+- `setup-templates/agents/sr-developer.md` → `.claude/agents/sr-developer.md`
+- `setup-templates/agents/sr-reviewer.md` → `.claude/agents/sr-reviewer.md`
+- `setup-templates/agents/sr-product-manager.md` → `.claude/agents/sr-product-manager.md`
+- `setup-templates/agents/sr-product-analyst.md` → `.claude/agents/sr-product-analyst.md`
+- `setup-templates/agents/sr-backend-developer.md` → `.claude/agents/sr-backend-developer.md` (if backend layer)
+- `setup-templates/agents/sr-frontend-developer.md` → `.claude/agents/sr-frontend-developer.md` (if frontend layer)
 
 When generating each agent:
 1. Read the template
@@ -628,7 +629,7 @@ When generating each agent:
    - `{{COMPETITIVE_LANDSCAPE}}` → competitors discovered in Phase 2
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase 1
    - `{{WARNINGS}}` → project-specific warnings (from existing CLAUDE.md or detected)
-   - `{{MEMORY_PATH}}` → agent memory directory path
+   - `{{MEMORY_PATH}}` → agent memory directory path (e.g., `.claude/agent-memory/sr-<agent-name>/`)
 3. Write the final file
 
 ### 4.2 Generate personas
@@ -652,9 +653,9 @@ Write each persona to `.claude/agents/personas/`:
 ### 4.3 Generate commands
 
 For each selected command, read the template and adapt:
-- `setup-templates/commands/implement.md` → `.claude/commands/implement.md`
-- `setup-templates/commands/product-backlog.md` → `.claude/commands/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
-- `setup-templates/commands/update-product-driven-backlog.md` → `.claude/commands/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/sr/implement.md` → `.claude/commands/sr/implement.md`
+- `setup-templates/commands/sr/product-backlog.md` → `.claude/commands/sr/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/sr/update-product-driven-backlog.md` → `.claude/commands/sr/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
 
 Adapt:
 - CI commands to match detected stack
@@ -721,7 +722,7 @@ Create or merge `.claude/settings.json` with permissions for:
 Create memory directories for each installed agent:
 
 ```bash
-mkdir -p .claude/agent-memory/{agent-name}/
+mkdir -p .claude/agent-memory/sr-{agent-name}/
 ```
 
 Each gets an empty `MEMORY.md` that will be populated during usage.
@@ -780,9 +781,9 @@ After cleanup, verify that only the intended files remain:
 
 ```bash
 # These should exist (the actual system):
-ls .claude/agents/*.md
+ls .claude/agents/sr-*.md
 ls .claude/agents/personas/*.md
-ls .claude/commands/*.md
+ls .claude/commands/sr/*.md
 ls .claude/rules/*.md
 ls .claude/agent-memory/
 
@@ -803,25 +804,25 @@ Display the complete installation summary:
 ### Agents Installed
 | Agent | File | Model |
 |-------|------|-------|
-| architect | .claude/agents/architect.md | Sonnet |
-| developer | .claude/agents/developer.md | Sonnet |
-| reviewer | .claude/agents/reviewer.md | Sonnet |
-| product-manager | .claude/agents/product-manager.md | Opus |
+| sr-architect | .claude/agents/sr-architect.md | Sonnet |
+| sr-developer | .claude/agents/sr-developer.md | Sonnet |
+| sr-reviewer | .claude/agents/sr-reviewer.md | Sonnet |
+| sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
 
 ### Personas Created
 | Persona | File | Source |
 |---------|------|--------|
 [If IS_OSS=true:]
-| "Kai" — The Maintainer | .claude/agents/personas/the-maintainer.md | Auto-included (OSS) |
+| "Kai" — The Maintainer | .claude/agents/personas/sr-the-maintainer.md | Auto-included (OSS) |
 [For each user-generated persona:]
 | "[Name]" — The [Role] | .claude/agents/personas/[name].md | Generated |
 
 ### Commands Installed
 | Command | File |
 |---------|------|
-| /implement | .claude/commands/implement.md |
-| /product-backlog | .claude/commands/product-backlog.md |
-| /update-product-driven-backlog | .claude/commands/update-product-driven-backlog.md |
+| /sr:implement | .claude/commands/sr/implement.md |
+| /sr:product-backlog | .claude/commands/sr/product-backlog.md |
+| /sr:update-product-driven-backlog | .claude/commands/sr/update-product-driven-backlog.md |
 
 ### Rules Created
 | Layer | File |
@@ -838,13 +839,13 @@ Display the complete installation summary:
 
 ### Next Steps
 1. Review the generated files in .claude/
-2. Run `/product-backlog` to see your backlog (if GitHub Issues exist)
-3. Run `/update-product-driven-backlog` to generate feature ideas
-4. Run `/implement #issue-number` to implement a feature
+2. Run `/sr:product-backlog` to see your backlog (if GitHub Issues exist)
+3. Run `/sr:update-product-driven-backlog` to generate feature ideas
+4. Run `/sr:implement #issue-number` to implement a feature
 5. Commit the .claude/ directory to version control
 
 ### Quick Start
-- `/implement "describe a feature"` — implement something right now
-- `/product-backlog` — see prioritized feature ideas
-- `/update-product-driven-backlog` — discover new features using VPC
+- `/sr:implement "describe a feature"` — implement something right now
+- `/sr:product-backlog` — see prioritized feature ideas
+- `/sr:update-product-driven-backlog` — discover new features using VPC
 ```

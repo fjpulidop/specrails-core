@@ -1,6 +1,6 @@
-# Spec: /batch-implement Command
+# Spec: /sr:batch-implement Command
 
-The `/batch-implement` command is a macro-orchestrator above `/implement`. It accepts a set of feature references, computes a dependency-aware wave execution plan using topological sort, and delegates per-feature implementation to `/implement` one wave at a time. It adds dependency ordering, concurrency caps, and a batch-level progress dashboard on top of the single-feature pipeline.
+The `/sr:batch-implement` command is a macro-orchestrator above `/sr:implement`. It accepts a set of feature references, computes a dependency-aware wave execution plan using topological sort, and delegates per-feature implementation to `/sr:implement` one wave at a time. It adds dependency ordering, concurrency caps, and a batch-level progress dashboard on top of the single-feature pipeline.
 
 ---
 
@@ -13,7 +13,7 @@ The `/batch-implement` command is a macro-orchestrator above `/implement`. It ac
 
 The command MUST reject invocations with fewer than 2 feature refs and print:
 ```
-[batch-implement] Error: at least 2 feature refs are required. For a single feature, use /implement directly.
+[batch-implement] Error: at least 2 feature refs are required. For a single feature, use /sr:implement directly.
 ```
 
 ### `--deps "<spec>"`
@@ -34,7 +34,7 @@ Refs in `--deps` that do NOT appear in `FEATURE_REFS` SHOULD produce a warning a
 **Type:** positive integer
 **Default:** 3
 
-Maximum number of `/implement` invocations that may run in parallel at any one time, across the features within a wave. The command MUST NOT launch more than `CONCURRENCY` parallel invocations simultaneously.
+Maximum number of `/sr:implement` invocations that may run in parallel at any one time, across the features within a wave. The command MUST NOT launch more than `CONCURRENCY` parallel invocations simultaneously.
 
 ### `--wave-size N`
 
@@ -48,11 +48,11 @@ Maximum number of features permitted in a single wave, regardless of dependency 
 **Type:** boolean flag
 **Default:** false
 
-When present, the flag MUST be forwarded to every `/implement` invocation. No git, PR, or backlog operations will run in any wave. Both flags are equivalent aliases.
+When present, the flag MUST be forwarded to every `/sr:implement` invocation. No git, PR, or backlog operations will run in any wave. Both flags are equivalent aliases.
 
 The command MUST print at startup:
 ```
-[dry-run] Preview mode active — /implement will be called with --dry-run for each wave.
+[dry-run] Preview mode active — /sr:implement will be called with --dry-run for each wave.
 ```
 
 ---
@@ -161,7 +161,7 @@ The final batch report MUST contain all of the following sections, in this order
 1. **Run metadata** — timestamp, dry-run flag value
 2. **Summary table** — total features, succeeded, failed, blocked
 3. **Per-Feature Results** — one row per feature with all dashboard columns
-4. **Merge Conflicts** — aggregated from all `/implement` outputs; MUST be present even if empty (print "No merge conflicts detected.")
+4. **Merge Conflicts** — aggregated from all `/sr:implement` outputs; MUST be present even if empty (print "No merge conflicts detected.")
 5. **Next Steps** — conditional on outcome:
    - All succeeded: prompt to review PRs and monitor CI
    - Any failed: per-feature re-run commands
@@ -171,14 +171,14 @@ The final batch report MUST contain all of the following sections, in this order
 
 ## Behavior Matrix
 
-| Flag combination | Min refs | Wave planning | User confirmation | `/implement` flags forwarded | Git/PR/Backlog |
+| Flag combination | Min refs | Wave planning | User confirmation | `/sr:implement` flags forwarded | Git/PR/Backlog |
 |-----------------|----------|---------------|-------------------|------------------------------|----------------|
-| (none) | 2 | Yes | Yes | none | Per `/implement` config |
+| (none) | 2 | Yes | Yes | none | Per `/sr:implement` config |
 | `--dry-run` | 2 | Yes | Yes | `--dry-run` | No |
 | `--preview` | 2 | Yes | Yes | `--preview` | No |
-| `--concurrency N` | 2 | Yes | Yes | none | Per `/implement` config |
-| `--wave-size N` | 2 | Yes (capped) | Yes | none | Per `/implement` config |
-| `--deps "<spec>"` | 2 | Yes (with edges) | Yes | none | Per `/implement` config |
+| `--concurrency N` | 2 | Yes | Yes | none | Per `/sr:implement` config |
+| `--wave-size N` | 2 | Yes (capped) | Yes | none | Per `/sr:implement` config |
+| `--deps "<spec>"` | 2 | Yes (with edges) | Yes | none | Per `/sr:implement` config |
 | Any + `--dry-run` | 2 | Yes | Yes | `--dry-run` | No |
 
 ---
@@ -192,7 +192,7 @@ Variables set during Phase 0 and used throughout execution:
 | `FEATURE_REFS` | list | Phase 0 Step 1 | Ordered list of all feature refs from `$ARGUMENTS` |
 | `FEATURE_TITLES` | map | Phase 0 Step 3 | `{ref: title}` for dashboard display |
 | `DRY_RUN` | boolean | Phase 0 Step 2 | True when `--dry-run` or `--preview` present |
-| `CONCURRENCY` | integer | Phase 0 Step 2 | Max parallel `/implement` invocations; default 3 |
+| `CONCURRENCY` | integer | Phase 0 Step 2 | Max parallel `/sr:implement` invocations; default 3 |
 | `WAVE_SIZE` | integer\|null | Phase 0 Step 2 | Max features per wave; null if unset |
 | `DEPS_SPEC` | string\|null | Phase 0 Step 2 | Raw `--deps` value; null if not provided |
 | `DEP_GRAPH` | graph | Phase 1 Step 1 | Directed graph of dependency edges |
@@ -209,5 +209,5 @@ Variables set during Phase 0 and used throughout execution:
 - **CONCURRENCY=1**: all features run serially. Wave structure is preserved; features within a wave run one at a time.
 - **`--wave-size 1`**: each feature gets its own wave. Equivalent to fully sequential execution.
 - **GitHub CLI unavailable**: title fetch fails; the command MUST proceed using refs only (no titles in dashboard). MUST NOT stop.
-- **`/implement` timeout**: treat as `failed`; apply failure isolation. Log `[wave N] Timeout: <ref>` in the Notes column.
+- **`/sr:implement` timeout**: treat as `failed`; apply failure isolation. Log `[wave N] Timeout: <ref>` in the Notes column.
 - **All features blocked**: if every remaining feature becomes blocked (all roots failed), the command MUST skip remaining waves and proceed directly to Phase 3 (Batch Report).

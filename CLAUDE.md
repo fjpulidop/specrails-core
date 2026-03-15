@@ -32,11 +32,12 @@ specrails/
 │   ├── specs/
 │   └── changes/
 └── .claude/                # Generated output (after /setup)
-    ├── agents/             # Adapted agent prompts + personas
-    ├── commands/           # Adapted workflow commands
+    ├── agents/             # Adapted agent prompts + personas (sr-*.md)
+    ├── commands/
+    │   └── sr/             # Adapted workflow commands (/sr:* namespace)
     ├── rules/              # Per-layer convention rules
     ├── skills/             # OpenSpec skills (opsx:*)
-    ├── agent-memory/       # Persistent agent memory
+    ├── agent-memory/       # Persistent agent memory (sr-<agent>/ dirs)
     └── settings.json       # Permissions
 ```
 
@@ -58,8 +59,8 @@ grep -r '{{[A-Z_]*}}' .claude/agents/   # Check for broken placeholders in gener
 ## Architecture
 
 ```
-Product Discovery  →  Architecture  →  Implementation  →  Review  →  Ship
-(product-manager)     (architect)       (developer)       (reviewer)   (PR)
+Product Discovery      →  Architecture    →  Implementation    →  Review        →  Ship
+(sr-product-manager)      (sr-architect)     (sr-developer)       (sr-reviewer)    (PR)
 ```
 
 ## Conventions
