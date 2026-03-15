@@ -1,19 +1,26 @@
 import { Router, Request, Response } from 'express'
-import type { PhaseName, PhaseState, WsMessage } from './types'
+import type { PhaseState, PhaseDefinition, WsMessage } from './types'
 import type { DbInstance } from './db'
 import { upsertPhase } from './db'
 
-const PHASE_NAMES: PhaseName[] = ['architect', 'developer', 'reviewer', 'ship']
+const DEFAULT_PHASE_DEFINITIONS: PhaseDefinition[] = [
+  { key: 'architect', label: 'Architect', description: 'Analyzes the issue, researches the codebase, and designs the implementation plan' },
+  { key: 'developer', label: 'Developer', description: 'Implements the changes: writes code, edits files, runs tests' },
+  { key: 'reviewer', label: 'Reviewer', description: 'Reviews the implementation for correctness, edge cases, and code quality' },
+  { key: 'ship', label: 'Ship', description: 'Creates the PR, writes the description, and finalizes the changes for merge' },
+]
 
-const phases: Record<PhaseName, PhaseState> = {
+let activePhaseKeys: string[] = DEFAULT_PHASE_DEFINITIONS.map((d) => d.key)
+let activePhaseDefinitions: PhaseDefinition[] = [...DEFAULT_PHASE_DEFINITIONS]
+const phases: Record<string, PhaseState> = {
   architect: 'idle',
   developer: 'idle',
   reviewer: 'idle',
   ship: 'idle',
 }
 
-function isValidPhase(value: string): value is PhaseName {
-  return PHASE_NAMES.includes(value as PhaseName)
+function isValidPhase(value: string): boolean {
+  return activePhaseKeys.includes(value)
 }
 
 function eventToState(event: string): PhaseState | null {
@@ -23,16 +30,61 @@ function eventToState(event: string): PhaseState | null {
   return null
 }
 
-export function getPhaseStates(): Record<PhaseName, PhaseState> {
+export function getPhaseStates(): Record<string, PhaseState> {
   return { ...phases }
 }
 
-export function resetPhases(broadcast: (msg: WsMessage) => void): void {
-  for (const phase of PHASE_NAMES) {
-    phases[phase] = 'idle'
+export function getPhaseDefinitions(): PhaseDefinition[] {
+  return [...activePhaseDefinitions]
+}
+
+export function setActivePhases(
+  definitions: PhaseDefinition[],
+  broadcast: (msg: WsMessage) => void
+): void {
+  // Clear old phase entries
+  for (const key of activePhaseKeys) {
+    delete phases[key]
+  }
+  // Install new phase set
+  activePhaseDefinitions = definitions
+  activePhaseKeys = definitions.map((d) => d.key)
+  for (const key of activePhaseKeys) {
+    phases[key] = 'idle'
+  }
+  // Broadcast idle state for each new phase
+  for (const key of activePhaseKeys) {
+    broadcast({
+      type: 'phase',
+      phase: key,
+      state: 'idle',
+      timestamp: new Date().toISOString(),
+    })
+  }
+}
+
+export function setPhaseState(
+  phase: string,
+  state: PhaseState,
+  broadcast: (msg: WsMessage) => void
+): void {
+  if (activePhaseKeys.includes(phase)) {
+    phases[phase] = state
     broadcast({
       type: 'phase',
       phase,
+      state,
+      timestamp: new Date().toISOString(),
+    })
+  }
+}
+
+export function resetPhases(broadcast: (msg: WsMessage) => void): void {
+  for (const key of activePhaseKeys) {
+    phases[key] = 'idle'
+    broadcast({
+      type: 'phase',
+      phase: key,
       state: 'idle',
       timestamp: new Date().toISOString(),
     })

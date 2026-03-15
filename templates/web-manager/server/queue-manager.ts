@@ -2,10 +2,11 @@ import { spawn, execSync, ChildProcess } from 'child_process'
 import { createInterface } from 'readline'
 import { v4 as uuidv4 } from 'uuid'
 import treeKill from 'tree-kill'
-import type { WsMessage, LogMessage, Job } from './types'
-import { resetPhases } from './hooks'
-import { createJob, finishJob, appendEvent } from './db'
+import type { WsMessage, LogMessage, Job, PhaseDefinition } from './types'
+import { resetPhases, setActivePhases, setPhaseState } from './hooks'
+import { createJob, finishJob, appendEvent, upsertPhase } from './db'
 import type { JobResult } from './db'
+import type { CommandInfo } from './config'
 
 const LOG_BUFFER_MAX = 5000
 const LOG_BUFFER_DROP = 1000
@@ -82,8 +83,9 @@ export class QueueManager {
   private _broadcast: (msg: WsMessage) => void
   private _db: any
   private _logBuffer: LogMessage[]
+  private _commands: CommandInfo[]
 
-  constructor(broadcast: (msg: WsMessage) => void, db?: any) {
+  constructor(broadcast: (msg: WsMessage) => void, db?: any, commands?: CommandInfo[]) {
     this._queue = []
     this._jobs = new Map()
     this._activeProcess = null
@@ -94,10 +96,15 @@ export class QueueManager {
     this._broadcast = broadcast
     this._db = db ?? null
     this._logBuffer = []
+    this._commands = commands ?? []
 
     if (this._db) {
       this._restoreFromDb()
     }
+  }
+
+  setCommands(commands: CommandInfo[]): void {
+    this._commands = commands
   }
 
   // ─── Public API ─────────────────────────────────────────────────────────────
@@ -211,7 +218,19 @@ export class QueueManager {
     return [...this._logBuffer]
   }
 
+  phasesForCommand(command: string): PhaseDefinition[] {
+    return this._phasesForCommand(command)
+  }
+
   // ─── Private methods ────────────────────────────────────────────────────────
+
+  private _phasesForCommand(command: string): PhaseDefinition[] {
+    // Extract slug from command strings like "/sr:implement #5" or "implement"
+    const firstToken = command.trim().split(/\s+/)[0]
+    const slug = firstToken.includes(':') ? firstToken.split(':').pop()! : firstToken.replace(/^\//, '')
+    const info = this._commands.find((c) => c.slug === slug)
+    return info?.phases ?? []
+  }
 
   private _drainQueue(): void {
     if (this._activeJobId !== null) return
@@ -233,7 +252,18 @@ export class QueueManager {
     this._recomputePositions()
     this._persistJob(job)
 
-    resetPhases(this._broadcast)
+    const commandPhases = this._phasesForCommand(job.command)
+    if (commandPhases.length > 0) {
+      setActivePhases(commandPhases, this._broadcast)
+      // Auto-start the first phase when the job begins
+      const firstPhase = commandPhases[0].key
+      setPhaseState(firstPhase, 'running', this._broadcast)
+      if (this._db) {
+        upsertPhase(this._db, jobId, firstPhase, 'running')
+      }
+    } else {
+      resetPhases(this._broadcast)
+    }
 
     const args = [
       '--dangerously-skip-permissions',
@@ -246,6 +276,7 @@ export class QueueManager {
     const child = spawn('claude', args, {
       env: process.env,
       shell: false,
+      stdio: ['ignore', 'pipe', 'pipe'],
     })
 
     this._activeProcess = child
@@ -289,6 +320,15 @@ export class QueueManager {
             payload: line,
           })
         }
+        this._broadcast({
+          type: 'event',
+          jobId,
+          event_type: eventType,
+          source: 'stdout',
+          payload: line,
+          timestamp: new Date().toISOString(),
+          seq: eventSeq - 1,
+        })
         if (eventType === 'result') {
           lastResultEvent = parsed
         }
@@ -387,6 +427,15 @@ export class QueueManager {
       emitLine('stdout', `[process exited with code ${code ?? 'unknown'}${costStr}]`)
     } else {
       emitLine('stdout', `[process exited with code ${code ?? 'unknown'}]`)
+    }
+
+    // Auto-complete phases based on exit status
+    const commandPhases = this._phasesForCommand(job.command)
+    if (commandPhases.length > 0) {
+      const phaseState = finalStatus === 'completed' ? 'done' : finalStatus === 'canceled' ? 'idle' : 'error'
+      for (const phase of commandPhases) {
+        setPhaseState(phase.key, phaseState, this._broadcast)
+      }
     }
 
     this._broadcastQueueState()

@@ -86,10 +86,12 @@ export function useChat(): UseChatReturn {
   }, [])
 
   const handleMessage = useCallback((raw: unknown) => {
-    const msg = raw as { type: string } & Record<string, unknown>
+    const msg = raw as Record<string, unknown>
+    if (typeof msg.type !== 'string') return
 
     if (msg.type === 'chat_stream') {
-      const { conversationId, delta } = msg as { conversationId: string; delta: string }
+      const conversationId = msg.conversationId as string
+      const delta = msg.delta as string
       setConversations((prev) =>
         prev.map((c) =>
           c.id === conversationId
@@ -98,7 +100,8 @@ export function useChat(): UseChatReturn {
         )
       )
     } else if (msg.type === 'chat_done') {
-      const { conversationId, fullText } = msg as { conversationId: string; fullText: string }
+      const conversationId = msg.conversationId as string
+      const fullText = msg.fullText as string
       setConversations((prev) =>
         prev.map((c) => {
           if (c.id !== conversationId) return c
@@ -118,7 +121,7 @@ export function useChat(): UseChatReturn {
         })
       )
     } else if (msg.type === 'chat_error') {
-      const { conversationId } = msg as { conversationId: string }
+      const conversationId = msg.conversationId as string
       setConversations((prev) =>
         prev.map((c) =>
           c.id === conversationId
@@ -127,7 +130,8 @@ export function useChat(): UseChatReturn {
         )
       )
     } else if (msg.type === 'chat_command_proposal') {
-      const { conversationId, command } = msg as { conversationId: string; command: string }
+      const conversationId = msg.conversationId as string
+      const command = msg.command as string
       setConversations((prev) =>
         prev.map((c) =>
           c.id === conversationId && !c.commandProposals.includes(command)
@@ -136,7 +140,8 @@ export function useChat(): UseChatReturn {
         )
       )
     } else if (msg.type === 'chat_title_update') {
-      const { conversationId, title } = msg as { conversationId: string; title: string }
+      const conversationId = msg.conversationId as string
+      const title = msg.title as string
       setConversations((prev) =>
         prev.map((c) => (c.id === conversationId ? { ...c, title } : c))
       )

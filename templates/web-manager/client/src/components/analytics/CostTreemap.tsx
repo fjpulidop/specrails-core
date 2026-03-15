@@ -114,12 +114,7 @@ export function CostTreemap({ data }: CostTreemapProps) {
         <Treemap
           data={chartData}
           dataKey="size"
-          content={(props) => (
-            <CustomContent
-              {...props}
-              colorIndex={(props as unknown as { colorIndex?: number }).colorIndex ?? 0}
-            />
-          )}
+          content={<CustomContent />}
         >
           <Tooltip content={<CustomTooltip />} />
         </Treemap>
