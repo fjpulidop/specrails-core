@@ -77,7 +77,19 @@ export default function DashboardPage() {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Recent Jobs
         </h2>
-        <RecentJobs jobs={jobs} isLoading={isLoadingJobs} />
+        <RecentJobs
+          jobs={jobs}
+          isLoading={isLoadingJobs}
+          onJobsCleared={async () => {
+            try {
+              const res = await fetch('/api/jobs?limit=10')
+              if (!res.ok) return
+              const data = await res.json() as { jobs: JobSummary[] }
+              cachedJobs = data.jobs
+              setJobs(data.jobs)
+            } catch { /* ignore */ }
+          }}
+        />
       </section>
 
       {/* Wizards */}
