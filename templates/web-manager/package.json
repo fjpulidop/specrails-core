@@ -10,7 +10,7 @@
     "dev:server": "tsx watch server/index.ts",
     "dev:client": "cd client && npm run dev",
     "build:cli": "tsc --project tsconfig.cli.json",
-    "build": "cd client && npm run build && npm run build:cli",
+    "build": "cd client && npm run build && cd .. && npm run build:cli",
     "typecheck": "tsc --noEmit && cd client && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
