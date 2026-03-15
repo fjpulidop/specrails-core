@@ -1,0 +1,10 @@
+{
+  "agent": "reviewer",
+  "timestamp": "2026-03-15T02:45:43Z",
+  "feature": "cli-wrapper-srm",
+  "error_type": "api-contract-mock-mismatch",
+  "root_cause": "server/index.ts line 115 returns { jobId, position } from POST /api/spawn. cli/srm.ts line 328 parsed the response as { processId }, so processId was undefined in production. Log filtering silently matched no messages and the metadata fetch hit /api/jobs/undefined. The test mock in cli/srm.test.ts line 295 returned { processId } to match the client's expectation rather than the real server response, masking the bug.",
+  "file_pattern": "cli/*.ts",
+  "prevention_rule": "When writing a test mock for an HTTP endpoint, always copy the exact response shape from the real server handler (res.json(...) call). Never write the mock to match what the client expects — match what the server sends. Cross-reference field names between the server handler and client parse before the first commit.",
+  "severity": "warning"
+}

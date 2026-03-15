@@ -13,6 +13,16 @@
 - `subagent_type:` in command files must match the `name:` field of the target agent
 - Memory dirs are at `.claude/agent-memory/sr-<agent>/` (e.g. `sr-reviewer/common-fixes.md`)
 
+## QueueManager notes (job-queueing feature)
+
+- `_logBuffer` is a class field (not module-level) — prevents cross-test state pollution in vitest
+- `index.test.ts` mocks QueueManager class wholesale; tests access mock methods directly on the instance (`queueManager.enqueue.mockReturnValue(...)`) not via `vi.mocked()`
+- `tree-kill` has bundled types in `index.d.ts`; do NOT add `@types/tree-kill` to package.json (package does not exist on npm)
+- DB migrations M002 (queue_position column on jobs) and M003 (queue_state table) added to MIGRATIONS array in db.ts
+- `JobRow` in types.ts now includes `queue_position: number | null` field; `SpawnHandle` and `SpawnBusyError` removed
+- HTTP 202 (not 200) for `POST /api/spawn`; response body is `{ jobId, position }` not `{ processId }`
+- `activeJobRef` in index.ts replaced by static `{ current: null }` passed to hooksRouter — hooks.ts uses optional chaining so phase persistence still works when activeJobId is available
+
 ## Detailed notes
 
 - [sr-prefix-namespace explanation](../../agent-memory/explanations/) — see dated files for rationale
