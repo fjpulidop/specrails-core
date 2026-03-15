@@ -25,11 +25,12 @@ export function RootLayout() {
       </div>
       <Toaster
         position="bottom-right"
-        theme="dark"
         toastOptions={{
+          unstyled: true,
           classNames: {
-            toast: 'glass-card border border-border/30 text-foreground text-xs',
-            description: 'text-muted-foreground',
+            toast: 'glass-card border border-border/30 text-foreground text-xs p-3 rounded-lg flex items-start gap-2 w-[356px]',
+            title: 'font-medium',
+            description: 'text-muted-foreground mt-0.5',
           },
         }}
       />
