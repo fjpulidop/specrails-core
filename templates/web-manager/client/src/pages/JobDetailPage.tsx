@@ -66,19 +66,10 @@ export default function JobDetailPage() {
         initPhases[def.key] = ((msg.phases as Record<string, string>)?.[def.key] as PhaseState) ?? 'idle'
       }
       setPhases(initPhases)
-    } else if (msg.type === 'event' && msg.jobId === id) {
-      const eventRow: EventRow = {
-        id: Date.now(),
-        job_id: id ?? '',
-        seq: 0,
-        event_type: msg.event_type as string,
-        source: msg.source as string,
-        payload: msg.payload as string,
-        timestamp: msg.timestamp as string,
-      }
-      setEvents((prev) => [...prev, eventRow])
     } else if (msg.type === 'log' && msg.processId === id) {
-      // Fallback: live log line as synthetic event row
+      // Live log lines — the server also emits 'event' messages for the same
+      // content but those are redundant during streaming (they're useful for
+      // the initial DB load where 'log' messages aren't stored separately).
       const syntheticEvent: EventRow = {
         id: Date.now(),
         job_id: id ?? '',
