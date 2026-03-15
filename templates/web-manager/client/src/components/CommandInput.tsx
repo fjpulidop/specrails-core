@@ -4,11 +4,13 @@ export function CommandInput() {
   const [command, setCommand] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [queuedMessage, setQueuedMessage] = useState<string | null>(null)
 
   async function handleRun() {
     if (!command.trim() || isLoading) return
     setIsLoading(true)
     setErrorMessage(null)
+    setQueuedMessage(null)
 
     try {
       const res = await fetch('/api/spawn', {
@@ -17,11 +19,16 @@ export function CommandInput() {
         body: JSON.stringify({ command }),
       })
 
-      if (res.ok) {
+      if (res.status === 202) {
+        const body = await res.json()
+        const pos = (body as { position: number }).position
+        const msg = pos === 0 ? 'Started' : `Queued (position ${pos})`
+        setQueuedMessage(msg)
         setCommand('')
+        setTimeout(() => setQueuedMessage(null), 2000)
       } else {
         const body = await res.json().catch(() => ({}))
-        const msg = (body as { error?: string }).error ?? (res.status === 409 ? 'A process is already running' : 'Failed to start process')
+        const msg = (body as { error?: string }).error ?? 'Failed to start process'
         setErrorMessage(msg)
       }
     } catch {
@@ -46,7 +53,7 @@ export function CommandInput() {
           value={command}
           onChange={(e) => setCommand(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Enter command (e.g., /implement #42)"
+          placeholder="Enter command (e.g., /sr:implement #42)"
           style={{
             flex: 1,
             background: '#1e293b',
@@ -70,11 +77,14 @@ export function CommandInput() {
             cursor: isLoading || !command.trim() ? 'not-allowed' : 'pointer',
           }}
         >
-          {isLoading ? 'Running...' : 'Run'}
+          {isLoading ? 'Queuing...' : 'Queue'}
         </button>
       </div>
       {errorMessage && (
         <div style={{ color: '#ef4444', fontSize: 12, marginTop: 6 }}>{errorMessage}</div>
+      )}
+      {queuedMessage && (
+        <div style={{ color: '#22c55e', fontSize: 12, marginTop: 6 }}>{queuedMessage}</div>
       )}
     </div>
   )
