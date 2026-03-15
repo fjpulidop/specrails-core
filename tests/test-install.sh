@@ -42,7 +42,7 @@ run_test "--root-dir without value rejected" test_install_root_dir_missing_value
 
 test_install_fresh() {
     local output
-    output="$(bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
+    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
     assert_contains "$output" "Installation complete" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-version" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json" &&
@@ -52,7 +52,7 @@ test_install_fresh() {
 run_test "fresh install creates expected structure" test_install_fresh
 
 test_install_creates_version_file() {
-    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     local version
     version="$(cat "$TEST_TMPDIR/target/.specrails-version" | tr -d '[:space:]')"
     local expected
@@ -62,7 +62,7 @@ test_install_creates_version_file() {
 run_test "version file matches VERSION" test_install_creates_version_file
 
 test_install_manifest_valid_json() {
-    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.specrails-manifest.json'))"
 }
 run_test "manifest is valid JSON" test_install_manifest_valid_json
@@ -72,9 +72,9 @@ run_test "manifest is valid JSON" test_install_manifest_valid_json
 # ─────────────────────────────────────────────
 
 test_install_double() {
-    bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     local output
-    output="$(bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1 || true)"
+    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1 || true)"
     assert_contains "$output" "already"
 }
 run_test "double install warns about existing installation" test_install_double
@@ -91,6 +91,28 @@ test_install_source_repo_detection() {
     assert_contains "$output" "specrails source repo"
 }
 run_test "detects running from specrails source repo" test_install_source_repo_detection
+
+# ─────────────────────────────────────────────
+# Web manager opt-in prompt
+# ─────────────────────────────────────────────
+
+test_install_web_manager_accepted() {
+    local output
+    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
+    assert_dir_exists "$TEST_TMPDIR/target/specrails/web-manager"
+}
+run_test "web manager installed when user accepts prompt" test_install_web_manager_accepted
+
+test_install_web_manager_declined() {
+    local output
+    output="$(echo "n" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
+    if [[ -d "$TEST_TMPDIR/target/specrails/web-manager" ]]; then
+        echo -e "  ${RED}FAIL${NC}: web-manager dir should not exist when declined"
+        return 1
+    fi
+    assert_contains "$output" "Skipping Workflow Manager"
+}
+run_test "web manager skipped when user declines prompt" test_install_web_manager_declined
 
 # ─────────────────────────────────────────────
 

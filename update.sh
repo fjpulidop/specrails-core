@@ -670,26 +670,8 @@ do_web_manager() {
             warn "npm not found — package.json changed but cannot install. Run 'cd specrails/web-manager && npm install' manually."
         fi
     else
-        # Not installed — full install
-        mkdir -p "$web_manager_dir"
-        cp -r "$source_dir/"* "$web_manager_dir/"
-        ok "Installed web manager to specrails/web-manager/"
-
-        if [[ "$has_npm" == true ]]; then
-            info "Installing web manager dependencies..."
-            (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
-                ok "Server dependencies installed"
-            } || {
-                warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
-            }
-            (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
-                ok "Client dependencies installed"
-            } || {
-                warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
-            }
-        else
-            warn "npm not available — skipping dependency install. Run 'cd specrails/web-manager && npm install' later."
-        fi
+        # Not installed — skip (user must install via install.sh)
+        ok "Web manager not installed — skipping (install with install.sh)"
     fi
 }
 
