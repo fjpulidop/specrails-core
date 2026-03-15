@@ -33,10 +33,10 @@ In `--update` mode, `/setup` SHALL evaluate new agent templates (present in spec
 - **THEN** setup informs the user but recommends skipping: "New agent available: sr-backend-developer. No backend detected — skip? [Y/n]"
 
 ### Requirement: Workflow command update
-In `--update` mode, `/setup` SHALL update workflow commands (e.g., `/sr:implement`) to reference any newly added agents.
+In `--update` mode, `/setup` SHALL update workflow commands to reference any newly added agents using sr- prefixed names.
 
 #### Scenario: New agent added to implement pipeline
-- **WHEN** a `sr-frontend-developer` agent was added during update
+- **WHEN** an `sr-frontend-developer` agent was added during update
 - **THEN** `/sr:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant
 
 ### Requirement: Update summary
