@@ -72,6 +72,7 @@ specrails/
 - File naming: kebab-case for all files and directories
 - This is a developer tool — prioritize clarity, reliability, and ease of installation
 
+- Always check scoped context: `.claude/rules/*.md`
 - Always check `.claude/rules/` for conditional conventions per layer
 
 ### 5. Key Warnings to Always Consider

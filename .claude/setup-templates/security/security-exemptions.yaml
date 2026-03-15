@@ -1,0 +1,20 @@
+# Security scan exemptions
+#
+# Add entries here to suppress known false positives from the security-reviewer agent.
+# All exemptions are tracked in git — every addition is auditable.
+#
+# Fields:
+#   secrets.pattern   - Description of the pattern being exempted (for documentation)
+#   secrets.reason    - Required: why this is a known false positive
+#   secrets.added_by  - Required: who added this exemption
+#   secrets.added_on  - Required: ISO 8601 date (YYYY-MM-DD)
+#
+#   vulnerabilities.rule    - The vulnerability rule name being exempted
+#   vulnerabilities.file    - Optional: scope exemption to a specific file path
+#   vulnerabilities.reason  - Required: justification
+#   vulnerabilities.added_by - Required
+#   vulnerabilities.added_on - Required
+
+exemptions:
+  secrets: []
+  vulnerabilities: []

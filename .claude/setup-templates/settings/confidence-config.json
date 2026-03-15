@@ -1,0 +1,17 @@
+{
+  "_docs": "specrails confidence gate configuration. Installed to .claude/confidence-config.json by /setup.",
+  "schema_version": "1",
+  "enabled": true,
+  "thresholds": {
+    "overall": 70,
+    "aspects": {
+      "type_correctness": 60,
+      "pattern_adherence": 60,
+      "test_coverage": 60,
+      "security": 75,
+      "architectural_alignment": 60
+    }
+  },
+  "on_breach": "block",
+  "override_allowed": true
+}

@@ -12,3 +12,4 @@
 - [srm_cli_pattern.md](srm_cli_pattern.md) — srm CLI design: 500ms detection probe, dual-path execution, processId WS filtering, 501 stub pattern, CommonJS output, no external CLI lib
 - [web_manager_sqlite_patterns.md](web_manager_sqlite_patterns.md) — SQLite persistence patterns for web-manager: sync driver rationale, db-parameter injection, activeJobRef mutable-ref pattern, stream-json parsing strategy
 - [web_manager_queue_patterns.md](web_manager_queue_patterns.md) — job-queueing patterns: QueueManager class rationale, 202 HTTP status, global log buffer decision, tree-kill for process groups
+- [chat_manager_patterns.md](chat_manager_patterns.md) — chat panel patterns: ChatManager vs QueueManager rationale, shared WS context, layout integration, command proposal detection, auto-title, migration 4

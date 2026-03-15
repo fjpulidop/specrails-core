@@ -46,6 +46,8 @@ The CI pipeline runs these checks. You MUST run ALL of them in this exact order:
 
 ## Known CI vs Local Gaps
 
+These are the most common reasons code passes locally but fails in CI:
+
 - No CI pipeline exists yet — all checks are local
 - Shell scripts may behave differently on Linux vs macOS (check `sed`, `grep` flags)
 - Template placeholders must be checked in generated output, NOT in template source files
@@ -83,9 +85,8 @@ After running CI checks, also review for:
 - Edge cases are covered (empty input, missing files, permission errors)
 
 ### Consistency
-- New files follow existing naming conventions (kebab-case)
-- Markdown heading levels are consistent
-- Template placeholder style is consistent (`{{UPPER_SNAKE_CASE}}`)
+- New files follow existing naming conventions
+- Import style matches the rest of the codebase
 - Error handling patterns are consistent
 
 ## Workflow

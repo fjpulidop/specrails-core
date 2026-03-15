@@ -1,0 +1,8 @@
+{
+  "is_oss": false,
+  "signals": {
+    "public_repo": false,
+    "has_ci": false,
+    "has_contributing": false
+  }
+}

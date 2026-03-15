@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Write",
+      "Edit",
+      "Glob",
+      "Grep",
+      "Agent",
+      "Skill",
+      "ToolSearch",
+      "Bash(curl -sf *127.0.0.1:4200*)",
+      "{{PERMISSION_ENTRIES}}"
+    ]
+  }
+}

@@ -72,9 +72,9 @@ The AI-assisted development space is evolving rapidly:
 
 You have 3 primary personas defined in `.claude/agents/personas/`. **Always read these files** at the start of any exploration session:
 
-- `.claude/agents/personas/the-lead-dev.md` — "Alex" the Lead Dev (senior developer / engineering lead)
-- `.claude/agents/personas/the-product-founder.md` — "Sara" the Product Founder (PM / technical founder)
-- `.claude/agents/personas/the-maintainer.md` — "Kai" the Maintainer (open-source maintainer)
+- `.claude/agents/personas/sr-the-lead-dev.md` — "Alex" the Lead Dev (senior developer / engineering lead)
+- `.claude/agents/personas/sr-the-product-founder.md` — "Sara" the Product Founder (PM / technical founder)
+- `.claude/agents/personas/sr-the-maintainer.md` — "Kai" the Maintainer (open-source maintainer)
 
 These personas include full Value Proposition Canvas profiles (jobs, pains, gains). Use them to ground every feature evaluation in real user needs.
 

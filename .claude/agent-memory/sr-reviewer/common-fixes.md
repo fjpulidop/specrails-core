@@ -82,6 +82,26 @@ Never combine template and instance paths in a single grep for placeholder-clean
 
 ---
 
+## Stale closure in React useCallback — setActiveTabIndex inside setConversations
+
+**Pattern:** A `useCallback` with a dependency on `conversations.length` uses `conversations.length` inside a `setActiveTabIndex(prev => ...)` updater. After `setConversations` updates state, `conversations.length` still reflects the pre-update value because React batches state updates and the closure captures the old value.
+
+**Root cause (2026-03-15):** `createConversation` in `useChat.ts` called `setActiveTabIndex((prev) => Math.min(conversations.length, 2))`. Since `conversations.length` was captured from the outer scope before the state update, the new tab index was always off-by-one (pointing to the pre-add last index, not the newly appended tab).
+
+**Fix pattern:** Call `setActiveTabIndex(...)` inside the `setConversations(prev => ...)` updater where `prev` reflects the current state before the update. This gives the correct pre-add length:
+```ts
+setConversations((prev) => {
+  const next = [...prev, newConvo].slice(0, 3)
+  setActiveTabIndex(Math.min(prev.length, 2)) // prev.length = index of new tab
+  return next
+})
+```
+Also remove `conversations.length` from the `useCallback` dependency array — it's no longer needed.
+
+**How to detect:** Any `useCallback` where a state setter's functional updater ignores its `prev` argument and instead captures state from the outer closure is suspect. Check that `conversations` (or similar) is not accessed outside the updater when a consistent view is needed.
+
+---
+
 ## find -name '*[A-Z]*' on macOS matches lowercase .md extensions
 
 **Pattern:** On macOS with certain locale settings, `find -name '*[A-Z]*'` matches filenames like `reviewer.md` because the character range `[A-Z]` can match lowercase letters or punctuation under the default locale.

@@ -24,7 +24,8 @@
       "Bash(find *)",
       "Bash(head *)",
       "Bash(tail *)",
-      "Bash(wc *)"
+      "Bash(wc *)",
+      "Bash(curl -sf *127.0.0.1:4200*)"
     ]
   }
 }

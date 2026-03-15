@@ -33,6 +33,7 @@ When an OpenSpec change is being applied, you:
 ### Phase 1: Understand
 - Read the OpenSpec change spec thoroughly
 - Read referenced base specs
+- Read layer-specific CLAUDE.md files (`.claude/rules/*.md`)
 - **Read recent failure records**: Check `.claude/agent-memory/failures/` for JSON records where `file_pattern` matches files you will create or modify. For each matching record, treat `prevention_rule` as an explicit guardrail in your implementation plan. If the directory does not exist or is empty, proceed normally — this is expected on fresh installs.
 - Identify all files that need to be created or modified
 - Understand the data flow through the architecture
@@ -48,16 +49,26 @@ When an OpenSpec change is being applied, you:
 - Follow the project architecture strictly:
 ```
 specrails/
-├── install.sh              # Shell installer
-├── templates/              # Source templates (agents, commands, rules, personas)
-├── commands/               # Claude Code command definitions
-├── prompts/                # Guide prompts
-├── openspec/               # Specs and changes
-└── .claude/                # Generated output
+├── install.sh              # Shell installer — scaffolds .claude/ in target repos
+├── templates/              # Source templates for agents, commands, rules, personas
+│   ├── agents/             # Agent prompt templates
+│   ├── commands/           # Workflow command templates
+│   ├── personas/           # VPC persona template
+│   ├── rules/              # Per-layer convention template
+│   ├── claude-md/          # Root CLAUDE.md template
+│   └── settings/           # Settings template
+├── commands/               # Claude Code command definitions (setup.md)
+├── prompts/                # Guide prompts for codebase analysis, conventions, personas
+├── openspec/               # OpenSpec configuration and specs
+│   ├── config.yaml
+│   ├── specs/
+│   └── changes/
+└── .claude/                # Generated output (after /setup runs in target repo)
     ├── agents/             # Adapted agent prompts
     ├── commands/           # Adapted workflow commands
-    ├── rules/              # Per-layer conventions
-    └── agent-memory/       # Persistent memory
+    ├── rules/              # Per-layer convention rules
+    ├── agent-memory/       # Persistent agent memory directories
+    └── settings.json       # Permissions
 ```
 - Write code layer by layer, respecting boundaries
 - Apply SOLID principles rigorously
@@ -72,12 +83,38 @@ specrails/
 ### Phase 4: Verify
 - Review each file for adherence to conventions
 - Ensure all imports are correct and no circular dependencies exist
+- Verify type annotations are complete
 - Check that error handling is comprehensive and consistent
 - Validate that the implementation matches the spec exactly
-- Run verification checks (when CI is available):
-  - Shell scripts: `shellcheck install.sh`
-  - Markdown: verify template placeholders are valid
-  - If TypeScript is added: `npx tsc --noEmit`, linting, tests
+- Run the **full CI-equivalent verification suite** (see below)
+
+## CI-Equivalent Verification Suite
+
+You MUST run ALL of these checks after implementation. These match the CI pipeline exactly:
+
+**Note: CI is not yet configured for specrails. Run these manual checks instead:**
+
+1. **Shell script validation** (if shell files changed):
+   ```bash
+   shellcheck install.sh 2>&1 || true
+   ```
+
+2. **Template integrity** — verify no broken placeholders:
+   ```bash
+   # Check for unsubstituted placeholders in generated files (not templates)
+   grep -r '{{[A-Z_]*}}' .claude/agents/ .claude/commands/ .claude/rules/ 2>/dev/null | grep -v setup-templates || echo "OK: no broken placeholders"
+   ```
+
+3. **Markdown formatting** — check for obvious issues:
+   ```bash
+   # Check for trailing whitespace, broken links, inconsistent headers
+   grep -rn '  $' .claude/agents/ .claude/commands/ 2>/dev/null || echo "OK: no trailing whitespace"
+   ```
+
+4. **File naming** — verify kebab-case:
+   ```bash
+   find .claude/agents .claude/commands .claude/rules -name '*_*' -o -name '*[A-Z]*' 2>/dev/null | head -5 || echo "OK: kebab-case naming"
+   ```
 
 ### Common pitfalls to avoid:
 - Template placeholders that don't get substituted (leftover `{{...}}` in generated output)
@@ -96,10 +133,10 @@ specrails/
 
 ## Critical Warnings
 
-- **Meta-tool**: Changes to templates affect ALL target repos that install specrails. Test template generation carefully.
-- **Pre-code phase**: The project may transition to TypeScript or another language. Write code that's easy to port.
-- **No CI yet**: Verify manually until CI is set up. Be extra thorough.
-- **Self-referential**: specrails develops itself. Avoid infinite recursion in template generation.
+- **Pre-code phase**: The project is evolving from shell+markdown to a distributable software tool. Architecture decisions now will shape the future stack.
+- **No CI yet**: There is no CI pipeline. When one is added, ensure all agents and commands reference the correct CI commands.
+- **Meta-tool**: specrails generates files that configure AI agents. Be careful about recursion — changes to templates affect what gets generated in target repos.
+- **Self-referential**: specrails uses its own agent workflow system to develop itself.
 
 ## Output Standards
 
