@@ -1,3 +1,4 @@
+import { MessageSquare } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { ChatHeader } from './ChatHeader'
 import { MessageList } from './MessageList'
@@ -30,18 +31,18 @@ export function ChatPanel({ chat }: ChatPanelProps) {
   if (!isPanelOpen) {
     return (
       <div
-        className="flex w-10 shrink-0 cursor-pointer flex-col items-center border-l border-border/30 bg-background/80 backdrop-blur-sm pt-3"
+        className="flex w-10 shrink-0 cursor-pointer flex-col items-center justify-center gap-2 border-l border-border/30 bg-background/80 backdrop-blur-sm"
         onClick={togglePanel}
         title="Open chat"
       >
-        <div className="mb-1 rotate-90 select-none text-[10px] font-medium tracking-widest text-muted-foreground uppercase">
-          Chat
+        <div className="relative">
+          <MessageSquare className="w-4 h-4 text-dracula-purple" />
+          {activeStreamCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-dracula-pink text-[8px] font-bold text-white">
+              {activeStreamCount}
+            </span>
+          )}
         </div>
-        {activeStreamCount > 0 && (
-          <span className="mt-1 rounded-full bg-dracula-purple/80 px-1 text-[9px] text-white">
-            {activeStreamCount}
-          </span>
-        )}
       </div>
     )
   }
