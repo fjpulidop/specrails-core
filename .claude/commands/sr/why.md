@@ -1,3 +1,9 @@
+---
+name: "In-Context Help"
+description: "Searches explanation records written by agents during the implementation pipeline"
+phases: []
+---
+
 # /sr:why — In-Context Help
 
 Searches explanation records written by sr-architect, sr-developer, and sr-reviewer agents

@@ -3,6 +3,7 @@ name: "Health Check Dashboard"
 description: "Run a comprehensive codebase health check — tests, linting, coverage, complexity, and dependency audit. Compare with previous runs to detect regressions."
 category: Workflow
 tags: [workflow, health, quality, dashboard]
+phases: []
 ---
 
 Run a full health check for **specrails**: detect available tools, execute each quality check, compare results against the previous run, detect regressions, compute a health grade, and store a snapshot for future comparison.
