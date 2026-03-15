@@ -7,7 +7,7 @@ import { BatchImplementWizard } from '../components/BatchImplementWizard'
 import type { CommandInfo, JobSummary } from '../types'
 
 export default function DashboardPage() {
-  const { phases, phaseDefinitions, queueState, recentJobs } = usePipeline()
+  const { recentJobs } = usePipeline()
   const [commands, setCommands] = useState<CommandInfo[]>([])
   const [jobs, setJobs] = useState<JobSummary[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(true)
