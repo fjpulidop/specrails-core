@@ -325,6 +325,13 @@ export class QueueManager {
         }
         const displayText = extractDisplayText(parsed)
         if (displayText !== null) {
+          if (this._db) {
+            appendEvent(this._db, jobId, eventSeq++, {
+              event_type: 'log',
+              source: 'stdout',
+              payload: JSON.stringify({ line: displayText }),
+            })
+          }
           emitLine('stdout', displayText)
         }
       } else {
