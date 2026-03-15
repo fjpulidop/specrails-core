@@ -1,3 +1,11 @@
 .claude/.dry-run/
 .claude/health-history/
 .claude/compat-snapshots/
+.claude/worktrees/
+.claude/backlog-cache.json
+
+# Web manager runtime data
+specrails/web-manager/data/
+specrails/web-manager/client/dist/
+specrails/web-manager/client/node_modules/
+specrails/web-manager/node_modules/

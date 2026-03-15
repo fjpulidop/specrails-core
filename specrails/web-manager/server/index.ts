@@ -2,11 +2,17 @@ import http from 'http'
 import path from 'path'
 import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
-import type { WsMessage } from './types'
+import type { WsMessage, AnalyticsOpts } from './types'
 import { createHooksRouter, getPhaseStates, getPhaseDefinitions } from './hooks'
 import { QueueManager, ClaudeNotFoundError, JobNotFoundError, JobAlreadyTerminalError } from './queue-manager'
-import { initDb, listJobs, getJob, getJobEvents, getStats } from './db'
+import { initDb, listJobs, getJob, getJobEvents, getStats, purgeJobs,
+  createConversation, listConversations, getConversation,
+  deleteConversation, updateConversation, addMessage, getMessages } from './db'
+import { ChatManager } from './chat-manager'
+import type { ChatConversationRow } from './types'
 import { getConfig, fetchIssues } from './config'
+import { getAnalytics } from './analytics'
+import { v4 as uuidv4 } from 'uuid'
 
 // Read package.json version once at startup
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -68,6 +74,7 @@ function broadcast(msg: WsMessage): void {
 }
 
 const queueManager = new QueueManager(broadcast, db)
+const chatManager = new ChatManager(broadcast, db)
 
 // Load commands so QueueManager can resolve per-command phase definitions
 try {
@@ -204,11 +211,44 @@ app.get('/api/jobs/:id', (req, res) => {
   const job = getJob(db, req.params.id)
   if (!job) { res.status(404).json({ error: 'Job not found' }); return }
   const events = getJobEvents(db, req.params.id)
-  res.json({ job, events })
+  const phaseDefinitions = queueManager.phasesForCommand(job.command)
+  res.json({ job, events, phaseDefinitions })
+})
+
+app.delete('/api/jobs', (req, res) => {
+  try {
+    const { from, to } = req.body ?? {}
+    const deleted = purgeJobs(db, { from, to })
+    res.json({ ok: true, deleted })
+  } catch (err) {
+    console.error('[purge] error:', err)
+    res.status(500).json({ error: 'Failed to purge jobs' })
+  }
 })
 
 app.get('/api/stats', (_req, res) => {
   res.json(getStats(db))
+})
+
+app.get('/api/analytics', (req, res) => {
+  const period = (req.query.period as string) || '7d'
+  const from = req.query.from as string | undefined
+  const to = req.query.to as string | undefined
+  const validPeriods = ['7d', '30d', '90d', 'all', 'custom']
+  if (!validPeriods.includes(period)) {
+    res.status(400).json({ error: 'Invalid period. Must be one of: 7d, 30d, 90d, all, custom' })
+    return
+  }
+  if (period === 'custom' && (!from || !to)) {
+    res.status(400).json({ error: 'from and to are required for custom period' })
+    return
+  }
+  try {
+    res.json(getAnalytics(db, { period: period as AnalyticsOpts['period'], from, to }))
+  } catch (err) {
+    console.error('[analytics] error:', err)
+    res.status(500).json({ error: 'Failed to compute analytics' })
+  }
 })
 
 app.get('/api/config', (_req, res) => {
@@ -254,6 +294,80 @@ app.get('/api/issues', (_req, res) => {
     console.error('[issues] error:', err)
     res.status(500).json({ error: 'Failed to fetch issues' })
   }
+})
+
+// ─── Chat routes ─────────────────────────────────────────────────────────────
+
+app.get('/api/chat/conversations', (_req, res) => {
+  const conversations = listConversations(db)
+  res.json({ conversations })
+})
+
+app.post('/api/chat/conversations', (req, res) => {
+  const model = (req.body?.model as string | undefined) ?? 'claude-sonnet-4-5'
+  const id = uuidv4()
+  createConversation(db, { id, model })
+  const conversation = getConversation(db, id) as ChatConversationRow
+  res.status(201).json({ conversation })
+})
+
+app.get('/api/chat/conversations/:id', (req, res) => {
+  const conversation = getConversation(db, req.params.id)
+  if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return }
+  const messages = getMessages(db, req.params.id)
+  res.json({ conversation, messages })
+})
+
+app.delete('/api/chat/conversations/:id', (req, res) => {
+  const conversation = getConversation(db, req.params.id)
+  if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return }
+  deleteConversation(db, req.params.id)
+  res.json({ ok: true })
+})
+
+app.patch('/api/chat/conversations/:id', (req, res) => {
+  const conversation = getConversation(db, req.params.id)
+  if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return }
+  const { title, model } = req.body ?? {}
+  const patch: { title?: string; model?: string } = {}
+  if (title !== undefined) patch.title = title
+  if (model !== undefined) patch.model = model
+  updateConversation(db, req.params.id, patch)
+  const updated = getConversation(db, req.params.id) as ChatConversationRow
+  res.json({ ok: true, conversation: updated })
+})
+
+app.get('/api/chat/conversations/:id/messages', (req, res) => {
+  const conversation = getConversation(db, req.params.id)
+  if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return }
+  const messages = getMessages(db, req.params.id)
+  res.json({ messages })
+})
+
+app.post('/api/chat/conversations/:id/messages', async (req, res) => {
+  const conversation = getConversation(db, req.params.id)
+  if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return }
+
+  const text = req.body?.text as string | undefined
+  if (!text || !text.trim()) { res.status(400).json({ error: 'text is required' }); return }
+
+  if (chatManager.isActive(req.params.id)) {
+    res.status(409).json({ error: 'CONVERSATION_BUSY' }); return
+  }
+
+  res.status(202).json({ ok: true })
+  // Fire-and-forget; streaming data arrives via WebSocket
+  chatManager.sendMessage(req.params.id, text.trim()).catch((err) => {
+    console.error('[chat] sendMessage error:', err)
+  })
+})
+
+app.delete('/api/chat/conversations/:id/messages/stream', (req, res) => {
+  if (!chatManager.isActive(req.params.id)) {
+    res.status(404).json({ error: 'No active stream for this conversation' }); return
+  }
+  chatManager.abort(req.params.id)
+  res.json({ ok: true })
 })
 
 server.listen(port, '127.0.0.1', () => {
