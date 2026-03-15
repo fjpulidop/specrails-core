@@ -59,7 +59,7 @@ export function StatusBreakdown({ data }: StatusBreakdownProps) {
             {data.map((entry) => (
               <Cell
                 key={entry.status}
-                fill={STATUS_COLORS[entry.status] ?? 'hsl(var(--muted-foreground))'}
+                fill={STATUS_COLORS[entry.status] ?? 'var(--color-muted-foreground)'}
               />
             ))}
           </Pie>

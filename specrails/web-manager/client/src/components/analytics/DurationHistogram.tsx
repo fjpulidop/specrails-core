@@ -63,16 +63,16 @@ export function DurationHistogram({ data, percentiles }: DurationHistogramProps)
       <h3 className="text-sm font-medium mb-3">Duration Distribution</h3>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={sorted} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
           <XAxis
             dataKey="bucket"
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
             axisLine={false}
             tickLine={false}
             width={30}
