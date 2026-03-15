@@ -4,6 +4,10 @@ description: "Generate new feature ideas through product discovery, create GitHu
 category: Workflow
 tags: [workflow, explore, priorities, backlog, product-discovery]
 model: opus
+phases:
+  - key: analyst
+    label: Analyst
+    description: "Discovers product opportunities and generates feature ideas"
 ---
 
 Analyze the project from a **product perspective** to generate new feature ideas. Syncs results to GitHub Issues labeled `product-driven-backlog`. Use `/sr:product-backlog` to view current ideas.

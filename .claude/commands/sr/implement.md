@@ -1,3 +1,21 @@
+---
+name: "Implementation Pipeline"
+description: "Full OpenSpec lifecycle with specialized agents: architect designs, developer implements, reviewer validates"
+phases:
+  - key: architect
+    label: Architect
+    description: "Analyzes the issue, researches the codebase, and designs the implementation plan"
+  - key: developer
+    label: Developer
+    description: "Implements the changes: writes code, edits files, runs tests"
+  - key: reviewer
+    label: Reviewer
+    description: "Reviews the implementation for correctness, edge cases, and code quality"
+  - key: ship
+    label: Ship
+    description: "Creates the PR, writes the description, and finalizes the changes for merge"
+---
+
 # Implementation Pipeline
 
 Full OpenSpec lifecycle with specialized agents: sr-architect designs, sr-developer implements, sr-reviewer validates and archives. Handles 1 to N features — adapts automatically (sequential for 1, parallel with worktrees for N).

@@ -3,6 +3,7 @@ name: "Refactor Recommender"
 description: "Scan the codebase for refactoring opportunities ranked by impact/effort ratio. Analyzes code for duplicates, long functions, large files, dead code, outdated patterns, and complex logic. Optionally creates GitHub Issues for tracking."
 category: Workflow
 tags: [workflow, refactoring, code-quality, tech-debt]
+phases: []
 ---
 
 Scan the codebase for refactoring opportunities, score each by impact/effort ratio, and optionally create GitHub Issues for the top findings in GitHub Issues.

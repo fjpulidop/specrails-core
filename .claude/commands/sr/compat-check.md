@@ -3,6 +3,7 @@ name: "Compatibility Impact Analyzer"
 description: "Snapshot the current API surface and detect breaking changes against a prior baseline. Generates a migration guide when breaking changes are found."
 category: Workflow
 tags: [workflow, compatibility, breaking-changes, migration]
+phases: []
 ---
 
 Analyze the API surface of **specrails** for backwards compatibility. Extracts the current contract surface (CLI flags, template placeholders, command names, argument flags, agent names, config keys), compares against a stored baseline, classifies each change by severity, and generates a migration guide when breaking changes are found.

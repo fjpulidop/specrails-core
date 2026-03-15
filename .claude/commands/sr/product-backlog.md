@@ -3,6 +3,10 @@ name: "Product Backlog"
 description: "View product-driven backlog from GitHub Issues and propose top 3 for implementation"
 category: Workflow
 tags: [workflow, backlog, viewer, product-driven]
+phases:
+  - key: analyst
+    label: Analyst
+    description: "Reads and prioritizes the product backlog"
 ---
 
 Display the product-driven backlog by reading issues from GitHub Issues. These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/sr:update-product-driven-backlog` to generate new ideas.

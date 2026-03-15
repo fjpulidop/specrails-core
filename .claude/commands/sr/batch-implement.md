@@ -1,3 +1,21 @@
+---
+name: "Batch Implementation Orchestrator"
+description: "Accepts a set of feature references, computes dependency-aware waves, invokes implement per wave"
+phases:
+  - key: architect
+    label: Architect
+    description: "Analyzes the issue, researches the codebase, and designs the implementation plan"
+  - key: developer
+    label: Developer
+    description: "Implements the changes: writes code, edits files, runs tests"
+  - key: reviewer
+    label: Reviewer
+    description: "Reviews the implementation for correctness, edge cases, and code quality"
+  - key: ship
+    label: Ship
+    description: "Creates the PR, writes the description, and finalizes the changes for merge"
+---
+
 # Batch Implementation Orchestrator
 
 Macro-orchestrator above `/sr:implement`. Accepts a set of feature references, computes a dependency-aware wave execution plan, invokes `/sr:implement` per wave, and produces a batch-level progress dashboard and final report. All per-feature pipeline work (architect, developer, reviewer, git, CI) is fully delegated to `/sr:implement`.
