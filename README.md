@@ -19,7 +19,7 @@ Every artifact — agents, commands, rules, personas — is generated specifical
 
 | Category | Files | Purpose |
 |----------|-------|---------|
-| **Agents** | `.claude/agents/*.md` | Specialized AI agents (sr-architect, sr-developer, sr-reviewer, sr-product-manager, sr-product-analyst, and optional layer-specific developers) |
+| **Agents** | `.claude/agents/*.md` | 12 specialized AI agents (sr-architect, sr-developer, sr-backend-developer, sr-frontend-developer, sr-reviewer, sr-backend-reviewer, sr-frontend-reviewer, sr-product-manager, sr-product-analyst, sr-test-writer, sr-security-reviewer, sr-doc-sync) |
 | **Personas** | `.claude/agents/personas/*.md` | Value Proposition Canvas profiles for your target users, generated from competitive research |
 | **Commands** | `.claude/commands/sr/*.md` | Workflow orchestrators (`/sr:implement`, `/sr:product-backlog`, `/sr:update-product-driven-backlog`) |
 | **Rules** | `.claude/rules/*.md` | Per-layer coding conventions, loaded conditionally by file path |
@@ -30,10 +30,19 @@ Every artifact — agents, commands, rules, personas — is generated specifical
 
 Installation happens in two steps — a shell script for scaffolding, then Claude for the intelligent parts.
 
-### Step 1: Install (shell script)
+### Step 1: Install
+
+**Option A — npx (recommended)**
 
 ```bash
-./specrails/install.sh
+npx specrails@latest init --root-dir <your-project>
+```
+
+**Option B — git clone**
+
+```bash
+git clone https://github.com/fjpulidop/specrails.git
+./specrails/install.sh --root-dir <your-project>
 ```
 
 The installer:
@@ -120,6 +129,11 @@ Runs product discovery using your VPC personas. Analyzes the codebase, evaluates
 | **sr-backend-developer** | Sonnet | Specialized backend implementation (lighter prompt, backend-only CI) |
 | **sr-frontend-developer** | Sonnet | Specialized frontend implementation (lighter prompt, frontend-only CI) |
 | **sr-reviewer** | Sonnet | Final quality gate: runs exact CI checks, fixes issues, records learnings for future developers |
+| **sr-backend-reviewer** | Sonnet | Backend-focused code review: API design, database patterns, performance |
+| **sr-frontend-reviewer** | Sonnet | Frontend-focused code review: UX patterns, accessibility, component design |
+| **sr-test-writer** | Sonnet | Generates tests: unit, integration, and e2e tests using your project's test framework |
+| **sr-security-reviewer** | Sonnet | Security scanning: secrets detection, OWASP checks, dependency vulnerabilities |
+| **sr-doc-sync** | Sonnet | Documentation sync: updates changelogs, READMEs, and API docs after changes |
 | **sr-product-manager** | Opus | Product discovery: competitive analysis, VPC evaluation, feature ideation |
 | **sr-product-analyst** | Haiku | Read-only backlog analysis: prioritization, gap analysis, reporting |
 
@@ -156,6 +170,11 @@ specrails/
 │   │   ├── sr-backend-developer.md         # Backend-specialized agent
 │   │   ├── sr-frontend-developer.md        # Frontend-specialized agent
 │   │   ├── sr-reviewer.md                  # CI/CD quality gate agent
+│   │   ├── sr-backend-reviewer.md          # Backend code review agent
+│   │   ├── sr-frontend-reviewer.md         # Frontend code review agent
+│   │   ├── sr-test-writer.md               # Test generation agent
+│   │   ├── sr-security-reviewer.md         # Security scanning agent
+│   │   ├── sr-doc-sync.md                  # Documentation sync agent
 │   │   ├── sr-product-manager.md           # Product discovery agent
 │   │   └── sr-product-analyst.md           # Read-only analysis agent
 │   ├── commands/
