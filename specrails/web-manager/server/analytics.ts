@@ -43,13 +43,17 @@ function resolveBounds(opts: AnalyticsOpts): { current: DateBounds; previous: Da
 function buildWhere(bounds: DateBounds): { clause: string; params: unknown[] } {
   if (!bounds.from && !bounds.to) return { clause: '', params: [] }
   if (bounds.from && bounds.to) {
+    // Use < next_day instead of <= to, because started_at is a full ISO timestamp
+    // e.g. '2026-03-15T14:00:00Z' > '2026-03-15' lexicographically
+    const nextDay = new Date(new Date(bounds.to).getTime() + 86400000).toISOString().slice(0, 10)
     return {
-      clause: "WHERE started_at >= ? AND started_at <= ?",
-      params: [bounds.from, bounds.to],
+      clause: "WHERE started_at >= ? AND started_at < ?",
+      params: [bounds.from, nextDay],
     }
   }
   if (bounds.from) return { clause: 'WHERE started_at >= ?', params: [bounds.from] }
-  return { clause: 'WHERE started_at <= ?', params: [bounds.to] }
+  const nextDay = new Date(new Date(bounds.to!).getTime() + 86400000).toISOString().slice(0, 10)
+  return { clause: 'WHERE started_at < ?', params: [nextDay] }
 }
 
 // ─── Percentile helpers ───────────────────────────────────────────────────────
