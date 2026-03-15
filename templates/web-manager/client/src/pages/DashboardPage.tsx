@@ -1,26 +1,30 @@
 import { useEffect, useState } from 'react'
 import { usePipeline } from '../hooks/usePipeline'
-import { ActiveJobCard } from '../components/ActiveJobCard'
 import { CommandGrid } from '../components/CommandGrid'
 import { RecentJobs } from '../components/RecentJobs'
 import { ImplementWizard } from '../components/ImplementWizard'
 import { BatchImplementWizard } from '../components/BatchImplementWizard'
 import type { CommandInfo, JobSummary } from '../types'
 
+// Module-level cache — survives route changes, no flicker on re-mount
+let cachedCommands: CommandInfo[] | null = null
+let cachedJobs: JobSummary[] | null = null
+
 export default function DashboardPage() {
-  const { phases, phaseDefinitions, queueState, recentJobs } = usePipeline()
-  const [commands, setCommands] = useState<CommandInfo[]>([])
-  const [jobs, setJobs] = useState<JobSummary[]>([])
-  const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+  const { recentJobs } = usePipeline()
+  const [commands, setCommands] = useState<CommandInfo[]>(cachedCommands ?? [])
+  const [jobs, setJobs] = useState<JobSummary[]>(cachedJobs ?? [])
+  const [isLoadingJobs, setIsLoadingJobs] = useState(cachedJobs === null)
   const [wizardOpen, setWizardOpen] = useState<string | null>(null)
 
-  // Load commands from config
+  // Load commands from config (use cache, refresh silently)
   useEffect(() => {
     async function loadConfig() {
       try {
         const res = await fetch('/api/config')
         if (!res.ok) return
         const data = await res.json() as { commands: CommandInfo[] }
+        cachedCommands = data.commands
         setCommands(data.commands)
       } catch {
         // ignore
@@ -29,19 +33,21 @@ export default function DashboardPage() {
     loadConfig()
   }, [])
 
-  // Use recentJobs from WebSocket init, refresh from REST when needed
+  // Use recentJobs from WebSocket init
   useEffect(() => {
+    cachedJobs = recentJobs
     setJobs(recentJobs)
     setIsLoadingJobs(false)
   }, [recentJobs])
 
-  // Refresh job list from REST API periodically
+  // Refresh job list from REST API periodically (silent update, no loading state)
   useEffect(() => {
     async function refreshJobs() {
       try {
         const res = await fetch('/api/jobs?limit=10')
         if (!res.ok) return
         const data = await res.json() as { jobs: JobSummary[] }
+        cachedJobs = data.jobs
         setJobs(data.jobs)
         setIsLoadingJobs(false)
       } catch {
@@ -53,19 +59,8 @@ export default function DashboardPage() {
     return () => clearInterval(interval)
   }, [])
 
-  // Find active job from queue state
-  const activeJob = queueState.jobs.find((j) => j.id === queueState.activeJobId) ?? null
-
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      {/* Active Job */}
-      <section>
-        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-          Active Job
-        </h2>
-        <ActiveJobCard activeJob={activeJob} phases={phases} phaseDefinitions={phaseDefinitions} />
-      </section>
-
       {/* Commands */}
       <section>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
@@ -82,7 +77,19 @@ export default function DashboardPage() {
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
           Recent Jobs
         </h2>
-        <RecentJobs jobs={jobs} isLoading={isLoadingJobs} />
+        <RecentJobs
+          jobs={jobs}
+          isLoading={isLoadingJobs}
+          onJobsCleared={async () => {
+            try {
+              const res = await fetch('/api/jobs?limit=10')
+              if (!res.ok) return
+              const data = await res.json() as { jobs: JobSummary[] }
+              cachedJobs = data.jobs
+              setJobs(data.jobs)
+            } catch { /* ignore */ }
+          }}
+        />
       </section>
 
       {/* Wizards */}

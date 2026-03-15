@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { RootLayout } from './components/RootLayout'
 import DashboardPage from './pages/DashboardPage'
+import JobDetailPage from './pages/JobDetailPage'
 import SettingsPage from './pages/SettingsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import { SharedWebSocketProvider } from './hooks/useSharedWebSocket'
@@ -12,7 +13,7 @@ export default function App() {
       <Routes>
         <Route element={<RootLayout />}>
           <Route index element={<DashboardPage />} />
-          <Route path="/jobs/:id" element={<DashboardPage />} />
+          <Route path="/jobs/:id" element={<JobDetailPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

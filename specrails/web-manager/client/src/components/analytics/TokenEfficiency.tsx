@@ -59,10 +59,10 @@ export function TokenEfficiency({ data }: TokenEfficiencyProps) {
           data={chartData}
           margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" horizontal={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" horizontal={false} />
           <XAxis
             type="number"
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
             axisLine={false}
             tickLine={false}
             tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)}
@@ -71,7 +71,7 @@ export function TokenEfficiency({ data }: TokenEfficiencyProps) {
             type="category"
             dataKey="name"
             width={110}
-            tick={{ fontSize: 9, fill: 'hsl(var(--muted-foreground))', fontFamily: 'monospace' }}
+            tick={{ fontSize: 9, fill: 'var(--color-muted-foreground)', fontFamily: 'monospace' }}
             axisLine={false}
             tickLine={false}
           />

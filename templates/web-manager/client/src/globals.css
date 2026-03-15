@@ -2,26 +2,39 @@
 @plugin "@tailwindcss/typography";
 
 @theme inline {
-  --color-background: hsl(222 84% 5%);
-  --color-foreground: hsl(210 40% 98%);
-  --color-card: hsl(222 84% 7%);
-  --color-card-foreground: hsl(210 40% 98%);
-  --color-popover: hsl(222 84% 6%);
-  --color-popover-foreground: hsl(210 40% 98%);
-  --color-primary: hsl(210 40% 98%);
-  --color-primary-foreground: hsl(222 84% 5%);
-  --color-secondary: hsl(217 33% 17%);
-  --color-secondary-foreground: hsl(210 40% 98%);
-  --color-muted: hsl(217 33% 17%);
-  --color-muted-foreground: hsl(215 20% 55%);
-  --color-accent: hsl(217 33% 20%);
-  --color-accent-foreground: hsl(210 40% 98%);
-  --color-destructive: hsl(0 72% 51%);
-  --color-destructive-foreground: hsl(210 40% 98%);
-  --color-border: hsl(217 33% 17%);
-  --color-input: hsl(217 33% 17%);
-  --color-ring: hsl(212 72% 59%);
-  --radius: 0.5rem;
+  /* Dracula base palette */
+  --color-background: hsl(231 15% 18%);
+  --color-foreground: hsl(60 30% 96%);
+  --color-card: hsl(232 14% 31%);
+  --color-card-foreground: hsl(60 30% 96%);
+  --color-popover: hsl(231 15% 18%);
+  --color-popover-foreground: hsl(60 30% 96%);
+  --color-primary: hsl(265 89% 78%);
+  --color-primary-foreground: hsl(231 15% 18%);
+  --color-secondary: hsl(232 14% 31%);
+  --color-secondary-foreground: hsl(60 30% 96%);
+  --color-muted: hsl(232 14% 31%);
+  --color-muted-foreground: hsl(225 27% 51%);
+  --color-accent: hsl(232 14% 31%);
+  --color-accent-foreground: hsl(60 30% 96%);
+  --color-destructive: hsl(0 100% 67%);
+  --color-destructive-foreground: hsl(60 30% 96%);
+  --color-border: hsl(225 27% 51% / 0.3);
+  --color-input: hsl(232 14% 31%);
+  --color-ring: hsl(265 89% 78%);
+  --radius: 0.75rem;
+
+  /* Dracula accent palette */
+  --color-dracula-purple:  hsl(265 89% 78%);
+  --color-dracula-cyan:    hsl(191 97% 77%);
+  --color-dracula-green:   hsl(135 94% 65%);
+  --color-dracula-pink:    hsl(326 100% 74%);
+  --color-dracula-orange:  hsl(31 100% 71%);
+  --color-dracula-red:     hsl(0 100% 67%);
+  --color-dracula-yellow:  hsl(65 92% 76%);
+  --color-dracula-comment: hsl(225 27% 51%);
+  --color-dracula-current: hsl(232 14% 31%);
+  --color-dracula-darker:  hsl(234 16% 14%);
 }
 
 @layer base {
@@ -32,8 +45,8 @@
   }
 
   body {
-    background-color: hsl(222 84% 5%);
-    color: hsl(210 40% 98%);
+    background-color: hsl(231 15% 18%);
+    color: hsl(60 30% 96%);
     font-family: 'DM Mono', 'JetBrains Mono', 'Fira Code', ui-monospace, 'Cascadia Code', monospace;
     font-size: 13px;
     line-height: 1.5;
@@ -48,34 +61,49 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: hsl(222 84% 5%);
+    background: hsl(231 15% 18%);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(217 33% 25%);
+    background: hsl(225 27% 51% / 0.4);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(217 33% 35%);
+    background: hsl(225 27% 51% / 0.6);
   }
 }
+
+/* Glassmorphism card */
+@utility glass-card {
+  background: hsl(232 14% 31% / 0.3);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Dracula glow effects */
+@utility glow-purple  { box-shadow: 0 0 20px hsl(265 89% 78% / 0.2); }
+@utility glow-pink    { box-shadow: 0 0 20px hsl(326 100% 74% / 0.2); }
+@utility glow-cyan    { box-shadow: 0 0 20px hsl(191 97% 77% / 0.2); }
+@utility glow-green   { box-shadow: 0 0 20px hsl(135 94% 65% / 0.2); }
+@utility glow-orange  { box-shadow: 0 0 20px hsl(31 100% 71% / 0.2); }
+@utility glow-yellow  { box-shadow: 0 0 20px hsl(65 92% 76% / 0.2); }
 
 /* Log viewer markdown tables */
 .prose table {
   border-collapse: collapse;
-  border: 1px solid hsl(217 33% 17%);
+  border: 1px solid hsl(225 27% 51% / 0.3);
   border-radius: 0.375rem;
   overflow: hidden;
   width: 100%;
 }
 
 .prose thead tr {
-  background: hsl(217 33% 12%);
+  background: hsl(232 14% 31% / 0.5);
 }
 
 .prose tbody tr:nth-child(even) {
-  background: hsl(217 33% 9%);
+  background: hsl(232 14% 31% / 0.2);
 }
 
 .prose tbody tr:nth-child(odd) {
@@ -84,5 +112,5 @@
 
 .prose th,
 .prose td {
-  border: 1px solid hsl(217 33% 17%);
+  border: 1px solid hsl(225 27% 51% / 0.3);
 }

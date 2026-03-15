@@ -33,7 +33,7 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', size = 
         y={y}
         width={width}
         height={height}
-        style={{ fill: color, fillOpacity: 0.8, stroke: 'hsl(var(--background))', strokeWidth: 2 }}
+        style={{ fill: color, fillOpacity: 0.8, stroke: 'var(--color-background)', strokeWidth: 2 }}
         rx={4}
       />
       {showLabel && (
@@ -41,7 +41,7 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', size = 
           <text
             x={x + 6}
             y={y + 16}
-            fill="hsl(var(--background))"
+            fill="var(--color-background)"
             fontSize={10}
             fontFamily="monospace"
             style={{ overflow: 'hidden' }}
@@ -52,7 +52,7 @@ function CustomContent({ x = 0, y = 0, width = 0, height = 0, name = '', size = 
             <text
               x={x + 6}
               y={y + 30}
-              fill="hsl(var(--background) / 0.7)"
+              fill="hsl(231 15% 18% / 0.7)"
               fontSize={9}
             >
               ${size.toFixed(4)}

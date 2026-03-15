@@ -63,26 +63,26 @@ export function DailyThroughput({ data }: DailyThroughputProps) {
       <h3 className="text-sm font-medium mb-3">Daily Throughput</h3>
       <ResponsiveContainer width="100%" height={220}>
         <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.3)" vertical={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" vertical={false} />
           <XAxis
             dataKey="date"
             ticks={ticks}
             tickFormatter={formatXAxis}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
             allowDecimals={false}
-            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+            tick={{ fontSize: 10, fill: 'var(--color-muted-foreground)' }}
             axisLine={false}
             tickLine={false}
             width={30}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend formatter={(v: string) => <span className="text-xs capitalize">{v}</span>} />
-          <Bar dataKey="completed" name="Completed" stackId="a" fill={DRACULA.green} />
-          <Bar dataKey="failed"    name="Failed"    stackId="a" fill={DRACULA.red} />
+          <Bar dataKey="completed" name="Completed" stackId="a" fill={DRACULA.purple} />
+          <Bar dataKey="failed"    name="Failed"    stackId="a" fill={DRACULA.pink} />
           <Bar dataKey="canceled"  name="Canceled"  stackId="a" fill={DRACULA.orange} radius={[3, 3, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>

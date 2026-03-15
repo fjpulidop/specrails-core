@@ -1,18 +1,17 @@
 import { NavLink } from 'react-router-dom'
-import { Settings, ExternalLink, Activity, LayoutDashboard, BarChart3 } from 'lucide-react'
+import { Settings, BookOpen, LayoutDashboard, BarChart3 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export function Navbar() {
   return (
-    <nav className="h-11 flex items-center justify-between px-4 border-b border-border bg-card/50 backdrop-blur-sm">
+    <nav className="relative z-50 h-11 flex items-center justify-between px-4 border-b border-border bg-card/50 backdrop-blur-sm">
       {/* Wordmark */}
       <NavLink
         to="/"
         className="flex items-center gap-2 text-foreground hover:text-foreground/80 transition-colors"
       >
-        <Activity className="w-4 h-4 text-blue-400" />
-        <span className="font-semibold text-sm tracking-tight">specrails</span>
+        <span className="font-mono text-sm font-bold"><span className="text-dracula-purple">spec</span><span className="text-dracula-pink">rails</span></span>
         <span className="text-muted-foreground text-xs font-normal">/ manager</span>
       </NavLink>
 
@@ -54,15 +53,15 @@ export function Navbar() {
         <Tooltip>
           <TooltipTrigger asChild>
             <a
-              href="https://specrails.dev"
+              href="https://specrails.dev/docs"
               target="_blank"
               rel="noopener noreferrer"
               className="h-7 w-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <BookOpen className="w-3.5 h-3.5" />
             </a>
           </TooltipTrigger>
-          <TooltipContent>specrails.dev</TooltipContent>
+          <TooltipContent>Docs</TooltipContent>
         </Tooltip>
 
         <Tooltip>

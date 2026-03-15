@@ -10,8 +10,8 @@ export const DRACULA = {
 }
 
 export const STATUS_COLORS: Record<string, string> = {
-  completed: DRACULA.green,
-  failed:    DRACULA.red,
+  completed: DRACULA.purple,
+  failed:    DRACULA.pink,
   canceled:  DRACULA.orange,
   running:   DRACULA.cyan,
   queued:    DRACULA.comment,
