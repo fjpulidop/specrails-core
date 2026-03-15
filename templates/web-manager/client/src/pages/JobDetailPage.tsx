@@ -196,7 +196,7 @@ export default function JobDetailPage() {
         </div>
 
         {/* Pipeline progress */}
-        <PipelineProgress phases={phases} />
+        <PipelineProgress phases={phases} phaseDefinitions={[]} />
       </div>
 
       {/* Log viewer */}
