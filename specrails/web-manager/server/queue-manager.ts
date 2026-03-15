@@ -220,6 +220,10 @@ export class QueueManager {
 
   // ─── Private methods ────────────────────────────────────────────────────────
 
+  phasesForCommand(command: string): PhaseDefinition[] {
+    return this._phasesForCommand(command)
+  }
+
   private _phasesForCommand(command: string): PhaseDefinition[] {
     // Extract slug from command strings like "/sr:implement #5" or "implement"
     const firstToken = command.trim().split(/\s+/)[0]
