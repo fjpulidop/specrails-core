@@ -6,20 +6,25 @@ import { ImplementWizard } from '../components/ImplementWizard'
 import { BatchImplementWizard } from '../components/BatchImplementWizard'
 import type { CommandInfo, JobSummary } from '../types'
 
+// Module-level cache — survives route changes, no flicker on re-mount
+let cachedCommands: CommandInfo[] | null = null
+let cachedJobs: JobSummary[] | null = null
+
 export default function DashboardPage() {
   const { recentJobs } = usePipeline()
-  const [commands, setCommands] = useState<CommandInfo[]>([])
-  const [jobs, setJobs] = useState<JobSummary[]>([])
-  const [isLoadingJobs, setIsLoadingJobs] = useState(true)
+  const [commands, setCommands] = useState<CommandInfo[]>(cachedCommands ?? [])
+  const [jobs, setJobs] = useState<JobSummary[]>(cachedJobs ?? [])
+  const [isLoadingJobs, setIsLoadingJobs] = useState(cachedJobs === null)
   const [wizardOpen, setWizardOpen] = useState<string | null>(null)
 
-  // Load commands from config
+  // Load commands from config (use cache, refresh silently)
   useEffect(() => {
     async function loadConfig() {
       try {
         const res = await fetch('/api/config')
         if (!res.ok) return
         const data = await res.json() as { commands: CommandInfo[] }
+        cachedCommands = data.commands
         setCommands(data.commands)
       } catch {
         // ignore
@@ -28,19 +33,21 @@ export default function DashboardPage() {
     loadConfig()
   }, [])
 
-  // Use recentJobs from WebSocket init, refresh from REST when needed
+  // Use recentJobs from WebSocket init
   useEffect(() => {
+    cachedJobs = recentJobs
     setJobs(recentJobs)
     setIsLoadingJobs(false)
   }, [recentJobs])
 
-  // Refresh job list from REST API periodically
+  // Refresh job list from REST API periodically (silent update, no loading state)
   useEffect(() => {
     async function refreshJobs() {
       try {
         const res = await fetch('/api/jobs?limit=10')
         if (!res.ok) return
         const data = await res.json() as { jobs: JobSummary[] }
+        cachedJobs = data.jobs
         setJobs(data.jobs)
         setIsLoadingJobs(false)
       } catch {
