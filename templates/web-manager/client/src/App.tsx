@@ -1,13 +1,18 @@
+import { useEffect, useRef, useState } from 'react'
 import { usePipeline } from './hooks/usePipeline'
+import { useQueue } from './hooks/useQueue'
 import { PipelineSidebar } from './components/PipelineSidebar'
+import { JobQueueSidebar } from './components/JobQueueSidebar'
 import { AgentActivity } from './components/AgentActivity'
 import { CommandInput } from './components/CommandInput'
+import { StatsBar } from './components/StatsBar'
+import { JobHistory } from './components/JobHistory'
 
 const GRID_STYLE: React.CSSProperties = {
   display: 'grid',
-  gridTemplateAreas: '"header header" "sidebar activity"',
+  gridTemplateAreas: '"header header" "sidebar activity" "sidebar history"',
   gridTemplateColumns: '240px 1fr',
-  gridTemplateRows: '48px 1fr',
+  gridTemplateRows: '48px 1fr 200px',
   height: '100vh',
   backgroundColor: '#0f172a',
   color: '#e2e8f0',
@@ -17,7 +22,19 @@ const GRID_STYLE: React.CSSProperties = {
 }
 
 export default function App() {
-  const { phases, projectName, logLines, connectionStatus } = usePipeline()
+  const { phases, projectName, logLines, connectionStatus, recentJobs, queueState } = usePipeline()
+  const { jobs, activeJobId, paused, kill, cancel, pause, resume } = useQueue(queueState)
+
+  // Increment refreshSignal whenever connection transitions to 'connected'
+  const prevStatusRef = useRef(connectionStatus)
+  const [refreshSignal, setRefreshSignal] = useState(0)
+
+  useEffect(() => {
+    if (prevStatusRef.current !== 'connected' && connectionStatus === 'connected') {
+      setRefreshSignal((s) => s + 1)
+    }
+    prevStatusRef.current = connectionStatus
+  }, [connectionStatus])
 
   return (
     <>
@@ -46,18 +63,26 @@ export default function App() {
           <span style={{ color: '#64748b', fontSize: 12 }}>{projectName}</span>
         </header>
 
-        {/* Left sidebar */}
+        {/* Left sidebar: PipelineSidebar (top) + JobQueueSidebar (middle, scrollable) + CommandInput (bottom) */}
         <aside
           style={{
             gridArea: 'sidebar',
             display: 'flex',
             flexDirection: 'column',
-            justifyContent: 'space-between',
             borderRight: '1px solid #1e293b',
             overflow: 'hidden',
           }}
         >
           <PipelineSidebar phases={phases} />
+          <JobQueueSidebar
+            jobs={jobs}
+            activeJobId={activeJobId}
+            paused={paused}
+            onKill={kill}
+            onCancel={cancel}
+            onPause={pause}
+            onResume={resume}
+          />
           <CommandInput />
         </aside>
 
@@ -77,6 +102,22 @@ export default function App() {
           )}
           <AgentActivity logLines={logLines} />
         </main>
+
+        {/* History + stats panel */}
+        <section
+          style={{
+            gridArea: 'history',
+            display: 'flex',
+            flexDirection: 'column',
+            borderTop: '1px solid #1e293b',
+            overflow: 'hidden',
+          }}
+        >
+          <StatsBar refreshSignal={refreshSignal} />
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <JobHistory initialJobs={recentJobs} />
+          </div>
+        </section>
       </div>
     </>
   )

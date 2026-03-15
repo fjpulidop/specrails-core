@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "change": "sqlite-job-persistence",
+  "agent": "reviewer",
+  "scored_at": "2026-03-15T02:45:43Z",
+  "overall": 87,
+  "aspects": {
+    "type_correctness": 88,
+    "pattern_adherence": 90,
+    "test_coverage": 85,
+    "security": 90,
+    "architectural_alignment": 85
+  },
+  "notes": {
+    "type_correctness": "All DB types (JobRow, EventRow, StatsRow, JobResult) are well-defined and match the SQLite schema. One `_db: any` in QueueManager could be typed as `DbInstance | null` from db.ts, but this is a minor improvement, not a correctness failure. One real type-contract bug fixed: srm.ts was parsing `{ processId }` from the spawn response but the server returns `{ jobId }` — log filtering silently broke in production.",
+    "pattern_adherence": "All SQL queries use parameterized statements (no string interpolation). Migration pattern is idiomatic (numbered migrations, schema_migrations tracking table). Shell spawn uses `shell: false` correctly.",
+    "test_coverage": "95 tests across 5 test files. The web-manager integration test (srm.test.ts) used a mock that matched client expectation rather than server contract, masking the processId/jobId mismatch bug. Tests cover happy paths, error paths, and edge cases well, but the mock fidelity gap allowed a production bug through.",
+    "security": "No SQL injection — all queries are parameterized. No command injection risk beyond what `--dangerously-skip-permissions` already implies (which is exempted per design). The spawn endpoint accepts arbitrary command strings which are split on whitespace and passed to the claude binary — shell injection is not possible since shell:false is used. Server binds to 127.0.0.1 only.",
+    "architectural_alignment": "QueueManager cleanly absorbs the spawner logic. DB layer is well-separated with no circular dependencies. The client's hardcoded `ws://localhost:4200` is a design limitation: the client is development-only (no static serving in Express), but this should be noted for future production deployment work. Double orphan sweep (initDb + _restoreFromDb) is harmless redundancy."
+  },
+  "flags": [
+    "ws-url-hardcoded-to-4200",
+    "queue-manager-db-typed-as-any"
+  ]
+}

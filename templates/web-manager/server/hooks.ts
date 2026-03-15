@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express'
 import type { PhaseName, PhaseState, WsMessage } from './types'
+import type { DbInstance } from './db'
+import { upsertPhase } from './db'
 
 const PHASE_NAMES: PhaseName[] = ['architect', 'developer', 'reviewer', 'ship']
 
@@ -37,7 +39,11 @@ export function resetPhases(broadcast: (msg: WsMessage) => void): void {
   }
 }
 
-export function createHooksRouter(broadcast: (msg: WsMessage) => void): Router {
+export function createHooksRouter(
+  broadcast: (msg: WsMessage) => void,
+  db?: DbInstance,
+  activeJobRef?: { current: string | null }
+): Router {
   const router = Router()
 
   router.post('/events', (req: Request, res: Response) => {
@@ -63,6 +69,10 @@ export function createHooksRouter(broadcast: (msg: WsMessage) => void): Router {
       state: newState,
       timestamp: new Date().toISOString(),
     })
+
+    if (db && activeJobRef?.current) {
+      upsertPhase(db, activeJobRef.current, agent, newState)
+    }
 
     res.json({ ok: true })
   })
