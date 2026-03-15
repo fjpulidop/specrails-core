@@ -36,34 +36,11 @@ function parseEvent(event: EventRow, idx: number): FormattedLine | null {
     }
   }
 
-  if (event.event_type === 'assistant') {
-    try {
-      const msg = JSON.parse(event.payload) as {
-        message?: { content?: Array<{ type: string; text?: string }> }
-      }
-      const texts = (msg.message?.content ?? [])
-        .filter((c) => c.type === 'text')
-        .map((c) => c.text ?? '')
-        .join('')
-      if (!texts.trim()) return null
-      return { id, content: texts, type: 'assistant', timestamp }
-    } catch {
-      return { id, content: event.payload.slice(0, 200), type: 'assistant', timestamp }
-    }
-  }
-
-  if (event.event_type === 'tool_use') {
-    try {
-      const tool = JSON.parse(event.payload) as { name?: string; input?: unknown }
-      const inputStr = JSON.stringify(tool.input ?? {}).slice(0, 100)
-      return { id, content: `[${tool.name ?? 'tool'}] ${inputStr}`, type: 'tool-use', timestamp }
-    } catch {
-      return null
-    }
-  }
-
-  if (event.event_type === 'tool_result') {
-    return null // Skip tool results — they're verbose
+  // assistant, tool_use, tool_result, user, system — their display text is
+  // already persisted as separate 'log' events by the server, so skip the
+  // raw structured events to avoid duplicates.
+  if (event.event_type !== 'log' && event.event_type !== 'result') {
+    return null
   }
 
   if (event.event_type === 'result') {
