@@ -22,6 +22,17 @@
   --color-input: hsl(217 33% 17%);
   --color-ring: hsl(212 72% 59%);
   --radius: 0.5rem;
+
+  /* Dracula accent palette */
+  --color-dracula-purple:  hsl(265 89% 78%);
+  --color-dracula-cyan:    hsl(191 97% 77%);
+  --color-dracula-green:   hsl(135 94% 65%);
+  --color-dracula-pink:    hsl(326 100% 74%);
+  --color-dracula-orange:  hsl(31 100% 71%);
+  --color-dracula-red:     hsl(0 100% 67%);
+  --color-dracula-yellow:  hsl(65 92% 76%);
+  --color-dracula-comment: hsl(225 27% 51%);
+  --color-dracula-current: hsl(232 14% 31%);
 }
 
 @layer base {
@@ -60,6 +71,21 @@
     background: hsl(217 33% 35%);
   }
 }
+
+/* Glassmorphism card */
+@utility glass-card {
+  background: hsl(222 84% 7% / 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Dracula glow effects */
+@utility glow-purple  { box-shadow: 0 0 20px hsl(265 89% 78% / 0.15); }
+@utility glow-pink    { box-shadow: 0 0 20px hsl(326 100% 74% / 0.15); }
+@utility glow-cyan    { box-shadow: 0 0 20px hsl(191 97% 77% / 0.15); }
+@utility glow-green   { box-shadow: 0 0 20px hsl(135 94% 65% / 0.15); }
+@utility glow-orange  { box-shadow: 0 0 20px hsl(31 100% 71% / 0.15); }
+@utility glow-yellow  { box-shadow: 0 0 20px hsl(65 92% 76% / 0.15); }
 
 /* Log viewer markdown tables */
 .prose table {
