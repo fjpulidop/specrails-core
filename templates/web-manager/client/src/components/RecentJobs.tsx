@@ -58,14 +58,19 @@ interface RecentJobsProps {
 export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) {
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState<JobStatus | null>(null)
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
   const [showClearModal, setShowClearModal] = useState(false)
   const [clearFrom, setClearFrom] = useState('')
   const [clearTo, setClearTo] = useState('')
   const [isClearing, setIsClearing] = useState(false)
 
-  const filteredJobs = statusFilter
-    ? jobs.filter((j) => j.status === statusFilter)
-    : jobs
+  const filteredJobs = jobs.filter((j) => {
+    if (statusFilter && j.status !== statusFilter) return false
+    if (dateFrom && j.started_at < dateFrom) return false
+    if (dateTo && j.started_at > `${dateTo}T23:59:59`) return false
+    return true
+  })
 
   async function handleClear(mode: 'all' | 'range') {
     setIsClearing(true)
@@ -154,19 +159,44 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
           })}
         </div>
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-              onClick={() => setShowClearModal(true)}
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="h-6 rounded border border-border bg-input px-1.5 text-[10px] text-foreground"
+            title="From date"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="h-6 rounded border border-border bg-input px-1.5 text-[10px] text-foreground"
+            title="To date"
+          />
+          {(dateFrom || dateTo) && (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(''); setDateTo('') }}
+              className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Clear jobs</TooltipContent>
-        </Tooltip>
+              Clear
+            </button>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                onClick={() => setShowClearModal(true)}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Clear jobs</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {/* Column headers */}
