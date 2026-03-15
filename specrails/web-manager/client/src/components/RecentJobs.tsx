@@ -99,7 +99,7 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
 
   if (isLoading) {
     return (
-      <div className="space-y-1">
+      <div className="rounded-lg border border-border/40 bg-card/50 p-4 space-y-1">
         {[0, 1, 2].map((i) => (
           <div key={i} className="h-9 bg-muted/30 rounded-md animate-pulse" />
         ))}
@@ -109,7 +109,7 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
 
   if (jobs.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border p-6 text-center">
+      <div className="rounded-lg border border-dashed border-border/40 bg-card/50 p-6 text-center">
         <p className="text-sm text-muted-foreground">No jobs yet</p>
         <p className="text-xs text-muted-foreground/60 mt-1">
           Jobs will appear here after you run a command
@@ -119,7 +119,7 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
   }
 
   return (
-    <div className="space-y-2">
+    <div className="rounded-lg border border-border/40 bg-card/50 p-4 space-y-2">
       {/* Filter bar */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1">
