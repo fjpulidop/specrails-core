@@ -1,4 +1,5 @@
 import http from 'http'
+import path from 'path'
 import express from 'express'
 import { WebSocketServer, WebSocket } from 'ws'
 import type { WsMessage } from './types'
@@ -6,8 +7,25 @@ import { ClaudeNotFoundError, SpawnBusyError } from './types'
 import { createHooksRouter, getPhaseStates, resetPhases } from './hooks'
 import { spawnClaude, isSpawnActive, getLogBuffer } from './spawner'
 
+// Resolve project name: env var > CLI flag > git root basename > cwd parent
+function resolveProjectName(): string {
+  if (process.env.SPECRAILS_PROJECT_NAME) {
+    return process.env.SPECRAILS_PROJECT_NAME
+  }
+  // The web-manager lives at <project>/.claude/web-manager/
+  // Walk up two levels to find the project root
+  const cwd = process.cwd()
+  const parentDir = path.basename(path.resolve(cwd, '../..'))
+  const immediateParent = path.basename(path.resolve(cwd, '..'))
+  // If we're inside .claude/web-manager, use the grandparent directory name
+  if (immediateParent === '.claude') {
+    return parentDir
+  }
+  return path.basename(cwd)
+}
+
 // Parse CLI args
-let projectName = process.env.SPECRAILS_PROJECT_NAME || require('path').basename(process.cwd())
+let projectName = resolveProjectName()
 let port = 4200
 
 for (let i = 2; i < process.argv.length; i++) {

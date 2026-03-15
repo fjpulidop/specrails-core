@@ -12,7 +12,7 @@ The specrails web manager is a locally-run dashboard that monitors and controls 
 ## Setup
 
 ```bash
-cd web
+cd .claude/web-manager
 npm install
 ```
 
@@ -20,8 +20,16 @@ This installs both the server dependencies (Express, WebSocket) and the client d
 
 ## Start
 
+**Always start from your project root**, not from inside the web-manager directory. This ensures the project name is detected correctly:
+
 ```bash
-npm run dev
+cd .claude/web-manager && npm run dev
+```
+
+Or specify the project name explicitly:
+
+```bash
+cd .claude/web-manager && SPECRAILS_PROJECT_NAME=my-project npm run dev
 ```
 
 This starts two processes concurrently:
@@ -36,7 +44,7 @@ The server accepts these CLI flags (used with `npm run dev:server` or `tsx serve
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--project <name>` | `specrails` | Project name displayed in the dashboard header |
+| `--project <name>` | basename of `cwd` | Project name displayed in the dashboard header |
 | `--port <n>` | `4200` | Port the backend server listens on |
 
 Example:
@@ -45,36 +53,40 @@ Example:
 tsx server/index.ts --project my-app --port 4000
 ```
 
-## Hook Integration
+You can also set the project name via environment variable: `SPECRAILS_PROJECT_NAME=my-app npm run dev`
 
-The web manager accepts Claude Code hook events at `POST /hooks/events`. Configure hooks in the target project's `.claude/settings.json` to POST phase transitions as the pipeline runs.
+## How It Connects to the Pipeline
 
-Example `.claude/settings.json` entry for the target repo:
+The `/sr:implement` pipeline automatically detects whether the web manager is running and sends phase transition notifications. **No manual hook configuration is required.**
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [],
-    "PostToolUse": []
-  }
-}
-```
+When you run `/sr:implement`, the orchestrator:
+1. Checks if `http://127.0.0.1:4200` is reachable (Phase -1 pre-flight)
+2. If yes, sends `POST /hooks/events` notifications at each phase transition:
+   - Architect starts/completes
+   - Developer starts/completes
+   - Reviewer starts/completes
+   - Ship starts/completes
+3. If not reachable, the pipeline runs normally without notifications
 
-To manually fire a hook event (useful for testing):
+All notifications are fire-and-forget — a failed notification never blocks the pipeline.
+
+## Manual Hook Testing
+
+To manually fire a hook event (useful for testing the dashboard):
 
 ```bash
 # Mark the architect phase as running
-curl -X POST http://localhost:4200/hooks/events \
+curl -sf -X POST http://127.0.0.1:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_start","agent":"architect"}'
 
 # Mark the architect phase as done
-curl -X POST http://localhost:4200/hooks/events \
+curl -sf -X POST http://127.0.0.1:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_stop","agent":"architect"}'
 
 # Mark the developer phase as errored
-curl -X POST http://localhost:4200/hooks/events \
+curl -sf -X POST http://127.0.0.1:4200/hooks/events \
   -H 'Content-Type: application/json' \
   -d '{"event":"agent_error","agent":"developer"}'
 ```
