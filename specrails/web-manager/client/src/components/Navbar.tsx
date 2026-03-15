@@ -5,7 +5,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip'
 
 export function Navbar() {
   return (
-    <nav className="h-11 flex items-center justify-between px-4 border-b border-border bg-card/50 backdrop-blur-sm">
+    <nav className="relative z-50 h-11 flex items-center justify-between px-4 border-b border-border bg-card/50 backdrop-blur-sm">
       {/* Wordmark */}
       <NavLink
         to="/"
