@@ -8,10 +8,9 @@ import { Button } from '../components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { PipelineProgress } from '../components/PipelineProgress'
 import { LogViewer } from '../components/LogViewer'
-import { useWebSocket } from '../hooks/useWebSocket'
+import { useSharedWebSocket } from '../hooks/useSharedWebSocket'
 import type { JobSummary, EventRow, PhaseDefinition } from '../types'
 import type { PhaseMap, PhaseState } from '../hooks/usePipeline'
-import { WS_URL } from '../lib/ws-url'
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'running' | 'queued' | 'failed' | 'canceled'
 
@@ -104,7 +103,11 @@ export default function JobDetailPage() {
     }
   }, [id])
 
-  useWebSocket(WS_URL, handleMessage)
+  const { registerHandler, unregisterHandler } = useSharedWebSocket()
+  useEffect(() => {
+    registerHandler(`job-detail-${id}`, handleMessage)
+    return () => unregisterHandler(`job-detail-${id}`)
+  }, [id, handleMessage, registerHandler, unregisterHandler])
 
   async function handleCancel() {
     if (!id) return
