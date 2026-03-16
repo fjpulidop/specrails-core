@@ -71,9 +71,7 @@ export function ImplementWizard({ open, onClose }: ImplementWizardProps) {
         return
       }
       const issueArgs = state.selectedIssues.map((n) => `#${n}`).join(' ')
-      command = state.selectedIssues.length > 1
-        ? `/sr:batch-implement ${issueArgs}`
-        : `/sr:implement ${issueArgs}`
+      command = `/sr:implement ${issueArgs}`
     } else {
       if (!state.freeFormTitle.trim()) {
         toast.error('Please enter a feature title')
