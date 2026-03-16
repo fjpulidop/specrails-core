@@ -65,28 +65,6 @@ Print a setup report:
 
 **Pass `TEST_CMD` (or equivalent) and `BACKLOG_AVAILABLE` forward** — all later phases must use these.
 
-#### 5. Web Manager (Pipeline Monitor)
-
-Check if the web manager is running:
-
-```bash
-curl -sf http://127.0.0.1:4200/api/state >/dev/null 2>&1
-```
-
-- If reachable: set `WEB_MANAGER=true`. Print: `| Pipeline Monitor | ok | http://127.0.0.1:4200 |`
-- If not reachable: set `WEB_MANAGER=false`. Print: `| Pipeline Monitor | off | start with: cd specrails/web-manager && npm run dev |`
-
-**Web Manager notification helper:** Throughout this pipeline, use the following pattern to notify the web manager of phase transitions. Always fire-and-forget — never let a notification failure block the pipeline.
-
-```bash
-# Only execute if WEB_MANAGER=true
-curl -sf -X POST http://127.0.0.1:4200/hooks/events \
-  -H 'Content-Type: application/json' \
-  -d '{"event":"<EVENT>","agent":"<PHASE>"}' >/dev/null 2>&1 || true
-```
-
-Where `<EVENT>` is one of `agent_start`, `agent_stop`, `agent_error` and `<PHASE>` is one of `architect`, `developer`, `reviewer`, `ship`.
-
 ---
 
 ## Phase 0: Parse input and determine mode
@@ -287,8 +265,6 @@ For `body_sha` rows in the table, display only the first 8 characters of each SH
 
 ## Phase 3a: Architect (parallel, in main repo)
 
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_start","agent":"architect"}`
-
 For each chosen idea, launch an **sr-architect** agent (`subagent_type: sr-architect`, `run_in_background: true`).
 
 Each architect creates OpenSpec artifacts in `openspec/changes/<name>/`.
@@ -355,11 +331,7 @@ Quick-check each architect's artifacts:
 3. File references are real (>70% must exist)
 4. Layer tags present on tasks
 
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_stop","agent":"architect"}`
-
 ## Phase 3b: Implement
-
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_start","agent":"developer"}`
 
 ### Pre-flight: Verify Bash permission
 
@@ -398,8 +370,6 @@ For each feature, analyze the tasks' layer tags:
 **If multiple features**: Launch in isolated worktrees (`isolation: worktree`, `run_in_background: true`).
 
 Wait for all developers to complete.
-
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_stop","agent":"developer"}`
 
 ## Phase 3c: Write Tests
 
@@ -570,8 +540,6 @@ Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in 
 
 ### 4b. Layer Dispatch and Review
 
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_start","agent":"reviewer"}`
-
 #### Step 1: Layer Classification
 
 Before launching any reviewer, classify `MODIFIED_FILES_LIST` into layer-specific file sets.
@@ -641,8 +609,6 @@ Note: if total layer report length is very large, truncate each layer report to 
 **The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
 
 Launch the **sr-reviewer** agent (foreground, `run_in_background: false`). Wait for it to complete.
-
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_stop","agent":"reviewer"}`
 
 **If `DRY_RUN=true`**, add the following to the reviewer agent prompt:
 
@@ -778,8 +744,6 @@ If conflicts exist: print the same conflict report format as Phase 3a.0 (with `P
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "4c.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 4c.
 
 ### 4c. Ship — Git & backlog updates
-
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_start","agent":"ship"}`
 
 **Security gate:** If `SECURITY_BLOCKED=true`:
 1. Print all Critical findings from the security-reviewer output
@@ -997,15 +961,13 @@ Include the shipping mode in the report:
 - If automatic: show PR URL, CI status, backlog updates made
 - If manual: show summary of changes, suggested git commands, backlog updates pending
 
-**Web Manager:** If `WEB_MANAGER=true`, notify: `{"event":"agent_stop","agent":"ship"}`
-
 ---
 
 ## Error Handling
 
 - If a sr-product-manager fails: skip that area, continue with others
-- If a sr-architect fails: skip that area, report the failure. **Web Manager:** notify `{"event":"agent_error","agent":"architect"}`
-- If a sr-developer fails: report which phase it failed at. **Web Manager:** notify `{"event":"agent_error","agent":"developer"}`
-- If the sr-reviewer finds unfixable issues: report them, push what works. **Web Manager:** notify `{"event":"agent_error","agent":"reviewer"}`
-- If Phase 4c (ship) fails: **Web Manager:** notify `{"event":"agent_error","agent":"ship"}`
+- If a sr-architect fails: skip that area, report the failure
+- If a sr-developer fails: report which phase it failed at
+- If the sr-reviewer finds unfixable issues: report them, push what works
+- If Phase 4c (ship) fails: report the failure
 - Never block the entire pipeline on a single agent failure. Always produce a final report.

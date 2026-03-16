@@ -271,19 +271,5 @@ test_update_migrate_idempotent() {
 run_test "do_migrate_sr_prefix is idempotent when sr- prefix already present" test_update_migrate_idempotent
 
 # ─────────────────────────────────────────────
-# Web manager skip when not installed
-# ─────────────────────────────────────────────
-
-test_update_skips_web_manager_not_installed() {
-    # Install without web-manager (decline the prompt)
-    echo "n" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
-    local output
-    output="$(run_update --root-dir "$TEST_TMPDIR/target" --only web-manager --force)"
-    assert_contains "$output" "not installed" &&
-    assert_not_contains "$output" "Error"
-}
-run_test "update skips web-manager when not installed" test_update_skips_web_manager_not_installed
-
-# ─────────────────────────────────────────────
 
 print_summary "update.sh"

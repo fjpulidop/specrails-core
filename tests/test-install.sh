@@ -93,27 +93,5 @@ test_install_source_repo_detection() {
 run_test "detects running from specrails source repo" test_install_source_repo_detection
 
 # ─────────────────────────────────────────────
-# Web manager opt-in prompt
-# ─────────────────────────────────────────────
-
-test_install_web_manager_accepted() {
-    local output
-    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
-    assert_dir_exists "$TEST_TMPDIR/target/specrails/web-manager"
-}
-run_test "web manager installed when user accepts prompt" test_install_web_manager_accepted
-
-test_install_web_manager_declined() {
-    local output
-    output="$(echo "n" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
-    if [[ -d "$TEST_TMPDIR/target/specrails/web-manager" ]]; then
-        echo -e "  ${RED}FAIL${NC}: web-manager dir should not exist when declined"
-        return 1
-    fi
-    assert_contains "$output" "Skipping Workflow Manager"
-}
-run_test "web manager skipped when user declines prompt" test_install_web_manager_declined
-
-# ─────────────────────────────────────────────
 
 print_summary "install.sh"

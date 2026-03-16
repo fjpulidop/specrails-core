@@ -397,50 +397,10 @@ if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
 fi
 
 # ─────────────────────────────────────────────
-# Phase 3b: Install web manager (optional)
+# Phase 3b: Write version and manifest
 # ─────────────────────────────────────────────
 
-step "Phase 3b: Workflow Manager — Experimental (web UI for managing pipelines)"
-
-WEB_MANAGER_DIR="$REPO_ROOT/specrails/web-manager"
-
-if [ -d "$WEB_MANAGER_DIR" ]; then
-    warn "Existing specrails/web-manager/ found — skipping (delete it to reinstall)"
-    HAS_WEB_MANAGER=true
-elif [ "$HAS_NPM" != true ]; then
-    warn "npm not available — skipping Workflow Manager. Install npm and re-run install.sh to add it later."
-    HAS_WEB_MANAGER=false
-else
-    INSTALL_WM=""
-    read -p "    Install Workflow Manager — Experimental (web UI for managing pipelines)? [Y/n]: " INSTALL_WM || true
-    if [[ "$INSTALL_WM" == "n" || "$INSTALL_WM" == "N" || "$INSTALL_WM" == "no" || "$INSTALL_WM" == "No" ]]; then
-        info "Skipping Workflow Manager"
-        HAS_WEB_MANAGER=false
-    else
-        mkdir -p "$WEB_MANAGER_DIR"
-        cp -r "$SCRIPT_DIR/templates/web-manager/"* "$WEB_MANAGER_DIR/"
-        ok "Copied web manager to specrails/web-manager/"
-
-        info "Installing web manager dependencies..."
-        (cd "$WEB_MANAGER_DIR" && npm install --silent 2>/dev/null) && {
-            ok "Server dependencies installed"
-        } || {
-            warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
-        }
-        (cd "$WEB_MANAGER_DIR/client" && npm install --silent 2>/dev/null) && {
-            ok "Client dependencies installed"
-        } || {
-            warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
-        }
-        HAS_WEB_MANAGER=true
-    fi
-fi
-
-# ─────────────────────────────────────────────
-# Phase 3c: Write version and manifest
-# ─────────────────────────────────────────────
-
-step "Phase 3c: Writing version and manifest"
+step "Phase 3b: Writing version and manifest"
 
 generate_manifest
 ok "Written .specrails-version ($(cat "$REPO_ROOT/.specrails-version"))"
@@ -458,9 +418,6 @@ echo ""
 echo "  Files installed:"
 echo "    .claude/commands/setup.md          ← The /setup command"
 echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
-if [ "$HAS_WEB_MANAGER" = true ]; then
-echo "    specrails/web-manager/            ← Pipeline Monitor dashboard"
-fi
 echo "    .specrails-version                ← Installed specrails version"
 echo "    .specrails-manifest.json          ← Artifact checksums for update detection"
 echo ""
@@ -471,7 +428,6 @@ echo ""
 [ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
 [ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
 [ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
-[ "$HAS_WEB_MANAGER" = true ] && ok "Web Manager" || info "Web Manager (skipped)"
 echo ""
 
 echo -e "${BOLD}${CYAN}Next steps:${NC}"
@@ -484,14 +440,6 @@ echo "  2. Run the setup wizard:"
 echo ""
 echo -e "     ${BOLD}/setup${NC}"
 echo ""
-if [ "$HAS_WEB_MANAGER" = true ]; then
-echo "  3. Launch the Pipeline Monitor (optional):"
-echo ""
-echo -e "     ${BOLD}cd $REPO_ROOT/specrails/web-manager && npm run dev${NC}"
-echo ""
-echo -e "     Opens at ${BOLD}http://localhost:4201${NC}"
-echo ""
-fi
 echo "  Claude will analyze your codebase, ask about your users,"
 echo "  research the competitive landscape, and generate all agents,"
 echo "  commands, rules, and personas adapted to your project."

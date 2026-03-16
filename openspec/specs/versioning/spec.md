@@ -29,12 +29,12 @@ The specrails repository SHALL contain a `VERSION` file at the root containing t
   - `artifacts`: object mapping relative template paths to their SHA-256 checksums
 
 #### Scenario: Manifest covers all templates
-- **WHEN** `install.sh` installs templates from `templates/agents/`, `templates/commands/`, `templates/rules/`, `templates/personas/`, `templates/settings/`, `templates/claude-md/`, and `templates/web-manager/`
+- **WHEN** `install.sh` installs templates from `templates/agents/`, `templates/commands/`, `templates/rules/`, `templates/personas/`, `templates/settings/`, and `templates/claude-md/`
 - **THEN** every installed template file has a corresponding entry in `artifacts`
 
 ### Requirement: Semver versioning scheme
-specrails SHALL follow semantic versioning: major for breaking changes (incompatible agent templates), minor for new features (new agents, web manager), patch for fixes.
+specrails SHALL follow semantic versioning: major for breaking changes (incompatible agent templates), minor for new features (new agents, new commands), patch for fixes.
 
 #### Scenario: Version bump for new feature
-- **WHEN** a new feature is added (e.g., update system)
+- **WHEN** a new feature is added (e.g., new agent type, new command)
 - **THEN** the minor version is incremented (e.g., `0.1.0` → `0.2.0`)

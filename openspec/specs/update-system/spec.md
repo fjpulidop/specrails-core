@@ -51,21 +51,6 @@ specrails SHALL provide an `update.sh` script at the repository root that update
 - **WHEN** update runs
 - **THEN** all files in `.claude/commands/` and `.claude/skills/` are replaced with the latest versions from specrails templates
 
-### Requirement: Web manager install or update
-`update.sh` SHALL update the web manager only if it is already installed. It SHALL NOT auto-install web-manager if the directory does not exist.
-
-#### Scenario: Web manager not installed
-- **WHEN** `specrails/web-manager/` does not exist
-- **THEN** `update.sh` skips web-manager entirely with message "Web manager not installed — skipping (install with install.sh)"
-
-#### Scenario: Web manager already installed
-- **WHEN** `specrails/web-manager/` exists
-- **THEN** web manager files are overwritten (excluding `node_modules/`) and npm install is re-run if package.json changed
-
-#### Scenario: --only web-manager when not installed
-- **WHEN** user runs `update.sh --only web-manager` and `specrails/web-manager/` does not exist
-- **THEN** `update.sh` prints "Web manager not installed — skipping" and exits with code 0
-
 ### Requirement: Adapted artifact detection
 `update.sh` SHALL compare template checksums from `.specrails-manifest.json` against current specrails templates to detect which adapted artifacts (agents, rules) need regeneration.
 
@@ -105,10 +90,6 @@ specrails SHALL provide an `update.sh` script at the repository root that update
 
 ### Requirement: Selective update with --only
 `update.sh` SHALL support a `--only <component>` flag to update specific components.
-
-#### Scenario: --only web-manager
-- **WHEN** user runs `update.sh --only web-manager`
-- **THEN** only the web manager is updated, all other artifacts are untouched
 
 #### Scenario: --only commands
 - **WHEN** user runs `update.sh --only commands`

@@ -49,15 +49,15 @@ while [[ $# -gt 0 ]]; do
         --only)
             if [[ -z "${2:-}" ]]; then
                 echo "Error: --only requires a component argument." >&2
-                echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>] [--force]" >&2
+                echo "Usage: update.sh [--root-dir <path>] [--only <commands|agents|core|all>] [--force]" >&2
                 exit 1
             fi
             UPDATE_COMPONENT="$2"
             case "$UPDATE_COMPONENT" in
-                web-manager|commands|agents|core|all) ;;
+                commands|agents|core|all) ;;
                 *)
                     echo "Error: unknown component '$UPDATE_COMPONENT'." >&2
-                    echo "Valid values: web-manager, commands, agents, core, all" >&2
+                    echo "Valid values: commands, agents, core, all" >&2
                     exit 1
                     ;;
             esac
@@ -69,7 +69,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: update.sh [--root-dir <path>] [--only <web-manager|commands|agents|core|all>] [--force]" >&2
+            echo "Usage: update.sh [--root-dir <path>] [--only <commands|agents|core|all>] [--force]" >&2
             exit 1
             ;;
     esac
@@ -251,7 +251,7 @@ else
 fi
 
 # Content-aware up-to-date check (skip for legacy migrations and agent-only runs)
-if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$UPDATE_COMPONENT" != "web-manager" ]] && [[ "$FORCE_UPDATE" == false ]]; then
+if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$FORCE_UPDATE" == false ]]; then
     # Same version — check if any template content has actually changed
     local_manifest="$REPO_ROOT/.specrails-manifest.json"
     HAS_CHANGES=false
@@ -603,86 +603,6 @@ except Exception:
     fi
 }
 
-do_web_manager() {
-    step "Updating web manager (Pipeline Monitor)"
-
-    local web_manager_dir="$REPO_ROOT/specrails/web-manager"
-    local source_dir="$SCRIPT_DIR/templates/web-manager"
-    local has_npm=false
-    if command -v npm &>/dev/null; then
-        has_npm=true
-    fi
-
-    if [[ ! -d "$source_dir" ]]; then
-        ok "No web manager template found — skipping"
-        return
-    fi
-
-    if [[ -d "$web_manager_dir" ]]; then
-        # Already installed — check for actual changes (excluding node_modules)
-        local wm_changes
-        wm_changes="$(diff -rq --exclude='node_modules' --exclude='.DS_Store' --exclude='package-lock.json' --exclude='data' --exclude='.env' --exclude='.gitignore' --exclude='dist' --exclude='*.db' "$source_dir" "$web_manager_dir" 2>/dev/null || true)"
-
-        if [[ -z "$wm_changes" ]]; then
-            ok "Web manager unchanged — skipping"
-            return
-        fi
-
-        local wm_changed_count
-        wm_changed_count="$(echo "$wm_changes" | wc -l | tr -d ' ')"
-        info "${wm_changed_count} web manager file(s) changed — syncing"
-
-        rsync -a --delete \
-            --exclude='node_modules' \
-            --exclude='package-lock.json' \
-            --exclude='data' \
-            --exclude='.env' \
-            --exclude='.gitignore' \
-            --exclude='dist' \
-            --exclude='*.db' \
-            --exclude='.DS_Store' \
-            "$source_dir/" "$web_manager_dir/"
-        ok "Synced web manager files (node_modules preserved)"
-
-        # Only re-run npm install if package.json changed
-        local needs_server_install=false
-        local needs_client_install=false
-        if echo "$wm_changes" | grep -q "package.json" 2>/dev/null; then
-            if echo "$wm_changes" | grep -q "client/package.json" 2>/dev/null; then
-                needs_client_install=true
-            fi
-            # Check for root package.json (not client/)
-            if echo "$wm_changes" | grep -v "client/" | grep -q "package.json" 2>/dev/null; then
-                needs_server_install=true
-            fi
-        fi
-
-        if [[ "$has_npm" == true ]]; then
-            if [[ "$needs_server_install" == true ]]; then
-                info "Re-running npm install for server (package.json changed)..."
-                (cd "$web_manager_dir" && npm install --silent 2>/dev/null) && {
-                    ok "Server dependencies updated"
-                } || {
-                    warn "Server dependency install failed — run 'cd specrails/web-manager && npm install' manually"
-                }
-            fi
-            if [[ "$needs_client_install" == true ]]; then
-                info "Re-running npm install for client (package.json changed)..."
-                (cd "$web_manager_dir/client" && npm install --silent 2>/dev/null) && {
-                    ok "Client dependencies updated"
-                } || {
-                    warn "Client dependency install failed — run 'cd specrails/web-manager/client && npm install' manually"
-                }
-            fi
-        elif [[ "$needs_server_install" == true ]] || [[ "$needs_client_install" == true ]]; then
-            warn "npm not found — package.json changed but cannot install. Run 'cd specrails/web-manager && npm install' manually."
-        fi
-    else
-        # Not installed — skip (user must install via install.sh)
-        ok "Web manager not installed — skipping (install with install.sh)"
-    fi
-}
-
 do_agents() {
     step "Checking adapted artifacts (agents, rules)"
 
@@ -843,7 +763,6 @@ case "$UPDATE_COMPONENT" in
     all)
         do_migrate_sr_prefix
         do_core
-        do_web_manager
         do_agents
         do_settings
         do_stamp
@@ -851,10 +770,6 @@ case "$UPDATE_COMPONENT" in
     commands)
         do_migrate_sr_prefix
         do_core
-        do_stamp
-        ;;
-    web-manager)
-        do_web_manager
         do_stamp
         ;;
     agents)
