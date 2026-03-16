@@ -1,0 +1,10 @@
+{
+  "agent": "reviewer",
+  "timestamp": "2026-03-16T00:00:00Z",
+  "feature": "multi-project-hub",
+  "error_type": "import-error",
+  "root_cause": "server/types.ts line 12 uses 'export type { ProjectRow } from ./hub-db' to re-export the type to external consumers, but does not import it into scope. Lines 237 and 243 then use ProjectRow in interface definitions (HubProjectsMessage.projects and HubProjectAddedMessage.project), causing TS2304: Cannot find name 'ProjectRow'. Fix: add 'import type { ProjectRow } from ./hub-db' before the re-export line.",
+  "file_pattern": "server/types.ts",
+  "prevention_rule": "When a type is both used within a file AND needs to be re-exported, write both an import and an export: 'import type { X } from ./source' and 'export type { X }'. A bare 're-export' ('export type { X } from ./source') does NOT bring X into scope for use within the same file.",
+  "severity": "error"
+}

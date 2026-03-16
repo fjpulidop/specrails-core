@@ -82,6 +82,22 @@ Never combine template and instance paths in a single grep for placeholder-clean
 
 ---
 
+## TypeScript re-export does not bring type into scope
+
+**Pattern:** A file uses `export type { X } from './source'` to re-export a type, then also uses `X` in an interface or type alias defined in the same file. TypeScript raises TS2304: Cannot find name 'X'.
+
+**Root cause (2026-03-16):** `server/types.ts` line 12 re-exported `ProjectRow` with `export type { ProjectRow } from './hub-db'`. Lines 237 and 243 used `ProjectRow` in `HubProjectsMessage` and `HubProjectAddedMessage`. The re-export makes `ProjectRow` available to importers of `types.ts`, but not within `types.ts` itself.
+
+**Fix:** Write both an import and a re-export:
+```ts
+import type { ProjectRow } from './hub-db'
+export type { ProjectRow }
+```
+
+**How to apply:** When a type is both used in the current file AND needs to be re-exported, always write both lines separately. A lone `export type { X } from './source'` is a pass-through only.
+
+---
+
 ## find -name '*[A-Z]*' on macOS matches lowercase .md extensions
 
 **Pattern:** On macOS with certain locale settings, `find -name '*[A-Z]*'` matches filenames like `reviewer.md` because the character range `[A-Z]` can match lowercase letters or punctuation under the default locale.

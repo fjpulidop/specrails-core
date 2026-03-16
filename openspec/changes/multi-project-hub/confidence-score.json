@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "change": "multi-project-hub",
+  "agent": "reviewer",
+  "scored_at": "2026-03-16T00:00:00Z",
+  "overall": 79,
+  "aspects": {
+    "type_correctness": 80,
+    "pattern_adherence": 85,
+    "test_coverage": 55,
+    "security": 80,
+    "architectural_alignment": 88
+  },
+  "notes": {
+    "type_correctness": "One real TS error found and fixed: types.ts used 'export type { ProjectRow }' as a re-export-only statement, which does not bring ProjectRow into scope for use within the same file. Interfaces HubProjectsMessage and HubProjectAddedMessage referenced it, causing TS2304. Pre-existing test mock type errors in config.test.ts (vitest MockInstance mismatch) were not introduced by this change. After fix, all non-test compilation passes.",
+    "pattern_adherence": "All client components consistently use getApiBase() for API routing — no hardcoded paths found. Server routers follow the same parameterized middleware pattern as the existing single-project handlers. Hub DB migrations follow the version-table pattern established in db.ts.",
+    "test_coverage": "No new tests were added for the hub-db, project-registry, hub-router, or project-router modules. These are the most complex new server-side additions. The module-level cache in DashboardPage.tsx (cachedCommands, cachedJobs) is not project-keyed and will bleed stale data when switching between projects in hub mode — this is an untested correctness issue.",
+    "security": "SQL operations in hub-db.ts use parameterized queries throughout — no injection risk. Path inputs from POST /api/hub/projects and GET /api/hub/resolve are passed through path.resolve() which canonicalizes them, but there is no explicit restriction preventing arbitrary filesystem paths from being registered. This is acceptable since the server binds to 127.0.0.1 only. No sensitive data exposed in responses.",
+    "architectural_alignment": "The hub/project-scoped router split cleanly separates hub-level operations from per-project operations. ProjectRegistry as a central context manager for per-project DB, QueueManager, and ChatManager instances is well-aligned with the hub architecture. The module-level api.ts context store (setApiContext/getApiBase) is a pragmatic choice that avoids deep prop drilling but creates implicit coupling — acceptable for a single-page app."
+  },
+  "flags": [
+    "module-level-cache-bleed-on-project-switch",
+    "no-tests-for-hub-db-or-project-registry",
+    "pre-existing-test-type-errors-in-config-test-ts"
+  ]
+}

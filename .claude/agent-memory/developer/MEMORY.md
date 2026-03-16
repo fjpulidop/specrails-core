@@ -35,6 +35,20 @@
 - `usePipeline.ts` updated to use local `QueueJob` type (no longer imports from deleted `JobQueueSidebar`)
 - Old components removed: AgentActivity, CommandInput, JobHistory, JobQueueSidebar, LogStream, PipelineSidebar, SearchBox, StatsBar, useQueue hook
 
+## Multi-project hub notes (2026-03-16)
+
+- Hub mode enabled via `--hub` flag or `SPECRAILS_HUB=1` env var on `server/index.ts`
+- Hub SQLite at `~/.specrails/hub.sqlite`; per-project SQLite at `~/.specrails/projects/<slug>/jobs.sqlite`
+- `server/hub-db.ts` — hub-level DB (projects table, hub_settings table)
+- `server/project-registry.ts` — holds one QueueManager/ChatManager/DB per project; `boundBroadcast` closure injects `projectId` into all WS messages
+- `server/hub-router.ts` — routes: `GET/POST/DELETE /api/hub/projects`, `GET /api/hub/state`, `GET /api/hub/resolve`, `GET/PUT /api/hub/settings`
+- `server/project-router.ts` — per-project routes under `/api/projects/:projectId/*`; middleware resolves ProjectContext from registry
+- `server/config.ts` — `getConfig()` detects hub mode by checking if `.claude/` exists at `cwd` (bypasses `cwd/../..` walk)
+- `client/src/lib/api.ts` — `getApiBase()` returns `/api` or `/api/projects/<id>` based on active project; `setApiContext()` called by `HubProvider` on project switch
+- `client/src/hooks/useHub.tsx` — `HubProvider` manages project list, active project; calls `setApiContext` on every project change
+- `cli/srm.ts` — `srm hub start/stop/status/add/remove/list`; CWD-based project routing via `/api/hub/resolve`
+- usePipeline and useChat filter WS messages by `projectId` in hub mode to avoid cross-project contamination
+
 ## Detailed notes
 
 - [sr-prefix-namespace explanation](../../agent-memory/explanations/) — see dated files for rationale
