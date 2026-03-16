@@ -16,8 +16,12 @@
 
 import http from 'http'
 import { spawn } from 'child_process'
+import { spawn as spawnProc } from 'child_process'
 import { createInterface } from 'readline'
 import WebSocket from 'ws'
+import path from 'path'
+import os from 'os'
+import fs from 'fs'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -79,6 +83,7 @@ export type ParsedArgs =
   | { mode: 'help' }
   | { mode: 'status'; port: number }
   | { mode: 'jobs'; port: number }
+  | { mode: 'hub'; subArgs: string[]; port: number }
   | { mode: 'command'; resolved: string; port: number }
   | { mode: 'raw'; resolved: string; port: number }
 
@@ -111,6 +116,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
     return { mode: 'jobs', port }
   }
 
+  if (args[0] === 'hub') {
+    return { mode: 'hub', subArgs: args.slice(1), port }
+  }
+
   const first = args[0]
 
   // Slash-prefixed command: pass through unchanged
@@ -140,6 +149,7 @@ ${bold('Usage:')}
   srm "any raw prompt"             Pass a raw prompt directly to claude
   srm --status                     Print web-manager status and exit
   srm --jobs                       Print recent job history and exit
+  srm hub <subcommand>             Manage the hub (multi-project mode)
   srm --port <n>                   Override default port (${DEFAULT_PORT})
   srm --help                       Show this help text
 
@@ -298,11 +308,59 @@ interface WsInitMessage {
 
 type WsMsg = WsLogMessage | WsPhaseMessage | WsInitMessage | { type: string }
 
+// ---------------------------------------------------------------------------
+// Hub mode: resolve project context from CWD
+// ---------------------------------------------------------------------------
+
+interface HubProject {
+  id: string
+  name: string
+  path: string
+}
+
+async function resolveProjectFromCwd(baseUrl: string): Promise<HubProject | null> {
+  try {
+    const cwd = process.cwd()
+    const res = await httpGet(`${baseUrl}/api/hub/resolve?path=${encodeURIComponent(cwd)}`)
+    if (res.status === 200) {
+      const data = JSON.parse(res.body) as { project?: HubProject }
+      return data.project ?? null
+    }
+  } catch {
+    // Hub endpoint not available — not in hub mode
+  }
+  return null
+}
+
 async function runViaWebManager(command: string, baseUrl: string): Promise<number> {
+  // Detect hub mode: check if /api/hub/state is reachable
+  let spawnUrl = `${baseUrl}/api/spawn`
+  let jobApiBase = `${baseUrl}/api`
+
+  try {
+    const hubCheck = await httpGet(`${baseUrl}/api/hub/state`)
+    if (hubCheck.status === 200) {
+      // Hub mode: resolve project from CWD
+      const project = await resolveProjectFromCwd(baseUrl)
+      if (!project) {
+        srmError(
+          'hub is running but no project registered for the current directory.\n' +
+          `  Run: srm hub add ${process.cwd()}`
+        )
+        return 1
+      }
+      spawnUrl = `${baseUrl}/api/projects/${project.id}/spawn`
+      jobApiBase = `${baseUrl}/api/projects/${project.id}`
+      srmLog(`project: ${project.name}`)
+    }
+  } catch {
+    // Single-project mode — use default paths
+  }
+
   // Spawn the job
   let spawnRes: { status: number; body: string }
   try {
-    spawnRes = await httpPost(`${baseUrl}/api/spawn`, { command })
+    spawnRes = await httpPost(spawnUrl, { command })
   } catch (err) {
     srmError('failed to connect to web-manager')
     return 1
@@ -422,7 +480,7 @@ async function runViaWebManager(command: string, baseUrl: string): Promise<numbe
   let totalTokens: number | undefined
 
   try {
-    const jobRes = await httpGet(`${baseUrl}/api/jobs/${processId}`)
+    const jobRes = await httpGet(`${jobApiBase}/jobs/${processId}`)
     if (jobRes.status === 200) {
       const parsed = JSON.parse(jobRes.body) as {
         job?: {
@@ -704,6 +762,263 @@ async function handleJobs(port: number): Promise<number> {
 }
 
 // ---------------------------------------------------------------------------
+// Hub subcommand group
+// ---------------------------------------------------------------------------
+
+const HUB_PID_FILE = path.join(os.homedir(), '.specrails', 'web-manager.pid')
+
+function readPid(): number | null {
+  try {
+    const raw = fs.readFileSync(HUB_PID_FILE, 'utf-8').trim()
+    const pid = parseInt(raw, 10)
+    return isNaN(pid) ? null : pid
+  } catch {
+    return null
+  }
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function hubServerPath(): string {
+  // srm lives at cli/dist/srm.js; server is at ../server/index.js (built)
+  // In dev mode with tsx, we resolve from __filename
+  const base = path.resolve(__dirname, '..')
+  // Try compiled JS first, then fall back to tsx dev path
+  const compiled = path.join(base, 'server', 'index.js')
+  const devTs = path.join(base, 'server', 'index.ts')
+  if (fs.existsSync(compiled)) return compiled
+  if (fs.existsSync(devTs)) return devTs
+  return compiled
+}
+
+async function hubStart(port: number): Promise<number> {
+  const pid = readPid()
+  if (pid !== null && isProcessRunning(pid)) {
+    srmLog(`hub already running (pid ${pid}) on port ${port}`)
+    return 0
+  }
+
+  const serverPath = hubServerPath()
+  const isTs = serverPath.endsWith('.ts')
+  const args = isTs
+    ? ['tsx', serverPath, '--hub', '--port', String(port)]
+    : ['node', serverPath, '--hub', '--port', String(port)]
+
+  const child = spawnProc(args[0], args.slice(1), {
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, SPECRAILS_HUB: '1' },
+  })
+  child.unref()
+
+  // Wait briefly and confirm it started
+  await new Promise<void>((resolve) => setTimeout(resolve, 800))
+  const detection = await detectWebManager(port)
+  if (detection.running) {
+    srmLog(`hub started on http://127.0.0.1:${port}`)
+    return 0
+  }
+  srmError('hub failed to start (check logs)')
+  return 1
+}
+
+async function hubStop(): Promise<number> {
+  const pid = readPid()
+  if (pid === null) {
+    srmLog('hub is not running (no pid file)')
+    return 0
+  }
+  if (!isProcessRunning(pid)) {
+    srmLog('hub is not running (stale pid file)')
+    try { fs.unlinkSync(HUB_PID_FILE) } catch { /* ignore */ }
+    return 0
+  }
+  try {
+    process.kill(pid, 'SIGTERM')
+    srmLog(`hub stopped (pid ${pid})`)
+    return 0
+  } catch (err) {
+    srmError(`failed to stop hub: ${(err as Error).message}`)
+    return 1
+  }
+}
+
+async function hubStatus(port: number): Promise<number> {
+  const pid = readPid()
+  const detection = await detectWebManager(port)
+
+  if (!detection.running) {
+    process.stdout.write(`hub: not running\n`)
+    return 1
+  }
+
+  try {
+    const res = await httpGet(`${detection.baseUrl}/api/hub/state`)
+    const state = JSON.parse(res.body) as { projectCount?: number; projects?: Array<{ name: string }> }
+    process.stdout.write(`hub: running (pid ${pid ?? '?'}) on ${detection.baseUrl}\n`)
+    process.stdout.write(`projects: ${state.projectCount ?? 0}\n`)
+    if (state.projects) {
+      for (const p of state.projects) {
+        process.stdout.write(`  - ${p.name}\n`)
+      }
+    }
+    return 0
+  } catch {
+    process.stdout.write(`hub: running on ${detection.baseUrl}\n`)
+    return 0
+  }
+}
+
+async function hubAdd(projectPath: string, port: number): Promise<number> {
+  const detection = await detectWebManager(port)
+  if (!detection.running) {
+    srmError('hub is not running. Start it first with: srm hub start')
+    return 1
+  }
+  try {
+    const res = await httpPost(`${detection.baseUrl}/api/hub/projects`, {
+      path: path.resolve(projectPath),
+    })
+    if (res.status === 201) {
+      const data = JSON.parse(res.body) as { project?: { name: string; id: string } }
+      srmLog(`added project: ${data.project?.name ?? projectPath}`)
+      return 0
+    } else if (res.status === 409) {
+      srmLog('project already registered')
+      return 0
+    } else {
+      let errMsg = `HTTP ${res.status}`
+      try { errMsg = (JSON.parse(res.body) as { error?: string }).error ?? errMsg } catch { /* use default */ }
+      srmError(`failed to add project: ${errMsg}`)
+      return 1
+    }
+  } catch (err) {
+    srmError(`failed to connect to hub: ${(err as Error).message}`)
+    return 1
+  }
+}
+
+async function hubRemove(projectId: string, port: number): Promise<number> {
+  const detection = await detectWebManager(port)
+  if (!detection.running) {
+    srmError('hub is not running')
+    return 1
+  }
+  try {
+    const deleteRes = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const urlObj = new URL(`${detection.baseUrl}/api/hub/projects/${projectId}`)
+      const options = {
+        hostname: urlObj.hostname,
+        port: urlObj.port,
+        path: urlObj.pathname,
+        method: 'DELETE',
+      }
+      const req = http.request(options, (res) => {
+        let body = ''
+        res.on('data', (chunk) => { body += chunk })
+        res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
+      })
+      req.on('error', reject)
+      req.end()
+    })
+    if (deleteRes.status === 200) {
+      srmLog(`project removed`)
+      return 0
+    } else {
+      srmError(`failed to remove project: HTTP ${deleteRes.status}`)
+      return 1
+    }
+  } catch (err) {
+    srmError(`failed to connect to hub: ${(err as Error).message}`)
+    return 1
+  }
+}
+
+async function hubList(port: number): Promise<number> {
+  const detection = await detectWebManager(port)
+  if (!detection.running) {
+    srmError('hub is not running')
+    return 1
+  }
+  try {
+    const res = await httpGet(`${detection.baseUrl}/api/hub/projects`)
+    const data = JSON.parse(res.body) as { projects: Array<{ id: string; name: string; path: string }> }
+    if (!data.projects || data.projects.length === 0) {
+      srmLog('no projects registered')
+      return 0
+    }
+    const idW = 36
+    const nameW = 24
+    process.stdout.write(`${bold('ID'.padEnd(idW))}  ${bold('NAME'.padEnd(nameW))}  ${bold('PATH')}\n`)
+    for (const p of data.projects) {
+      process.stdout.write(`${p.id.padEnd(idW)}  ${p.name.padEnd(nameW)}  ${p.path}\n`)
+    }
+    return 0
+  } catch (err) {
+    srmError(`failed to fetch projects: ${(err as Error).message}`)
+    return 1
+  }
+}
+
+async function handleHub(subArgs: string[], port: number): Promise<number> {
+  const sub = subArgs[0]
+
+  if (!sub || sub === 'help' || sub === '--help' || sub === '-h') {
+    process.stdout.write(`
+${bold('srm hub')} — manage the specrails hub (multi-project mode)
+
+${bold('Usage:')}
+  srm hub start              Start the hub server
+  srm hub stop               Stop the hub server
+  srm hub status             Show hub status and registered projects
+  srm hub add <path>         Register a project by path
+  srm hub remove <id>        Unregister a project by ID
+  srm hub list               List all registered projects
+`.trimStart())
+    return 0
+  }
+
+  if (sub === 'start') {
+    return hubStart(port)
+  }
+  if (sub === 'stop') {
+    return hubStop()
+  }
+  if (sub === 'status') {
+    return hubStatus(port)
+  }
+  if (sub === 'add') {
+    const projectPath = subArgs[1]
+    if (!projectPath) {
+      srmError('usage: srm hub add <path>')
+      return 1
+    }
+    return hubAdd(projectPath, port)
+  }
+  if (sub === 'remove') {
+    const projectId = subArgs[1]
+    if (!projectId) {
+      srmError('usage: srm hub remove <id>')
+      return 1
+    }
+    return hubRemove(projectId, port)
+  }
+  if (sub === 'list') {
+    return hubList(port)
+  }
+
+  srmError(`unknown hub subcommand: ${sub}`)
+  return 1
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -723,6 +1038,11 @@ async function main(): Promise<void> {
 
   if (parsed.mode === 'jobs') {
     const code = await handleJobs(parsed.port)
+    process.exit(code)
+  }
+
+  if (parsed.mode === 'hub') {
+    const code = await handleHub(parsed.subArgs, parsed.port)
     process.exit(code)
   }
 

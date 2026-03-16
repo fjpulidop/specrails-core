@@ -31,9 +31,9 @@ export interface ProjectConfig {
   commands: CommandInfo[]
 }
 
-function runCommand(cmd: string): string | null {
+function runCommand(cmd: string, cwd?: string): string | null {
   try {
-    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000 }).toString().trim()
+    return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'], timeout: 5000, cwd }).toString().trim()
   } catch {
     return null
   }
@@ -57,8 +57,8 @@ function detectJira(): IssueTrackerInfo {
   return { available: true, authenticated: true }
 }
 
-function getGitRepoName(): string | null {
-  const output = runCommand('git remote get-url origin')
+function getGitRepoName(projectRoot?: string): string | null {
+  const output = runCommand('git remote get-url origin', projectRoot)
   if (!output) return null
 
   // Parse both HTTPS and SSH remote URLs
@@ -211,15 +211,25 @@ function loadPersistedConfig(db: any): { active: string | null; labelFilter: str
 }
 
 export function getConfig(cwd: string, db?: any, projectName?: string): ProjectConfig {
-  // Commands are in the project's .claude/commands/sr/ directory
-  // The web-manager lives at <project>/specrails/web-manager/, so project root is two levels up
-  const projectRoot = path.resolve(cwd, '../..')
+  // Resolve project root.
+  // In single-project mode: web-manager lives at <project>/specrails/web-manager/,
+  // so we walk up two levels to find the project root.
+  // In hub mode: cwd is the project root directly — we detect this by checking
+  // if the .claude directory already lives at cwd.
+  let projectRoot: string
+  if (fs.existsSync(path.join(cwd, '.claude'))) {
+    // cwd is already the project root (hub mode passes project.path directly)
+    projectRoot = cwd
+  } else {
+    // Single-project mode: walk up two levels
+    projectRoot = path.resolve(cwd, '../..')
+  }
   const commandsDir = path.join(projectRoot, '.claude', 'commands', 'sr')
   const commands = scanCommands(commandsDir)
 
   const github = detectGithub()
   const jira = detectJira()
-  const repo = getGitRepoName()
+  const repo = getGitRepoName(projectRoot)
 
   const persisted = db ? loadPersistedConfig(db) : { active: null, labelFilter: '' }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
+import { getApiBase } from '../lib/api'
 import { CheckCircle2, XCircle, AlertCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -17,7 +18,7 @@ export default function SettingsPage() {
   useEffect(() => {
     async function loadConfig() {
       try {
-        const res = await fetch('/api/config')
+        const res = await fetch(`${getApiBase()}/config`)
         if (!res.ok) return
         const data = await res.json() as ProjectConfig
         setConfig(data)
@@ -35,7 +36,7 @@ export default function SettingsPage() {
   async function saveSettings() {
     setIsSaving(true)
     try {
-      const res = await fetch('/api/config', {
+      const res = await fetch(`${getApiBase()}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ active: activeTracker, labelFilter }),

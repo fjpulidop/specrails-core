@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { getApiBase } from '../lib/api'
 import { Search, AlertCircle } from 'lucide-react'
 import { Input } from './ui/input'
 import { Badge } from './ui/badge'
@@ -27,7 +28,7 @@ export function IssuePickerStep({ multiSelect = false, selectedIssues, onSelecti
       try {
         const params = new URLSearchParams()
         if (search) params.set('search', search)
-        const res = await fetch(`/api/issues?${params.toString()}`)
+        const res = await fetch(`${getApiBase()}/issues?${params.toString()}`)
         if (res.status === 503) {
           setIsNoTracker(true)
           return

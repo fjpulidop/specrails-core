@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { cn } from '../lib/utils'
+import { getApiBase } from '../lib/api'
 
 interface Stats {
   totalJobs: number
@@ -18,7 +19,7 @@ export function StatusBar({ connectionStatus }: StatusBarProps) {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const res = await fetch('/api/stats')
+        const res = await fetch(`${getApiBase()}/stats`)
         if (res.ok) {
           const data = await res.json() as Stats
           setStats(data)

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useLayoutEffect } from 'react'
 import { useSharedWebSocket } from './useSharedWebSocket'
 import type { ChatConversationSummary, ChatMessage } from '../types'
+import { getApiBase } from '../lib/api'
 
 const PANEL_OPEN_KEY = 'specrails.chatPanelOpen'
 
@@ -45,7 +46,8 @@ export function useChat(): UseChatReturn {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch('/api/chat/conversations')
+        const base = getApiBase()
+        const res = await fetch(`${base}/chat/conversations`)
         if (!res.ok) return
         const data = await res.json() as { conversations: ChatConversationSummary[] }
         const convos = data.conversations.slice(0, 3)
@@ -53,7 +55,7 @@ export function useChat(): UseChatReturn {
         const withMessages: ChatConversation[] = await Promise.all(
           convos.map(async (c) => {
             try {
-              const msgRes = await fetch(`/api/chat/conversations/${c.id}/messages`)
+              const msgRes = await fetch(`${getApiBase()}/chat/conversations/${c.id}/messages`)
               const msgData = msgRes.ok ? await msgRes.json() as { messages: ChatMessage[] } : { messages: [] }
               return {
                 id: c.id,
@@ -88,6 +90,16 @@ export function useChat(): UseChatReturn {
   const handleMessage = useCallback((raw: unknown) => {
     const msg = raw as Record<string, unknown>
     if (typeof msg.type !== 'string') return
+
+    // In hub mode, filter messages to the active project only
+    const apiBase = getApiBase()
+    const activeProjectId = apiBase.startsWith('/api/projects/')
+      ? apiBase.split('/api/projects/')[1]
+      : null
+
+    if (activeProjectId && msg.projectId && msg.projectId !== activeProjectId) {
+      return
+    }
 
     if (msg.type === 'chat_stream') {
       const conversationId = msg.conversationId as string
@@ -163,7 +175,7 @@ export function useChat(): UseChatReturn {
 
   const createConversation = useCallback(async (model = 'claude-sonnet-4-5') => {
     try {
-      const res = await fetch('/api/chat/conversations', {
+      const res = await fetch(`${getApiBase()}/chat/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model }),
@@ -192,7 +204,7 @@ export function useChat(): UseChatReturn {
 
   const deleteConversation = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/chat/conversations/${id}`, { method: 'DELETE' })
+      await fetch(`${getApiBase()}/chat/conversations/${id}`, { method: 'DELETE' })
     } catch { /* ignore */ }
     setConversations((prev) => {
       const next = prev.filter((c) => c.id !== id)
@@ -219,7 +231,7 @@ export function useChat(): UseChatReturn {
     )
 
     try {
-      await fetch(`/api/chat/conversations/${conversationId}/messages`, {
+      await fetch(`${getApiBase()}/chat/conversations/${conversationId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -233,7 +245,7 @@ export function useChat(): UseChatReturn {
 
   const abortStream = useCallback(async (conversationId: string) => {
     try {
-      await fetch(`/api/chat/conversations/${conversationId}/messages/stream`, {
+      await fetch(`${getApiBase()}/chat/conversations/${conversationId}/messages/stream`, {
         method: 'DELETE',
       })
     } catch { /* ignore */ }
@@ -241,7 +253,7 @@ export function useChat(): UseChatReturn {
 
   const confirmCommand = useCallback(async (command: string) => {
     try {
-      await fetch('/api/spawn', {
+      await fetch(`${getApiBase()}/spawn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command }),

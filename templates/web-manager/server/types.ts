@@ -7,12 +7,18 @@ export interface PhaseDefinition {
   description: string
 }
 
+// ─── ProjectRow (hub-level) — re-exported from hub-db for WS message use ─────
+
+import type { ProjectRow } from './hub-db'
+export type { ProjectRow }
+
 export interface LogMessage {
   type: 'log'
   source: 'stdout' | 'stderr'
   line: string
   timestamp: string
   processId: string
+  projectId?: string
 }
 
 export interface PhaseMessage {
@@ -20,6 +26,7 @@ export interface PhaseMessage {
   phase: PhaseName
   state: PhaseState
   timestamp: string
+  projectId?: string
 }
 
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
@@ -155,6 +162,7 @@ export interface QueueMessage {
   activeJobId: string | null
   paused: boolean
   timestamp: string
+  projectId?: string
 }
 
 export interface InitMessage {
@@ -169,6 +177,7 @@ export interface InitMessage {
     activeJobId: string | null
     paused: boolean
   }
+  projectId?: string
 }
 
 export interface EventMessage {
@@ -179,6 +188,7 @@ export interface EventMessage {
   payload: string
   timestamp: string
   seq: number
+  projectId?: string
 }
 
 export interface ChatStreamMessage {
@@ -186,6 +196,7 @@ export interface ChatStreamMessage {
   conversationId: string
   delta: string
   timestamp: string
+  projectId?: string
 }
 
 export interface ChatDoneMessage {
@@ -193,6 +204,7 @@ export interface ChatDoneMessage {
   conversationId: string
   fullText: string
   timestamp: string
+  projectId?: string
 }
 
 export interface ChatErrorMessage {
@@ -200,6 +212,7 @@ export interface ChatErrorMessage {
   conversationId: string
   error: string
   timestamp: string
+  projectId?: string
 }
 
 export interface ChatCommandProposalMessage {
@@ -207,6 +220,7 @@ export interface ChatCommandProposalMessage {
   conversationId: string
   command: string
   timestamp: string
+  projectId?: string
 }
 
 export interface ChatTitleUpdateMessage {
@@ -214,10 +228,32 @@ export interface ChatTitleUpdateMessage {
   conversationId: string
   title: string
   timestamp: string
+  projectId?: string
+}
+
+// ─── Hub-level message types ──────────────────────────────────────────────────
+
+export interface HubProjectsMessage {
+  type: 'hub.projects'
+  projects: ProjectRow[]
+  timestamp: string
+}
+
+export interface HubProjectAddedMessage {
+  type: 'hub.project_added'
+  project: ProjectRow
+  timestamp: string
+}
+
+export interface HubProjectRemovedMessage {
+  type: 'hub.project_removed'
+  projectId: string
+  timestamp: string
 }
 
 export type WsMessage =
   | LogMessage | PhaseMessage | InitMessage | QueueMessage | EventMessage
   | ChatStreamMessage | ChatDoneMessage | ChatErrorMessage
   | ChatCommandProposalMessage | ChatTitleUpdateMessage
+  | HubProjectsMessage | HubProjectAddedMessage | HubProjectRemovedMessage
 

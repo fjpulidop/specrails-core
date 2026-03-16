@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { getApiBase } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { toast } from 'sonner'
 import { ChevronRight, Home } from 'lucide-react'
@@ -36,7 +37,7 @@ export default function JobDetailPage() {
     if (!id) return
     async function loadJob() {
       try {
-        const res = await fetch(`/api/jobs/${id}`)
+        const res = await fetch(`${getApiBase()}/jobs/${id}`)
         if (res.status === 404) {
           setNotFound(true)
           return
@@ -103,7 +104,7 @@ export default function JobDetailPage() {
   async function handleCancel() {
     if (!id) return
     try {
-      const res = await fetch(`/api/jobs/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${getApiBase()}/jobs/${id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Cancel signal sent', { description: 'Job will stop at the next safe point' })
       } else {

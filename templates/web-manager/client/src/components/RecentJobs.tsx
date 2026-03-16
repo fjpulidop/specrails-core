@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { getApiBase } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
 import { Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -80,7 +81,7 @@ export function RecentJobs({ jobs, isLoading, onJobsCleared }: RecentJobsProps) 
         if (clearFrom) body.from = clearFrom
         if (clearTo) body.to = clearTo
       }
-      const res = await fetch('/api/jobs', {
+      const res = await fetch(`${getApiBase()}/jobs`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

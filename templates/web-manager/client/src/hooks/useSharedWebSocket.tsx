@@ -16,6 +16,9 @@ interface SharedWebSocketContextValue {
   registerHandler: (id: string, fn: (msg: unknown) => void) => void
   unregisterHandler: (id: string) => void
   connectionStatus: ConnectionStatus
+  // Hub-level message types (hub.*) are fanned out to ALL registered handlers.
+  // Handlers that only care about project-scoped messages should filter by
+  // msg.projectId to ignore cross-project messages.
 }
 
 const SharedWebSocketContext = createContext<SharedWebSocketContextValue | null>(null)

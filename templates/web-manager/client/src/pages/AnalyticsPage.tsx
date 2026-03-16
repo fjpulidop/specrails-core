@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
+import { getApiBase } from '../lib/api'
 import type { AnalyticsResponse, AnalyticsPeriod } from '../types'
 import { PeriodSelector } from '../components/analytics/PeriodSelector'
 import { KpiCards } from '../components/analytics/KpiCards'
@@ -75,7 +76,7 @@ export default function AnalyticsPage() {
       params.set('to', to)
     }
 
-    fetch(`/api/analytics?${params}`, { signal: controller.signal })
+    fetch(`${getApiBase()}/analytics?${params}`, { signal: controller.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<AnalyticsResponse>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { getApiBase } from '../lib/api'
 import { Loader2, CheckCircle2, XCircle, Clock, DollarSign } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from './ui/card'
@@ -37,7 +38,7 @@ export function ActiveJobCard({ activeJob, phases, phaseDefinitions }: ActiveJob
   async function handleCancel() {
     if (!activeJob) return
     try {
-      const res = await fetch(`/api/jobs/${activeJob.id}`, { method: 'DELETE' })
+      const res = await fetch(`${getApiBase()}/jobs/${activeJob.id}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Job cancellation requested', {
           description: 'Sending SIGTERM to the process',

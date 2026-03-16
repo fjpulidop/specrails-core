@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
+import { getApiBase } from '../lib/api'
 import {
   Rocket,
   Layers,
@@ -75,7 +76,7 @@ interface CommandGridProps {
 }
 
 async function spawnCommand(command: string): Promise<void> {
-  const res = await fetch('/api/spawn', {
+  const res = await fetch(`${getApiBase()}/spawn`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command: `/sr:${command}` }),

@@ -1,5 +1,6 @@
 import { useReducer } from 'react'
 import { toast } from 'sonner'
+import { getApiBase } from '../lib/api'
 import {
   Dialog,
   DialogContent,
@@ -82,7 +83,7 @@ export function ImplementWizard({ open, onClose }: ImplementWizardProps) {
     }
 
     try {
-      const res = await fetch('/api/spawn', {
+      const res = await fetch(`${getApiBase()}/spawn`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command }),

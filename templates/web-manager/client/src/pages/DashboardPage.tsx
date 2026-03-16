@@ -5,6 +5,7 @@ import { RecentJobs } from '../components/RecentJobs'
 import { ImplementWizard } from '../components/ImplementWizard'
 import { BatchImplementWizard } from '../components/BatchImplementWizard'
 import type { CommandInfo, JobSummary } from '../types'
+import { getApiBase } from '../lib/api'
 
 // Module-level cache — survives route changes, no flicker on re-mount
 let cachedCommands: CommandInfo[] | null = null
@@ -21,7 +22,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadConfig() {
       try {
-        const res = await fetch('/api/config')
+        const res = await fetch(`${getApiBase()}/config`)
         if (!res.ok) return
         const data = await res.json() as { commands: CommandInfo[] }
         cachedCommands = data.commands
@@ -44,7 +45,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function refreshJobs() {
       try {
-        const res = await fetch('/api/jobs?limit=10')
+        const res = await fetch(`${getApiBase()}/jobs?limit=10`)
         if (!res.ok) return
         const data = await res.json() as { jobs: JobSummary[] }
         cachedJobs = data.jobs
@@ -82,7 +83,7 @@ export default function DashboardPage() {
           isLoading={isLoadingJobs}
           onJobsCleared={async () => {
             try {
-              const res = await fetch('/api/jobs?limit=10')
+              const res = await fetch(`${getApiBase()}/jobs?limit=10`)
               if (!res.ok) return
               const data = await res.json() as { jobs: JobSummary[] }
               cachedJobs = data.jobs

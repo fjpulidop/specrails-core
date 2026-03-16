@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { formatDistanceToNow } from 'date-fns'
+import { getApiBase } from '../lib/api'
 import { toast } from 'sonner'
 import { X, ExternalLink } from 'lucide-react'
 import { Badge } from './ui/badge'
@@ -39,7 +40,7 @@ export function JobDetailModal({ jobId, onClose }: JobDetailModalProps) {
   useEffect(() => {
     async function loadJob() {
       try {
-        const res = await fetch(`/api/jobs/${jobId}`)
+        const res = await fetch(`${getApiBase()}/jobs/${jobId}`)
         if (res.status === 404) {
           setNotFound(true)
           return
@@ -120,7 +121,7 @@ export function JobDetailModal({ jobId, onClose }: JobDetailModalProps) {
 
   async function handleCancel() {
     try {
-      const res = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' })
+      const res = await fetch(`${getApiBase()}/jobs/${jobId}`, { method: 'DELETE' })
       if (res.ok) {
         toast.success('Cancel signal sent', { description: 'Job will stop at the next safe point' })
       } else {

@@ -1,6 +1,7 @@
 import { useState, useCallback, useLayoutEffect } from 'react'
 import { useSharedWebSocket } from './useSharedWebSocket'
 import type { JobSummary, PhaseDefinition } from '../types'
+import { getApiBase } from '../lib/api'
 
 export type PhaseState = 'idle' | 'running' | 'done' | 'error'
 export type PhaseMap = Record<string, PhaseState>
@@ -43,7 +44,18 @@ export function usePipeline() {
   const [queueState, setQueueState] = useState<QueueState>(INITIAL_QUEUE)
 
   const handleMessage = useCallback((data: unknown) => {
-    const msg = data as { type: string } & Record<string, unknown>
+    const msg = data as { type: string; projectId?: string } & Record<string, unknown>
+
+    // In hub mode, ignore messages that don't belong to the active project.
+    // getApiBase() encodes the active project: '/api/projects/<id>' in hub mode.
+    const apiBase = getApiBase()
+    const activeProjectId = apiBase.startsWith('/api/projects/')
+      ? apiBase.split('/api/projects/')[1]
+      : null
+
+    if (activeProjectId && msg.projectId && msg.projectId !== activeProjectId) {
+      return
+    }
 
     if (msg.type === 'init') {
       setProjectName((msg.projectName as string) ?? '')
