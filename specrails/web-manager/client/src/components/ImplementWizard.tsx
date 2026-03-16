@@ -70,7 +70,8 @@ export function ImplementWizard({ open, onClose }: ImplementWizardProps) {
         toast.error('Please select at least one issue')
         return
       }
-      command = `/sr:implement ${state.selectedIssues.map((n) => `#${n}`).join(' ')}`
+      const issueArgs = state.selectedIssues.map((n) => `#${n}`).join(' ')
+      command = `/sr:implement ${issueArgs}`
     } else {
       if (!state.freeFormTitle.trim()) {
         toast.error('Please enter a feature title')

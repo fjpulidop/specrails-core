@@ -8,12 +8,9 @@ import { Button } from '../components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip'
 import { PipelineProgress } from '../components/PipelineProgress'
 import { LogViewer } from '../components/LogViewer'
-import { useWebSocket } from '../hooks/useWebSocket'
+import { useSharedWebSocket } from '../hooks/useSharedWebSocket'
 import type { JobSummary, EventRow, PhaseDefinition } from '../types'
 import type { PhaseMap, PhaseState } from '../hooks/usePipeline'
-
-const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-const WS_URL = `${wsProtocol}//${window.location.host}`
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'running' | 'queued' | 'failed' | 'canceled'
 
@@ -69,19 +66,10 @@ export default function JobDetailPage() {
         initPhases[def.key] = ((msg.phases as Record<string, string>)?.[def.key] as PhaseState) ?? 'idle'
       }
       setPhases(initPhases)
-    } else if (msg.type === 'event' && msg.jobId === id) {
-      const eventRow: EventRow = {
-        id: Date.now(),
-        job_id: id ?? '',
-        seq: 0,
-        event_type: msg.event_type as string,
-        source: msg.source as string,
-        payload: msg.payload as string,
-        timestamp: msg.timestamp as string,
-      }
-      setEvents((prev) => [...prev, eventRow])
     } else if (msg.type === 'log' && msg.processId === id) {
-      // Fallback: live log line as synthetic event row
+      // Live log lines — the server also emits 'event' messages for the same
+      // content but those are redundant during streaming (they're useful for
+      // the initial DB load where 'log' messages aren't stored separately).
       const syntheticEvent: EventRow = {
         id: Date.now(),
         job_id: id ?? '',
@@ -100,13 +88,17 @@ export default function JobDetailPage() {
       // Refresh job status from queue state
       const jobs = msg.jobs as Array<{ id: string; status: string }> | undefined
       const matchingJob = jobs?.find((j) => j.id === id)
-      if (matchingJob && job) {
+      if (matchingJob) {
         setJob((prev) => prev ? { ...prev, status: matchingJob.status as JobSummary['status'] } : prev)
       }
     }
-  }, [id, job])
+  }, [id])
 
-  useWebSocket(WS_URL, handleMessage)
+  const { registerHandler, unregisterHandler } = useSharedWebSocket()
+  useEffect(() => {
+    registerHandler(`job-detail-${id}`, handleMessage)
+    return () => unregisterHandler(`job-detail-${id}`)
+  }, [id, handleMessage, registerHandler, unregisterHandler])
 
   async function handleCancel() {
     if (!id) return
