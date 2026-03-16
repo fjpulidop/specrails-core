@@ -261,7 +261,7 @@ export class QueueManager {
       '--output-format', 'stream-json',
       '--verbose',
       '-p',
-      ...job.command.trim().split(/\s+/),
+      job.command.trim(),
     ]
 
     const child = spawn('claude', args, {
