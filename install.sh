@@ -34,6 +34,7 @@ NC='\033[0m'
 # ─────────────────────────────────────────────
 
 CUSTOM_ROOT_DIR=""
+AUTO_YES=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -45,9 +46,13 @@ while [[ $# -gt 0 ]]; do
             CUSTOM_ROOT_DIR="$2"
             shift 2
             ;;
+        --yes|-y)
+            AUTO_YES=true
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y]" >&2
             exit 1
             ;;
     esac
@@ -85,7 +90,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     }
     if [[ ! -d "$REPO_ROOT/.git" ]]; then
         echo -e "${YELLOW}⚠${NC}  Warning: $REPO_ROOT does not appear to be a git repository."
-        read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT
+        if [ "$AUTO_YES" = true ]; then CONTINUE_NOGIT="y"; else read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT; fi
         if [[ "$CONTINUE_NOGIT" != "y" && "$CONTINUE_NOGIT" != "Y" ]]; then
             echo "   Aborted. No changes made."
             exit 0
@@ -194,7 +199,7 @@ if command -v npm &> /dev/null; then
 else
     warn "npm not found. Required for OpenSpec CLI."
     echo ""
-    read -p "    Install npm via nvm? (y/n): " INSTALL_NPM
+    if [ "$AUTO_YES" = true ]; then INSTALL_NPM="y"; else read -p "    Install npm via nvm? (y/n): " INSTALL_NPM; fi
     if [ "$INSTALL_NPM" = "y" ] || [ "$INSTALL_NPM" = "Y" ]; then
         info "Installing nvm + node..."
         curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
@@ -221,7 +226,7 @@ elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
 else
     warn "OpenSpec CLI not found."
     if [ "$HAS_NPM" = true ]; then
-        read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC
+        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC; fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
             info "Installing OpenSpec CLI..."
             npm install -g @openspec/cli 2>/dev/null && {
@@ -326,7 +331,7 @@ fi
 if [ "$EXISTING_SETUP" = true ]; then
     echo ""
     warn "This repo already has some agent/command/openspec artifacts."
-    read -p "    Continue and merge with existing setup? (y/n): " CONTINUE
+    if [ "$AUTO_YES" = true ]; then CONTINUE="y"; else read -p "    Continue and merge with existing setup? (y/n): " CONTINUE; fi
     if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
         info "Aborted. No changes made."
         exit 0
