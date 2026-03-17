@@ -563,6 +563,7 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 |---------|---------|----------|
 | /sr:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
 | /sr:batch-implement | Orchestrate multiple features in dependency-aware waves | sr-architect + sr-developer + sr-reviewer |
+| /sr:propose-spec | Interactively propose and refine a feature spec, then create a GitHub issue | GitHub CLI |
 | /sr:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
 | /sr:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
 | /sr:health-check | Run tests, linting, coverage, complexity, and dependency audit | None |
@@ -660,6 +661,7 @@ Write each persona to `.claude/agents/personas/`:
 For each selected command, read the template and adapt:
 - `setup-templates/commands/sr/implement.md` → `.claude/commands/sr/implement.md`
 - `setup-templates/commands/sr/batch-implement.md` → `.claude/commands/sr/batch-implement.md`
+- `setup-templates/commands/sr/propose-spec.md` → `.claude/commands/sr/propose-spec.md`
 - `setup-templates/commands/sr/product-backlog.md` → `.claude/commands/sr/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
 - `setup-templates/commands/sr/update-product-driven-backlog.md` → `.claude/commands/sr/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
 - `setup-templates/commands/sr/health-check.md` → `.claude/commands/sr/health-check.md`
@@ -832,6 +834,7 @@ Display the complete installation summary:
 |---------|------|
 | /sr:implement | .claude/commands/sr/implement.md |
 | /sr:batch-implement | .claude/commands/sr/batch-implement.md |
+| /sr:propose-spec | .claude/commands/sr/propose-spec.md |
 | /sr:product-backlog | .claude/commands/sr/product-backlog.md |
 | /sr:update-product-driven-backlog | .claude/commands/sr/update-product-driven-backlog.md |
 | /sr:health-check | .claude/commands/sr/health-check.md |
