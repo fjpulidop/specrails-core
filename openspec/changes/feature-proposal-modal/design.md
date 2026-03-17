@@ -3,7 +3,7 @@ id: feature-proposal-modal
 title: Feature Proposal Modal — Technical Design
 ---
 
-# Technical Design: Feature Proposal Modal
+# Technical Design: Spec Proposal Modal
 
 ## Overview
 
@@ -13,11 +13,11 @@ This feature spans two repositories. Changes to `specrails` are limited to one n
 
 ## 1. specrails repo — Command Template
 
-### 1.1 File: `templates/commands/propose-feature.md`
+### 1.1 File: `templates/commands/propose-spec.md`
 
-**Location:** `templates/commands/propose-feature.md` (NOT in `templates/commands/sr/` — that subdirectory is only for the generated output namespace, not the source templates).
+**Location:** `templates/commands/propose-spec.md` (NOT in `templates/commands/sr/` — that subdirectory is only for the generated output namespace, not the source templates).
 
-**Purpose:** A Claude Code slash command that accepts a raw feature idea and produces a structured proposal document as markdown. This command is run by `QueueManager._resolveCommand()` — it is resolved from `.claude/commands/sr/propose-feature.md` in the target project. The `templates/commands/` files are what get installed into target repos via `install.sh`.
+**Purpose:** A Claude Code slash command that accepts a raw spec idea and produces a structured proposal document as markdown. This command is run by `QueueManager._resolveCommand()` — it is resolved from `.claude/commands/sr/propose-spec.md` in the target project. The `templates/commands/` files are what get installed into target repos via `install.sh`.
 
 **Design constraints:**
 - Must output **only** structured markdown — no free-form prose preamble
@@ -40,10 +40,10 @@ This feature spans two repositories. Changes to `specrails` are limited to one n
 **Template structure:**
 ```markdown
 ---
-description: Explore a feature idea and produce a structured proposal
+description: Explore a spec idea and produce a structured proposal
 ---
 
-You are a senior product engineer helping to evaluate and structure a feature proposal.
+You are a senior product engineer helping to evaluate and structure a spec proposal.
 The user's raw idea is: $ARGUMENTS
 
 [Instructions for codebase exploration + structured output...]
@@ -132,7 +132,7 @@ export function deleteProposal(db: DbInstance, id: string): void
 **Key design decisions:**
 
 **Decision 1: Reuse `ChatManager` pattern, not `ChatManager` class.**
-`ChatManager` is designed around persistent conversation threads with message history. Proposals have a different lifecycle: one initial run (`/sr:propose-feature`), zero or more refinement turns (`--resume`), and a terminal issue-creation run. Reusing `ChatManager` would require threading its `SYSTEM_PROMPT`, `autoTitle`, and conversation DB logic through the proposal flow. Instead, `ProposalManager` is a clean copy of the relevant spawn/stream/resume pattern with proposal-specific logic.
+`ChatManager` is designed around persistent conversation threads with message history. Proposals have a different lifecycle: one initial run (`/sr:propose-spec`), zero or more refinement turns (`--resume`), and a terminal issue-creation run. Reusing `ChatManager` would require threading its `SYSTEM_PROMPT`, `autoTitle`, and conversation DB logic through the proposal flow. Instead, `ProposalManager` is a clean copy of the relevant spawn/stream/resume pattern with proposal-specific logic.
 
 **Decision 2: Issue creation via a separate `--resume` turn.**
 When the user clicks "Create Issue", the server sends a `--resume` turn with a standardised prompt:
@@ -164,7 +164,7 @@ const args = [
   '--dangerously-skip-permissions',
   '--output-format', 'stream-json',
   '--verbose',
-  '-p', resolvedPrompt,  // /sr:propose-feature resolved to full content with idea substituted
+  '-p', resolvedPrompt,  // /sr:propose-spec resolved to full content with idea substituted
 ]
 spawn('claude', args, { cwd: project.path, ... })
 ```
@@ -182,7 +182,7 @@ const args = [
 
 **Stream handling:** identical to `ChatManager.sendMessage` — read stdout line-by-line, parse JSON, extract text from `assistant` events, accumulate buffer, broadcast `proposal_stream` deltas. On `result` event, capture `session_id`. On `close(0)`, transition status and broadcast `proposal_ready` or `proposal_refined` or `proposal_issue_created` as appropriate.
 
-**Command resolution:** `ProposalManager` must resolve `/sr:propose-feature` to its full prompt content (same logic as `QueueManager._resolveCommand`). Extract this resolution logic into a shared utility in `server/command-resolver.ts` so both `QueueManager` and `ProposalManager` can use it without duplication.
+**Command resolution:** `ProposalManager` must resolve `/sr:propose-spec` to its full prompt content (same logic as `QueueManager._resolveCommand`). Extract this resolution logic into a shared utility in `server/command-resolver.ts` so both `QueueManager` and `ProposalManager` can use it without duplication.
 
 ### 2.4 Command resolver utility (`server/command-resolver.ts`)
 
@@ -330,13 +330,13 @@ interface ProposalState {
 
 **Project isolation:** all API calls use `getApiBase()` (which already resolves to `/api/projects/:projectId` in hub mode). WS messages are filtered by both `projectId` and `proposalId`.
 
-### 3.2 New component: `FeatureProposalModal.tsx` (`client/src/components/FeatureProposalModal.tsx`)
+### 3.2 New component: `SpecProposalModal.tsx` (`client/src/components/SpecProposalModal.tsx`)
 
 A `Dialog`-based modal with distinct visual states matching the proposal lifecycle.
 
 **Props:**
 ```typescript
-interface FeatureProposalModalProps {
+interface SpecProposalModalProps {
   open: boolean
   onClose: () => void
 }
@@ -345,7 +345,7 @@ interface FeatureProposalModalProps {
 **Visual states and their content:**
 
 **`idle` (input step):**
-- Large textarea: "Describe the feature you'd like to build..."
+- Large textarea: "Describe the spec you'd like to build..."
 - Placeholder subtext: "Claude will read the codebase and structure your idea into a full proposal"
 - "Explore Idea" button (primary, disabled when textarea empty)
 - Cancel button
@@ -397,12 +397,12 @@ interface FeatureProposalModalProps {
 
 ### 3.3 Dashboard integration (`client/src/pages/DashboardPage.tsx`)
 
-- Add `FeatureProposalModal` import
+- Add `SpecProposalModal` import
 - Add `proposalOpen` boolean state (alongside existing `wizardOpen`)
-- Add a "Propose Feature" `PathCard`-style button in the Commands section (or as a standalone CTA if no commands are configured)
-- Render `<FeatureProposalModal open={proposalOpen} onClose={() => setProposalOpen(false)} />`
+- Add a "Propose Spec" `PathCard`-style button in the Commands section (or as a standalone CTA if no commands are configured)
+- Render `<SpecProposalModal open={proposalOpen} onClose={() => setProposalOpen(false)} />`
 
-The "Propose Feature" button should be visually distinct from the command grid cards — it represents a different interaction model (conversational AI vs. job queue dispatch).
+The "Propose Spec" button should be visually distinct from the command grid cards — it represents a different interaction model (conversational AI vs. job queue dispatch).
 
 ---
 
@@ -431,14 +431,14 @@ WHERE status IN ('exploring', 'refining')
 
 ### 4.4 Command template installation
 
-`templates/commands/propose-feature.md` must be processed by `install.sh` and placed at `.claude/commands/sr/propose-feature.md` in the target project. The existing installation loop in `install.sh` already handles `templates/commands/sr/*.md` → `.claude/commands/sr/`. The new file goes at `templates/commands/propose-feature.md` but will be copied to `sr/` namespace during install.
+`templates/commands/propose-spec.md` must be processed by `install.sh` and placed at `.claude/commands/sr/propose-spec.md` in the target project. The existing installation loop in `install.sh` already handles `templates/commands/sr/*.md` → `.claude/commands/sr/`. The new file goes at `templates/commands/propose-spec.md` but will be copied to `sr/` namespace during install.
 
 Wait — this conflicts with the directory structure. Let me clarify:
 
-- Source: `templates/commands/propose-feature.md` (no `sr/` subdir in templates)
-- Installed to: `.claude/commands/sr/propose-feature.md` (with `sr/` namespace in target)
+- Source: `templates/commands/propose-spec.md` (no `sr/` subdir in templates)
+- Installed to: `.claude/commands/sr/propose-spec.md` (with `sr/` namespace in target)
 
-This matches how the issue states it: "Location: `templates/commands/propose-feature.md` in specrails repo (NO `sr/` subdirectory for templates)". The `install.sh` script maps `templates/commands/` content to `.claude/commands/sr/` — the template source directory is flat, the install target is namespaced. Verify this against `install.sh` install logic before implementing.
+This matches how the issue states it: "Location: `templates/commands/propose-spec.md` in specrails repo (NO `sr/` subdirectory for templates)". The `install.sh` script maps `templates/commands/` content to `.claude/commands/sr/` — the template source directory is flat, the install target is namespaced. Verify this against `install.sh` install logic before implementing.
 
 ### 4.5 `gh` availability
 
@@ -463,7 +463,7 @@ ProposalManager
   └─ On close(non-0) → broadcast proposal_error
 
 WebSocket (shared connection)
-  ├─ proposal_stream → FeatureProposalModal streaming render
+  ├─ proposal_stream → SpecProposalModal streaming render
   ├─ proposal_ready → transition to review state
   ├─ proposal_refined → update review state
   ├─ proposal_issue_created → transition to created state

@@ -3,27 +3,27 @@ id: feature-proposal-modal
 title: Feature Proposal Modal — Delta Spec
 ---
 
-# Delta Spec: Feature Proposal Modal
+# Delta Spec: Spec Proposal Modal
 
 This document records all specification changes introduced by this feature. It is the diff against the current state of `openspec/specs/`.
 
 ---
 
-## New: Command Template — `propose-feature`
+## New: Command Template — `propose-spec`
 
 **Spec path:** `openspec/specs/commands.md` (or equivalent command registry spec if it exists)
 
-A new slash command `sr:propose-feature` is added to the specrails command library.
+A new slash command `sr:propose-spec` is added to the specrails command library.
 
 ### Command specification
 
 | Property | Value |
 |----------|-------|
-| Name | `propose-feature` |
+| Name | `propose-spec` |
 | Namespace | `sr` |
-| Template source | `templates/commands/propose-feature.md` |
-| Installed path | `.claude/commands/sr/propose-feature.md` |
-| Input | `$ARGUMENTS` — raw feature idea text |
+| Template source | `templates/commands/propose-spec.md` |
+| Installed path | `.claude/commands/sr/propose-spec.md` |
+| Input | `$ARGUMENTS` — raw spec idea text |
 | Output | Structured markdown proposal with 7 required sections |
 
 **Required output sections (order-stable, H2-level):**
@@ -204,9 +204,9 @@ Resolves `/namespace:command args` to full prompt content. Extracted from `Queue
 
 ---
 
-## New: Client component — `FeatureProposalModal`
+## New: Client component — `SpecProposalModal`
 
-**File:** `client/src/components/FeatureProposalModal.tsx`
+**File:** `client/src/components/SpecProposalModal.tsx`
 
 | Prop | Type | Description |
 |------|------|-------------|
@@ -238,8 +238,8 @@ function useProposal(projectId: string | null): {
 
 **File:** `client/src/pages/DashboardPage.tsx`
 
-- Adds "Propose Feature" button/entry point
-- Renders `<FeatureProposalModal>` conditional on `proposalOpen` state
+- Adds "Propose Spec" button/entry point
+- Renders `<SpecProposalModal>` conditional on `proposalOpen` state
 
 ---
 

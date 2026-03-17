@@ -3,29 +3,29 @@ id: feature-proposal-modal
 title: Feature Proposal Modal — Task Breakdown
 ---
 
-# Task Breakdown: Feature Proposal Modal
+# Task Breakdown: Spec Proposal Modal
 
 Tasks are ordered by dependency. Each task specifies its layer tag, files involved, and acceptance criteria.
 
 ---
 
-## T1 — Add `propose-feature` command template [specrails]
+## T1 — Add `propose-spec` command template [specrails]
 
 **Layer:** `[specrails]`
 
 **Description:**
-Create the `/sr:propose-feature` Claude Code command template. This is the prompt that drives the initial exploration. It must instruct Claude to read the codebase first, then produce a structured proposal with exactly seven H2 sections.
+Create the `/sr:propose-spec` Claude Code command template. This is the prompt that drives the initial exploration. It must instruct Claude to read the codebase first, then produce a structured proposal with exactly seven H2 sections.
 
 **Files:**
-- Create: `/Users/javi/repos/specrails/templates/commands/propose-feature.md`
+- Create: `/Users/javi/repos/specrails/templates/commands/propose-spec.md`
 
 **Template structure:**
 ```markdown
 ---
-description: Explore a feature idea and produce a structured proposal
+description: Explore a spec idea and produce a structured proposal
 ---
 
-You are a senior product engineer helping evaluate and structure a feature proposal for this codebase.
+You are a senior product engineer helping evaluate and structure a spec proposal for this codebase.
 
 The user's raw idea is:
 
@@ -68,7 +68,7 @@ Output ONLY the following structured markdown. Do not add any preamble or explan
 ```
 
 **Acceptance criteria:**
-- File exists at `templates/commands/propose-feature.md`
+- File exists at `templates/commands/propose-spec.md`
 - Has YAML frontmatter with `description` field
 - Uses `$ARGUMENTS` exactly once (the raw idea placeholder)
 - Output sections are H2-level and match the seven required names exactly
@@ -292,8 +292,8 @@ Create `server/proposal-manager.ts`. This class manages the Claude CLI subproces
 
 2. **`startExploration(proposalId, idea)`:**
    - Fetch proposal from DB; if not found, broadcast error and return
-   - Build the command: `/sr:propose-feature <idea>`
-   - Resolve it: `resolveCommand('/sr:propose-feature ' + idea, this._cwd)`
+   - Build the command: `/sr:propose-spec <idea>`
+   - Resolve it: `resolveCommand('/sr:propose-spec ' + idea, this._cwd)`
    - If resolution returns the raw command (file not found), use it as-is (graceful degradation)
    - Update proposal status to `exploring`
    - Spawn Claude with `--dangerously-skip-permissions --output-format stream-json --verbose -p <resolved>`
@@ -536,7 +536,7 @@ After `startProposal` posts to the server, the `proposalId` is received synchron
 
 ---
 
-## T9 — Implement `FeatureProposalModal` component [manager-client]
+## T9 — Implement `SpecProposalModal` component [manager-client]
 
 **Layer:** `[manager-client]`
 
@@ -544,7 +544,7 @@ After `startProposal` posts to the server, the `proposalId` is received synchron
 Create the full modal component. This is the premium UX surface. Every state transition should feel smooth and intentional.
 
 **Files:**
-- Create: `/Users/javi/repos/specrails-manager/client/src/components/FeatureProposalModal.tsx`
+- Create: `/Users/javi/repos/specrails-manager/client/src/components/SpecProposalModal.tsx`
 
 **Implementation:**
 
@@ -558,7 +558,7 @@ Use `ReactMarkdown` + `remarkGfm` with the same `MD_CLASSES` prose string from `
 ```tsx
 <DialogContent className="max-w-3xl glass-card">
   <DialogHeader>
-    <DialogTitle>Propose a Feature</DialogTitle>
+    <DialogTitle>Propose a Spec</DialogTitle>
   </DialogHeader>
   <div className="space-y-3">
     <p className="text-xs text-muted-foreground">
@@ -674,20 +674,20 @@ function handleClose() {
 **Layer:** `[manager-client]`
 
 **Description:**
-Add the "Propose Feature" entry point to the Dashboard and wire up the modal.
+Add the "Propose Spec" entry point to the Dashboard and wire up the modal.
 
 **Files:**
 - Modify: `/Users/javi/repos/specrails-manager/client/src/pages/DashboardPage.tsx`
 
 **Changes:**
-1. Import `FeatureProposalModal` from `../components/FeatureProposalModal`
+1. Import `SpecProposalModal` from `../components/SpecProposalModal`
 2. Add `const [proposalOpen, setProposalOpen] = useState(false)` alongside `wizardOpen`
-3. Add a "Propose Feature" button. It should be placed below the Commands section, as its own section:
+3. Add a "Propose Spec" button. It should be placed below the Commands section, as its own section:
 
 ```tsx
 <section>
   <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-    Feature Discovery
+    Spec Discovery
   </h2>
   <button
     type="button"
@@ -701,7 +701,7 @@ Add the "Propose Feature" entry point to the Dashboard and wire up the modal.
       <Lightbulb className="w-4 h-4 text-dracula-purple" />
     </div>
     <div>
-      <p className="text-sm font-medium">Propose a Feature</p>
+      <p className="text-sm font-medium">Propose a Spec</p>
       <p className="text-xs text-muted-foreground mt-0.5">
         Describe an idea — Claude will structure it into a GitHub Issue
       </p>
@@ -710,14 +710,14 @@ Add the "Propose Feature" entry point to the Dashboard and wire up the modal.
 </section>
 ```
 
-4. Add `<FeatureProposalModal open={proposalOpen} onClose={() => setProposalOpen(false)} />` alongside other modals
+4. Add `<SpecProposalModal open={proposalOpen} onClose={() => setProposalOpen(false)} />` alongside other modals
 
 Import `Lightbulb` from `lucide-react`.
 Import `cn` from `../lib/utils`.
 
 **Acceptance criteria:**
-- "Propose a Feature" button visible on Dashboard
-- Clicking it opens `FeatureProposalModal`
+- "Propose a Spec" button visible on Dashboard
+- Clicking it opens `SpecProposalModal`
 - Modal opens and closes correctly
 - TypeScript compiles without errors
 - Existing `ImplementWizard` and `BatchImplementWizard` behavior unchanged
@@ -941,7 +941,7 @@ describe('Proposal API routes', () => {
 
 | ID | Title | Layer | Deps |
 |----|-------|-------|------|
-| T1 | propose-feature command template | [specrails] | — |
+| T1 | propose-spec command template | [specrails] | — |
 | T2 | DB migration (proposals table) | [manager-server] | — |
 | T3 | Extract resolveCommand utility | [manager-server] | — |
 | T4 | WebSocket message types | [manager-server] | — |
@@ -949,7 +949,7 @@ describe('Proposal API routes', () => {
 | T6 | ProjectContext extension | [manager-server] | T5 |
 | T7 | Proposal API routes | [manager-server] | T5, T6 |
 | T8 | useProposal hook | [manager-client] | T4, T7 |
-| T9 | FeatureProposalModal component | [manager-client] | T8 |
+| T9 | SpecProposalModal component | [manager-client] | T8 |
 | T10 | DashboardPage integration | [manager-client] | T9 |
 | T11 | Tests: DB migration + CRUD | [tests] | T2 |
 | T12 | Tests: resolveCommand | [tests] | T3 |

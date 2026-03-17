@@ -3,7 +3,7 @@ id: feature-proposal-modal
 title: Feature Proposal Modal — Context Bundle
 ---
 
-# Context Bundle: Feature Proposal Modal
+# Context Bundle: Spec Proposal Modal
 
 This document is the complete reference for a developer implementing this feature. It contains everything needed without requiring re-reading of design.md or delta-spec.md.
 
@@ -13,8 +13,8 @@ This document is the complete reference for a developer implementing this featur
 
 A conversational modal on the specrails-manager dashboard that lets non-technical users propose GitHub Issues via Claude. The flow:
 
-1. User opens modal, types a feature idea
-2. Server spawns Claude with `/sr:propose-feature <idea>`, streams result back
+1. User opens modal, types a spec idea
+2. Server spawns Claude with `/sr:propose-spec <idea>`, streams result back
 3. User reviews structured proposal (7 sections), optionally refines via chat (`--resume <session_id>`)
 4. User clicks "Create GitHub Issue" — Claude creates it via `gh issue create` with label `user-proposed`
 5. Issue URL appears in modal as confirmation
@@ -25,7 +25,7 @@ A conversational modal on the specrails-manager dashboard that lets non-technica
 
 | Repo | Path | Changes |
 |------|------|---------|
-| specrails | `/Users/javi/repos/specrails` | 1 new file: `templates/commands/propose-feature.md` |
+| specrails | `/Users/javi/repos/specrails` | 1 new file: `templates/commands/propose-spec.md` |
 | specrails-manager | `/Users/javi/repos/specrails-manager` | DB migration, server class, routes, client hook + component |
 
 ---
@@ -34,11 +34,11 @@ A conversational modal on the specrails-manager dashboard that lets non-technica
 
 | File | Size estimate | Layer |
 |------|---------------|-------|
-| `/Users/javi/repos/specrails/templates/commands/propose-feature.md` | ~40 lines | [specrails] |
+| `/Users/javi/repos/specrails/templates/commands/propose-spec.md` | ~40 lines | [specrails] |
 | `/Users/javi/repos/specrails-manager/server/command-resolver.ts` | ~35 lines | [manager-server] |
 | `/Users/javi/repos/specrails-manager/server/proposal-manager.ts` | ~200 lines | [manager-server] |
 | `/Users/javi/repos/specrails-manager/client/src/hooks/useProposal.ts` | ~120 lines | [manager-client] |
-| `/Users/javi/repos/specrails-manager/client/src/components/FeatureProposalModal.tsx` | ~250 lines | [manager-client] |
+| `/Users/javi/repos/specrails-manager/client/src/components/SpecProposalModal.tsx` | ~250 lines | [manager-client] |
 | `/Users/javi/repos/specrails-manager/server/command-resolver.test.ts` | ~60 lines | [tests] |
 | `/Users/javi/repos/specrails-manager/server/proposal-manager.test.ts` | ~200 lines | [tests] |
 | `/Users/javi/repos/specrails-manager/server/proposal-routes.test.ts` | ~150 lines | [tests] |
@@ -53,7 +53,7 @@ A conversational modal on the specrails-manager dashboard that lets non-technica
 | `/Users/javi/repos/specrails-manager/server/project-router.ts` | + 6 proposal routes |
 | `/Users/javi/repos/specrails-manager/server/queue-manager.ts` | Refactor _resolveCommand to use resolveCommand utility |
 | `/Users/javi/repos/specrails-manager/server/db.test.ts` | + proposals describe block |
-| `/Users/javi/repos/specrails-manager/client/src/pages/DashboardPage.tsx` | + FeatureProposalModal + propose button |
+| `/Users/javi/repos/specrails-manager/client/src/pages/DashboardPage.tsx` | + SpecProposalModal + propose button |
 
 ---
 
@@ -209,9 +209,9 @@ router.post('/:projectId/propose', (req: Request, res: Response) => {
 
 ### Command file resolution path
 
-`ProposalManager.startExploration` resolves `/sr:propose-feature` using `resolveCommand`. The resolution checks:
-1. `<cwd>/.claude/commands/sr/propose-feature.md` (from commands dir)
-2. `<cwd>/.claude/skills/sr/propose-feature.md` (from skills dir, fallback)
+`ProposalManager.startExploration` resolves `/sr:propose-spec` using `resolveCommand`. The resolution checks:
+1. `<cwd>/.claude/commands/sr/propose-spec.md` (from commands dir)
+2. `<cwd>/.claude/skills/sr/propose-spec.md` (from skills dir, fallback)
 
 If neither exists (e.g., specrails not installed on the target project), it passes the raw command string through. This gracefully degrades — Claude will see the raw command text and may still attempt to respond.
 
@@ -277,7 +277,7 @@ function createMockChildProcess() {
 
 ### New command template does not affect existing commands
 
-`templates/commands/propose-feature.md` is a new file. No existing template files are modified. No breaking change to existing installed repos.
+`templates/commands/propose-spec.md` is a new file. No existing template files are modified. No breaking change to existing installed repos.
 
 ### QueueManager refactor is non-breaking
 
@@ -319,4 +319,4 @@ Before marking this feature complete, verify:
 - [ ] Cancel during exploration kills the process (verify with `ps aux`)
 - [ ] Server restart with in-flight proposal: proposal shows as `cancelled` after restart
 - [ ] Hub mode: proposals from Project A are not visible in Project B's modal
-- [ ] `templates/commands/propose-feature.md` is present in specrails repo
+- [ ] `templates/commands/propose-spec.md` is present in specrails repo
