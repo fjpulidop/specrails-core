@@ -1,38 +1,324 @@
 {
   "schema_version": "1",
   "provider": "github",
-  "last_updated": "2026-03-15T02:03:58Z",
-  "written_by": "implement",
+  "last_updated": "2026-03-17T01:14:15.961419",
+  "written_by": "product-backlog",
   "issues": {
     "57": {
       "number": 57,
       "title": "SQLite Job Persistence & History",
       "state": "OPEN",
       "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
+      "labels": [
+        "area:web-manager",
+        "product-driven-backlog"
+      ],
       "body_sha": "209bbd407d4110dddf1ce57b185d1deec19488de4a5cda0c02139e842b5a8910",
-      "updated_at": "2026-03-15T01:59:07Z",
-      "captured_at": "2026-03-15T02:03:58Z"
+      "updated_at": "2026-03-15T02:48:50Z",
+      "captured_at": "2026-03-17T01:14:15.959278"
     },
     "58": {
       "number": 58,
       "title": "CLI Wrapper (srm) for Job Spawning",
       "state": "OPEN",
       "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
+      "labels": [
+        "area:web-manager",
+        "product-driven-backlog"
+      ],
       "body_sha": "49f056c93e4a7b92027b3a3893b93cd2014bdef4d9b6a9944fbd03650cc3ba06",
-      "updated_at": "2026-03-15T01:59:20Z",
-      "captured_at": "2026-03-15T02:03:58Z"
+      "updated_at": "2026-03-15T02:48:52Z",
+      "captured_at": "2026-03-17T01:14:15.959271"
     },
     "59": {
       "number": 59,
       "title": "Job Queueing & Parallel Execution Management",
       "state": "OPEN",
       "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
+      "labels": [
+        "area:web-manager",
+        "product-driven-backlog"
+      ],
       "body_sha": "293cdcbe8bede17f534b4d8a47049810c71108824e00d15e12f7d55eea871cc4",
-      "updated_at": "2026-03-15T01:59:31Z",
-      "captured_at": "2026-03-15T02:03:58Z"
+      "updated_at": "2026-03-15T02:48:53Z",
+      "captured_at": "2026-03-17T01:14:15.959264"
+    },
+    "86": {
+      "number": 86,
+      "title": "Add /sr:implement-with-agent-teams command (Level 1 Agent Teams integration)",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:agents",
+        "area:commands",
+        "enhancement",
+        "product-driven-backlog"
+      ],
+      "body_sha": "967578af56af90249194f8ff12933033e83225706e57ab14c5d887c79a2d4af6",
+      "updated_at": "2026-03-16T19:35:49Z",
+      "captured_at": "2026-03-17T01:14:15.959091"
+    },
+    "70": {
+      "number": 70,
+      "title": "Integrate Claude Code Agent Teams into specrails pipeline",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:agents",
+        "area:commands",
+        "enhancement",
+        "product-driven-backlog"
+      ],
+      "body_sha": "1cfd8a51a9a98239ebf2520946c46b65b07d3c21351c9dc12e46f8e02a76579b",
+      "updated_at": "2026-03-16T19:34:47Z",
+      "captured_at": "2026-03-17T01:14:15.959210"
+    },
+    "67": {
+      "number": 67,
+      "title": "web-manager: add zombie job detection and inactivity timeout",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "bug",
+        "product-driven-backlog"
+      ],
+      "body_sha": "c73f86cc4dc53359f215f6c6ab9d19db88c99359ab3d3748881d80173564a951",
+      "updated_at": "2026-03-15T08:56:32Z",
+      "captured_at": "2026-03-17T01:14:15.959220"
+    },
+    "65": {
+      "number": 65,
+      "title": "Multi-Version Spec Support for Breaking Changes",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:core",
+        "product-driven-backlog"
+      ],
+      "body_sha": "993735e29fcbdea0fb8c50cfd0a938d79671d30f7275d0737c354635a43011df",
+      "updated_at": "2026-03-15T02:00:38Z",
+      "captured_at": "2026-03-17T01:14:15.959228"
+    },
+    "64": {
+      "number": 64,
+      "title": "Persona-Driven Feature Requirement Generator",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:product",
+        "product-driven-backlog"
+      ],
+      "body_sha": "0372e0db3f33eb3ed646c172bfd9a0c7ff3fe54b04efac8d67becbccf715518d",
+      "updated_at": "2026-03-15T02:00:27Z",
+      "captured_at": "2026-03-17T01:14:15.959236"
+    },
+    "63": {
+      "number": 63,
+      "title": "Continuous Product Discovery (/sr:pulse)",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "8b10c6a7800751ee5e0d88bac631fe22222520550e1f6966110ee03f30f7ed71",
+      "updated_at": "2026-03-15T02:00:17Z",
+      "captured_at": "2026-03-17T01:14:15.959243"
+    },
+    "62": {
+      "number": 62,
+      "title": "Dependency-Aware Feature Batching",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "7e0a07b6624ef35b896fcbffa1fdd8761e6eb3d8eba81782e529d9b6668b7ccc",
+      "updated_at": "2026-03-15T02:00:06Z",
+      "captured_at": "2026-03-17T01:14:15.959250"
+    },
+    "61": {
+      "number": 61,
+      "title": "Agent Memory Persistence for Cross-Session Learning",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:agents",
+        "product-driven-backlog"
+      ],
+      "body_sha": "ff562bb2e7f3d9fe758d0ff16521151b8600da5e80bb84878fcfc5d63716a6e5",
+      "updated_at": "2026-03-15T01:59:55Z",
+      "captured_at": "2026-03-17T01:14:15.959257"
+    },
+    "43": {
+      "number": 43,
+      "title": "Feature A/B Testing Scaffolder",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "6e7e9b0b2535bacd590bdead027cecba25713c965c40d9e1561ec4a1398a35af",
+      "updated_at": "2026-03-14T08:10:33Z",
+      "captured_at": "2026-03-17T01:14:15.959285"
+    },
+    "42": {
+      "number": 42,
+      "title": "Persona-Specific Feature Walkthrough Generator",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:dx",
+        "product-driven-backlog"
+      ],
+      "body_sha": "779f05ef26bd0acb06b9043b2030c5ff8b1ad414250f17badea98c269e61fc37",
+      "updated_at": "2026-03-14T08:10:23Z",
+      "captured_at": "2026-03-17T01:14:15.959292"
+    },
+    "16": {
+      "number": 16,
+      "title": "OpenSpec Change Diff Visualization",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:dx",
+        "product-driven-backlog"
+      ],
+      "body_sha": "576c5f7d142fd170f7164d7c93d92737915b1e5d7cf5619595297fed17fee7c6",
+      "updated_at": "2026-03-12T23:46:39Z",
+      "captured_at": "2026-03-17T01:14:15.959298"
+    },
+    "15": {
+      "number": 15,
+      "title": "Agent Personality Customization",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:dx",
+        "product-driven-backlog"
+      ],
+      "body_sha": "d61702d93187fdddac34df9ab7701825e5fc9342628e76a7420a0e51ccf6af48",
+      "updated_at": "2026-03-12T23:46:30Z",
+      "captured_at": "2026-03-17T01:14:15.959305"
+    },
+    "14": {
+      "number": 14,
+      "title": "VPC Canvas Visual Editor",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:dx",
+        "product-driven-backlog"
+      ],
+      "body_sha": "9ea0066fb3b934cead2c875ad76693787735283abd85fae906a1917e26dd47b4",
+      "updated_at": "2026-03-12T23:46:21Z",
+      "captured_at": "2026-03-17T01:14:15.959311"
+    },
+    "12": {
+      "number": 12,
+      "title": "VPC Persona Drift Detection",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:product",
+        "product-driven-backlog"
+      ],
+      "body_sha": "845daa2ad33034cf665e54bf5aa15f6521fd6bd22920b56786376ce09a2fade7",
+      "updated_at": "2026-03-12T23:45:58Z",
+      "captured_at": "2026-03-17T01:14:15.959318"
+    },
+    "11": {
+      "number": 11,
+      "title": "Refactor Priority Recommender",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "c92ce2d9ebb4c99a37e49119e4ee97c128c03ed076af5f267844cc2188cf6901",
+      "updated_at": "2026-03-13T22:22:22Z",
+      "captured_at": "2026-03-17T01:14:15.959327"
+    },
+    "10": {
+      "number": 10,
+      "title": "Competitive Intelligence Feed",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "f977083f8d6146e2e0519fe25b2da937b78ee121868a3661dce08fe338b8c718",
+      "updated_at": "2026-03-12T23:45:41Z",
+      "captured_at": "2026-03-17T01:14:15.959335"
+    },
+    "9": {
+      "number": 9,
+      "title": "Codebase Health Check Dashboard",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:commands",
+        "product-driven-backlog"
+      ],
+      "body_sha": "4f7b90e9ab9f14a1508f07ce133ec04e0e338c234512c4efe4007a262ba28cf9",
+      "updated_at": "2026-03-13T22:22:24Z",
+      "captured_at": "2026-03-17T01:14:15.959342"
+    },
+    "7": {
+      "number": 7,
+      "title": "Auto-Doc Sync Agent",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:agents",
+        "product-driven-backlog"
+      ],
+      "body_sha": "276ed27e7bb62426623dcdd6767048cd07f0de4535003f118ceda2977236c134",
+      "updated_at": "2026-03-13T22:22:21Z",
+      "captured_at": "2026-03-17T01:14:15.959349"
+    },
+    "5": {
+      "number": 5,
+      "title": "Performance Regression Detector Agent",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:agents",
+        "product-driven-backlog"
+      ],
+      "body_sha": "7420ef88cc0f011875063e338cf5c8715706c579fb451b31c74f325020844f36",
+      "updated_at": "2026-03-14T19:03:07Z",
+      "captured_at": "2026-03-17T01:14:15.959355"
+    },
+    "2": {
+      "number": 2,
+      "title": "Agent Telemetry & Cost Tracking",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:core",
+        "product-driven-backlog"
+      ],
+      "body_sha": "cfd1471cec4d9e6b1b9ca7a960f2bc0f97d6dc7e71ca9208fc6c612693347e0c",
+      "updated_at": "2026-03-12T23:44:18Z",
+      "captured_at": "2026-03-17T01:14:15.959362"
+    },
+    "1": {
+      "number": 1,
+      "title": "Agent Memory Inspector",
+      "state": "OPEN",
+      "assignees": [],
+      "labels": [
+        "area:core",
+        "product-driven-backlog"
+      ],
+      "body_sha": "75f0fda3681456a0f96c96ec00c2aa6c944676d746d81749bddfa98a1219e55b",
+      "updated_at": "2026-03-12T23:44:07Z",
+      "captured_at": "2026-03-17T01:14:15.959371"
     }
   }
 }
