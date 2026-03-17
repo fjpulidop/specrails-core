@@ -89,3 +89,19 @@ Never combine template and instance paths in a single grep for placeholder-clean
 **Why:** macOS `find` uses locale-sensitive collation for character ranges. `[A-Z]` in some locales covers more than A–Z.
 
 **How to apply:** File naming check results should be validated by inspecting the actual basenames. If all returned filenames are lowercase kebab-case, the check passes. Alternatively, use `grep -P '[A-Z]'` or `LC_ALL=C find` for strict ASCII range matching.
+
+---
+
+## Vitest spy variable typing — use `any` with eslint-disable
+
+**Pattern:** `let spy: ReturnType<typeof vi.spyOn>` causes TS2322 in strict mode because `ReturnType<typeof vi.spyOn>` resolves to a loose base type that is incompatible with concrete `vi.spyOn(fs, 'existsSync')` results. Using `vi.spyOn<typeof fs, 'existsSync'>` fails with TS2344.
+
+**Established pattern in this codebase:** Declare spy variables as `any` with an eslint-disable comment:
+```typescript
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let existsSyncSpy: any
+```
+
+**Why:** This is the accepted trade-off in the project. The 3 pre-existing errors in `config.test.ts` use the broken `ReturnType<typeof vi.spyOn>` pattern — new test files should use `any` instead to avoid adding new TS errors.
+
+**How to apply:** Whenever writing Vitest tests that spy on `fs` (or other overloaded Node.js APIs), type the spy variables as `any`. Do NOT use `ReturnType<typeof vi.spyOn>` — it introduces new TS errors.
