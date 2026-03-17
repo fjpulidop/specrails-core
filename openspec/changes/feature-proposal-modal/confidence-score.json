@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "change": "feature-proposal-modal",
+  "agent": "reviewer",
+  "scored_at": "2026-03-17T11:53:31Z",
+  "overall": 91,
+  "aspects": {
+    "type_correctness": 95,
+    "pattern_adherence": 93,
+    "test_coverage": 88,
+    "security": 90,
+    "architectural_alignment": 92
+  },
+  "notes": {
+    "type_correctness": "All TypeScript types are correct and consistent. The 5 new WsMessage union members (ProposalStreamMessage, ProposalReadyMessage, ProposalRefinedMessage, ProposalIssueCreatedMessage, ProposalErrorMessage) are fully typed with projectId + proposalId on each. The ProposalRow interface matches the SQLite schema exactly. The only TS errors in the project are pre-existing in config.test.ts (explicitly excluded from the CI check). No new type errors introduced.",
+    "pattern_adherence": "ProposalManager follows the same constructor signature pattern as ChatManager (broadcast, db, cwd). The 202 async pattern for all spawn operations matches the existing spawn/refine/create-issue pattern. The boundBroadcast pattern in project-registry correctly injects projectId. useProposal hook uses useReducer with explicit action types, matching the established pattern in useSharedWebSocket and related hooks. Minor: isStreaming variable in FeatureProposalModal is computed but only used in a no-op JSX expression to suppress compiler warnings — cosmetically inelegant but harmless.",
+    "test_coverage": "Coverage is strong: 7 command-resolver tests cover all resolution paths (fallback, priority, substitution, no-args). 20 ProposalManager tests cover all methods including error paths and session continuity. 20 proposal-routes tests cover all 6 endpoints including validation, conflict detection, and async delegation. 12 new DB tests cover CRUD and orphan sweep. One untested path: the handleClose 'created' state preservation in FeatureProposalModal — reopening the modal after issue creation will show the previous success screen (by design but not tested). No frontend unit tests exist (consistent with project convention).",
+    "security": "No injection vectors: all DB access uses parameterized queries. The GitHub URL extraction uses a narrow regex (github.com/*/issues/[digit]) rather than blindly trusting Claude output. The --dangerously-skip-permissions flag is inherited from the existing ChatManager and QueueManager patterns — not a new attack surface. No XSS risk: ReactMarkdown with remarkGfm does not render arbitrary HTML by default. No new API keys or secrets in code.",
+    "architectural_alignment": "ProposalManager is correctly scoped per ProjectContext (one instance per project), matching QueueManager and ChatManager isolation. The command template resolves via the same resolveCommand utility extracted from QueueManager — the extraction is clean and backward-compatible (7 tests verify QueueManager behavior is unchanged). DB Migration 5 follows the established migration runner pattern. The orphan sweep on startup correctly handles proposals left in 'exploring' or 'refining' state across server restarts. The proposal API is correctly only available in hub mode (single-project legacy mode doesn't wire ProposalManager), which is consistent with the hub-first architecture direction."
+  },
+  "flags": [
+    "modal-created-state-sticky-ux: After issue creation, the modal always reopens to the success screen until the user clicks Propose Another — this is intentional per the code but may surprise users expecting a fresh start on next open"
+  ]
+}
