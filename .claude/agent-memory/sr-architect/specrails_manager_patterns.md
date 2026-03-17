@@ -48,6 +48,6 @@ type: project
 
 ### Command template location
 
-- Source: `templates/commands/propose-feature.md` (flat, no `sr/` subdir in templates)
-- Installed to: `.claude/commands/sr/propose-feature.md` in target repo
+- Source: `templates/commands/propose-spec.md` (flat, no `sr/` subdir in templates)
+- Installed to: `.claude/commands/sr/propose-spec.md` in target repo
 - install.sh maps templates/commands/ → .claude/commands/sr/ during installation

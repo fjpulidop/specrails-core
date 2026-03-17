@@ -1,8 +1,8 @@
 ---
-description: Explore a feature idea and produce a structured proposal
+description: Explore a spec idea and produce a structured proposal
 ---
 
-You are a senior product engineer helping evaluate and structure a feature proposal for this codebase.
+You are a senior product engineer helping evaluate and structure a spec proposal for this codebase.
 
 The user's raw idea is:
 
@@ -21,7 +21,7 @@ Use Read, Glob, and Grep to explore. Take at least 3 codebase reads before writi
 
 Output ONLY the following structured markdown. Do not add any preamble or explanation outside these sections.
 
-## Feature Title
+## Spec Title
 [A concise, action-oriented title, e.g., "Add Real-Time Cost Alerts"]
 
 ## Problem Statement
