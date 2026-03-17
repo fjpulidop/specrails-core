@@ -1,38 +1,18 @@
 {
   "schema_version": "1",
   "provider": "github",
-  "last_updated": "2026-03-15T02:03:58Z",
+  "last_updated": "2026-03-17T06:51:41Z",
   "written_by": "implement",
   "issues": {
-    "57": {
-      "number": 57,
-      "title": "SQLite Job Persistence & History",
-      "state": "OPEN",
+    "6": {
+      "number": 6,
+      "title": "Automated Test Writer Agent",
+      "state": "CLOSED",
       "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
-      "body_sha": "209bbd407d4110dddf1ce57b185d1deec19488de4a5cda0c02139e842b5a8910",
-      "updated_at": "2026-03-15T01:59:07Z",
-      "captured_at": "2026-03-15T02:03:58Z"
-    },
-    "58": {
-      "number": 58,
-      "title": "CLI Wrapper (srm) for Job Spawning",
-      "state": "OPEN",
-      "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
-      "body_sha": "49f056c93e4a7b92027b3a3893b93cd2014bdef4d9b6a9944fbd03650cc3ba06",
-      "updated_at": "2026-03-15T01:59:20Z",
-      "captured_at": "2026-03-15T02:03:58Z"
-    },
-    "59": {
-      "number": 59,
-      "title": "Job Queueing & Parallel Execution Management",
-      "state": "OPEN",
-      "assignees": [],
-      "labels": ["area:web-manager", "product-driven-backlog"],
-      "body_sha": "293cdcbe8bede17f534b4d8a47049810c71108824e00d15e12f7d55eea871cc4",
-      "updated_at": "2026-03-15T01:59:31Z",
-      "captured_at": "2026-03-15T02:03:58Z"
+      "labels": ["area:agents", "product-driven-backlog"],
+      "body_sha": "481edd9b4a8e5a263b90a9888386270fb943c0451fe9234c75907d77e0973661",
+      "updated_at": "2026-03-13T09:39:32Z",
+      "captured_at": "2026-03-17T06:51:41Z"
     }
   }
 }
