@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/fjpulidop/specrails-core/compare/v1.0.0...v1.0.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* update README and CLAUDE.md for specrails-core rename ([a3b21b1](https://github.com/fjpulidop/specrails-core/commit/a3b21b1bafcb653414195aab315a9ccde0198561))
+
 ## 1.0.0 (2026-03-19)
 
 
