@@ -2,75 +2,71 @@
 
 [![npm version](https://img.shields.io/npm/v/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
+[![npm downloads](https://img.shields.io/npm/dw/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
+[![Claude Code](https://img.shields.io/badge/Built%20for-Claude%20Code-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
 
-**AI agent workflow system for [Claude Code](https://claude.ai/code).** Installs a complete product-driven development pipeline into any repository — 12 specialized agents, orchestration commands, persona-based product discovery, and per-layer coding conventions — all generated specifically for your codebase.
+**Your AI development team. From idea to production code.**
+
+One command gives your repo a full team of specialized AI agents: architect, developer, reviewer, product manager — all working together through a structured pipeline, fully adapted to your codebase.
 
 ```bash
-npx specrails-core@latest init --root-dir <your-project>
+npx specrails-core@latest init --root-dir .
 ```
+
+> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (required), Node 18+, git
 
 ---
 
-## The pipeline
+## How it works
 
 ```
-Product Discovery  →  Architecture  →  Implementation  →  Review  →  Ship
-(sr-product-manager)  (sr-architect)   (sr-developer)   (sr-reviewer)  (PR)
+Idea  →  Architecture  →  Implementation  →  Review  →  PR
+         (sr-architect)   (sr-developer)    (sr-reviewer)
 ```
 
-One command runs the full cycle:
+Run `/sr:implement "add dark mode"` — the pipeline designs, builds, reviews, and ships a pull request. No hand-holding required.
 
-```
-/sr:implement #85, #71           # implement GitHub Issues
-/sr:implement "add dark mode"    # implement from description
-/sr:implement UI, Analytics      # explore areas, pick the best ideas
-```
-
-Multiple features run in parallel using git worktrees. Single features run sequentially.
+Every artifact (agents, rules, personas) is generated **specifically for your project** by analyzing your actual codebase, tech stack, and CI setup. Not generic templates.
 
 ---
 
 ## Quick start
 
-**Step 1 — Install into your project**
+**1. Install**
 
 ```bash
-npx specrails-core@latest init --root-dir /path/to/your/repo
+npx specrails-core@latest init --root-dir .
 ```
 
-The installer scaffolds temporary setup files into `.claude/` and checks prerequisites (Claude Code, git, npm, GitHub CLI).
-
-**Step 2 — Run the setup wizard inside Claude Code**
+**2. Run setup inside Claude Code**
 
 ```bash
-cd /path/to/your/repo
-claude          # open Claude Code
-> /setup        # run the interactive setup wizard
+claude      # open Claude Code in your project
+> /setup    # run the 5-phase wizard (~5 min)
 ```
 
-Claude runs a 5-phase wizard that reads your actual codebase and generates everything tailored to your stack:
+**3. Start building**
 
-| Phase | What happens |
-|-------|-------------|
-| **1. Codebase Analysis** | Detects your stack, layers, CI commands, and coding conventions |
-| **2. User Personas** | Researches your competitive landscape, generates VPC personas |
-| **3. Configuration** | Choose backlog (GitHub Issues / JIRA / none), git workflow, agents |
-| **4. File Generation** | Writes all agents, commands, rules — fully contextualized |
-| **5. Cleanup** | Self-destructs scaffolding, only final files remain |
+```bash
+> /sr:implement "add user authentication"
+> /sr:implement #42, #43               # from GitHub Issues
+> /sr:update-product-driven-backlog    # discover new features with AI
+```
+
+That's it. The pipeline takes over.
 
 ---
 
 ## What gets installed
 
-| Category | Location | Description |
-|----------|----------|-------------|
+| Category | Files | Purpose |
+|----------|-------|---------|
 | **Agents** | `.claude/agents/*.md` | 12 specialized AI agents |
-| **Personas** | `.claude/agents/personas/*.md` | VPC user profiles from competitive research |
+| **Personas** | `.claude/agents/personas/*.md` | VPC user profiles, generated from your users |
 | **Commands** | `.claude/commands/sr/*.md` | `/sr:implement`, `/sr:product-backlog`, `/sr:update-product-driven-backlog` |
 | **Rules** | `.claude/rules/*.md` | Per-layer coding conventions, loaded by file path |
-| **Memory** | `.claude/agent-memory/` | Persistent agent knowledge across sessions |
-| **Config** | `.claude/settings.json`, `CLAUDE.md` | Permissions, project context, architecture reference |
+| **Memory** | `.claude/agent-memory/` | Persistent knowledge — agents learn across sessions |
+| **Config** | `.claude/settings.json`, `CLAUDE.md` | Permissions, architecture reference |
 
 ---
 
@@ -82,7 +78,6 @@ Claude runs a 5-phase wizard that reads your actual codebase and generates every
 | Adapts to your codebase | ✅ Reads your actual stack/CI | ⚠️ Prompts only | ❌ |
 | Product-driven backlog | ✅ VPC persona scoring | ❌ | ❌ |
 | Parallel feature builds | ✅ Git worktrees | ❌ | ❌ |
-| Dry-run / preview mode | ✅ Preview before committing | ❌ | ❌ |
 | Institutional memory | ✅ Agents learn across sessions | ❌ | ❌ |
 | Open source | ✅ MIT | N/A | ❌ |
 
@@ -94,37 +89,32 @@ SpecRails is not a chat interface. It's a **development pipeline** that coordina
 
 | Agent | Model | Role |
 |-------|-------|------|
-| **sr-architect** | Sonnet | Designs features — proposal, technical design, task breakdown |
-| **sr-developer** | Sonnet | Full-stack implementation from architect artifacts |
+| **sr-architect** | Sonnet | Designs features: proposal, technical design, task breakdown |
+| **sr-developer** | Sonnet | Full-stack implementation |
 | **sr-backend-developer** | Sonnet | Backend-specialized implementation |
 | **sr-frontend-developer** | Sonnet | Frontend-specialized implementation |
-| **sr-reviewer** | Sonnet | Final quality gate — runs CI, fixes issues, records learnings |
-| **sr-backend-reviewer** | Sonnet | API design, database patterns, performance review |
-| **sr-frontend-reviewer** | Sonnet | UX patterns, accessibility, component design review |
+| **sr-reviewer** | Sonnet | Quality gate: runs CI, fixes issues, records learnings |
+| **sr-backend-reviewer** | Sonnet | Backend code review: API design, DB patterns, performance |
+| **sr-frontend-reviewer** | Sonnet | Frontend code review: UX, accessibility, component design |
 | **sr-test-writer** | Sonnet | Generates unit, integration, and e2e tests |
-| **sr-security-reviewer** | Sonnet | Secrets detection, OWASP checks, dependency audit |
-| **sr-doc-sync** | Sonnet | Changelogs, READMEs, API docs after every change |
-| **sr-product-manager** | Opus | Competitive analysis, VPC evaluation, feature ideation |
+| **sr-security-reviewer** | Sonnet | Secrets detection, OWASP checks, dependency vulnerabilities |
+| **sr-doc-sync** | Sonnet | Updates changelogs, READMEs, API docs |
+| **sr-product-manager** | Opus | Product discovery: competitive analysis, VPC evaluation |
 | **sr-product-analyst** | Haiku | Read-only backlog analysis and prioritization |
-
-The `/sr:implement` pipeline routes tasks to the right agent automatically based on layer tags.
 
 ---
 
-## Product discovery commands
+## Commands
 
-### `/sr:product-backlog` — Prioritized backlog
+### `/sr:implement` — Build features
 
-Reads GitHub Issues labeled `product-driven-backlog`, scores them against your VPC personas, and recommends the top 3 for the next sprint.
-
+```bash
+/sr:implement "add dark mode"        # from a description
+/sr:implement #85, #71               # from GitHub Issues
+/sr:implement UI, Analytics          # explore areas, pick the best ideas
 ```
-/sr:product-backlog               # show all areas
-/sr:product-backlog UI, Decks     # filter by area
-```
 
-### `/sr:update-product-driven-backlog` — Discover new features
-
-Analyzes your codebase against each persona's jobs/pains/gains, generates new feature ideas, and creates GitHub Issues for the best ones.
+Architect designs → developer builds → reviewer validates → PR created. Multiple features run in parallel with git worktrees.
 
 #### Dry-run / preview mode
 
@@ -135,7 +125,7 @@ Not ready to commit? Run the full pipeline without touching git or GitHub:
 /sr:implement #85 --preview            # --preview is an alias for --dry-run
 ```
 
-All agents run normally (architect, developer, tests, docs, review). Generated files land in `.claude/.dry-run/<feature-name>/` instead of your working tree. No branches, commits, PRs, or issue updates are created.
+All agents run normally. Generated files land in `.claude/.dry-run/<feature-name>/` instead of your working tree. No branches, commits, PRs, or issue updates are created.
 
 When you're happy with the preview, apply the cached output:
 
@@ -151,26 +141,38 @@ rm -rf .claude/.dry-run/add-dark-mode/
 
 ### `/sr:product-backlog` — View prioritized backlog
 
+```bash
+/sr:product-backlog                  # show all areas
+/sr:product-backlog UI, Decks        # filter by area
 ```
+
+Reads your GitHub Issues, scores by VPC persona match, recommends top 3 for next sprint.
+
+### `/sr:update-product-driven-backlog` — Discover features
+
+```bash
 /sr:update-product-driven-backlog             # explore all areas
 /sr:update-product-driven-backlog Analytics   # focus on one area
 ```
 
+AI product discovery using your personas. Evaluates ideas, creates GitHub Issues for the best ones.
+
 ---
 
-## Value Proposition Canvas scoring
+## VPC persona scoring
 
-Every feature is evaluated against your user personas before implementation. Features score 0–5 per persona based on jobs-to-be-done, pains, and gains — ranked by score / effort ratio. Product decisions stay grounded in real user needs.
+Features are scored against your user personas using the VPC framework:
 
 ```
 +-----------------------------+    +-----------------------------+
 |     VALUE PROPOSITION       |    |     CUSTOMER SEGMENT        |
-|                             |    |                             |
 |  Products & Services    <---+--->|  Customer Jobs              |
 |  Pain Relievers         <---+--->|  Pains                      |
 |  Gain Creators          <---+--->|  Gains                      |
 +-----------------------------+    +-----------------------------+
 ```
+
+Each persona scores features 0-5. Features are ranked by score/effort ratio. No gut-feel product decisions.
 
 ---
 
@@ -179,27 +181,25 @@ Every feature is evaluated against your user personas before implementation. Fea
 | Tool | Required | Purpose |
 |------|----------|---------|
 | **Claude Code** | Yes | AI agent runtime — [install](https://docs.anthropic.com/en/docs/claude-code) |
-| **Git** | Yes | Repository detection |
-| **npm** | Recommended | Install OpenSpec CLI |
-| **OpenSpec CLI** | Recommended | Spec-driven design workflow |
-| **GitHub CLI** (`gh`) | Optional | Backlog sync and PR creation |
-| **JIRA CLI** | Optional | JIRA as backlog alternative |
+| **git** | Yes | Repository detection |
+| **npm / Node 18+** | Recommended | Needed for npx install and OpenSpec CLI |
+| **OpenSpec CLI** | Recommended | Structured design artifacts for `/sr:implement` |
+| **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation |
+| **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA |
 
-The installer checks for each tool and offers to install missing ones automatically.
-
-> You only need one backlog provider. If you use neither, `/sr:implement "description"` still works.
+The installer checks for each tool and offers to install missing ones.
 
 ---
 
 ## Supported stacks
 
-specrails-core is stack-agnostic — the setup wizard reads your actual files and generates accurate conventions, not generic templates.
+Stack-agnostic. The `/setup` wizard detects and adapts to whatever you're running:
 
-- **Backend**: Python/FastAPI, Node/Express, Go/Gin, Rust/Actix, Java/Spring, Ruby/Rails, .NET
-- **Frontend**: React, Vue, Angular, Svelte, Next.js, Nuxt
-- **Database**: PostgreSQL, MySQL, SQLite, MongoDB, Redis
-- **CI/CD**: GitHub Actions, GitLab CI, Jenkins, Makefile
-- **Testing**: pytest, vitest, jest, go test, cargo test, rspec
+**Backend:** Python/FastAPI, Node/Express, Go/Gin, Rust/Actix, Java/Spring, Ruby/Rails, .NET
+**Frontend:** React, Vue, Angular, Svelte, Next.js, Nuxt
+**Database:** PostgreSQL, MySQL, SQLite, MongoDB, Redis
+**CI/CD:** GitHub Actions, GitLab CI, Jenkins, Makefile
+**Testing:** pytest, vitest, jest, go test, cargo test, rspec
 
 ---
 
@@ -217,34 +217,32 @@ specrails-core is stack-agnostic — the setup wizard reads your actual files an
 ## FAQ
 
 **Can I customize the agents after installation?**
-Yes. Files in `.claude/` are plain markdown — edit agent personalities, adjust CI commands, add rules, create personas.
-
-**How do I customize an agent's personality?**
-Each agent template (`sr-architect`, `sr-developer`, `sr-reviewer`) includes a `## Personality` section with four configurable settings:
-
-| Setting | Options | What it controls |
-|---|---|---|
-| `tone` | `terse` / `verbose` | How much explanation the agent includes in its output |
-| `risk_tolerance` | `conservative` / `aggressive` | How cautious the agent is when making decisions |
-| `detail_level` | `summary` / `full` | Granularity of output artifacts and reports |
-| `focus_areas` | comma-separated keywords | Areas the agent prioritizes (e.g. `security, performance`) |
-
-After running `/setup`, edit `.claude/agents/sr-architect.md` (or `sr-developer.md` / `sr-reviewer.md`) and change the values inline. Existing setups without a `## Personality` section continue to work unchanged — defaults apply.
+Yes. The generated files in `.claude/` are yours to edit — plain markdown. Edit agent personalities, adjust CI commands, add rules, create personas.
 
 **Can I re-run setup?**
 Run `npx specrails-core@latest init --root-dir <path>` again to re-scaffold, then `/setup`.
 
 **Does this work without OpenSpec?**
-Partially. `/sr:implement` and sr-architect use OpenSpec for structured design artifacts. Product discovery commands and individual agents work without it.
+Partially. Product discovery commands and individual agents work. `/sr:implement` and sr-architect rely on OpenSpec for structured design artifacts.
 
 **Does this work without GitHub CLI?**
-Yes. If you use GitHub Issues, `gh` is needed for backlog commands. Otherwise use JIRA, skip backlog entirely, or use `/sr:implement "description"` without a PR step.
+Yes. Use JIRA instead, or skip backlog commands. `/sr:implement "description"` works without `gh` — it just skips automated PR creation.
 
-**How much does it cost?**
-The sr-product-manager (Opus) is the most expensive agent. All others use Sonnet or Haiku. A full `/sr:implement` cycle for one feature typically costs a few dollars through Claude Code.
+**How much does it cost to run?**
+A full `/sr:implement` cycle for one feature typically costs a few dollars in Claude API usage. The sr-product-manager uses Opus; all other agents use Sonnet or Haiku.
+
+**Does it work with private repos?**
+Yes. Everything runs locally through Claude Code. No external services beyond the Claude API.
+
+---
+
+## Also in the SpecRails ecosystem
+
+- **[specrails-hub](https://github.com/fjpulidop/specrails-hub)** — GUI for specrails-core. Manage your agents, run commands, and view pipeline results from a web interface.
+- **[specrails.dev](https://specrails.dev)** — Official website and documentation.
 
 ---
 
 ## License
 
-MIT
+MIT — [fjpulidop](https://github.com/fjpulidop)
