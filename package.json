@@ -1,9 +1,9 @@
 {
-  "name": "specrails",
-  "version": "0.7.0",
+  "name": "specrails-core",
+  "version": "0.7.1",
   "description": "Agent Workflow System installer for Claude Code",
   "bin": {
-    "specrails": "bin/specrails.js"
+    "specrails-core": "bin/specrails-core.js"
   },
   "files": [
     "bin/",
@@ -20,7 +20,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fjpulidop/specrails.git"
+    "url": "git+https://github.com/fjpulidop/specrails-core.git"
   },
   "keywords": [
     "claude",

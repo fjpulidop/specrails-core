@@ -13,13 +13,13 @@ const args = process.argv.slice(2);
 const subcommand = args[0];
 
 if (!subcommand) {
-  console.log(`specrails — Agent Workflow System for Claude Code
+  console.log(`specrails-core — Agent Workflow System for Claude Code
 
 Usage:
-  specrails init   [--root-dir <path>]     Install into a repository
-  specrails update [--only <component>]    Update an existing installation
+  specrails-core init   [--root-dir <path>]     Install into a repository
+  specrails-core update [--only <component>]    Update an existing installation
 
-More info: https://github.com/fjpulidop/specrails`);
+More info: https://github.com/fjpulidop/specrails-core`);
   process.exit(0);
 }
 

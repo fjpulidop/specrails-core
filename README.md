@@ -35,14 +35,14 @@ Installation happens in two steps — a shell script for scaffolding, then Claud
 **Option A — npx (recommended)**
 
 ```bash
-npx specrails@latest init --root-dir <your-project>
+npx specrails-core@latest init --root-dir <your-project>
 ```
 
 **Option B — git clone**
 
 ```bash
-git clone https://github.com/fjpulidop/specrails.git
-./specrails/install.sh --root-dir <your-project>
+git clone https://github.com/fjpulidop/specrails-core.git
+./specrails-core/install.sh --root-dir <your-project>
 ```
 
 The installer:
