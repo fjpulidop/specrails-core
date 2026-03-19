@@ -1,4 +1,4 @@
-# specrails
+# specrails-core
 
 **Agent Workflow System installer for Claude Code.**
 
@@ -6,7 +6,7 @@ Install a complete product-driven development workflow into any repository: spec
 
 ## What it does
 
-specrails gives your project a team of specialized AI agents that work together through a structured pipeline:
+specrails-core gives your project a team of specialized AI agents that work together through a structured pipeline:
 
 ```
 Product Discovery    →  Architecture  →  Implementation  →  Review     →  Ship
@@ -158,7 +158,7 @@ Each persona scores features 0-5 based on how well they address their specific j
 ## Project structure
 
 ```
-specrails/
+specrails-core/
 ├── install.sh                              # Step 1: shell installer
 ├── README.md                               # This file
 ├── commands/
@@ -198,7 +198,7 @@ specrails/
 
 ## Supported stacks
 
-specrails is stack-agnostic. The `/setup` wizard detects and adapts to whatever you're using:
+specrails-core is stack-agnostic. The `/setup` wizard detects and adapts to whatever you're using:
 
 - **Backend**: Python/FastAPI, Node/Express, Go/Gin, Rust/Actix, Java/Spring, Ruby/Rails, .NET
 - **Frontend**: React, Vue, Angular, Svelte, Next.js, Nuxt

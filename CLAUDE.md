@@ -1,4 +1,4 @@
-# specrails
+# specrails-core
 
 Agent Workflow System installer for Claude Code. Installs a complete product-driven development workflow into any repository: specialized AI agents, orchestration commands, VPC-based product discovery, and per-layer coding conventions — all adapted to the target codebase automatically.
 
@@ -15,7 +15,7 @@ Agent Workflow System installer for Claude Code. Installs a complete product-dri
 ## Repo layout
 
 ```
-specrails/
+specrails-core/
 ├── install.sh              # Shell installer
 ├── README.md               # Documentation
 ├── templates/              # Source templates for agents, commands, rules
@@ -44,16 +44,15 @@ specrails/
 ## Dev commands
 
 ```bash
-# No CI configured yet. Manual checks:
 shellcheck install.sh                    # Validate shell scripts
 grep -r '{{[A-Z_]*}}' .claude/agents/   # Check for broken placeholders in generated files
 ```
 
 ## Environment
 
-- Pre-code phase: evolving from shell+markdown to distributable software
-- No test framework yet
-- No CI/CD pipeline yet
+- Distributable npm package: `npx specrails-core@latest init`
+- No test framework (shell scripts + markdown templates)
+- CI/CD: GitHub Actions (`.github/workflows/`) — release-please + npm publish
 - GitHub Issues used for backlog (label: `product-driven-backlog`)
 
 ## Architecture
@@ -77,9 +76,8 @@ Layer-specific conventions are in `.claude/rules/` (loaded conditionally per lay
 ## Warnings
 
 - **Meta-tool**: Changes to templates affect ALL target repos. Test template generation carefully.
-- **Self-referential**: specrails uses its own agent workflow to develop itself. Avoid infinite recursion.
-- **No CI**: Verify manually until CI is set up. Be extra thorough.
-- **Pre-code**: Architecture decisions now shape the future stack. Choose wisely.
+- **Self-referential**: specrails-core uses its own agent workflow to develop itself. Avoid infinite recursion.
+- **Meta-changes**: Template edits affect ALL repos that have already run `/setup`. Changes are not retroactive.
 
 ## OpenSpec
 
