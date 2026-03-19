@@ -1,6 +1,6 @@
 {
   "name": "specrails-core",
-  "version": "0.7.1",
+  "version": "1.0.0",
   "description": "Agent Workflow System installer for Claude Code",
   "bin": {
     "specrails-core": "bin/specrails-core.js"
