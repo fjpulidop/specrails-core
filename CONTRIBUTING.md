@@ -89,6 +89,24 @@ Use [GitHub Issues](https://github.com/fjpulidop/specrails-core/issues). Include
 - The command you ran
 - The full error output
 
+## Developer Certificate of Origin (DCO)
+
+This project uses the [Developer Certificate of Origin](https://developercertificate.org/) (DCO) as a lightweight alternative to a CLA. By submitting a pull request, you certify that you have the right to submit the code and that it can be distributed under the project's MIT License.
+
+To sign off your commits, use the `-s` flag:
+
+```bash
+git commit -s -m "feat: add new template option"
+```
+
+This adds a `Signed-off-by` line to your commit message:
+
+```
+feat: add new template option
+
+Signed-off-by: Your Name <your@email.com>
+```
+
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
