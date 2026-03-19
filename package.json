@@ -1,7 +1,7 @@
 {
   "name": "specrails-core",
   "version": "1.0.1",
-  "description": "Agent Workflow System installer for Claude Code",
+  "description": "AI agent workflow system for Claude Code — installs 12 specialized agents, orchestration commands, and persona-driven product discovery into any repository",
   "bin": {
     "specrails-core": "bin/specrails-core.js"
   },
@@ -27,8 +27,27 @@
     "claude-code",
     "ai-agents",
     "workflow",
-    "developer-tools"
+    "developer-tools",
+    "anthropic",
+    "llm",
+    "ai",
+    "automation",
+    "productivity",
+    "specrails",
+    "openspec",
+    "code-generation",
+    "product-management",
+    "vibe-coding",
+    "agents",
+    "multi-agent",
+    "software-engineering",
+    "devtools",
+    "ai-workflow"
   ],
+  "homepage": "https://github.com/fjpulidop/specrails-core#readme",
+  "bugs": {
+    "url": "https://github.com/fjpulidop/specrails-core/issues"
+  },
   "license": "MIT",
   "author": "fjpulidop"
 }
