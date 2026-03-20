@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/fjpulidop/specrails-core/discussions
+    about: Ask questions and discuss specrails-core in GitHub Discussions
+  - name: Documentation
+    url: https://specrails.dev/docs
+    about: Read the specrails-core documentation

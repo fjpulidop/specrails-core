@@ -1,0 +1,48 @@
+name: Feature Request
+description: Suggest a new feature or improvement for specrails-core
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve specrails-core! Please describe your feature request below.
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: What problem are you trying to solve? Who benefits from this feature?
+      placeholder: "As a developer using specrails-core, I want to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the feature you'd like to see. How should it work?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches or workarounds have you tried or considered?
+
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Willing to contribute?
+      description: Would you be willing to submit a pull request to implement this feature?
+      options:
+        - "Yes, I can implement this"
+        - "Yes, with guidance"
+        - "No, but I can help test"
+        - "No"
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other context, mockups, or references that might be helpful.
