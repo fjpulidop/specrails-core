@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.5.0](https://github.com/fjpulidop/specrails-core/compare/v1.4.0...v1.5.0) (2026-03-20)
+
+
+### Features
+
+* **commands:** add /sr:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
+* **commands:** add /sr:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
+* **product:** formalize OSS Maintainer persona Kai (backlog [#13](https://github.com/fjpulidop/specrails-core/issues/13)) ([#124](https://github.com/fjpulidop/specrails-core/issues/124)) ([f3d58e1](https://github.com/fjpulidop/specrails-core/commit/f3d58e1071307b200178d59940543bebfcfc47fb))
+
 ## [1.4.0](https://github.com/fjpulidop/specrails-core/compare/v1.3.0...v1.4.0) (2026-03-20)
 
 
