@@ -74,7 +74,23 @@ Claude runs a 5-phase wizard that reads your actual codebase and generates every
 
 ---
 
-## The 12 agents
+## Why SpecRails
+
+| | SpecRails | Plain Claude Code | Cursor / Copilot |
+|---|---|---|---|
+| Structured pipeline | ✅ Architect → Dev → Review → PR | ❌ Manual | ❌ Manual |
+| Adapts to your codebase | ✅ Reads your actual stack/CI | ⚠️ Prompts only | ❌ |
+| Product-driven backlog | ✅ VPC persona scoring | ❌ | ❌ |
+| Parallel feature builds | ✅ Git worktrees | ❌ | ❌ |
+| Dry-run / preview mode | ✅ Preview before committing | ❌ | ❌ |
+| Institutional memory | ✅ Agents learn across sessions | ❌ | ❌ |
+| Open source | ✅ MIT | N/A | ❌ |
+
+SpecRails is not a chat interface. It's a **development pipeline** that coordinates multiple specialized agents through your existing tools (GitHub Issues, JIRA, git, CI).
+
+---
+
+## The agents
 
 | Agent | Model | Role |
 |-------|-------|------|
@@ -109,6 +125,31 @@ Reads GitHub Issues labeled `product-driven-backlog`, scores them against your V
 ### `/sr:update-product-driven-backlog` — Discover new features
 
 Analyzes your codebase against each persona's jobs/pains/gains, generates new feature ideas, and creates GitHub Issues for the best ones.
+
+#### Dry-run / preview mode
+
+Not ready to commit? Run the full pipeline without touching git or GitHub:
+
+```bash
+/sr:implement "add dark mode" --dry-run
+/sr:implement #85 --preview            # --preview is an alias for --dry-run
+```
+
+All agents run normally (architect, developer, tests, docs, review). Generated files land in `.claude/.dry-run/<feature-name>/` instead of your working tree. No branches, commits, PRs, or issue updates are created.
+
+When you're happy with the preview, apply the cached output:
+
+```bash
+/sr:implement --apply add-dark-mode    # copies files to real paths, then ships
+```
+
+To discard without applying:
+
+```bash
+rm -rf .claude/.dry-run/add-dark-mode/
+```
+
+### `/sr:product-backlog` — View prioritized backlog
 
 ```
 /sr:update-product-driven-backlog             # explore all areas
