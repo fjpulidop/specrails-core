@@ -390,7 +390,7 @@ do_migrate_sr_prefix() {
         if [[ -f "$src" ]] && [[ ! -f "$dst" ]]; then
             mv "$src" "$dst"
             info "Renamed: agents/${agent}.md → agents/sr-${agent}.md"
-            ((migrated_agents++))
+            migrated_agents=$(( migrated_agents + 1 ))
         fi
     done
 
@@ -408,7 +408,7 @@ do_migrate_sr_prefix() {
             if [[ ! -f "$persona_dst" ]]; then
                 mv "$persona_file" "$persona_dst"
                 info "Renamed: personas/${persona_basename} → personas/sr-${persona_basename}"
-                ((migrated_agents++))
+                migrated_agents=$(( migrated_agents + 1 ))
             fi
         done < <(find "$personas_dir" -maxdepth 1 -name "*.md" -not -name "sr-*.md" -print0 2>/dev/null)
     fi
@@ -433,7 +433,7 @@ do_migrate_sr_prefix() {
             if [[ -f "$src" ]] && [[ ! -f "$dst" ]]; then
                 mv "$src" "$dst"
                 info "Moved: commands/${cmd}.md → commands/sr/${cmd}.md"
-                ((migrated_commands++))
+                migrated_commands=$(( migrated_commands + 1 ))
             fi
         done
     fi
@@ -446,7 +446,7 @@ do_migrate_sr_prefix() {
             if [[ -d "$src" ]] && [[ ! -d "$dst" ]]; then
                 mv "$src" "$dst"
                 info "Renamed: agent-memory/${agent}/ → agent-memory/sr-${agent}/"
-                ((migrated_memory++))
+                migrated_memory=$(( migrated_memory + 1 ))
             fi
         done
     fi
@@ -501,7 +501,7 @@ except Exception:
     if _file_changed "$SCRIPT_DIR/commands/setup.md" "commands/setup.md"; then
         cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
         ok "Updated /setup command"
-        ((updated_count++))
+        updated_count=$(( updated_count + 1 ))
     fi
 
     # Update setup templates (selective — only copy changed/new files)
@@ -526,10 +526,10 @@ except Exception:
 " "$manifest_file" "$relpath" 2>/dev/null || echo "")"
             if [[ -z "$manifest_checksum" ]]; then
                 info "New: $relpath"
-                ((added_count++))
+                added_count=$(( added_count + 1 ))
             else
                 info "Changed: $relpath"
-                ((updated_count++))
+                updated_count=$(( updated_count + 1 ))
             fi
         fi
     done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
@@ -556,10 +556,10 @@ except Exception:
 " "$manifest_file" "$relpath" 2>/dev/null || echo "")"
                 if [[ -z "$manifest_checksum" ]]; then
                     info "New: $relpath"
-                    ((added_count++))
+                    added_count=$(( added_count + 1 ))
                 else
                     info "Changed: $relpath"
-                    ((updated_count++))
+                    updated_count=$(( updated_count + 1 ))
                 fi
             fi
         done < <(find "$SCRIPT_DIR/prompts" -type f -print0 | sort -z)
@@ -587,10 +587,10 @@ except Exception:
 " "$manifest_file" "$relpath" 2>/dev/null || echo "")"
                 if [[ -z "$manifest_checksum" ]]; then
                     info "New: $relpath"
-                    ((added_count++))
+                    added_count=$(( added_count + 1 ))
                 else
                     info "Changed: $relpath"
-                    ((updated_count++))
+                    updated_count=$(( updated_count + 1 ))
                 fi
             fi
         done < <(find "$SCRIPT_DIR/.claude/skills" -type f -print0 | sort -z)
