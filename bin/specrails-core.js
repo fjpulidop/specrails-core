@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const { resolve } = require("path");
 
 const ROOT = resolve(__dirname, "..");
@@ -33,11 +33,9 @@ if (!script) {
   process.exit(1);
 }
 
-const forwarded = args.slice(1).join(" ");
-const cmd = `bash "${resolve(ROOT, script)}" ${forwarded}`.trim();
+const result = spawnSync("bash", [resolve(ROOT, script), ...args.slice(1)], {
+  stdio: "inherit",
+  cwd: process.cwd(),
+});
 
-try {
-  execSync(cmd, { stdio: "inherit", cwd: process.cwd() });
-} catch (err) {
-  process.exit(err.status || 1);
-}
+process.exit(result.status ?? (result.error ? 1 : 0));
