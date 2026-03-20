@@ -577,9 +577,57 @@ Maintain `MERGE_REPORT`:
 - `auto_resolved`: shared files merged without conflict markers
 - `requires_resolution`: `{file, feature, regions}` for files with conflict markers
 
-**Step 5: Emit merge report**
+**Step 5: Emit initial merge report**
 
-After all features are processed:
+After all features are processed, print the preliminary report:
+
+```
+## Phase 4a Merge Report (preliminary)
+
+### Cleanly Merged
+- <file> (exclusive to <feature>)
+
+### Auto-Resolved
+- <file> (features: <a>, <b> — distinct sections)
+
+### Requires Resolution (N file(s))
+- <file> (features: <a>, <b> — conflicting section: "<heading>")
+```
+
+**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true`)
+
+If `MERGE_REPORT.requires_resolution` is non-empty:
+
+```
+[smart-merge] N file(s) have conflict markers. Launching sr-merge-resolver…
+```
+
+Build `CONTEXT_BUNDLES` from the features in `MERGE_ORDER`:
+```
+{ "<feature-a>": "openspec/changes/<feature-a>/context-bundle.md", "<feature-b>": "openspec/changes/<feature-b>/context-bundle.md" }
+```
+
+Load merge resolver config from `.claude/merge-resolver-config.json` if it exists. Extract `confidence_threshold` (default: 70) and `mode` (default: `auto`).
+
+Construct the `sr-merge-resolver` agent prompt with:
+- `CONFLICTED_FILES`: all file paths in `MERGE_REPORT.requires_resolution`
+- `CONTEXT_BUNDLES`: the map above
+- `CONFIDENCE_THRESHOLD`: from config or default (70)
+- `RESOLUTION_MODE`: from config or default (`auto`)
+- `REPORT_PATH`: `openspec/changes/<first-feature-in-MERGE_ORDER>/merge-resolution-report.md`
+
+Launch the **sr-merge-resolver** agent (`subagent_type: sr-merge-resolver`, foreground, `run_in_background: false`). Wait for it to complete.
+
+Read `MERGE_RESOLUTION_STATUS` from the agent's output (`CLEAN`, `PARTIAL`, or `UNRESOLVED`).
+
+**Post-resolution: update MERGE_REPORT**
+
+For each file in `MERGE_REPORT.requires_resolution`:
+- Re-scan the file for remaining `<<<<<<<` markers.
+- If none remain: move the file from `requires_resolution` → `auto_resolved` (with note: `smart-resolver`).
+- If markers remain: keep in `requires_resolution`.
+
+**Step 5b: Emit final merge report**
 
 ```
 ## Phase 4a Merge Report
@@ -589,13 +637,17 @@ After all features are processed:
 
 ### Auto-Resolved
 - <file> (features: <a>, <b> — distinct sections)
+- <file> (smart-resolver: additive-concat, confidence 92)
 
 ### Requires Manual Resolution
-- <file> (features: <a>, <b> — conflicting section: "<heading>")
+- <file> (features: <a>, <b> — low-confidence: see merge-resolution-report.md)
   Search for `<<<<<<< <feature-name>` to locate conflict markers.
 
-Pipeline will continue. Fix conflicts above before the reviewer runs CI.
+Pipeline will continue. Fix remaining conflicts before the reviewer runs CI.
+Resolution report: openspec/changes/<feature>/merge-resolution-report.md
 ```
+
+If `MERGE_REPORT.requires_resolution` is now empty: print `All conflicts resolved by smart resolver.` and omit the "Requires Manual Resolution" section.
 
 **Step 6: Clean up worktrees** (skip if `DRY_RUN=true`)
 
@@ -603,7 +655,7 @@ Pipeline will continue. Fix conflicts above before the reviewer runs CI.
 git worktree remove <worktree-path> --force
 ```
 
-Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`.
+Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`. If the smart resolver ran, also pass the path to `merge-resolution-report.md` so the reviewer can inspect resolution decisions for correctness.
 
 ### 4b. Layer Dispatch and Review
 
@@ -1009,11 +1061,12 @@ If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
 ```
 ### Merge Conflicts Requiring Resolution
 
-| File | Features | Conflicting Region |
-|------|----------|-------------------|
-| <file> | <feature-a>, <feature-b> | <section heading or hunk description> |
+| File | Features | Conflicting Region | Resolver Status |
+|------|----------|--------------------|-----------------|
+| <file> | <feature-a>, <feature-b> | <section heading or hunk description> | LOW_CONFIDENCE / SKIPPED |
 
 Fix these conflicts (search for `<<<<<<<` in each file), then commit the resolved files.
+To retry smart resolution after addressing context: `/sr:merge-resolve --files <file>`
 ```
 
 If `CONFLICT_OVERRIDES` is non-empty, print:
