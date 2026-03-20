@@ -44,11 +44,20 @@ Read the following files to understand the current installation state:
 
 2. Read `.specrails-version` — contains the current version string (e.g., `0.2.0`). If it does not exist, treat version as `0.1.0 (legacy)`.
 
-3. List all template files in `.claude/setup-templates/agents/` — these are the NEW templates from the update:
+3. List all template files in `.claude/setup-templates/agents/` — these are the NEW agent templates from the update:
    ```bash
    ls .claude/setup-templates/agents/
    ```
    Template files are named with `sr-` prefix (e.g., `sr-architect.md`, `sr-developer.md`).
+
+4. List all template files in `.claude/setup-templates/commands/sr/` — these are the NEW command templates from the update:
+   ```bash
+   ls .claude/setup-templates/commands/sr/
+   ```
+   Command template files include `implement.md`, `batch-implement.md`, `health-check.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
+   If this directory does not exist, skip command template checking for this update.
+
+5. Read `.claude/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
 
 ### Phase U2: Quick Codebase Re-Analysis
 
@@ -71,39 +80,62 @@ Store all results for use in Phases U4 and U5.
 
 ### Phase U3: Identify What Needs Regeneration
 
-For each agent template, find its entry in the manifest's `artifacts` map (keyed as `templates/agents/sr-<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/agents/`:
+**Agent templates:** For each agent template, find its entry in the manifest's `artifacts` map (keyed as `templates/agents/sr-<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/agents/`:
 
 ```bash
 sha256sum .claude/setup-templates/agents/sr-<name>.md
 ```
 
-Build three lists:
+Build three lists for agents:
 
 1. **Changed agents**: agent name exists in manifest AND the current template checksum differs from the manifest checksum → mark for regeneration
 2. **New agents**: template file exists in `.claude/setup-templates/agents/` but the agent name is NOT in the manifest → mark for evaluation
 3. **Unchanged agents**: agent name exists in manifest AND checksum matches → skip
 
-Display the analysis to the user:
+**Command templates:** If `.claude/setup-templates/commands/sr/` exists, for each command template file, find its entry in the manifest's `artifacts` map (keyed as `templates/commands/sr/<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/commands/sr/`:
+
+```bash
+sha256sum .claude/setup-templates/commands/sr/<name>.md
+```
+
+Build three lists for commands:
+
+1. **Changed commands**: command name exists in manifest AND the current template checksum differs from the manifest checksum → mark for update
+2. **New commands**: template file exists in `.claude/setup-templates/commands/sr/` but the command name is NOT in the manifest → mark for evaluation
+3. **Unchanged commands**: command name exists in manifest AND checksum matches → skip
+
+Display the combined analysis to the user:
 
 ```
-## Agent Update Analysis
+## Update Analysis
 
-### Changed Templates (will be regenerated)
+### Agents — Changed Templates (will be regenerated)
 - sr-architect.md (template modified)
 - sr-developer.md (template modified)
 
-### New Templates Available
+### Agents — New Templates Available
 - sr-frontend-developer.md
 - sr-backend-developer.md
 
-### Unchanged (keeping current)
+### Agents — Unchanged (keeping current)
 - sr-reviewer.md
 - sr-product-manager.md
+
+### Commands — Changed Templates (will be updated)
+- implement.md (template modified)
+
+### Commands — New Templates Available
+- refactor-recommender.md
+
+### Commands — Unchanged (keeping current)
+- health-check.md
+- compat-check.md
+- why.md
 ```
 
-If there are no changed agents and no new agents, display:
+If there are no changed agents, no new agents, no changed commands, and no new commands, display:
 ```
-All agents are already up to date. Nothing to regenerate.
+All agents and commands are already up to date. Nothing to regenerate.
 ```
 Then jump to Phase U7.
 
@@ -133,6 +165,36 @@ After regenerating all changed agents, verify no unresolved placeholders remain:
 grep -r '{{[A-Z_]*}}' .claude/agents/sr-*.md 2>/dev/null || echo "OK: no broken placeholders"
 ```
 
+### Phase U4b: Update Changed Commands
+
+For each command in the "changed commands" list from Phase U3:
+
+1. Read the NEW template from `.claude/setup-templates/commands/sr/<name>.md`
+2. Read stored backlog configuration from `.claude/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
+   - `BACKLOG_PROVIDER` → `provider` field (`github`, `jira`, or `none`)
+   - `BACKLOG_WRITE` → `write_access` field
+   - `JIRA_BASE_URL` → `jira_base_url` field
+   - `JIRA_PROJECT_KEY` → `jira_project_key` field
+3. Substitute all `{{PLACEHOLDER}}` values using the same rules as Phase 4.3 of the full setup:
+   - `{{CI_COMMANDS_BACKEND}}` → backend CI commands detected in Phase U2
+   - `{{CI_COMMANDS_FRONTEND}}` → frontend CI commands detected in Phase U2
+   - `{{DEPENDENCY_CHECK_COMMANDS}}` → stack-specific dependency check commands from Phase U2
+   - `{{TEST_RUNNER_CHECK}}` → test runner commands from Phase U2
+   - `{{BACKLOG_FETCH_CMD}}` → provider-specific fetch command from backlog config
+   - `{{BACKLOG_CREATE_CMD}}` → provider-specific create command from backlog config
+   - `{{BACKLOG_VIEW_CMD}}` → provider-specific view command from backlog config
+   - `{{BACKLOG_PREFLIGHT}}` → provider-specific preflight check from backlog config
+   - Any other `{{PLACEHOLDER}}` values → use Phase U2 analysis data
+4. Write the updated command to `.claude/commands/sr/<name>.md`
+5. Show: `✓ Updated /sr:<name>`
+
+After updating all changed commands, verify no unresolved placeholders remain in the updated files:
+```bash
+grep -l '{{[A-Z_]*}}' .claude/commands/sr/*.md 2>/dev/null || echo "OK: no broken placeholders"
+```
+If any placeholders remain unresolved, warn the user:
+> "⚠ Some placeholders in `<filename>` could not be resolved automatically. Please review the file and fill them in manually."
+
 ### Phase U5: Evaluate New Agents
 
 For each agent in the "new" list:
@@ -149,6 +211,18 @@ For each agent in the "new" list:
    - Show: `✓ Added sr-<name>`
 4. If the user declines:
    - Show: `→ Skipped sr-<name>`
+
+For each command in the "new commands" list from Phase U3:
+
+1. Read the template from `.claude/setup-templates/commands/sr/<name>.md` to understand what it does (read the title and description)
+2. Prompt the user:
+   > "New command available: `/sr:<name>` — [one-line description from template]. Install it? [Y/n]"
+3. If the user accepts (or presses Enter):
+   - Apply placeholder substitution using the same rules as Phase U4b (backlog config + codebase analysis)
+   - Write the command to `.claude/commands/sr/<name>.md`
+   - Show: `✓ Added /sr:<name>`
+4. If the user declines:
+   - Show: `→ Skipped /sr:<name>`
 
 ### Phase U6: Update Workflow Commands
 
@@ -171,28 +245,41 @@ Display the final summary and stop. Do not continue to Phase 1 of the full setup
 
 specrails updated from v<previous> to v<new>.
 
-| Action             | Count |
-|--------------------|-------|
-| Agents regenerated | N     |
-| Agents added       | N     |
-| Agents skipped     | N     |
-| Commands updated   | N     |
+| Action              | Count |
+|---------------------|-------|
+| Agents regenerated  | N     |
+| Agents added        | N     |
+| Agents skipped      | N     |
+| Commands updated    | N     |
+| Commands added      | N     |
+| Commands skipped    | N     |
 
-All agents are now up to date.
+All agents and commands are now up to date.
 
-### Regenerated
+### Agents Regenerated
 [list agent names, or "(none)"]
 
-### Added
+### Agents Added
 [list agent names, or "(none)"]
 
-### Skipped
+### Agents Skipped
 [list agent names, or "(none)"]
+
+### Commands Updated
+[list command names, or "(none)"]
+
+### Commands Added
+[list command names, or "(none)"]
+
+### Commands Skipped
+[list command names, or "(none)"]
 ```
 
-Update `.specrails-manifest.json` to reflect the new checksums for all regenerated and added agents:
-- For each regenerated agent: update its checksum entry to the new template's checksum
+Update `.specrails-manifest.json` to reflect the new checksums for all regenerated/updated and added agents and commands:
+- For each regenerated agent: update its checksum entry to the new template's checksum (keyed as `templates/agents/sr-<name>.md`)
 - For each added agent: add a new entry with its checksum
+- For each updated command: update its checksum entry to the new template's checksum (keyed as `templates/commands/sr/<name>.md`)
+- For each added command: add a new entry with its checksum
 - Update the `version` field to the version read from `.specrails-version`
 
 ---

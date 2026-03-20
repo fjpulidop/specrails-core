@@ -39,9 +39,35 @@ In `--update` mode, `/setup` SHALL update workflow commands to reference any new
 - **WHEN** an `sr-frontend-developer` agent was added during update
 - **THEN** `/sr:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant
 
+### Requirement: Command template checksum detection
+In `--update` mode, `/setup` SHALL check command templates (in `.claude/setup-templates/commands/sr/`) against their manifest checksums and identify changed or new command templates.
+
+#### Scenario: Changed command template detected
+- **WHEN** `templates/commands/sr/implement.md` checksum in manifest differs from the current file in `.claude/setup-templates/commands/sr/`
+- **THEN** `implement.md` is marked as changed and included in the update analysis display
+
+#### Scenario: New command template detected
+- **WHEN** `templates/commands/sr/why.md` exists in `.claude/setup-templates/commands/sr/` but has no entry in the manifest
+- **THEN** `why.md` is marked as new and offered to the user for installation
+
+#### Scenario: Unchanged command template
+- **WHEN** `templates/commands/sr/health-check.md` checksum matches the manifest
+- **THEN** health-check is listed as unchanged and skipped
+
+### Requirement: Command template update (overwrite)
+In `--update` mode, `/setup` SHALL overwrite changed command templates in `.claude/commands/sr/` with the new versions from `.claude/setup-templates/commands/sr/`, substituting any `{{PLACEHOLDER}}` values using the codebase analysis from Phase U2 and stored config from `.claude/backlog-config.json`.
+
+#### Scenario: Changed command applied
+- **WHEN** `implement.md` is detected as changed
+- **THEN** `.claude/commands/sr/implement.md` is overwritten with the new template, placeholders substituted, and the manifest entry updated
+
+#### Scenario: New command installed
+- **WHEN** a new `sr:refactor-recommender.md` template is present and not in manifest
+- **THEN** setup prompts the user: "New command available: /sr:refactor-recommender — install it? [Y/n]" and installs if accepted
+
 ### Requirement: Update summary
 At the end of `--update` mode, `/setup` SHALL display a summary of what was regenerated, added, and skipped.
 
 #### Scenario: Summary displayed
 - **WHEN** `/setup --update` completes
-- **THEN** a summary shows: agents regenerated (N), agents added (N), agents skipped (N), rules updated (N)
+- **THEN** a summary shows: agents regenerated (N), agents added (N), agents skipped (N), commands updated (N), commands added (N)
