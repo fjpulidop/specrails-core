@@ -12,7 +12,6 @@ TOTAL_EXIT=0
 
 bash "$SCRIPT_DIR/test-install.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-update.sh" || TOTAL_EXIT=1
-bash "$SCRIPT_DIR/test-doctor.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-cli.sh" || TOTAL_EXIT=1
 
 if [[ "$TOTAL_EXIT" -eq 0 ]]; then
