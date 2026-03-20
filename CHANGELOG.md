@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.0](https://github.com/fjpulidop/specrails-core/compare/v1.3.0...v1.4.0) (2026-03-20)
+
+
+### Features
+
+* **commands:** add /sr:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
+* **commands:** add /sr:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
+
 ## [1.3.0](https://github.com/fjpulidop/specrails-core/compare/v1.2.0...v1.3.0) (2026-03-20)
 
 
