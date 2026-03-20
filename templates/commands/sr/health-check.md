@@ -9,7 +9,7 @@ Run a full health check for **{{PROJECT_NAME}}**: detect available tools, execut
 
 **Input:** $ARGUMENTS — optional flags:
 - `--since <date>` — use the report from this date (ISO format: YYYY-MM-DD) as the comparison baseline instead of the most recent
-- `--only <checks>` — comma-separated subset to run. Valid values: `tests`, `coverage`, `lint`, `complexity`, `deps`, `perf`
+- `--only <checks>` — comma-separated subset to run. Valid values: `tests`, `coverage`, `lint`, `complexity`, `deps`, `perf`, `static`
 - `--save` — always save the snapshot even when `--only` is used (default: skip save for partial runs)
 
 ---
@@ -29,8 +29,8 @@ Parse `$ARGUMENTS` to set runtime variables.
 1. Scan `$ARGUMENTS` for `--since <date>`. If found, set `COMPARE_DATE=<date>`. Strip from arguments.
 2. Scan for `--only <checks>`. If found:
    - Split `<checks>` on commas to produce an array.
-   - Validate each entry against the allowed set: `tests`, `coverage`, `lint`, `complexity`, `deps`, `perf`.
-   - If any unknown value is found: print `Error: unknown check "<value>". Valid checks: tests, coverage, lint, complexity, deps, perf` and stop.
+   - Validate each entry against the allowed set: `tests`, `coverage`, `lint`, `complexity`, `deps`, `perf`, `static`.
+   - If any unknown value is found: print `Error: unknown check "<value>". Valid checks: tests, coverage, lint, complexity, deps, perf, static` and stop.
    - Set `CHECKS_FILTER=<validated-array>`.
    - Set `SAVE_SNAPSHOT=false` (partial run — snapshot may be incomplete).
 3. Scan for `--save`. If found, set `SAVE_SNAPSHOT=true` regardless of `CHECKS_FILTER`.
@@ -38,7 +38,7 @@ Parse `$ARGUMENTS` to set runtime variables.
 **Print active configuration:**
 
 ```
-Running checks: <all | comma-separated list> | Comparing to: <COMPARE_DATE or "latest">
+Running checks: <all | comma-separated list> | Static analysis: <enabled|disabled> | Comparing to: <COMPARE_DATE or "latest">
 ```
 
 ---
@@ -79,7 +79,10 @@ For each category, set two variables:
 | complexity | yes/no    | <tool or N/A>     |
 | deps       | yes/no    | <tool or N/A>     |
 | perf       | yes/no    | <tool or N/A>     |
+| static     | yes       | ai-analysis       |
 ```
+
+The `static` check is always available (AI-assisted analysis requires no external tools).
 
 ---
 
@@ -248,6 +251,99 @@ perf: <PASS|FAIL|SKIPPED> (<tool>)
 
 ---
 
+## Phase 3.5: Static Code Analysis
+
+Perform static code inspection to detect issues that tools cannot surface: missing documentation, broken imports, and unused exports. These checks are language-aware and use AI-assisted code reading rather than external tooling.
+
+Always exclude the following directories from analysis:
+- `node_modules/`, `.git/`, `dist/`, `build/`, `vendor/`, `.claude/`, `coverage/`
+
+For each finding, record a structured object:
+```
+{ severity: "critical"|"warning"|"info", check: string, file: string, line: number, description: string, action: string }
+```
+
+Set `STATIC_FINDINGS = []` before starting. Append each finding to this list.
+
+---
+
+### Check: documentation
+
+Scan public-facing code units (exported functions, classes, interfaces, modules) for missing documentation comments.
+
+**Language-specific rules:**
+
+- **TypeScript/JavaScript**: Identify functions/classes with `export` keyword. Check whether a JSDoc block (`/** ... */`) appears immediately above the declaration. Missing JSDoc on exported symbols = finding.
+- **Python**: Identify top-level functions, classes, and methods. Check for a docstring (a string literal as the first statement in the body). Missing docstring on public (non-underscore-prefixed) symbols = finding.
+- **Ruby**: Identify public methods and classes. Check for a YARD/RDoc comment (`# @param`, `##`, or any comment block) immediately above the definition. Missing comment on public methods in lib/ = finding.
+- **Go**: Identify exported types and functions (capitalized names). Check for a doc comment (line starting with `// <ExportedName>`) immediately above. Missing comment on exported symbols = finding.
+
+**Severity assignment:**
+- `critical`: Main entry points (e.g., `index.ts`, `main.go`, `app.rb`) with no module-level documentation
+- `warning`: Exported/public function or class with no documentation
+- `info`: Non-exported function over 20 lines with no documentation
+
+Scan all source files matching the detected language(s). Skip test files (`*.test.*`, `*.spec.*`, `_test.go`, `spec/**`).
+
+Append each finding to `STATIC_FINDINGS`.
+
+---
+
+### Check: broken_imports
+
+Detect import/require statements that reference non-existent paths. Focus on local relative imports (skip `node_modules`, stdlib, installed packages — these are validated by the runtime).
+
+**Language-specific rules:**
+
+- **TypeScript/JavaScript**: Scan all `import ... from '...'` and `require('...')` statements. For each import path starting with `.` or `/`:
+  1. Resolve the path relative to the source file.
+  2. Check whether the resolved file exists (try: exact path, `.ts`, `.tsx`, `.js`, `.jsx`, `/index.ts`, `/index.js`).
+  3. If no match found: add a `critical` finding.
+- **Python**: Scan all `from . import`, `from .. import`, and `import X` with relative markers. Resolve relative paths from the package root. If the resolved module file does not exist: add a `critical` finding.
+- **Ruby**: Scan `require_relative '...'` statements. Resolve paths from the source file's directory (try `.rb` extension if missing). If the resolved path does not exist: add a `critical` finding.
+- **Go**: Skip — Go's compiler validates imports; broken imports would fail the build.
+
+**Severity:** Always `critical` — a broken import is a runtime error.
+
+Append each finding to `STATIC_FINDINGS`.
+
+---
+
+### Check: unused_exports
+
+Detect exported symbols that are never imported anywhere else in the codebase. Limit to the project source — do not flag exports intended as a library's public API (i.e., symbols re-exported from a barrel file like `index.ts`).
+
+**Language-specific rules:**
+
+- **TypeScript/JavaScript**:
+  1. Build a list of all exported symbols: scan `export const`, `export function`, `export class`, `export type`, `export interface`, `export default` across all non-test `.ts`/`.tsx`/`.js` files.
+  2. For each exported symbol, search the rest of the codebase for imports of that symbol by name. Exclude the barrel/index file itself.
+  3. If no import found anywhere: add a finding with severity `warning` (may be an intentional API export) unless the file is not `index.ts` and not under `src/` root — in that case severity is `info`.
+- **Python**:
+  1. Scan for symbols listed in `__all__` or public top-level definitions (non-underscore).
+  2. Search for usages across the codebase. If the symbol appears only in its definition file: add a `info` finding.
+- **Ruby**:
+  1. Scan for public constants, classes, and modules defined in `lib/`. Search for `require` or direct references elsewhere. If a class/module in `lib/` is never referenced outside its own file: add a `warning` finding.
+
+**Severity:** `warning` for clearly unexported contexts; `info` when the symbol could be part of a public API.
+
+Append each finding to `STATIC_FINDINGS`.
+
+---
+
+### Phase 3.5 summary
+
+After all three static checks complete, print:
+
+```
+documentation: <N findings> (<N critical, N warning, N info>)
+broken_imports: <N findings> (<N critical>)
+unused_exports: <N findings> (<N warning, N info>)
+Static findings total: <N>
+```
+
+---
+
 ## Phase 4: Build Health Report
 
 Using all `RESULT_<CHECK>` values and `PREV_REPORT` (if `IS_FIRST_RUN=false`), compute the final health report object.
@@ -315,6 +411,7 @@ HEALTH_REPORT = {
     deps: { status, tool, metrics: { vuln_critical, vuln_high, vuln_moderate, vuln_low, vuln_total } },
     perf: { status, tool, metrics: { perf_p50_ms, perf_p95_ms, perf_p99_ms, perf_custom } }
   },
+  static_findings: <STATIC_FINDINGS array — each: { severity, check, file, line, description, action }>,
   grade: <"A"|"B"|"C"|"D"|"F">,
   regressions: <REGRESSIONS array>,
   comparison_report: <PREV_REPORT_PATH basename or null>
@@ -364,6 +461,40 @@ Regressions detected: N
   - <check>: <metric> changed from X to Y (<delta>)
 <if N == 0:>
   No regressions detected.
+
+---
+
+### Static Analysis Findings  [<N total: N critical, N warning, N info>]
+
+<if STATIC_FINDINGS is empty:>
+  No static findings detected.
+
+<if STATIC_FINDINGS is non-empty:>
+
+  | Severity | Check | File | Line | Finding | Action |
+  |----------|-------|------|------|---------|--------|
+  <for each finding in STATIC_FINDINGS, sorted by severity (critical first, then warning, then info):>
+  | <CRITICAL|WARNING|INFO> | <check> | <file> | <line> | <description> | <action> |
+
+  <if any critical findings:>
+  #### Critical Findings (require immediate attention)
+  <for each critical finding:>
+  **[CRITICAL] <check>** — `<file>:<line>`
+  > <description>
+  > **Action:** <action>
+
+  <if any warning findings (limit to top 5 by file breadth — prefer findings spread across more files):>
+  #### Warnings (recommended fixes)
+  <for each warning finding, up to 5:>
+  **[WARNING] <check>** — `<file>:<line>`
+  > <description>
+  > **Action:** <action>
+  <if more than 5 warning findings:>
+  > ... and N more warnings. Run with `--only static` to see all.
+
+  <if any info findings:>
+  #### Info (low-priority improvements)
+  Summary: N info-level findings across N files. Run with `--only static` to see full list.
 ```
 
 For delta display: wrap positive deltas on error/failure metrics in `(+N)` to indicate regression; wrap negative deltas on pass-rate/coverage in `(-N%)` styled as improvement. For terminal rendering, use plain notation — the sign alone conveys direction.
