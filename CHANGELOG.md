@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.0](https://github.com/fjpulidop/specrails-core/compare/v1.5.0...v1.6.0) (2026-03-20)
+
+
+### Features
+
+* **setup:** extend /setup --update to check command template checksums ([#126](https://github.com/fjpulidop/specrails-core/issues/126)) ([55c9743](https://github.com/fjpulidop/specrails-core/commit/55c97439ad9b250abcf0bd2bd945a60b33759969))
+
 ## [1.5.0](https://github.com/fjpulidop/specrails-core/compare/v1.4.0...v1.5.0) (2026-03-20)
 
 
