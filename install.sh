@@ -35,6 +35,8 @@ NC='\033[0m'
 
 CUSTOM_ROOT_DIR=""
 AUTO_YES=false
+# Set SPECRAILS_SKIP_PREREQS=1 to bypass hard-exit prerequisite checks (for CI/testing).
+SKIP_PREREQS="${SPECRAILS_SKIP_PREREQS:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -189,6 +191,8 @@ fi
 if command -v claude &> /dev/null; then
     CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
     ok "Claude Code CLI: $CLAUDE_VERSION"
+elif [[ "$SKIP_PREREQS" == "1" ]]; then
+    warn "Claude Code CLI not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
 else
     fail "Claude Code CLI not found."
     echo ""
@@ -199,6 +203,8 @@ fi
 # 1.3 API key
 if claude config list 2>/dev/null | grep -q "api_key" || [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
     ok "Claude API key: configured"
+elif [[ "$SKIP_PREREQS" == "1" ]]; then
+    warn "No Claude API key configured (skipped — SPECRAILS_SKIP_PREREQS=1)"
 else
     fail "No Claude API key configured."
     echo ""

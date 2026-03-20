@@ -26,6 +26,8 @@ setup_test_env() {
     # Create a fake target repo
     mkdir -p "$TEST_TMPDIR/target"
     git -C "$TEST_TMPDIR/target" init -q
+    # Bypass hard-exit prereq checks (Claude CLI / API key) in install.sh during tests
+    export SPECRAILS_SKIP_PREREQS=1
 }
 
 teardown_test_env() {
