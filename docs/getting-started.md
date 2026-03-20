@@ -27,7 +27,7 @@ Pick your preferred method:
 **npx (recommended)**
 
 ```bash
-npx specrails@latest init --root-dir <your-project>
+npx specrails-core@latest init --root-dir <your-project>
 ```
 
 **git clone**

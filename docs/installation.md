@@ -32,7 +32,7 @@ The installer checks for all of these and offers to install missing tools.
 ### From npx (recommended)
 
 ```bash
-npx specrails@latest init --root-dir <your-project>
+npx specrails-core@latest init --root-dir <your-project>
 ```
 
 No cloning required. Downloads the latest version and runs the installer automatically.
