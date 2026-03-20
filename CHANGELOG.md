@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/fjpulidop/specrails-core/compare/v1.1.0...v1.2.0) (2026-03-20)
+
+
+### Features
+
+* **commands:** extend /sr:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
+
 ## [1.1.0](https://github.com/fjpulidop/specrails-core/compare/v1.0.1...v1.1.0) (2026-03-20)
 
 
