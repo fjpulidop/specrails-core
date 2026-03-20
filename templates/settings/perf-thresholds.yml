@@ -1,0 +1,25 @@
+# SpecRails Performance Regression Thresholds
+# Used by sr-performance-reviewer agent and the performance CI workflow.
+# Environment variables (PERF_*) override these values.
+
+# Execution time thresholds (percentage increase = regression)
+execution_time_regression_pct: 20   # warn above this delta
+execution_time_critical_pct: 50     # block CI above this delta
+
+# Memory usage thresholds (percentage increase = regression)
+memory_regression_pct: 15
+memory_critical_pct: 40
+
+# Throughput thresholds (percentage decrease = regression)
+throughput_regression_pct: 15
+throughput_critical_pct: 40
+
+# Branch to use as baseline when .specrails/perf-baseline.json is absent
+baseline_branch: main
+
+# File patterns to always skip (in addition to agent defaults)
+skip_patterns: []
+# example:
+#   skip_patterns:
+#     - "scripts/**"
+#     - "migrations/**"
