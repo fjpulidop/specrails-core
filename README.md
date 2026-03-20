@@ -1,6 +1,7 @@
 # specrails-core
 
 [![npm version](https://img.shields.io/npm/v/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
+[![GitHub Stars](https://img.shields.io/github/stars/fjpulidop/specrails-core?style=social)](https://github.com/fjpulidop/specrails-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm downloads](https://img.shields.io/npm/dw/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
 [![Claude Code](https://img.shields.io/badge/Built%20for-Claude%20Code-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
@@ -14,6 +15,18 @@ npx specrails-core@latest init --root-dir .
 ```
 
 > **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (required), Node 18+, git
+
+<!--
+  BOARD: Add demo GIF here — this is the #1 conversion driver on Product Hunt and npm.
+  Record a 60-90s screen capture showing:
+    1. `npx specrails-core@latest init --root-dir .` running
+    2. The `/setup` wizard completing (phases 1-5)
+    3. `/sr:implement "add dark mode"` → agents working → PR created
+  Recommended tools: Loom or QuickTime to record; Kap (https://getkap.co) to export as GIF.
+  Then replace this comment with:
+
+  ![specrails-core demo](./assets/demo.gif)
+-->
 
 ---
 
@@ -240,6 +253,7 @@ Yes. Everything runs locally through Claude Code. No external services beyond th
 
 - **[specrails-hub](https://github.com/fjpulidop/specrails-hub)** — GUI for specrails-core. Manage your agents, run commands, and view pipeline results from a web interface.
 - **[specrails.dev](https://specrails.dev)** — Official website and documentation.
+- **Product Hunt** — [Vote for SpecRails on launch day](https://www.producthunt.com) _(link goes live on launch day — star this repo to get notified)_
 
 ---
 
