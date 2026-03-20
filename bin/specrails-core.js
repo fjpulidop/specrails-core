@@ -33,7 +33,26 @@ if (!script) {
   process.exit(1);
 }
 
-const result = spawnSync("bash", [resolve(ROOT, script), ...args.slice(1)], {
+// Allowlisted flags per subcommand (defense-in-depth — spawnSync already
+// prevents shell injection, but an explicit allowlist rejects unknown flags
+// before the shell script is ever invoked).
+const ALLOWED_FLAGS = {
+  init: ["--root-dir", "--yes", "-y"],
+  update: ["--only"],
+  doctor: [],
+};
+
+const subargs = args.slice(1);
+const allowed = ALLOWED_FLAGS[subcommand] ?? [];
+
+for (const arg of subargs) {
+  if (arg.startsWith("-") && !allowed.includes(arg)) {
+    console.error(`Unknown flag: ${arg}`);
+    process.exit(1);
+  }
+}
+
+const result = spawnSync("bash", [resolve(ROOT, script), ...subargs], {
   stdio: "inherit",
   cwd: process.cwd(),
 });
