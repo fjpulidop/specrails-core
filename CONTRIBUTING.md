@@ -82,12 +82,22 @@ feat!: rename all commands to /sr: namespace
 - Write a clear PR description: what problem does it solve, how was it tested.
 - Tag your PR with the appropriate label (`feat`, `fix`, `docs`, `chore`).
 
+## Getting Help
+
+Have a question? Use [GitHub Discussions → Q&A](https://github.com/fjpulidop/specrails-core/discussions/categories/q-a). The Q&A category is monitored by maintainers and answered questions become searchable for the whole community.
+
+For feature proposals, use [Discussions → Ideas](https://github.com/fjpulidop/specrails-core/discussions/categories/ideas) so others can upvote and discuss.
+
+To share what you built with specrails-core, post in [Show and Tell](https://github.com/fjpulidop/specrails-core/discussions/categories/show-and-tell).
+
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/fjpulidop/specrails-core/issues). Include:
+Use [GitHub Issues](https://github.com/fjpulidop/specrails-core/issues) for **bug reports only**. Include:
 - Your OS and Node.js version
 - The command you ran
 - The full error output
+
+> **Not sure if it's a bug?** Ask in [Discussions → Q&A](https://github.com/fjpulidop/specrails-core/discussions/categories/q-a) first.
 
 ## Developer Certificate of Origin (DCO)
 

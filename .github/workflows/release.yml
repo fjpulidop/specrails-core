@@ -31,6 +31,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
+      - name: Sync VERSION file to package.json
+        if: ${{ steps.release.outputs.release_created }}
+        run: |
+          VERSION="${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}"
+          echo "$VERSION" > VERSION
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add VERSION
+          git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
+          git push
+
       - name: Notify specrails-hub of new release
         if: ${{ steps.release.outputs.release_created }}
         uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697  # v4.0.1
