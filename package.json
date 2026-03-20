@@ -13,7 +13,8 @@
     "prompts/",
     ".claude/skills/",
     "commands/",
-    "VERSION"
+    "VERSION",
+    "integration-contract.json"
   ],
   "engines": {
     "node": ">=18.0.0"
