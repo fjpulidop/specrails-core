@@ -93,5 +93,62 @@ test_install_source_repo_detection() {
 run_test "detects running from specrails source repo" test_install_source_repo_detection
 
 # ─────────────────────────────────────────────
+# Auth check: OAuth detection
+# ─────────────────────────────────────────────
+
+test_auth_oauth_accepted() {
+    local fake_home
+    fake_home="$(mktemp -d)"
+
+    # Create ~/.claude.json with oauthAccount (simulates Claude Pro/Max OAuth login)
+    echo '{"oauthAccount": {"accountUuid": "test-uuid", "emailAddress": "test@example.com"}}' \
+        > "$fake_home/.claude.json"
+
+    # Stub claude binary: present but returns no api_key (OAuth-only setup)
+    mkdir -p "$fake_home/bin"
+    printf '#!/bin/bash\nif [[ "$*" == *"config list"* ]]; then echo ""; fi\n' \
+        > "$fake_home/bin/claude"
+    chmod +x "$fake_home/bin/claude"
+
+    local target="$TEST_TMPDIR/oauth-target"
+    mkdir -p "$target"
+    git -C "$target" init -q
+
+    local output
+    output="$(echo "y" | HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
+        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" 2>&1 || true)"
+
+    rm -rf "$fake_home"
+
+    assert_not_contains "$output" "No Claude authentication found" &&
+    assert_contains "$output" "Claude: authenticated"
+}
+run_test "OAuth session accepted as valid authentication" test_auth_oauth_accepted
+
+test_auth_error_mentions_both_options() {
+    local fake_home
+    fake_home="$(mktemp -d)"
+
+    # Stub claude binary with no api_key and no OAuth session
+    mkdir -p "$fake_home/bin"
+    printf '#!/bin/bash\nif [[ "$*" == *"config list"* ]]; then echo ""; fi\n' \
+        > "$fake_home/bin/claude"
+    chmod +x "$fake_home/bin/claude"
+
+    local target="$TEST_TMPDIR/noauth-target"
+    mkdir -p "$target"
+    git -C "$target" init -q
+
+    local output
+    output="$(HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
+        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" 2>&1 || true)"
+
+    rm -rf "$fake_home"
+
+    assert_contains "$output" "claude auth login"
+}
+run_test "unauthenticated error message mentions both auth options" test_auth_error_mentions_both_options
+
+# ─────────────────────────────────────────────
 
 print_summary "install.sh"

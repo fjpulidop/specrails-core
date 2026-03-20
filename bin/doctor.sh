@@ -35,13 +35,22 @@ else
 fi
 
 # ─────────────────────────────────────────────
-# Check 2: Claude API key
+# Check 2: Claude authentication
 # ─────────────────────────────────────────────
 if command -v claude &>/dev/null; then
-    if claude config list 2>/dev/null | grep -q "api_key" || [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-        pass "API key: configured"
+    _claude_authed=false
+    if claude config list 2>/dev/null | grep -q "api_key"; then
+        _claude_authed=true
+    elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        _claude_authed=true
+    elif [[ -f "${HOME}/.claude.json" ]] && grep -q '"oauthAccount"' "${HOME}/.claude.json" 2>/dev/null; then
+        _claude_authed=true
+    fi
+
+    if [[ "$_claude_authed" == "true" ]]; then
+        pass "Claude: authenticated"
     else
-        fail "API key: not configured" "Run: claude config set api_key <your-key>  |  Get a key: https://console.anthropic.com/"
+        fail "Claude: not authenticated" "Option 1: claude config set api_key <your-key>  |  Option 2: claude auth login"
     fi
 fi
 
