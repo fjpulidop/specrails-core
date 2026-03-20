@@ -35,6 +35,8 @@
 | Functional | Maintain coding standards across a growing contributor base |
 | Functional | Triage issues and PRs — separate signal from noise |
 | Functional | Keep CI/CD green and catch regressions early |
+| Functional | Keep dependencies up to date without introducing breaking changes |
+| Functional | Coordinate releases — changelog curation, versioning, and publishing |
 | Social | Build a healthy community where contributors feel welcomed and guided |
 | Emotional | Avoid burnout from the growing volume of contributions and issues |
 | Emotional | Feel that their project is sustainable, not just surviving |
@@ -49,6 +51,8 @@
 | High | No way to enforce project-specific coding standards automatically beyond basic linting |
 | Medium | Automated scanning tools (security, code quality) generate noise — hard to distinguish real issues |
 | Medium | Onboarding contributors to the project's specific patterns and conventions is time-consuming |
+| Medium | Dependency upgrades require manual changelog review and breakage risk assessment — Dependabot creates noise without project-specific context |
+| Medium | Release coordination is manual — changelog curation, version bumping, and publishing require synchronous maintainer attention |
 | Medium | Feature requests pile up with no framework to evaluate which ones matter most to users |
 | Low | Sponsorship/funding doesn't scale with project popularity or maintenance burden |
 
@@ -68,6 +72,22 @@
 ## Key Insight
 
 > Open-source maintainers are the most **time-constrained** users in the software ecosystem. They don't need more AI to *write* code — they need AI that *understands their project deeply enough* to review contributions, enforce conventions, and handle routine tasks so they can focus on architecture and community. The key unlock is project-specific intelligence, not generic coding ability.
+
+## Feature Evaluation Criteria
+
+When evaluating whether a feature is worth Kai's time and adoption risk:
+
+| Criterion | Question |
+|-----------|----------|
+| **Review burden** | Does this reduce time spent reviewing contributions without adding maintainer overhead? |
+| **Convention enforcement** | Does this enforce project-specific rules, not just generic coding standards? |
+| **GitHub-native** | Does this work with Issues, PRs, and Actions — the tools Kai already lives in? |
+| **Cost ceiling** | Is this free or under $20/month? (OSS projects cannot justify SaaS pricing) |
+| **Contributor UX** | Does this improve contributor experience without adding new maintainer responsibilities? |
+| **Backwards compatibility** | Does this respect the project's stability contract with existing users? |
+| **Scale range** | Does this work for a 200-star hobby project and a 50k-star ecosystem library alike? |
+
+A feature scores high for Kai (4-5/5) when it reduces async review work, enforces conventions automatically, or handles routine coordination (dependency updates, release notes) without requiring Kai to be online. A feature scores low (0-1/5) when it adds configuration burden, requires paid tiers, or is primarily useful for teams rather than solo/small maintainer groups.
 
 ## Sources
 

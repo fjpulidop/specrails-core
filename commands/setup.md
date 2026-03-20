@@ -801,10 +801,36 @@ For each selected command, read the template and adapt:
 
 Adapt:
 - CI commands to match detected stack
-- Persona references to match generated personas
+- **Persona references** to match generated personas (see substitution rules below)
 - File paths to match project structure
 - Layer tags to match detected layers
 - **Backlog provider commands** based on `BACKLOG_PROVIDER`:
+
+#### Backlog command persona placeholder substitution
+
+When adapting `update-product-driven-backlog.md` and `product-backlog.md`, substitute the persona placeholders based on the full persona set (user-generated personas + Maintainer if `IS_OSS=true`):
+
+| Placeholder | Substitution rule |
+|-------------|------------------|
+| `{{PERSONA_FILE_READ_LIST}}` | One bullet per persona file: `- Read \`.claude/agents/personas/{name}.md\`` |
+| `{{PERSONA_SCORE_HEADERS}}` | Column headers for each persona nickname: e.g., `Alex \| Sara \| Kai` |
+| `{{PERSONA_SCORE_SEPARATORS}}` | One `------` separator per persona column |
+| `{{PERSONA_FIT_FORMAT}}` | Inline score display: e.g., `Alex: X/5, Sara: X/5, Kai: X/5` |
+| `{{PERSONA_VPC_SECTIONS}}` | One VPC section block per persona (see format below) |
+| `{{MAX_SCORE}}` | Total max score = 5 × number of personas (e.g., `15` for 3 personas) |
+| `{{PERSONA_NAMES_WITH_ROLES}}` | Comma-separated: e.g., `Alex (Lead Dev), Sara (Product Founder), Kai (OSS Maintainer)` |
+
+**`{{PERSONA_VPC_SECTIONS}}` format** — repeat for each persona in order:
+```
+### "{Nickname}" — The {Role} (X/5)
+- **Jobs addressed**: {list}
+- **Pains relieved**: {list with severity}
+- **Gains created**: {list with impact}
+```
+
+**Kai inclusion rule**: When `IS_OSS=true`, Kai (`sr-the-maintainer.md`) is always the last entry in persona lists and the rightmost column in scoring tables. Kai uses the evaluation criteria defined in `.claude/agents/personas/sr-the-maintainer.md` — features score high (4-5/5) for Kai when they reduce async review burden, enforce project-specific conventions, or automate release/dependency coordination; features score low (0-1/5) when they add configuration complexity or require paid tiers.
+
+**When `IS_OSS=false`**: All Kai-related persona references are omitted. `{{MAX_SCORE}}` reduces by 5. Tables and inline scores contain only user-generated personas.
 
 #### GitHub Issues (`BACKLOG_PROVIDER=github`)
 - Issue fetch: `gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body`
