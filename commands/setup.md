@@ -8,9 +8,13 @@ Interactive wizard to configure the full agent workflow system for this reposito
 
 ## Mode Detection
 
-Check if `$ARGUMENTS` contains `--update`:
-- If yes → execute **Update Mode** (below), then stop. Do NOT continue to the full setup wizard.
-- If no → skip to **Phase 1** and execute the full setup wizard.
+Check `$ARGUMENTS` in this order:
+
+1. If `--update` is present → execute **Update Mode** (below), then stop. Do NOT continue to Phase 1 or Quick Start.
+2. If `--advanced` is present → skip directly to **Phase 1** and execute the full 5-phase wizard.
+3. Otherwise (no flags) → execute **Quick Start Mode** (below), then stop. Do NOT execute Phase 1.
+
+**Default is Quick Start.** The full wizard only runs when `--advanced` is explicitly passed.
 
 ---
 
@@ -190,6 +194,125 @@ Update `.specrails-manifest.json` to reflect the new checksums for all regenerat
 - For each regenerated agent: update its checksum entry to the new template's checksum
 - For each added agent: add a new entry with its checksum
 - Update the `version` field to the version read from `.specrails-version`
+
+---
+
+## Quick Start Mode
+
+When no flags are passed (the default), run this streamlined 3-question setup. Do NOT run Phase 1–5. When QS4 is complete, stop.
+
+### QS1: Ask the 3 questions
+
+Ask exactly these questions in sequence. Do not ask any other questions.
+
+```
+Welcome to specrails! Let's get your AI agent team set up in 3 quick questions.
+
+1. What is this project? (one sentence)
+   > _
+
+2. Who are the target users?
+   > _
+
+3. Git access for agents — read-only or read-write?
+   (read-only = agents can read and suggest; read-write = agents can commit)
+   > _
+```
+
+Store the answers as:
+- `QS_PROJECT_DESCRIPTION` — answer to question 1
+- `QS_TARGET_USERS` — answer to question 2
+- `QS_GIT_ACCESS` — "read-only" or "read-write" (normalize if user types "ro", "rw", "readonly", etc.)
+
+### QS2: Apply opinionated defaults
+
+Use these defaults for all configuration not asked in QS1:
+
+| Setting | Quick Start Default |
+|---------|-------------------|
+| Agents enabled | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
+| Git mode | Derived from QS_GIT_ACCESS |
+| CLAUDE.md template | `templates/CLAUDE-quickstart.md` |
+| OpenSpec enabled | Yes if `openspec` CLI is detected in PATH, No otherwise |
+| Telemetry | Not configured (deferred to PRD-002) |
+| Backlog provider | None (user can configure later with `/setup --advanced`) |
+
+Detect whether this is an existing codebase or new project:
+- **Existing codebase**: `package.json`, `Gemfile`, `pyproject.toml`, `go.mod`, or `pom.xml` found in the repo root
+- **New project**: none of the above found
+
+Store as `QS_IS_EXISTING_CODEBASE=true/false`.
+
+### QS3: Generate files
+
+Generate files using the Quick Start defaults.
+
+**1. CLAUDE.md**
+
+Read `setup-templates/claude-md/CLAUDE-quickstart.md` (or fall back to `setup-templates/claude-md/default.md` if quickstart template is not found).
+
+Replace placeholders:
+- `{{PROJECT_NAME}}` → derive from directory name or README.md first heading
+- `{{PROJECT_DESCRIPTION}}` → `QS_PROJECT_DESCRIPTION`
+- `{{TARGET_USERS}}` → `QS_TARGET_USERS`
+- `{{GIT_ACCESS}}` → `QS_GIT_ACCESS`
+
+Write to `CLAUDE.md` in the repo root. If `CLAUDE.md` already exists, ask:
+> "CLAUDE.md already exists. Overwrite? [Y/n]"
+Skip if user says no.
+
+**2. Agent files**
+
+For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `setup-templates/agents/<name>.md` and generate the adapted agent file at `.claude/agents/<name>.md`.
+
+Fill placeholders with best-effort values from the limited context available:
+- `{{PROJECT_NAME}}` → directory name or README first heading
+- `{{PROJECT_DESCRIPTION}}` → `QS_PROJECT_DESCRIPTION`
+- `{{TARGET_USERS}}` → `QS_TARGET_USERS`
+- `{{GIT_ACCESS}}` → `QS_GIT_ACCESS`
+- `{{ARCHITECTURE_DIAGRAM}}` → "(Quick Start — run `/setup --advanced` for full architecture analysis)"
+- `{{TECH_EXPERTISE}}` → "(Quick Start — run `/setup --advanced` for codebase-specific expertise)"
+- `{{LAYER_TAGS}}` → detect from package.json / Gemfile / go.mod if present; otherwise leave empty
+- All other placeholders → "(not configured — run `/setup --advanced`)"
+
+Create memory directories: `.claude/agent-memory/sr-<name>/`
+
+**3. Command files**
+
+Copy core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`:
+- `implement.md`
+- `batch-implement.md`
+- `propose-spec.md`
+- `health-check.md`
+- `compat-check.md`
+- `why.md`
+
+Do NOT copy `product-backlog.md` or `update-product-driven-backlog.md` (no backlog provider configured).
+
+**4. Cleanup**
+
+Remove `setup-templates/` from `.claude/` (same as full wizard cleanup in Phase 5).
+
+Remove `commands/setup.md` from `.claude/commands/` if it was copied there by the installer.
+
+### QS4: First Task Prompt
+
+After generating all files, display the setup complete message.
+
+Then, based on `QS_IS_EXISTING_CODEBASE`:
+- **Existing codebase** (`true`): recommend `/sr:health-check`
+- **New project** (`false`): recommend `/sr:product-backlog`
+
+```
+✅ Setup complete.
+
+Try your first command:
+  > /sr:product-backlog
+```
+
+(Replace `/sr:product-backlog` with `/sr:health-check` for existing codebases.)
+
+Then stop. Do not execute Phase 1.
 
 ---
 
@@ -874,3 +997,25 @@ Note: Only commands selected during setup are shown. Backlog commands are exclud
 - `/sr:product-backlog` — see prioritized feature ideas
 - `/sr:update-product-driven-backlog` — discover new features using VPC
 ```
+
+## First Task Prompt (Advanced Mode)
+
+After displaying the setup complete summary above, detect the project type and output:
+
+**New project** (no `package.json`, `Gemfile`, `pyproject.toml`, `go.mod`, or `pom.xml` in root):
+```
+✅ Setup complete.
+
+Try your first spec:
+  > /sr:product-backlog
+```
+
+**Existing codebase** (one or more of the above files found in root):
+```
+✅ Setup complete.
+
+Try your first spec:
+  > /sr:health-check
+```
+
+Then stop.

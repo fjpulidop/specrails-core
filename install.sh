@@ -149,6 +149,12 @@ generate_manifest() {
     artifacts_json="${artifacts_json}
     \"commands/setup.md\": \"${setup_checksum}\""
 
+    # Include commands/doctor.md
+    local doctor_checksum
+    doctor_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/doctor.md" | awk '{print $1}')"
+    artifacts_json="${artifacts_json},
+    \"commands/doctor.md\": \"${doctor_checksum}\""
+
     cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
 {
   "version": "${version}",
@@ -186,36 +192,33 @@ if command -v claude &> /dev/null; then
 else
     fail "Claude Code CLI not found."
     echo ""
-    echo "    Install it with: npm install -g @anthropic-ai/claude-code"
-    echo "    Or see: https://docs.anthropic.com/en/docs/claude-code"
+    echo "    Install it: https://claude.ai/download"
     exit 1
 fi
 
-# 1.3 npm
+# 1.3 API key
+if claude config list 2>/dev/null | grep -q "api_key" || [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+    ok "Claude API key: configured"
+else
+    fail "No Claude API key configured."
+    echo ""
+    echo "    Set it:  claude config set api_key <your-key>"
+    echo "    Get one: https://console.anthropic.com/"
+    exit 1
+fi
+
+# 1.4 npm
 if command -v npm &> /dev/null; then
     NPM_VERSION=$(npm --version 2>/dev/null)
     ok "npm: v$NPM_VERSION"
     HAS_NPM=true
 else
-    warn "npm not found. Required for OpenSpec CLI."
-    echo ""
-    if [ "$AUTO_YES" = true ]; then INSTALL_NPM="y"; else read -p "    Install npm via nvm? (y/n): " INSTALL_NPM; fi
-    if [ "$INSTALL_NPM" = "y" ] || [ "$INSTALL_NPM" = "Y" ]; then
-        info "Installing nvm + node..."
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
-        export NVM_DIR="$HOME/.nvm"
-        [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-        nvm install --lts
-        nvm use --lts
-        ok "npm installed: v$(npm --version)"
-        HAS_NPM=true
-    else
-        warn "Skipping npm install. OpenSpec CLI will not be available."
-        HAS_NPM=false
-    fi
+    warn "npm not found. OpenSpec CLI will be unavailable."
+    echo "    Install npm: https://docs.npmjs.com/downloading-and-installing-node-js-and-npm"
+    HAS_NPM=false
 fi
 
-# 1.4 OpenSpec CLI
+# 1.5 OpenSpec CLI
 if command -v openspec &> /dev/null; then
     OPENSPEC_VERSION=$(openspec --version 2>/dev/null || echo "unknown")
     ok "OpenSpec CLI: $OPENSPEC_VERSION"
@@ -252,7 +255,7 @@ else
     fi
 fi
 
-# 1.5 GitHub CLI (optional)
+# 1.6 GitHub CLI (optional)
 if command -v gh &> /dev/null; then
     if gh auth status &> /dev/null; then
         ok "GitHub CLI: authenticated"
@@ -266,7 +269,7 @@ else
     HAS_GH=false
 fi
 
-# 1.6 OSS detection (requires gh auth; degrades gracefully)
+# 1.7 OSS detection (requires gh auth; degrades gracefully)
 IS_OSS=false
 HAS_PUBLIC_REPO=false
 HAS_CI=false
@@ -289,7 +292,7 @@ if [ "$HAS_GH" = true ]; then
     fi
 fi
 
-# 1.7 JIRA CLI (optional)
+# 1.8 JIRA CLI (optional)
 if command -v jira &> /dev/null; then
     ok "JIRA CLI: found"
     HAS_JIRA=true
@@ -361,6 +364,16 @@ mkdir -p "$REPO_ROOT/.claude/agent-memory/explanations"
 # Copy the /setup command
 cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
 ok "Installed /setup command"
+
+# Copy the /doctor command
+cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/.claude/commands/doctor.md"
+ok "Installed /doctor command"
+
+# Install bin/doctor.sh for standalone use
+mkdir -p "$REPO_ROOT/.specrails/bin"
+cp "$SCRIPT_DIR/bin/doctor.sh" "$REPO_ROOT/.specrails/bin/doctor.sh"
+chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
+ok "Installed specrails doctor (bin/doctor.sh)"
 
 # Copy templates
 cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/.claude/setup-templates/"
