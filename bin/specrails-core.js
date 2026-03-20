@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execSync } = require("child_process");
+const { spawnSync } = require("child_process");
 const { resolve } = require("path");
 
 const ROOT = resolve(__dirname, "..");
@@ -33,11 +33,28 @@ if (!script) {
   process.exit(1);
 }
 
-const forwarded = args.slice(1).join(" ");
-const cmd = `bash "${resolve(ROOT, script)}" ${forwarded}`.trim();
+// Allowlisted flags per subcommand (defense-in-depth — spawnSync already
+// prevents shell injection, but an explicit allowlist rejects unknown flags
+// before the shell script is ever invoked).
+const ALLOWED_FLAGS = {
+  init: ["--root-dir", "--yes", "-y"],
+  update: ["--only"],
+  doctor: [],
+};
 
-try {
-  execSync(cmd, { stdio: "inherit", cwd: process.cwd() });
-} catch (err) {
-  process.exit(err.status || 1);
+const subargs = args.slice(1);
+const allowed = ALLOWED_FLAGS[subcommand] ?? [];
+
+for (const arg of subargs) {
+  if (arg.startsWith("-") && !allowed.includes(arg)) {
+    console.error(`Unknown flag: ${arg}`);
+    process.exit(1);
+  }
 }
+
+const result = spawnSync("bash", [resolve(ROOT, script), ...subargs], {
+  stdio: "inherit",
+  cwd: process.cwd(),
+});
+
+process.exit(result.status ?? (result.error ? 1 : 0));
