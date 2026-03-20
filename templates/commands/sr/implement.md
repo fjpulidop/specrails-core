@@ -182,6 +182,65 @@ If neither pattern is found, print:
 
 This advisory is non-blocking and suppressed when `.gitignore` already covers the file.
 
+#### Pipeline state initialization
+
+Set `PIPELINE_STATE_PATH=.claude/pipeline-state/<feature-name>.json` (use the same kebab-case feature name derived above).
+
+Create the directory if it does not exist:
+
+```bash
+mkdir -p .claude/pipeline-state
+```
+
+Write the initial state file:
+
+```json
+{
+  "schema_version": "1",
+  "feature": "<feature-name>",
+  "started_at": "<current ISO 8601 timestamp>",
+  "updated_at": "<current ISO 8601 timestamp>",
+  "phases": {
+    "architect": "pending",
+    "developer": "pending",
+    "test-writer": "pending",
+    "doc-sync": "pending",
+    "reviewer": "pending",
+    "ship": "pending",
+    "ci": "pending"
+  },
+  "last_successful_phase": null,
+  "failed_phase": null,
+  "error_context": null,
+  "openspec_artifacts": "openspec/changes/<feature-name>/",
+  "implemented_files": [],
+  "input": {
+    "issues": [<issue numbers, or null for text-description mode>],
+    "flags": {
+      "dry_run": <DRY_RUN>,
+      "apply_mode": <APPLY_MODE>,
+      "single_mode": <SINGLE_MODE>
+    }
+  }
+}
+```
+
+If the write fails: print `[pipeline-state] Warning: could not write state file. Smart retry (/sr:retry) will not be available for this run.` Set `PIPELINE_STATE_AVAILABLE=false`. Do NOT abort the pipeline.
+
+If the write succeeds: set `PIPELINE_STATE_AVAILABLE=true`.
+
+**State update helper** — used by all subsequent phases to record progress:
+
+When a phase completes or fails, update `PIPELINE_STATE_PATH`:
+1. Read the current file.
+2. Set `phases.<phase-key>` to `"done"`, `"failed"`, or `"skipped"`.
+3. If `"done"`: set `last_successful_phase` to the phase key.
+4. If `"failed"`: set `failed_phase` to the phase key; set `error_context` to a one-line description of the failure (agent name, error type, exit code if known).
+5. Set `updated_at` to the current ISO 8601 timestamp.
+6. Overwrite the file.
+
+If `PIPELINE_STATE_AVAILABLE=false`: skip all state updates silently.
+
 **If the user passed area names**:
 - Check for open backlog issues. If found, filter and pick top 3.
 - If none, proceed to Phase 1.
@@ -331,6 +390,8 @@ Quick-check each architect's artifacts:
 3. File references are real (>70% must exist)
 4. Layer tags present on tasks
 
+**Pipeline state:** update `architect` → `done`. If any architect agent failed (skipped area): update `architect` → `failed` with error context `"sr-architect failed for: <area-names>"`.
+
 ## Phase 3b: Implement
 
 ### Pre-flight: Verify Bash permission
@@ -371,6 +432,8 @@ For each feature, analyze the tasks' layer tags:
 
 Wait for all developers to complete.
 
+**Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"sr-developer failed: <exit code or error description>"`.
+
 ## Phase 3c: Write Tests
 
 Launch a **sr-test-writer** agent for each feature immediately after its developer completes.
@@ -403,6 +466,8 @@ If a test-writer agent fails or times out:
 - Continue to Phase 4 — the sr-test-writer failure is non-blocking
 - Include in the reviewer agent prompt: "Note: the sr-test-writer failed for this feature. Check for coverage gaps."
 
+**Pipeline state:** update `test-writer` → `done` (or `failed` with error context `"sr-test-writer timed out or errored"`). Failure does not block the pipeline.
+
 ## Phase 3d: Doc Sync
 
 Launch a **sr-doc-sync** agent for each feature after its tests are written.
@@ -434,6 +499,8 @@ If a doc-sync agent fails or times out:
 - Record `Docs: FAILED` for that feature in the Phase 4e report
 - Continue to Phase 4 — the sr-doc-sync failure is non-blocking
 - Include in the reviewer agent prompt: "Note: the sr-doc-sync agent failed for this feature."
+
+**Pipeline state:** update `doc-sync` → `done` (or `failed` with error context `"sr-doc-sync timed out or errored"`). Failure does not block the pipeline.
 
 ## Phase 4: Merge & Review
 
@@ -609,6 +676,8 @@ Note: if total layer report length is very large, truncate each layer report to 
 **The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
 
 Launch the **sr-reviewer** agent (foreground, `run_in_background: false`). Wait for it to complete.
+
+**Pipeline state:** update `reviewer` → `done` (or `failed` with error context `"sr-reviewer timed out or did not complete"` if the agent errored out).
 
 **If `DRY_RUN=true`**, add the following to the reviewer agent prompt:
 
@@ -838,11 +907,15 @@ All implementation is complete and CI checks pass.
   | #71 / PROJ-71 | Partial progress | Comment: "X completed, Y remaining" |
   ```
 
+**Pipeline state:** update `ship` → `done` if git operations and PR creation succeeded, or `failed` with error context describing which step failed (e.g. `"git push failed: <exit code>"`, `"gh pr create failed"`, `"security gate blocked ship"`). If `DRY_RUN=true`: update `ship` → `skipped`.
+
 ### 4d. Monitor CI
 
 **Only if `GIT_AUTO=true` and code was pushed.**
 
 Check CI status after pushing. Fix failures (up to 2 retries).
+
+**Pipeline state:** update `ci` → `done` if CI passed, or `failed` with error context `"CI failed after 2 retries: <summary>"`. If CI was not run (`GIT_AUTO=false` or dry-run): update `ci` → `skipped`.
 
 If `GIT_AUTO=false`: skip — the user will push and monitor CI themselves.
 
