@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.7.0](https://github.com/fjpulidop/specrails-core/compare/v1.6.1...v1.7.0) (2026-03-20)
+
+
+### Features
+
+* **agents:** add performance regression detector agent and CI workflow ([#133](https://github.com/fjpulidop/specrails-core/issues/133)) ([693d6ef](https://github.com/fjpulidop/specrails-core/commit/693d6efce2ab854063759db13fa234f9a6663fa5))
+* **commands:** add smart merge conflict resolver (backlog [#3](https://github.com/fjpulidop/specrails-core/issues/3)) ([#134](https://github.com/fjpulidop/specrails-core/issues/134)) ([562b237](https://github.com/fjpulidop/specrails-core/commit/562b23720a5d35f703effb830ddbdc22590fda6e))
+* **commands:** add VPC context-aware scoring to refactor-recommender ([#135](https://github.com/fjpulidop/specrails-core/issues/135)) ([ad0c195](https://github.com/fjpulidop/specrails-core/commit/ad0c1953059309906d76125f5bef615a54cc5e1c))
+* **web-manager:** add zombie job detection and auto-termination ([#128](https://github.com/fjpulidop/specrails-core/issues/128)) ([0f8c718](https://github.com/fjpulidop/specrails-core/commit/0f8c71876d4e191eb2c9cbbfc67c73de0eb9a462))
+
 ## [1.6.1](https://github.com/fjpulidop/specrails-core/compare/v1.6.0...v1.6.1) (2026-03-20)
 
 
