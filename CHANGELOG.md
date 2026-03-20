@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.1.0](https://github.com/fjpulidop/specrails-core/compare/v1.0.1...v1.1.0) (2026-03-20)
+
+
+### Features
+
+* **agents:** enhance sr-doc-sync with drift detection and severity ([56e9280](https://github.com/fjpulidop/specrails-core/commit/56e9280462bbf1afc64eff4fc8f1e2d063c24359))
+* **onboarding:** specrails-core Onboarding v1 (RFC-001) ([e08dda5](https://github.com/fjpulidop/specrails-core/commit/e08dda520a23060a8af89bd2047661cd1f9b1b95))
+* wire sr-security-reviewer into /setup command ([3bdc229](https://github.com/fjpulidop/specrails-core/commit/3bdc229a8aa8306451ec0ca918943c37b5777300))
+* wire sr-test-writer into /setup command ([dcb82ec](https://github.com/fjpulidop/specrails-core/commit/dcb82ec25f3d93b1e578d0963339af405d71e717))
+
 ## [1.0.1](https://github.com/fjpulidop/specrails-core/compare/v1.0.0...v1.0.1) (2026-03-19)
 
 
