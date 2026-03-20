@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.0](https://github.com/fjpulidop/specrails-core/compare/v1.2.0...v1.3.0) (2026-03-20)
+
+
+### Features
+
+* add agent personality customization (backlog [#15](https://github.com/fjpulidop/specrails-core/issues/15)) ([#115](https://github.com/fjpulidop/specrails-core/issues/115)) ([f87e2dd](https://github.com/fjpulidop/specrails-core/commit/f87e2dd8520331e2b9662ae74f49a444386a7d0e))
+* **commands:** add /sr:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
+
 ## [1.2.0](https://github.com/fjpulidop/specrails-core/compare/v1.1.0...v1.2.0) (2026-03-20)
 
 
