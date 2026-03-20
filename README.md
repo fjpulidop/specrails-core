@@ -178,6 +178,18 @@ specrails-core is stack-agnostic — the setup wizard reads your actual files an
 **Can I customize the agents after installation?**
 Yes. Files in `.claude/` are plain markdown — edit agent personalities, adjust CI commands, add rules, create personas.
 
+**How do I customize an agent's personality?**
+Each agent template (`sr-architect`, `sr-developer`, `sr-reviewer`) includes a `## Personality` section with four configurable settings:
+
+| Setting | Options | What it controls |
+|---|---|---|
+| `tone` | `terse` / `verbose` | How much explanation the agent includes in its output |
+| `risk_tolerance` | `conservative` / `aggressive` | How cautious the agent is when making decisions |
+| `detail_level` | `summary` / `full` | Granularity of output artifacts and reports |
+| `focus_areas` | comma-separated keywords | Areas the agent prioritizes (e.g. `security, performance`) |
+
+After running `/setup`, edit `.claude/agents/sr-architect.md` (or `sr-developer.md` / `sr-reviewer.md`) and change the values inline. Existing setups without a `## Personality` section continue to work unchanged — defaults apply.
+
 **Can I re-run setup?**
 Run `npx specrails-core@latest init --root-dir <path>` again to re-scaffold, then `/setup`.
 
