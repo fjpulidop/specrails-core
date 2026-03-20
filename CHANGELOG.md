@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.6.1](https://github.com/fjpulidop/specrails-core/compare/v1.6.0...v1.6.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* **docs:** remove DeckDex-contaminated documentation files ([#129](https://github.com/fjpulidop/specrails-core/issues/129)) ([0785f05](https://github.com/fjpulidop/specrails-core/commit/0785f05ae6386f2c2e2b2ce832a8217a3458cf08))
+* **docs:** remove DeckDex-contaminated documentation files ([#131](https://github.com/fjpulidop/specrails-core/issues/131)) ([69aa4e9](https://github.com/fjpulidop/specrails-core/commit/69aa4e902532c5dbbd52d22de103fa17eea10ab5))
+
 ## [1.6.0](https://github.com/fjpulidop/specrails-core/compare/v1.5.0...v1.6.0) (2026-03-20)
 
 
