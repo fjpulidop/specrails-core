@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.7.2](https://github.com/fjpulidop/specrails-core/compare/v1.7.1...v1.7.2) (2026-03-20)
+
+
+### Bug Fixes
+
+* **ci:** remove non-existent test-doctor.sh from test runner ([d84f6bf](https://github.com/fjpulidop/specrails-core/commit/d84f6bf85b1bb5fa132d528857f2049831ddaf60))
+* **ci:** run actual test suite instead of suppressing all errors ([bc20972](https://github.com/fjpulidop/specrails-core/commit/bc20972f95c267b578ab16c42086b2e69313e766))
+* **cli:** replace execSync with spawnSync to eliminate command injection ([32631d9](https://github.com/fjpulidop/specrails-core/commit/32631d98b19b17d8a4b91153a416a57d7fc673e6))
+* **security:** replace execSync+string-concat with spawnSync+argv array (HIGH-01) ([01e7b44](https://github.com/fjpulidop/specrails-core/commit/01e7b44391c31d01c0d7e007fb38fc4e5f3f7707))
+* **tests:** replace ((X++)) with POSIX-safe arithmetic to fix CI ([c43c28c](https://github.com/fjpulidop/specrails-core/commit/c43c28c6283c5e5b6d8ec3e245eb289e1814e947))
+
 ## [1.7.1](https://github.com/fjpulidop/specrails-core/compare/v1.7.0...v1.7.1) (2026-03-20)
 
 
