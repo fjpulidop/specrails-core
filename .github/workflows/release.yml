@@ -30,3 +30,12 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Notify specrails-hub of new release
+        if: ${{ steps.release.outputs.release_created }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.HUB_DISPATCH_TOKEN }}
+          repository: fjpulidop/specrails-hub
+          event-type: specrails-core-released
+          client-payload: '{"core_version": "${{ steps.release.outputs.tag_name }}"}'
