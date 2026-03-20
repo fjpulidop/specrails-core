@@ -379,6 +379,7 @@ Which agents do you want to install?
 | sr-architect | Design features, create implementation plans | Sonnet | Yes |
 | sr-developer (full-stack) | Implement features across all layers | Sonnet | Yes |
 | sr-reviewer | CI/CD quality gate, fix issues | Sonnet | Yes |
+| sr-test-writer | Generate unit, integration, and edge-case tests after implementation | Sonnet | Yes |
 | sr-product-manager | Product discovery, ideation, VPC evaluation | Opus | Recommended |
 | sr-product-analyst | Read-only backlog analysis | Haiku | Recommended |
 | sr-backend-developer | Specialized backend implementation | Sonnet | If backend layer exists |
@@ -615,6 +616,7 @@ For each selected agent, read the template and generate the adapted version:
 - `setup-templates/agents/sr-architect.md` → `.claude/agents/sr-architect.md`
 - `setup-templates/agents/sr-developer.md` → `.claude/agents/sr-developer.md`
 - `setup-templates/agents/sr-reviewer.md` → `.claude/agents/sr-reviewer.md`
+- `setup-templates/agents/sr-test-writer.md` → `.claude/agents/sr-test-writer.md`
 - `setup-templates/agents/sr-product-manager.md` → `.claude/agents/sr-product-manager.md`
 - `setup-templates/agents/sr-product-analyst.md` → `.claude/agents/sr-product-analyst.md`
 - `setup-templates/agents/sr-backend-developer.md` → `.claude/agents/sr-backend-developer.md` (if backend layer)
@@ -636,6 +638,8 @@ When generating each agent:
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase 1
    - `{{WARNINGS}}` → project-specific warnings (from existing CLAUDE.md or detected)
    - `{{MEMORY_PATH}}` → agent memory directory path (e.g., `.claude/agent-memory/sr-<agent-name>/`)
+   - `{{TECH_EXPERTISE}}` → detected languages, frameworks, and test frameworks from Phase 1
+   - `{{LAYER_CLAUDE_MD_PATHS}}` → comma-separated paths to per-layer rules files (e.g., `.claude/rules/backend.md`, `.claude/rules/frontend.md`)
 3. Write the final file
 
 ### 4.2 Generate personas
@@ -819,6 +823,7 @@ Display the complete installation summary:
 | sr-architect | .claude/agents/sr-architect.md | Sonnet |
 | sr-developer | .claude/agents/sr-developer.md | Sonnet |
 | sr-reviewer | .claude/agents/sr-reviewer.md | Sonnet |
+| sr-test-writer | .claude/agents/sr-test-writer.md | Sonnet |
 | sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
 
 ### Personas Created
