@@ -106,17 +106,17 @@ assert_exit_code() {
 run_test() {
     local test_name="$1"
     local test_fn="$2"
-    ((TESTS_RUN++))
+    TESTS_RUN=$(( TESTS_RUN + 1 ))
 
     setup_test_env
 
     echo -n "  $test_name ... "
     if $test_fn; then
         echo -e "${GREEN}PASS${NC}"
-        ((TESTS_PASSED++))
+        TESTS_PASSED=$(( TESTS_PASSED + 1 ))
     else
         echo -e "${RED}FAIL${NC}"
-        ((TESTS_FAILED++))
+        TESTS_FAILED=$(( TESTS_FAILED + 1 ))
         FAILED_TESTS+=("$test_name")
     fi
 
