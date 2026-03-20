@@ -39,3 +39,12 @@ jobs:
           repository: fjpulidop/specrails-hub
           event-type: specrails-core-released
           client-payload: '{"core_version": "${{ steps.release.outputs.tag_name }}"}'
+
+      - name: Notify specrails-web of new release
+        if: ${{ steps.release.outputs.release_created }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          repository: fjpulidop/specrails-web
+          event-type: specrails-core-released
+          client-payload: '{"core_version": "${{ steps.release.outputs.tag_name }}"}'

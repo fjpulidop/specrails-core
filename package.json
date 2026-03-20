@@ -13,6 +13,7 @@
     "prompts/",
     ".claude/skills/",
     "commands/",
+    "docs/",
     "VERSION",
     "integration-contract.json"
   ],
