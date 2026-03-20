@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.7.1](https://github.com/fjpulidop/specrails-core/compare/v1.7.0...v1.7.1) (2026-03-20)
+
+
+### Bug Fixes
+
+* **tests:** bypass Claude CLI/API key prereqs in install.sh test suite ([1641212](https://github.com/fjpulidop/specrails-core/commit/16412129ef9faa3115d6136e29506ea2c5ee7973))
+* **tests:** bypass Claude CLI/API key prereqs in install.sh test suite ([4d6bdb6](https://github.com/fjpulidop/specrails-core/commit/4d6bdb6a82a2c2a25c0735d9d5bf98694f8eb900))
+
 ## [1.7.0](https://github.com/fjpulidop/specrails-core/compare/v1.6.1...v1.7.0) (2026-03-20)
 
 
