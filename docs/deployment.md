@@ -18,7 +18,7 @@ SpecRails runs locally — no cloud infrastructure required. Choose the setup th
 The fastest way to get started. No install required.
 
 ```bash
-npx specrails@latest setup
+npx specrails-core@latest setup
 ```
 
 This will:

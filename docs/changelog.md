@@ -141,7 +141,7 @@ All commands renamed from `/<name>` to `/sr:<name>`. All agent files renamed fro
 - `update.sh` auto-migrates command namespace changes
 
 **Distribution**
-- `npx specrails@latest init`
+- `npx specrails-core@latest init`
 - `curl | bash` installer
 - `--root-dir` flag for monorepo support
 - `--yes` flag for non-interactive CI installs
