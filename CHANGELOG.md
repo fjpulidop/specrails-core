@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.7.3](https://github.com/fjpulidop/specrails-core/compare/v1.7.2...v1.7.3) (2026-03-20)
+
+
+### Bug Fixes
+
+* **core:** detect OAuth sessions in auth check (Claude Pro/Max users) ([be10d18](https://github.com/fjpulidop/specrails-core/commit/be10d18ae89b9de1d62906ccd49339b846b124b1))
+
 ## [1.7.2](https://github.com/fjpulidop/specrails-core/compare/v1.7.1...v1.7.2) (2026-03-20)
 
 
