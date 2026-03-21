@@ -426,6 +426,7 @@ mkdir -p "$REPO_ROOT/specrails"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/agents"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/commands"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/skills"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/rules"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/personas"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/claude-md"
@@ -447,9 +448,9 @@ cp "$SCRIPT_DIR/bin/doctor.sh" "$REPO_ROOT/.specrails/bin/doctor.sh"
 chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
 ok "Installed specrails doctor (bin/doctor.sh)"
 
-# Copy templates
+# Copy templates (includes commands, skills, agents, rules, personas, settings)
 cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/"
-ok "Installed setup templates"
+ok "Installed setup templates (commands + skills)"
 
 # Write OSS detection results for /setup
 cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.oss-detection.json" << EOF
@@ -519,7 +520,7 @@ echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
 echo ""
 echo "  Files installed:"
 echo "    $SPECRAILS_DIR/commands/setup.md          ← The /setup command"
-echo "    $SPECRAILS_DIR/setup-templates/           ← Templates (temporary, removed after setup)"
+echo "    $SPECRAILS_DIR/setup-templates/           ← Templates: commands + skills (temporary, removed after setup)"
 echo "    .specrails-version                       ← Installed specrails version"
 echo "    .specrails-manifest.json                 ← Artifact checksums for update detection"
 echo ""
