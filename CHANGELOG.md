@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.8.0](https://github.com/fjpulidop/specrails-core/compare/v1.7.3...v1.8.0) (2026-03-21)
+
+
+### Features
+
+* add --provider CLI flag to install.sh arg parser (SPEA-517) ([44dac30](https://github.com/fjpulidop/specrails-core/commit/44dac30b6bd5de7a3bfa94da3625f2246c659c1a))
+* add dual permissions config generation for Codex support (SPEA-508) ([7d32bcf](https://github.com/fjpulidop/specrails-core/commit/7d32bcff647abec7b1a5076f28b2439658ea5f6d))
+* add dual-format agent generation for Codex compatibility (SPEA-509) ([7b398fd](https://github.com/fjpulidop/specrails-core/commit/7b398fd483d12e34362a678a03a877af9da754d3))
+* add provider detection and directory abstraction for Codex support (SPEA-506) ([a8a06f5](https://github.com/fjpulidop/specrails-core/commit/a8a06f502e4727ee5d7151cc49972f0076eae693))
+* migrate /sr:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
+* upgrade integration-contract to v2.0 for dual-CLI support (SPEA-510) ([f92168d](https://github.com/fjpulidop/specrails-core/commit/f92168d9bbc289a2e5df94df499019e147d5b7f1))
+
+
+### Bug Fixes
+
+* add gap-check logic to /setup for idempotent re-runs (SPEA-472) ([3bdc7c2](https://github.com/fjpulidop/specrails-core/commit/3bdc7c25bbff2db8b508dacfb69239fd69f7613e))
+* pull --rebase before push in Sync VERSION step (SPEA-438) ([b4408ed](https://github.com/fjpulidop/specrails-core/commit/b4408edb688344a2cf75936b1de3006def7a7b63))
+
 ## [1.7.3](https://github.com/fjpulidop/specrails-core/compare/v1.7.2...v1.7.3) (2026-03-20)
 
 
