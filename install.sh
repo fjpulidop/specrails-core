@@ -266,17 +266,26 @@ else
     INSTRUCTIONS_FILE="CLAUDE.md"
 fi
 
-# 1.3 API key (provider-specific)
+# 1.3 API key / authentication (provider-specific)
 if [[ "$CLI_PROVIDER" == "claude" ]]; then
-    if claude config list 2>/dev/null | grep -q "api_key" || [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-        ok "Anthropic API key: configured"
+    CLAUDE_AUTHED=false
+    if claude config list 2>/dev/null | grep -q "api_key"; then
+        CLAUDE_AUTHED=true
+    elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        CLAUDE_AUTHED=true
+    elif [[ -f "${HOME}/.claude.json" ]] && grep -q '"oauthAccount"' "${HOME}/.claude.json" 2>/dev/null; then
+        CLAUDE_AUTHED=true
+    fi
+
+    if [[ "$CLAUDE_AUTHED" == "true" ]]; then
+        ok "Claude: authenticated"
     elif [[ "$SKIP_PREREQS" == "1" ]]; then
-        warn "No Anthropic API key configured (skipped — SPECRAILS_SKIP_PREREQS=1)"
+        warn "Claude authentication not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
     else
-        fail "No Anthropic API key configured."
+        fail "No Claude authentication found."
         echo ""
-        echo "    Set it:  claude config set api_key <your-key>"
-        echo "    Get one: https://console.anthropic.com/"
+        echo "    Option 1 (API key): claude config set api_key <your-key>"
+        echo "    Option 2 (OAuth):   claude auth login"
         exit 1
     fi
 else
