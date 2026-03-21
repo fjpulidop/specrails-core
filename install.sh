@@ -59,9 +59,21 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
+        --provider)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --provider requires a value (claude or codex)." >&2
+                exit 1
+            fi
+            if [[ "$2" != "claude" && "$2" != "codex" ]]; then
+                echo "Error: --provider value must be 'claude' or 'codex', got: $2" >&2
+                exit 1
+            fi
+            CLI_PROVIDER="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>] [--yes|-y]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>]" >&2
             exit 1
             ;;
     esac
@@ -202,7 +214,10 @@ if command -v codex &> /dev/null; then
     HAS_CODEX=true
 fi
 
-if [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
+if [[ -n "$CLI_PROVIDER" ]]; then
+    # --provider flag was set explicitly — skip interactive detection
+    ok "Provider: $CLI_PROVIDER (--provider flag)"
+elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
     echo ""
     echo -e "  ${BOLD}Both Claude Code and Codex detected.${NC}"
     if [ "$AUTO_YES" = true ]; then
