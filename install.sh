@@ -290,15 +290,24 @@ if [[ "$CLI_PROVIDER" == "claude" ]]; then
     fi
 else
     # Codex
+    CODEX_AUTHED=false
     if [[ -n "${OPENAI_API_KEY:-}" ]]; then
-        ok "OpenAI API key: configured"
+        CODEX_AUTHED=true
+    elif codex login status 2>/dev/null | grep -qi "logged in"; then
+        CODEX_AUTHED=true
+    elif [[ -f "${HOME}/.codex/auth.json" ]] && grep -q '"access_token"' "${HOME}/.codex/auth.json" 2>/dev/null; then
+        CODEX_AUTHED=true
+    fi
+
+    if [[ "$CODEX_AUTHED" == "true" ]]; then
+        ok "Codex: authenticated"
     elif [[ "$SKIP_PREREQS" == "1" ]]; then
-        warn "No OpenAI API key configured (skipped — SPECRAILS_SKIP_PREREQS=1)"
+        warn "Codex authentication not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
     else
-        fail "No OpenAI API key configured."
+        fail "No Codex authentication found."
         echo ""
-        echo "    Set it:  export OPENAI_API_KEY=<your-key>"
-        echo "    Get one: https://platform.openai.com/api-keys"
+        echo "    Option 1 (API key): export OPENAI_API_KEY=<your-key>"
+        echo "    Option 2 (OAuth):   codex login"
         exit 1
     fi
 fi
