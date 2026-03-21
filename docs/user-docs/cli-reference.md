@@ -410,6 +410,7 @@ The `npx specrails-core@latest init` command accepts:
 |------|--------|
 | `--root-dir <path>` | Install into this directory (default: current directory) |
 | `--yes` / `-y` | Skip confirmation prompts |
+| `--provider <claude\|codex>` | Force a specific AI CLI (default: auto-detect) |
 
 ---
 
