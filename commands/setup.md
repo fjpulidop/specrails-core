@@ -330,6 +330,25 @@ Detect whether this is an existing codebase or new project:
 
 Store as `QS_IS_EXISTING_CODEBASE=true/false`.
 
+### QS2.5: Re-run Detection
+
+Before generating files, check if this is a re-run:
+
+1. Check if `.claude/commands/sr/` directory exists with any `.md` files:
+   ```bash
+   ls .claude/commands/sr/*.md 2>/dev/null
+   ```
+2. If `.md` files are found → this is a **re-run**. Store `QS_IS_RERUN=true`.
+3. If the directory does not exist or is empty → this is a **fresh install**. Store `QS_IS_RERUN=false`.
+
+In re-run mode, QS3 executes in **gap-fill mode** for command files:
+- For each command in the list, check if it already exists at `.claude/commands/sr/<name>.md`
+- If it exists: skip it and show `✓ Already installed: /sr:<name>`
+- If it does NOT exist: install it and show `✓ Added /sr:<name> (was missing)`
+- Do NOT prompt the user for confirmation on missing files — install them automatically
+
+For CLAUDE.md and agent files, the existing per-file prompts already handle re-runs (user is asked before overwriting). No change needed there.
+
 ### QS3: Generate files
 
 Generate files using the Quick Start defaults.
@@ -366,7 +385,7 @@ Create memory directories: `.claude/agent-memory/sr-<name>/`
 
 **3. Command files**
 
-Copy core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`:
+Core commands (always install if missing):
 - `implement.md`
 - `batch-implement.md`
 - `propose-spec.md`
@@ -375,6 +394,12 @@ Copy core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`
 - `why.md`
 
 Do NOT copy `product-backlog.md` or `update-product-driven-backlog.md` (no backlog provider configured).
+
+If `QS_IS_RERUN=false` (fresh install): copy all core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`.
+
+If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
+- If it exists: skip it — show `✓ Already installed: /sr:<name>`
+- If it does NOT exist: copy from `setup-templates/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
 
 **4. Cleanup**
 
@@ -390,14 +415,30 @@ Then, based on `QS_IS_EXISTING_CODEBASE`:
 - **Existing codebase** (`true`): recommend `/sr:health-check`
 - **New project** (`false`): recommend `/sr:product-backlog`
 
+If `QS_IS_RERUN=false`, display:
 ```
 ✅ Setup complete.
 
 Try your first command:
   > /sr:product-backlog
 ```
-
 (Replace `/sr:product-backlog` with `/sr:health-check` for existing codebases.)
+
+If `QS_IS_RERUN=true`, display the gap-fill summary and stop:
+```
+✅ Re-run complete.
+
+Commands status:
+  ✓ Already installed: /sr:<name>
+  ✓ Added /sr:<name> (was missing)
+  [... one line per command ...]
+
+All commands are up to date.
+```
+If all commands were already present, display:
+```
+✅ Re-run complete. All commands already installed — nothing to add.
+```
 
 Then stop. Do not execute Phase 1.
 
