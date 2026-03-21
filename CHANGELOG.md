@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.0](https://github.com/fjpulidop/specrails-core/compare/v2.0.0...v2.1.0) (2026-03-21)
+
+
+### Features
+
+* add standalone /sr:test command and test writer integration ([#166](https://github.com/fjpulidop/specrails-core/issues/166)) ([c315363](https://github.com/fjpulidop/specrails-core/commit/c315363aa39f11b5d9fc1d6b7ae3e123e7dcf301)), closes [#6](https://github.com/fjpulidop/specrails-core/issues/6)
+
 ## [2.0.0](https://github.com/fjpulidop/specrails-core/compare/v1.8.0...v2.0.0) (2026-03-21)
 
 
