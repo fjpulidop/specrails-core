@@ -1006,12 +1006,39 @@ If no CLAUDE.md exists, generate one from the template. If one already exists, *
 
 ### 4.6 Generate settings
 
+Read `.claude/setup-templates/.provider-detection.json` (written by `install.sh`) to determine `cli_provider` (`"claude"` or `"codex"`).
+
+**If `cli_provider == "claude"` (default):**
+
 Create or merge `.claude/settings.json` with permissions for:
 - All detected CI commands
 - Git operations
 - OpenSpec CLI (if installed)
 - GitHub CLI (if available)
 - Language-specific tools (python, npm, cargo, go, etc.)
+
+**If `cli_provider == "codex"`:**
+
+1. Read `setup-templates/settings/codex-config.toml`. Write it to `.codex/config.toml` as-is (no substitutions needed — the TOML is static).
+
+2. Read `setup-templates/settings/codex-rules.star`. Replace `{{CODEX_SHELL_RULES}}` with Starlark `prefix_rule(...)` lines for each detected tool allowance:
+
+   | Detected tool/command | Starlark rule |
+   |----------------------|---------------|
+   | OpenSpec CLI (`openspec`) | `prefix_rule(pattern=["openspec"], decision="allow")` |
+   | Python (`python`, `pip`) | `prefix_rule(pattern=["python"], decision="allow")`<br>`prefix_rule(pattern=["pip"], decision="allow")` |
+   | npm (`npm`) | `prefix_rule(pattern=["npm"], decision="allow")` |
+   | Cargo (`cargo`) | `prefix_rule(pattern=["cargo"], decision="allow")` |
+   | Go (`go`) | `prefix_rule(pattern=["go"], decision="allow")` |
+   | Any detected CI command | `prefix_rule(pattern=["<cmd>"], decision="allow")` |
+
+   Write the rendered file to `.codex/rules/default.rules`.
+
+   ```bash
+   mkdir -p .codex/rules
+   ```
+
+   If `cli_provider` cannot be determined (file missing), fall back to `"claude"` behavior.
 
 ### 4.7 Initialize agent memory
 
