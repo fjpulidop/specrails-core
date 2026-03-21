@@ -294,6 +294,24 @@ Open-ended thinking mode. Use for brainstorming, investigating problems, or clar
 /opsx:explore
 ```
 
+### `/sr:opsx-diff` — Spec Change Diff
+
+Visualize the before/after diff of an OpenSpec change — what behavioral requirements are being added, modified, or removed.
+
+```
+/sr:opsx-diff <change-name>
+/sr:opsx-diff my-feature --format json
+/sr:opsx-diff my-feature --summary-only
+```
+
+| Flag | Effect |
+|------|--------|
+| `<change-name>` | Kebab-case name of the change to diff (required) |
+| `--format json` | Emit structured JSON instead of markdown |
+| `--summary-only` | Show file-level summary only, skip inline line-level diff |
+
+Compares the current specs against the named OpenSpec change. Useful during review to confirm a change matches its design intent before archiving.
+
 ### Typical OpenSpec flow
 
 ```
@@ -313,6 +331,53 @@ Or step by step:
 /opsx:apply       → Implement
 /opsx:archive     → Archive
 ```
+
+---
+
+## `/sr:telemetry`
+
+Inspect per-agent execution metrics: token usage, estimated API cost, run count, average duration, and success/failure rate.
+
+```
+/sr:telemetry
+/sr:telemetry --period today
+/sr:telemetry --agent sr-developer
+/sr:telemetry --format json
+/sr:telemetry --save
+```
+
+### Flags
+
+| Flag | Effect |
+|------|--------|
+| `--period <filter>` | Time window: `today`, `week` (default), or `all` |
+| `--agent <name>` | Focus on a single agent (e.g. `sr-developer`) |
+| `--format <fmt>` | Output format: `markdown` (default) or `json` |
+| `--save` | Write a snapshot to `.claude/telemetry/` after display |
+
+Reads Claude CLI JSONL session logs and agent-memory files to produce a cost dashboard with trend indicators and optimization recommendations.
+
+---
+
+## `/sr:merge-resolve`
+
+Resolve git conflict markers using AI-powered context analysis.
+
+```
+/sr:merge-resolve
+/sr:merge-resolve --files src/api/routes.ts src/db/schema.ts
+/sr:merge-resolve --context openspec/changes/
+```
+
+### Flags
+
+| Flag | Effect |
+|------|--------|
+| `--files <paths>` | Explicit file paths or globs to process (default: auto-detect from working tree) |
+| `--context <dir>` | Directory of OpenSpec context bundles (default: `openspec/changes/`) |
+| `--threshold <n>` | Minimum confidence threshold to auto-apply a resolution |
+
+For each conflict block, the command reads the OpenSpec context bundles from the features that produced the conflict, infers the correct resolution, and writes it in place. Conflicts it cannot safely resolve are left with clean markers for manual review. Always review the result before committing.
 
 ---
 

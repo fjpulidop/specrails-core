@@ -211,6 +211,30 @@ cat .specrails-version
 
 ## Troubleshooting
 
+### Claude Code authentication: OAuth vs API key
+
+Claude Code supports two authentication modes:
+
+- **OAuth** — the default for new installs (`claude auth login`). No API key in `claude config`.
+- **API key** — explicit key set via `claude config set api_key <key>` or the `ANTHROPIC_API_KEY` environment variable.
+
+The installer checks for an API key in `claude config` or `ANTHROPIC_API_KEY`. If you are using OAuth (the default), this check fails even though Claude Code is fully authenticated.
+
+**Workaround:** pass `SPECRAILS_SKIP_PREREQS=1` to bypass the prerequisite gate:
+
+```bash
+SPECRAILS_SKIP_PREREQS=1 npx specrails-core@latest init --root-dir .
+```
+
+Or, if you prefer to authenticate with an API key explicitly:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+npx specrails-core@latest init --root-dir .
+```
+
+`SPECRAILS_SKIP_PREREQS=1` skips all hard-exit prerequisite checks (Claude Code presence, API key, and tool availability). Use it only when you know the prerequisites are met.
+
 ### "This appears to be the specrails source repository"
 
 You're running the installer from inside the SpecRails repo. Run it from your target project instead:

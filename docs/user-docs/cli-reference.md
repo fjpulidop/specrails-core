@@ -1,12 +1,27 @@
 # CLI Reference
 
-All commands are Claude Code slash commands. Run them inside Claude Code (`claude`) from your project directory.
+SpecRails commands are implemented as Skills (`SKILL.md` format) and run in both Claude Code and Codex. The command syntax is identical on both platforms.
+
+**Platform support key used in this reference:**
+
+| Badge | Meaning |
+|-------|---------|
+| ✅ Both | Works in Claude Code and Codex |
+| 🔵 Claude Code | Claude Code only |
+| ⚠️ Limited | Works, but with known limitations (see notes) |
+
+Run commands inside your AI CLI from your project directory:
+
+```bash
+claude   # Claude Code
+codex    # Codex
+```
 
 ---
 
 ## Core workflow
 
-### `/sr:implement`
+### `/sr:implement` ✅ Both
 
 Implement a feature through the full agent pipeline: design → code → tests → docs → review → PR.
 
@@ -41,9 +56,56 @@ Implement a feature through the full agent pipeline: design → code → tests �
 
 A single issue runs sequentially on the current branch. Multiple issues run in parallel — each gets an isolated git worktree, and results are merged automatically.
 
+> **Codex note**: Parallel worktree isolation is limited in Codex CLI beta. For reliable parallel execution use Codex Cloud, or run one issue at a time with Codex CLI.
+
 ---
 
-### `/sr:retry`
+### `/sr:telemetry` ✅ Both
+
+Inspect per-agent execution metrics: token usage, estimated API cost, run count, average duration, and success/failure rate.
+
+```
+/sr:telemetry
+/sr:telemetry --period today
+/sr:telemetry --agent sr-developer
+/sr:telemetry --format json
+/sr:telemetry --save
+```
+
+**Flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--period <filter>` | Time window: `today`, `week` (default), or `all` |
+| `--agent <name>` | Focus on a single agent (e.g. `sr-developer`) |
+| `--format <fmt>` | Output format: `markdown` (default) or `json` |
+| `--save` | Write a snapshot to `.claude/telemetry/` after display |
+
+---
+
+### `/sr:merge-resolve` ✅ Both
+
+Resolve git conflict markers using AI-powered context analysis.
+
+```
+/sr:merge-resolve
+/sr:merge-resolve --files src/api/routes.ts
+/sr:merge-resolve --context openspec/changes/
+```
+
+**Flags:**
+
+| Flag | Effect |
+|------|--------|
+| `--files <paths>` | File paths or globs to process (default: auto-detect from working tree) |
+| `--context <dir>` | Directory containing OpenSpec context bundles (default: `openspec/changes/`) |
+| `--threshold <n>` | Minimum confidence to auto-apply a resolution |
+
+Reads OpenSpec context bundles from the features that produced each conflict, infers the correct resolution, and writes it in place. Conflicts it cannot safely resolve are left with clean markers for manual review.
+
+---
+
+### `/sr:retry` ✅ Both
 
 Resume a failed `/sr:implement` run from the last successful phase.
 
@@ -68,7 +130,7 @@ Pipeline state is saved to `.claude/pipeline-state/<feature-name>.json` after ea
 
 ---
 
-### `/sr:batch-implement`
+### `/sr:batch-implement` ⚠️ Limited on Codex
 
 Implement multiple independent features in parallel using git worktrees.
 
@@ -78,11 +140,13 @@ Implement multiple independent features in parallel using git worktrees.
 
 Each feature gets its own worktree, its own agent pipeline, and its own PR. Use this instead of `/sr:implement` with multiple issues when you want explicit control over parallel execution.
 
+> **Codex note**: Worktree isolation is limited in Codex CLI beta. Prefer Codex Cloud for parallel batch work.
+
 ---
 
 ## Product and backlog
 
-### `/sr:product-backlog`
+### `/sr:product-backlog` ✅ Both
 
 View your prioritized product backlog, ranked by VPC persona fit and estimated effort.
 
@@ -95,7 +159,7 @@ Reads GitHub Issues labeled `product-driven-backlog`. Produces a ranked table pe
 
 ---
 
-### `/sr:update-product-driven-backlog`
+### `/sr:update-product-driven-backlog` ✅ Both
 
 Generate new feature ideas through product discovery and create GitHub Issues.
 
@@ -110,7 +174,7 @@ The Product Manager researches your competitive landscape, generates 2–4 featu
 
 ## Analysis and inspection
 
-### `/sr:health-check`
+### `/sr:health-check` ✅ Both
 
 Run a comprehensive codebase quality analysis.
 
@@ -122,7 +186,7 @@ Analyzes code quality, test coverage, technical debt, complexity, and dependency
 
 ---
 
-### `/sr:refactor-recommender`
+### `/sr:refactor-recommender` ✅ Both
 
 Scan the codebase for refactoring opportunities, ranked by impact/effort ratio.
 
@@ -134,7 +198,7 @@ Identifies duplicates, overly long functions, large files, dead code, outdated p
 
 ---
 
-### `/sr:compat-check`
+### `/sr:compat-check` ✅ Both
 
 Analyze the backwards-compatibility impact of a proposed change.
 
@@ -151,7 +215,7 @@ The Architect runs this automatically as part of every `/sr:implement` pipeline.
 
 ---
 
-### `/sr:why`
+### `/sr:why` ✅ Both
 
 Search agent explanation records in plain language.
 
@@ -165,7 +229,7 @@ Agents write decision rationale to `.claude/agent-memory/explanations/` as they 
 
 ---
 
-### `/sr:vpc-drift`
+### `/sr:vpc-drift` ✅ Both
 
 Detect when your VPC personas have drifted from what your product actually delivers.
 
@@ -180,7 +244,7 @@ Compares persona Jobs/Pains/Gains against your backlog, implemented features, an
 
 ---
 
-### `/sr:memory-inspect`
+### `/sr:memory-inspect` ✅ Both
 
 Inspect and clean up agent memory directories.
 
@@ -198,11 +262,11 @@ Inspect and clean up agent memory directories.
 | `--stale <days>` | Flag files older than N days |
 | `--prune` | Delete stale files (prompts for confirmation) |
 
-Agent memory lives in `.claude/agent-memory/sr-*/`.
+Agent memory lives in `.claude/agent-memory/sr-*/` (Claude Code) or `.codex/agent-memory/sr-*/` (Codex).
 
 ---
 
-### `/sr:propose-spec`
+### `/sr:propose-spec` ✅ Both
 
 Explore a feature idea and produce a structured proposal ready for the OpenSpec pipeline.
 
@@ -217,6 +281,8 @@ Produces: problem statement, proposed solution, out-of-scope items, acceptance c
 ## OpenSpec commands
 
 OpenSpec is the structured design-to-code workflow. Use these commands when you want explicit control over each artifact: proposal → design → tasks → implementation.
+
+All OpenSpec commands work on both Claude Code and Codex (✅ Both).
 
 ### `/opsx:ff` — Fast Forward
 
@@ -292,6 +358,28 @@ Open-ended thinking mode for brainstorming, investigating problems, or clarifyin
 
 ---
 
+### `/sr:opsx-diff` — Spec Change Diff
+
+Visualize the before/after diff of an OpenSpec change.
+
+```
+/sr:opsx-diff <change-name>
+/sr:opsx-diff my-feature --format json
+/sr:opsx-diff my-feature --summary-only
+```
+
+**Flags:**
+
+| Flag | Effect |
+|------|--------|
+| `<change-name>` | Kebab-case name of the change to diff (required) |
+| `--format json` | Structured JSON output |
+| `--summary-only` | File-level summary only, skip inline diff |
+
+Compares the current specs against the named change. Use during review to confirm a change matches its design intent before archiving.
+
+---
+
 ### Typical OpenSpec flows
 
 **Fast path:**
@@ -325,4 +413,4 @@ The `npx specrails-core@latest init` command accepts:
 
 ---
 
-[← Quick Start](quick-start.md) · [FAQ →](faq.md) · [← Installation](installation.md)
+[← Quick Start](quick-start.md) · [FAQ →](faq.md) · [← Installation](installation.md) · [Codex vs Claude Code →](codex-vs-claude-code.md)
