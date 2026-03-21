@@ -1,10 +1,21 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "coreVersion": "1.0.1",
   "minimumHubVersion": "1.3.0",
+  "provider": "auto",
   "cli": {
-    "initArgs": ["init", "--yes"],
-    "updateArgs": ["update"]
+    "claude": {
+      "binary": "claude",
+      "initArgs": ["init", "--yes"]
+    },
+    "codex": {
+      "binary": "codex",
+      "initArgs": ["exec", "specrails-core init --yes"]
+    }
+  },
+  "specrailsDir": {
+    "claude": ".claude",
+    "codex": ".codex"
   },
   "checkpoints": [
     "base_install",
