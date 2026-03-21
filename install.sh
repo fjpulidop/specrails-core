@@ -38,6 +38,13 @@ AUTO_YES=false
 # Set SPECRAILS_SKIP_PREREQS=1 to bypass hard-exit prerequisite checks (for CI/testing).
 SKIP_PREREQS="${SPECRAILS_SKIP_PREREQS:-0}"
 
+# Provider detection results (set in Phase 1)
+CLI_PROVIDER=""
+SPECRAILS_DIR=""
+INSTRUCTIONS_FILE=""
+HAS_CLAUDE=false
+HAS_CODEX=false
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --root-dir)
@@ -52,9 +59,21 @@ while [[ $# -gt 0 ]]; do
             AUTO_YES=true
             shift
             ;;
+        --provider)
+            if [[ -z "${2:-}" ]]; then
+                echo "Error: --provider requires a value (claude or codex)." >&2
+                exit 1
+            fi
+            if [[ "$2" != "claude" && "$2" != "codex" ]]; then
+                echo "Error: --provider value must be 'claude' or 'codex', got: $2" >&2
+                exit 1
+            fi
+            CLI_PROVIDER="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>] [--yes|-y]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>]" >&2
             exit 1
             ;;
     esac
@@ -104,7 +123,7 @@ print_header() {
     echo ""
     echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════╗${NC}"
     echo -e "${BOLD}${CYAN}║          specrails installer v0.1           ║${NC}"
-    echo -e "${BOLD}${CYAN}║   Agent Workflow System for Claude Code      ║${NC}"
+    echo -e "${BOLD}${CYAN}║         Agent Workflow System (AI-native)    ║${NC}"
     echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════════╝${NC}"
     echo ""
 }
@@ -187,39 +206,101 @@ else
     ok "Git repository root: $REPO_ROOT"
 fi
 
-# 1.2 Claude Code CLI
+# 1.2 Provider detection (Claude Code vs Codex)
 if command -v claude &> /dev/null; then
+    HAS_CLAUDE=true
+fi
+if command -v codex &> /dev/null; then
+    HAS_CODEX=true
+fi
+
+if [[ -n "$CLI_PROVIDER" ]]; then
+    # --provider flag was set explicitly — skip interactive detection
+    ok "Provider: $CLI_PROVIDER (--provider flag)"
+elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
+    echo ""
+    echo -e "  ${BOLD}Both Claude Code and Codex detected.${NC}"
+    if [ "$AUTO_YES" = true ]; then
+        CLI_PROVIDER="claude"
+        info "Auto-selected Claude Code (--yes flag active)"
+    else
+        echo ""
+        echo "    Which provider would you like to use?"
+        echo "      1) Claude Code (claude)  → output to .claude/"
+        echo "      2) Codex (codex)         → output to .codex/"
+        echo ""
+        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE
+        PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
+        if [[ "$PROVIDER_CHOICE" == "2" ]]; then
+            CLI_PROVIDER="codex"
+        else
+            CLI_PROVIDER="claude"
+        fi
+    fi
+    ok "Provider: $CLI_PROVIDER"
+elif [ "$HAS_CLAUDE" = true ]; then
+    CLI_PROVIDER="claude"
     CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
     ok "Claude Code CLI: $CLAUDE_VERSION"
+elif [ "$HAS_CODEX" = true ]; then
+    CLI_PROVIDER="codex"
+    CODEX_VERSION=$(codex --version 2>/dev/null || echo "unknown")
+    ok "Codex CLI: $CODEX_VERSION"
 elif [[ "$SKIP_PREREQS" == "1" ]]; then
-    warn "Claude Code CLI not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
+    CLI_PROVIDER="claude"
+    warn "No AI CLI found (skipped — SPECRAILS_SKIP_PREREQS=1)"
 else
-    fail "Claude Code CLI not found."
+    fail "No AI CLI found (claude or codex)."
     echo ""
-    echo "    Install it: https://claude.ai/download"
+    echo "    Install Claude Code: https://claude.ai/download"
+    echo "    Install Codex:       https://github.com/openai/codex"
     exit 1
 fi
 
-# 1.3 Claude authentication (API key or OAuth)
-CLAUDE_AUTHED=false
-if claude config list 2>/dev/null | grep -q "api_key"; then
-    CLAUDE_AUTHED=true
-elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
-    CLAUDE_AUTHED=true
-elif [[ -f "${HOME}/.claude.json" ]] && grep -q '"oauthAccount"' "${HOME}/.claude.json" 2>/dev/null; then
-    CLAUDE_AUTHED=true
+# Derive output directory and instruction file from provider
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    SPECRAILS_DIR=".codex"
+    INSTRUCTIONS_FILE="AGENTS.md"
+else
+    SPECRAILS_DIR=".claude"
+    INSTRUCTIONS_FILE="CLAUDE.md"
 fi
 
-if [[ "$CLAUDE_AUTHED" == "true" ]]; then
-    ok "Claude: authenticated"
-elif [[ "$SKIP_PREREQS" == "1" ]]; then
-    warn "Claude authentication not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
+# 1.3 API key / authentication (provider-specific)
+if [[ "$CLI_PROVIDER" == "claude" ]]; then
+    CLAUDE_AUTHED=false
+    if claude config list 2>/dev/null | grep -q "api_key"; then
+        CLAUDE_AUTHED=true
+    elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
+        CLAUDE_AUTHED=true
+    elif [[ -f "${HOME}/.claude.json" ]] && grep -q '"oauthAccount"' "${HOME}/.claude.json" 2>/dev/null; then
+        CLAUDE_AUTHED=true
+    fi
+
+    if [[ "$CLAUDE_AUTHED" == "true" ]]; then
+        ok "Claude: authenticated"
+    elif [[ "$SKIP_PREREQS" == "1" ]]; then
+        warn "Claude authentication not found (skipped — SPECRAILS_SKIP_PREREQS=1)"
+    else
+        fail "No Claude authentication found."
+        echo ""
+        echo "    Option 1 (API key): claude config set api_key <your-key>"
+        echo "    Option 2 (OAuth):   claude auth login"
+        exit 1
+    fi
 else
-    fail "No Claude authentication found."
-    echo ""
-    echo "    Option 1 (API key): claude config set api_key <your-key>"
-    echo "    Option 2 (OAuth):   claude auth login"
-    exit 1
+    # Codex
+    if [[ -n "${OPENAI_API_KEY:-}" ]]; then
+        ok "OpenAI API key: configured"
+    elif [[ "$SKIP_PREREQS" == "1" ]]; then
+        warn "No OpenAI API key configured (skipped — SPECRAILS_SKIP_PREREQS=1)"
+    else
+        fail "No OpenAI API key configured."
+        echo ""
+        echo "    Set it:  export OPENAI_API_KEY=<your-key>"
+        echo "    Get one: https://platform.openai.com/api-keys"
+        exit 1
+    fi
 fi
 
 # 1.4 npm
@@ -326,17 +407,17 @@ step "Phase 2: Detecting existing setup"
 
 EXISTING_SETUP=false
 
-if [ -d "$REPO_ROOT/.claude" ]; then
-    if [ -d "$REPO_ROOT/.claude/agents" ] && [ "$(ls -A "$REPO_ROOT/.claude/agents" 2>/dev/null)" ]; then
-        warn "Existing .claude/agents/ found with content"
+if [ -d "$REPO_ROOT/$SPECRAILS_DIR" ]; then
+    if [ -d "$REPO_ROOT/$SPECRAILS_DIR/agents" ] && [ "$(ls -A "$REPO_ROOT/$SPECRAILS_DIR/agents" 2>/dev/null)" ]; then
+        warn "Existing $SPECRAILS_DIR/agents/ found with content"
         EXISTING_SETUP=true
     fi
-    if [ -d "$REPO_ROOT/.claude/commands" ] && [ "$(ls -A "$REPO_ROOT/.claude/commands" 2>/dev/null)" ]; then
-        warn "Existing .claude/commands/ found with content"
+    if [ -d "$REPO_ROOT/$SPECRAILS_DIR/commands" ] && [ "$(ls -A "$REPO_ROOT/$SPECRAILS_DIR/commands" 2>/dev/null)" ]; then
+        warn "Existing $SPECRAILS_DIR/commands/ found with content"
         EXISTING_SETUP=true
     fi
-    if [ -d "$REPO_ROOT/.claude/rules" ] && [ "$(ls -A "$REPO_ROOT/.claude/rules" 2>/dev/null)" ]; then
-        warn "Existing .claude/rules/ found with content"
+    if [ -d "$REPO_ROOT/$SPECRAILS_DIR/rules" ] && [ "$(ls -A "$REPO_ROOT/$SPECRAILS_DIR/rules" 2>/dev/null)" ]; then
+        warn "Existing $SPECRAILS_DIR/rules/ found with content"
         EXISTING_SETUP=true
     fi
 fi
@@ -366,22 +447,23 @@ step "Phase 3: Installing specrails artifacts"
 
 # Create directory structure
 mkdir -p "$REPO_ROOT/specrails"
-mkdir -p "$REPO_ROOT/.claude/commands"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/agents"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/commands"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/rules"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/personas"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/claude-md"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/settings"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/prompts"
-mkdir -p "$REPO_ROOT/.claude/agent-memory/explanations"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/agents"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/commands"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/skills"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/rules"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/personas"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/claude-md"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/settings"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
 
 # Copy the /setup command
-cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
+cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/setup.md"
 ok "Installed /setup command"
 
 # Copy the /doctor command
-cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/.claude/commands/doctor.md"
+cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/doctor.md"
 ok "Installed /doctor command"
 
 # Install bin/doctor.sh for standalone use
@@ -390,12 +472,12 @@ cp "$SCRIPT_DIR/bin/doctor.sh" "$REPO_ROOT/.specrails/bin/doctor.sh"
 chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
 ok "Installed specrails doctor (bin/doctor.sh)"
 
-# Copy templates
-cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/.claude/setup-templates/"
-ok "Installed setup templates"
+# Copy templates (includes commands, skills, agents, rules, personas, settings)
+cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/"
+ok "Installed setup templates (commands + skills)"
 
 # Write OSS detection results for /setup
-cat > "$REPO_ROOT/.claude/setup-templates/.oss-detection.json" << EOF
+cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.oss-detection.json" << EOF
 {
   "is_oss": $IS_OSS,
   "signals": {
@@ -407,15 +489,25 @@ cat > "$REPO_ROOT/.claude/setup-templates/.oss-detection.json" << EOF
 EOF
 ok "OSS detection results written"
 
+# Write provider detection results for /setup
+cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.provider-detection.json" << EOF
+{
+  "cli_provider": "$CLI_PROVIDER",
+  "specrails_dir": "$SPECRAILS_DIR",
+  "instructions_file": "$INSTRUCTIONS_FILE"
+}
+EOF
+ok "Provider detection results written ($CLI_PROVIDER → $SPECRAILS_DIR/)"
+
 # Copy security exemptions config (skip if already exists — preserve user exemptions)
-if [ ! -f "${REPO_ROOT}/.claude/security-exemptions.yaml" ]; then
-    cp "${SCRIPT_DIR}/templates/security/security-exemptions.yaml" "${REPO_ROOT}/.claude/security-exemptions.yaml"
-    ok "Created .claude/security-exemptions.yaml"
+if [ ! -f "${REPO_ROOT}/$SPECRAILS_DIR/security-exemptions.yaml" ]; then
+    cp "${SCRIPT_DIR}/templates/security/security-exemptions.yaml" "${REPO_ROOT}/$SPECRAILS_DIR/security-exemptions.yaml"
+    ok "Created $SPECRAILS_DIR/security-exemptions.yaml"
 fi
 
 # Copy prompts
 if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then
-    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.claude/setup-templates/prompts/"
+    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts/"
     ok "Installed prompts"
 fi
 
@@ -448,11 +540,13 @@ step "Phase 4: Installation complete"
 echo ""
 echo -e "${BOLD}${GREEN}Installation summary:${NC}"
 echo ""
+echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
+echo ""
 echo "  Files installed:"
-echo "    .claude/commands/setup.md          ← The /setup command"
-echo "    .claude/setup-templates/           ← Templates (temporary, removed after setup)"
-echo "    .specrails-version                ← Installed specrails version"
-echo "    .specrails-manifest.json          ← Artifact checksums for update detection"
+echo "    $SPECRAILS_DIR/commands/setup.md          ← The /setup command"
+echo "    $SPECRAILS_DIR/setup-templates/           ← Templates: commands + skills (temporary, removed after setup)"
+echo "    .specrails-version                       ← Installed specrails version"
+echo "    .specrails-manifest.json                 ← Artifact checksums for update detection"
 echo ""
 
 echo -e "${BOLD}Prerequisites:${NC}"
@@ -465,15 +559,19 @@ echo ""
 
 echo -e "${BOLD}${CYAN}Next steps:${NC}"
 echo ""
-echo "  1. Open Claude Code in this repo:"
+echo "  1. Open $CLI_PROVIDER in this repo:"
 echo ""
-echo -e "     ${BOLD}cd $REPO_ROOT && claude${NC}"
+echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
 echo ""
 echo "  2. Run the setup wizard:"
 echo ""
 echo -e "     ${BOLD}/setup${NC}"
 echo ""
-echo "  Claude will analyze your codebase, ask about your users,"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    echo "  Codex will analyze your codebase, ask about your users,"
+else
+    echo "  Claude will analyze your codebase, ask about your users,"
+fi
 echo "  research the competitive landscape, and generate all agents,"
 echo "  commands, rules, and personas adapted to your project."
 echo ""

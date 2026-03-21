@@ -41,6 +41,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git add VERSION
           git commit -m "chore: sync VERSION to ${VERSION} [skip ci]"
+          git pull --rebase origin main
           git push
 
       - name: Notify specrails-hub of new release

@@ -44,20 +44,22 @@ Read the following files to understand the current installation state:
 
 2. Read `.specrails-version` — contains the current version string (e.g., `0.2.0`). If it does not exist, treat version as `0.1.0 (legacy)`.
 
-3. List all template files in `.claude/setup-templates/agents/` — these are the NEW agent templates from the update:
+3. Determine `$SPECRAILS_DIR` by reading `$SPECRAILS_DIR/setup-templates/.provider-detection.json` — try `.claude/setup-templates/.provider-detection.json` first, then `.codex/setup-templates/.provider-detection.json`. Extract `cli_provider` and `specrails_dir`. If not found, default to `cli_provider = "claude"`, `specrails_dir = ".claude"`.
+
+4. List all template files in `$SPECRAILS_DIR/setup-templates/agents/` — these are the NEW agent templates from the update:
    ```bash
-   ls .claude/setup-templates/agents/
+   ls $SPECRAILS_DIR/setup-templates/agents/
    ```
    Template files are named with `sr-` prefix (e.g., `sr-architect.md`, `sr-developer.md`).
 
-4. List all template files in `.claude/setup-templates/commands/sr/` — these are the NEW command templates from the update:
+5. List all template files in `$SPECRAILS_DIR/setup-templates/commands/sr/` — these are the NEW command templates from the update:
    ```bash
-   ls .claude/setup-templates/commands/sr/
+   ls $SPECRAILS_DIR/setup-templates/commands/sr/
    ```
    Command template files include `implement.md`, `batch-implement.md`, `health-check.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
    If this directory does not exist, skip command template checking for this update.
 
-5. Read `.claude/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
+6. Read `$SPECRAILS_DIR/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
 
 ### Phase U2: Quick Codebase Re-Analysis
 
@@ -143,7 +145,7 @@ Then jump to Phase U7.
 
 For each agent in the "changed" list:
 
-1. Read the NEW template from `.claude/setup-templates/agents/sr-<name>.md`
+1. Read the NEW template from `$SPECRAILS_DIR/setup-templates/agents/sr-<name>.md`
 2. Use the codebase analysis from Phase U2 to fill in all `{{PLACEHOLDER}}` values, using the same substitution rules as Phase 4.1 of the full setup:
    - `{{PROJECT_NAME}}` → project name (from README.md or directory name)
    - `{{ARCHITECTURE_DIAGRAM}}` → detected architecture layers
@@ -151,18 +153,23 @@ For each agent in the "changed" list:
    - `{{CI_COMMANDS_BACKEND}}` → backend CI commands
    - `{{CI_COMMANDS_FRONTEND}}` → frontend CI commands
    - `{{LAYER_CONVENTIONS}}` → detected conventions per layer
-   - `{{PERSONA_NAMES}}` → read existing persona names from `.claude/agents/personas/` filenames
-   - `{{PERSONA_FILES}}` → paths to existing persona files in `.claude/agents/personas/`
+   - `{{PERSONA_NAMES}}` → read existing persona names from `$SPECRAILS_DIR/agents/personas/` filenames
+   - `{{PERSONA_FILES}}` → paths to existing persona files in `$SPECRAILS_DIR/agents/personas/`
    - `{{DOMAIN_EXPERTISE}}` → infer from detected stack and README
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase U2
    - `{{WARNINGS}}` → read from existing `CLAUDE.md` if present
-   - `{{MEMORY_PATH}}` → `.claude/agent-memory/sr-<agent-name>/`
-3. Write the adapted agent to `.claude/agents/sr-<name>.md`
+   - `{{MEMORY_PATH}}` → `$SPECRAILS_DIR/agent-memory/sr-<agent-name>/`
+3. Write the adapted agent using the format for the active provider (same dual-format rules as Phase 4.1):
+   - `cli_provider == "claude"`: write to `$SPECRAILS_DIR/agents/sr-<name>.md` (Markdown with YAML frontmatter)
+   - `cli_provider == "codex"`: write to `$SPECRAILS_DIR/agents/sr-<name>.toml` (TOML format with `name`, `description`, `model`, `prompt` fields)
 4. Show: `✓ Regenerated sr-<name>`
 
 After regenerating all changed agents, verify no unresolved placeholders remain:
 ```bash
+# Claude Code
 grep -r '{{[A-Z_]*}}' .claude/agents/sr-*.md 2>/dev/null || echo "OK: no broken placeholders"
+# Codex
+grep -r '{{[A-Z_]*}}' .codex/agents/sr-*.toml 2>/dev/null || echo "OK: no broken placeholders"
 ```
 
 ### Phase U4b: Update Changed Commands
@@ -207,7 +214,7 @@ For each agent in the "new" list:
      > "New agent available: `sr-<name>` — no [layer] detected in your project. Skip? [Y/n]"
 3. If the user accepts (or presses Enter on a pre-selected default):
    - Generate the agent using the same template adaptation as Phase U4
-   - Create memory directory if it does not exist: `.claude/agent-memory/sr-<name>/`
+   - Create memory directory if it does not exist: `$SPECRAILS_DIR/agent-memory/sr-<name>/`
    - Show: `✓ Added sr-<name>`
 4. If the user declines:
    - Show: `→ Skipped sr-<name>`
@@ -330,6 +337,25 @@ Detect whether this is an existing codebase or new project:
 
 Store as `QS_IS_EXISTING_CODEBASE=true/false`.
 
+### QS2.5: Re-run Detection
+
+Before generating files, check if this is a re-run:
+
+1. Check if `.claude/commands/sr/` directory exists with any `.md` files:
+   ```bash
+   ls .claude/commands/sr/*.md 2>/dev/null
+   ```
+2. If `.md` files are found → this is a **re-run**. Store `QS_IS_RERUN=true`.
+3. If the directory does not exist or is empty → this is a **fresh install**. Store `QS_IS_RERUN=false`.
+
+In re-run mode, QS3 executes in **gap-fill mode** for command files:
+- For each command in the list, check if it already exists at `.claude/commands/sr/<name>.md`
+- If it exists: skip it and show `✓ Already installed: /sr:<name>`
+- If it does NOT exist: install it and show `✓ Added /sr:<name> (was missing)`
+- Do NOT prompt the user for confirmation on missing files — install them automatically
+
+For CLAUDE.md and agent files, the existing per-file prompts already handle re-runs (user is asked before overwriting). No change needed there.
+
 ### QS3: Generate files
 
 Generate files using the Quick Start defaults.
@@ -350,7 +376,9 @@ Skip if user says no.
 
 **2. Agent files**
 
-For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `setup-templates/agents/<name>.md` and generate the adapted agent file at `.claude/agents/<name>.md`.
+For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `$SPECRAILS_DIR/setup-templates/agents/<name>.md` and generate the adapted agent file using the dual-format rules from Phase 4.1:
+- `cli_provider == "claude"`: write to `.claude/agents/<name>.md` (Markdown with frontmatter)
+- `cli_provider == "codex"`: write to `.codex/agents/<name>.toml` (TOML format)
 
 Fill placeholders with best-effort values from the limited context available:
 - `{{PROJECT_NAME}}` → directory name or README first heading
@@ -362,11 +390,11 @@ Fill placeholders with best-effort values from the limited context available:
 - `{{LAYER_TAGS}}` → detect from package.json / Gemfile / go.mod if present; otherwise leave empty
 - All other placeholders → "(not configured — run `/setup --advanced`)"
 
-Create memory directories: `.claude/agent-memory/sr-<name>/`
+Create memory directories: `$SPECRAILS_DIR/agent-memory/sr-<name>/`
 
 **3. Command files**
 
-Copy core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`:
+Core commands (always install if missing):
 - `implement.md`
 - `batch-implement.md`
 - `propose-spec.md`
@@ -375,6 +403,12 @@ Copy core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`
 - `why.md`
 
 Do NOT copy `product-backlog.md` or `update-product-driven-backlog.md` (no backlog provider configured).
+
+If `QS_IS_RERUN=false` (fresh install): copy all core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`.
+
+If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
+- If it exists: skip it — show `✓ Already installed: /sr:<name>`
+- If it does NOT exist: copy from `setup-templates/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
 
 **4. Cleanup**
 
@@ -390,14 +424,30 @@ Then, based on `QS_IS_EXISTING_CODEBASE`:
 - **Existing codebase** (`true`): recommend `/sr:health-check`
 - **New project** (`false`): recommend `/sr:product-backlog`
 
+If `QS_IS_RERUN=false`, display:
 ```
 ✅ Setup complete.
 
 Try your first command:
   > /sr:product-backlog
 ```
-
 (Replace `/sr:product-backlog` with `/sr:health-check` for existing codebases.)
+
+If `QS_IS_RERUN=true`, display the gap-fill summary and stop:
+```
+✅ Re-run complete.
+
+Commands status:
+  ✓ Already installed: /sr:<name>
+  ✓ Added /sr:<name> (was missing)
+  [... one line per command ...]
+
+All commands are up to date.
+```
+If all commands were already present, display:
+```
+✅ Re-run complete. All commands already installed — nothing to add.
+```
 
 Then stop. Do not execute Phase 1.
 
@@ -819,11 +869,15 @@ Wait for final confirmation.
 
 Read each template from `.claude/setup-templates/` and generate the final files adapted to this project. Use the codebase analysis from Phase 1, personas from Phase 2, and configuration from Phase 3.
 
+**Provider detection (required before any file generation):** Read `$SPECRAILS_DIR/setup-templates/.provider-detection.json` to determine `cli_provider` (`"claude"` or `"codex"`) and `specrails_dir` (`.claude` or `.codex`). All output paths in Phase 4 use `$SPECRAILS_DIR` as the base directory. If the file is missing, fall back to `cli_provider = "claude"` and `specrails_dir = ".claude"`.
+
 ### 4.1 Generate agents
 
-For each selected agent, read the template and generate the adapted version:
+For each selected agent, read the template and generate the adapted version.
 
 **Template → Output mapping:**
+
+**If `cli_provider == "claude"` (default):**
 - `setup-templates/agents/sr-architect.md` → `.claude/agents/sr-architect.md`
 - `setup-templates/agents/sr-developer.md` → `.claude/agents/sr-developer.md`
 - `setup-templates/agents/sr-reviewer.md` → `.claude/agents/sr-reviewer.md`
@@ -833,6 +887,17 @@ For each selected agent, read the template and generate the adapted version:
 - `setup-templates/agents/sr-product-analyst.md` → `.claude/agents/sr-product-analyst.md`
 - `setup-templates/agents/sr-backend-developer.md` → `.claude/agents/sr-backend-developer.md` (if backend layer)
 - `setup-templates/agents/sr-frontend-developer.md` → `.claude/agents/sr-frontend-developer.md` (if frontend layer)
+
+**If `cli_provider == "codex"`:**
+- `setup-templates/agents/sr-architect.md` → `.codex/agents/sr-architect.toml`
+- `setup-templates/agents/sr-developer.md` → `.codex/agents/sr-developer.toml`
+- `setup-templates/agents/sr-reviewer.md` → `.codex/agents/sr-reviewer.toml`
+- `setup-templates/agents/sr-test-writer.md` → `.codex/agents/sr-test-writer.toml`
+- `setup-templates/agents/sr-security-reviewer.md` → `.codex/agents/sr-security-reviewer.toml`
+- `setup-templates/agents/sr-product-manager.md` → `.codex/agents/sr-product-manager.toml`
+- `setup-templates/agents/sr-product-analyst.md` → `.codex/agents/sr-product-analyst.toml`
+- `setup-templates/agents/sr-backend-developer.md` → `.codex/agents/sr-backend-developer.toml` (if backend layer)
+- `setup-templates/agents/sr-frontend-developer.md` → `.codex/agents/sr-frontend-developer.toml` (if frontend layer)
 
 When generating each agent:
 1. Read the template
@@ -849,19 +914,35 @@ When generating each agent:
    - `{{COMPETITIVE_LANDSCAPE}}` → competitors discovered in Phase 2
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase 1
    - `{{WARNINGS}}` → project-specific warnings (from existing CLAUDE.md or detected)
-   - `{{MEMORY_PATH}}` → agent memory directory path (e.g., `.claude/agent-memory/sr-<agent-name>/`)
+   - `{{MEMORY_PATH}}` → agent memory directory path (e.g., `$SPECRAILS_DIR/agent-memory/sr-<agent-name>/`)
    - `{{TECH_EXPERTISE}}` → detected languages, frameworks, and test frameworks from Phase 1
-   - `{{LAYER_CLAUDE_MD_PATHS}}` → comma-separated paths to per-layer rules files (e.g., `.claude/rules/backend.md`, `.claude/rules/frontend.md`)
-   - `{{SECURITY_EXEMPTIONS_PATH}}` → `.claude/security-exemptions.yaml`
-3. Write the final file
+   - `{{LAYER_CLAUDE_MD_PATHS}}` → comma-separated paths to per-layer rules files (e.g., `$SPECRAILS_DIR/rules/backend.md`, `$SPECRAILS_DIR/rules/frontend.md`)
+   - `{{SECURITY_EXEMPTIONS_PATH}}` → `$SPECRAILS_DIR/security-exemptions.yaml`
+3. Write the final file in the format for the active provider:
+
+**If `cli_provider == "claude"`:** Write as Markdown with YAML frontmatter — the template file as-is (frontmatter preserved).
+
+**If `cli_provider == "codex"`:** Convert to TOML format:
+- Extract YAML frontmatter fields: `name`, `description`, `model`
+- Extract the body content (everything after the closing `---` of the frontmatter)
+- Map the `model` field: `sonnet` → `codex-mini-latest`, `opus` → `o3`, `haiku` → `codex-mini-latest`
+- Write a `.toml` file with this structure:
+  ```toml
+  name = "<name from frontmatter>"
+  description = "<description from frontmatter, escaped for TOML>"
+  model = "codex-mini-latest"
+  prompt = """
+  <body content after placeholder substitution>
+  """
+  ```
 
 ### 4.2 Generate personas
 
 If IS_OSS=true:
-1. Copy `setup-templates/personas/the-maintainer.md` to `.claude/agents/personas/the-maintainer.md`
+1. Copy `setup-templates/personas/the-maintainer.md` to `$SPECRAILS_DIR/agents/personas/the-maintainer.md`
 2. Log: "Maintainer persona included"
 3. Set MAINTAINER_INCLUDED=true for use in template substitution
-4. Set `{{MAINTAINER_PERSONA_LINE}}` = `- \`.claude/agents/personas/the-maintainer.md\` — "Kai" the Maintainer (open-source maintainer)`
+4. Set `{{MAINTAINER_PERSONA_LINE}}` = `- \`$SPECRAILS_DIR/agents/personas/the-maintainer.md\` — "Kai" the Maintainer (open-source maintainer)`
 5. Increment `{{PERSONA_COUNT}}` by 1 to account for the Maintainer
 
 If IS_OSS=false:
@@ -869,7 +950,7 @@ If IS_OSS=false:
 
 Then for each user-defined VPC persona from Phase 2.3:
 
-Write each persona to `.claude/agents/personas/`:
+Write each persona to `$SPECRAILS_DIR/agents/personas/`:
 - Use the VPC personas generated in Phase 2
 - File naming: kebab-case of persona nickname (e.g., `the-developer.md`, `the-admin.md`)
 
@@ -965,6 +1046,10 @@ If no CLAUDE.md exists, generate one from the template. If one already exists, *
 
 ### 4.6 Generate settings
 
+Read `.claude/setup-templates/.provider-detection.json` (written by `install.sh`) to determine `cli_provider` (`"claude"` or `"codex"`).
+
+**If `cli_provider == "claude"` (default):**
+
 Create or merge `.claude/settings.json` with permissions for:
 - All detected CI commands
 - Git operations
@@ -972,12 +1057,35 @@ Create or merge `.claude/settings.json` with permissions for:
 - GitHub CLI (if available)
 - Language-specific tools (python, npm, cargo, go, etc.)
 
+**If `cli_provider == "codex"`:**
+
+1. Read `setup-templates/settings/codex-config.toml`. Write it to `.codex/config.toml` as-is (no substitutions needed — the TOML is static).
+
+2. Read `setup-templates/settings/codex-rules.star`. Replace `{{CODEX_SHELL_RULES}}` with Starlark `prefix_rule(...)` lines for each detected tool allowance:
+
+   | Detected tool/command | Starlark rule |
+   |----------------------|---------------|
+   | OpenSpec CLI (`openspec`) | `prefix_rule(pattern=["openspec"], decision="allow")` |
+   | Python (`python`, `pip`) | `prefix_rule(pattern=["python"], decision="allow")`<br>`prefix_rule(pattern=["pip"], decision="allow")` |
+   | npm (`npm`) | `prefix_rule(pattern=["npm"], decision="allow")` |
+   | Cargo (`cargo`) | `prefix_rule(pattern=["cargo"], decision="allow")` |
+   | Go (`go`) | `prefix_rule(pattern=["go"], decision="allow")` |
+   | Any detected CI command | `prefix_rule(pattern=["<cmd>"], decision="allow")` |
+
+   Write the rendered file to `.codex/rules/default.rules`.
+
+   ```bash
+   mkdir -p .codex/rules
+   ```
+
+   If `cli_provider` cannot be determined (file missing), fall back to `"claude"` behavior.
+
 ### 4.7 Initialize agent memory
 
-Create memory directories for each installed agent:
+Create memory directories for each installed agent using the provider-aware base directory:
 
 ```bash
-mkdir -p .claude/agent-memory/sr-{agent-name}/
+mkdir -p $SPECRAILS_DIR/agent-memory/sr-{agent-name}/
 ```
 
 Each gets an empty `MEMORY.md` that will be populated during usage.
@@ -1035,16 +1143,24 @@ Apply the user's choice.
 After cleanup, verify that only the intended files remain:
 
 ```bash
-# These should exist (the actual system):
+# These should exist (the actual system) — use $SPECRAILS_DIR from .provider-detection.json:
+# If cli_provider == "claude":
 ls .claude/agents/sr-*.md
 ls .claude/agents/personas/*.md
 ls .claude/commands/sr/*.md
 ls .claude/rules/*.md
 ls .claude/agent-memory/
 
+# If cli_provider == "codex":
+ls .codex/agents/sr-*.toml
+ls .codex/agents/personas/*.md
+ls .codex/skills/sr-*/SKILL.md
+ls .codex/rules/*.md
+ls .codex/agent-memory/
+
 # These should NOT exist (scaffolding):
-# .claude/setup-templates/  — GONE
-# .claude/commands/setup.md  — GONE
+# $SPECRAILS_DIR/setup-templates/  — GONE
+# $SPECRAILS_DIR/commands/setup.md  — GONE
 ```
 
 If any scaffolding artifact remains, remove it.
@@ -1059,20 +1175,28 @@ Display the complete installation summary:
 ### Agents Installed
 | Agent | File | Model |
 |-------|------|-------|
+[If cli_provider == "claude":]
 | sr-architect | .claude/agents/sr-architect.md | Sonnet |
 | sr-developer | .claude/agents/sr-developer.md | Sonnet |
 | sr-reviewer | .claude/agents/sr-reviewer.md | Sonnet |
 | sr-test-writer | .claude/agents/sr-test-writer.md | Sonnet |
 | sr-security-reviewer | .claude/agents/sr-security-reviewer.md | Sonnet |
 | sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
+[If cli_provider == "codex":]
+| sr-architect | .codex/agents/sr-architect.toml | codex-mini-latest |
+| sr-developer | .codex/agents/sr-developer.toml | codex-mini-latest |
+| sr-reviewer | .codex/agents/sr-reviewer.toml | codex-mini-latest |
+| sr-test-writer | .codex/agents/sr-test-writer.toml | codex-mini-latest |
+| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | codex-mini-latest |
+| sr-product-manager | .codex/agents/sr-product-manager.toml | o3 |
 
 ### Personas Created
 | Persona | File | Source |
 |---------|------|--------|
 [If IS_OSS=true:]
-| "Kai" — The Maintainer | .claude/agents/personas/sr-the-maintainer.md | Auto-included (OSS) |
+| "Kai" — The Maintainer | $SPECRAILS_DIR/agents/personas/sr-the-maintainer.md | Auto-included (OSS) |
 [For each user-generated persona:]
-| "[Name]" — The [Role] | .claude/agents/personas/[name].md | Generated |
+| "[Name]" — The [Role] | $SPECRAILS_DIR/agents/personas/[name].md | Generated |
 
 ### Commands Installed
 | Command | File |

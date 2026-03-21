@@ -46,8 +46,11 @@ test_install_fresh() {
     assert_contains "$output" "Installation complete" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-version" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json" &&
-    assert_dir_exists "$TEST_TMPDIR/target/.claude/commands" &&
-    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates"
+    # Provider-agnostic: check whichever provider dir was created (.claude or .codex)
+    { assert_dir_exists "$TEST_TMPDIR/target/.claude/commands" ||
+      assert_dir_exists "$TEST_TMPDIR/target/.codex/commands"; } &&
+    { assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates" ||
+      assert_dir_exists "$TEST_TMPDIR/target/.codex/setup-templates"; }
 }
 run_test "fresh install creates expected structure" test_install_fresh
 
