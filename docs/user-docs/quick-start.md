@@ -2,6 +2,8 @@
 
 Get SpecRails running in your project in under 10 minutes.
 
+> **Using OpenAI Codex?** See the [Codex getting started guide](getting-started-codex.md) — setup is slightly different.
+
 ## Before you begin
 
 You need:

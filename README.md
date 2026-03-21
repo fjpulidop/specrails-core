@@ -5,6 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm downloads](https://img.shields.io/npm/dw/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
 [![Claude Code](https://img.shields.io/badge/Built%20for-Claude%20Code-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
+[![Codex](https://img.shields.io/badge/Built%20for-OpenAI%20Codex-412991)](https://github.com/openai/codex)
 
 **Your AI development team. From idea to production code.**
 
@@ -14,7 +15,7 @@ One command gives your repo a full team of specialized AI agents: architect, dev
 npx specrails-core@latest init --root-dir .
 ```
 
-> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (required), Node 18+, git
+> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex CLI](https://github.com/openai/codex) (choose one), Node 18+, git
 
 <!--
   BOARD: Add demo GIF here — this is the #1 conversion driver on Product Hunt and npm.
@@ -51,10 +52,12 @@ Every artifact (agents, rules, personas) is generated **specifically for your pr
 npx specrails-core@latest init --root-dir .
 ```
 
-**2. Run setup inside Claude Code**
+**2. Run setup inside your AI CLI**
 
 ```bash
-claude      # open Claude Code in your project
+claude      # Claude Code
+# or
+codex       # OpenAI Codex (beta)
 > /setup    # run the 5-phase wizard (~5 min)
 ```
 

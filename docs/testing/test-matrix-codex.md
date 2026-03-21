@@ -37,15 +37,15 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 | Feature | Claude Code | Codex |
 |---------|:-:|:-:|
 | Legacy slash commands `.claude/commands/sr/` | ✅ | ❌ |
-| SKILL.md format `.claude/skills/sr-*/` | 🔄 | 🔄 |
-| `sr:implement` skill | ✅ | 🔄 |
-| `sr:product-backlog` skill | ✅ | 🔄 |
-| `sr:health-check` skill | ✅ | 🔄 |
-| `sr:compat-check` skill | ✅ | 🔄 |
-| `sr:why` skill | ✅ | 🔄 |
-| `sr:refactor-recommender` skill | ✅ | 🔄 |
-| `sr:batch-implement` skill | ✅ | 🔄 |
-| `sr:update-product-driven-backlog` skill | ✅ | 🔄 |
+| SKILL.md format `.claude/skills/sr-*/` | ✅ | ✅ |
+| `sr:implement` skill | ✅ | ✅ |
+| `sr:product-backlog` skill | ✅ | ✅ |
+| `sr:health-check` skill | ✅ | ✅ |
+| `sr:compat-check` skill | ✅ | ✅ |
+| `sr:why` skill | ✅ | ✅ |
+| `sr:refactor-recommender` skill | ✅ | ✅ |
+| `sr:batch-implement` skill | ✅ | ✅ |
+| `sr:update-product-driven-backlog` skill | ✅ | ✅ |
 | Backward compat: slash commands still invoke correctly | ✅ | — |
 
 ### Permissions Configuration (SPEA-508)
@@ -76,12 +76,12 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 
 | Feature | Claude Code | Codex |
 |---------|:-:|:-:|
-| Hub detects claude binary | 🔄 | — |
-| Hub detects codex binary | — | 🔄 |
-| `integration-contract.json` v2 schema valid | 🔄 | 🔄 |
-| Hub invokes CLI with correct args | 🔄 | 🔄 |
-| Hub dashboard shows CLI badge | 🔄 | 🔄 |
-| Hub handles "no CLI detected" state | 🔄 | 🔄 |
+| Hub detects claude binary | ✅ | — |
+| Hub detects codex binary | — | ✅ |
+| `integration-contract.json` v2 schema valid | ✅ | ✅ |
+| Hub invokes CLI with correct args | ✅ | ✅ |
+| Hub dashboard shows CLI badge | ✅ | ✅ |
+| Hub handles "no CLI detected" state | ✅ | ✅ |
 
 ---
 

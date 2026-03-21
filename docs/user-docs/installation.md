@@ -13,7 +13,7 @@ SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer dete
 | **Codex CLI** | Latest | Beta — `npm i -g @openai/codex` |
 | **Git** | Any | Your project must be a git repository |
 
-You need at least one of Claude Code or Codex CLI. If both are installed, the installer uses Claude Code by default. Override with `CLI_PROVIDER=codex`.
+You need at least one of Claude Code or Codex CLI. If both are installed, the installer uses Claude Code by default. Override with `--provider codex` (or the env var `CLI_PROVIDER=codex`).
 
 Optional but recommended:
 
@@ -38,8 +38,15 @@ The installer copies agent templates, skills, and configuration files into `.cla
 |------|--------|
 | `--root-dir <path>` | Target directory (default: current directory) |
 | `--yes` / `-y` | Skip confirmation prompts |
+| `--provider <claude\|codex>` | Force a specific AI CLI (default: auto-detect) |
 
 You can also force a specific provider:
+
+```bash
+npx specrails-core@latest init --root-dir . --provider codex
+```
+
+Alternatively, use the `CLI_PROVIDER` env var (legacy):
 
 ```bash
 CLI_PROVIDER=codex npx specrails-core@latest init --root-dir .
@@ -169,7 +176,7 @@ npm i -g @openai/codex
 Or force the provider if Codex is installed at a non-standard path:
 
 ```bash
-CLI_PROVIDER=codex npx specrails-core@latest init --root-dir .
+npx specrails-core@latest init --root-dir . --provider codex
 ```
 
 ---

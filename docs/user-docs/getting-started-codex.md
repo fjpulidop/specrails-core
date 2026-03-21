@@ -177,7 +177,7 @@ codex --version
 If Codex is installed via a custom path, pass the provider explicitly:
 
 ```bash
-CLI_PROVIDER=codex npx specrails-core@latest init --root-dir .
+npx specrails-core@latest init --root-dir . --provider codex
 ```
 
 ### Existing `.codex/` directory detected
