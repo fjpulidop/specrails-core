@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.1](https://github.com/fjpulidop/specrails-core/compare/v2.1.0...v2.1.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* sync VERSION to 2.1.0 and move version tracking to release-please ([#168](https://github.com/fjpulidop/specrails-core/issues/168)) ([b26c9f0](https://github.com/fjpulidop/specrails-core/commit/b26c9f0c8247d519918a74b443679dca4576b679))
+
 ## [2.1.0](https://github.com/fjpulidop/specrails-core/compare/v2.0.0...v2.1.0) (2026-03-21)
 
 
