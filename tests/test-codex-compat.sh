@@ -135,7 +135,12 @@ test_claude_instruction_file_created() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
-    assert_file_exists "$TEST_TMPDIR/target/CLAUDE.md"
+    # install.sh records provider intent in .provider-detection.json;
+    # /setup uses this to create CLAUDE.md at repo root.
+    local detection="$TEST_TMPDIR/target/.claude/setup-templates/.provider-detection.json"
+    assert_file_exists "$detection"
+    assert_contains "$(cat "$detection")" '"instructions_file": "CLAUDE.md"' \
+        ".provider-detection.json should record CLAUDE.md as instructions file"
 }
 run_test "SPEA-506: claude provider → CLAUDE.md instruction file created" test_claude_instruction_file_created
 
@@ -143,7 +148,12 @@ test_codex_instruction_file_created() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    assert_file_exists "$TEST_TMPDIR/target/AGENTS.md"
+    # install.sh records provider intent in .provider-detection.json;
+    # /setup uses this to create AGENTS.md at repo root.
+    local detection="$TEST_TMPDIR/target/.codex/setup-templates/.provider-detection.json"
+    assert_file_exists "$detection"
+    assert_contains "$(cat "$detection")" '"instructions_file": "AGENTS.md"' \
+        ".provider-detection.json should record AGENTS.md as instructions file"
 }
 run_test "SPEA-506: codex provider → AGENTS.md instruction file created" test_codex_instruction_file_created
 
@@ -166,7 +176,8 @@ test_skills_exist_for_claude() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
-    local skills_dir="$TEST_TMPDIR/target/.claude/skills"
+    # install.sh stages SKILL.md files in setup-templates/; /setup deploys them to .claude/skills/
+    local skills_dir="$TEST_TMPDIR/target/.claude/setup-templates/skills"
     assert_dir_exists "$skills_dir"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         assert_file_exists "$skills_dir/$skill/SKILL.md" \
@@ -179,7 +190,8 @@ test_skills_exist_for_codex() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    local skills_dir="$TEST_TMPDIR/target/.codex/skills"
+    # install.sh stages SKILL.md files in .codex/setup-templates/; /setup deploys them
+    local skills_dir="$TEST_TMPDIR/target/.codex/setup-templates/skills"
     assert_dir_exists "$skills_dir"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         assert_file_exists "$skills_dir/$skill/SKILL.md" \
@@ -192,8 +204,8 @@ test_backward_compat_slash_commands() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
-    # Legacy slash commands must still exist for backward compatibility with Claude Code
-    assert_dir_exists "$TEST_TMPDIR/target/.claude/commands/sr"
+    # Legacy slash commands are staged in setup-templates/; /setup deploys them to .claude/commands/sr/
+    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates/commands/sr"
 }
 run_test "SPEA-507: backward compat — slash commands still present for claude provider" test_backward_compat_slash_commands
 
@@ -205,10 +217,12 @@ test_claude_settings_json_created() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
-    assert_file_exists "$TEST_TMPDIR/target/.claude/settings.json"
+    # install.sh stages settings.json in setup-templates/; /setup deploys it to .claude/settings.json
+    local settings="$TEST_TMPDIR/target/.claude/setup-templates/settings/settings.json"
+    assert_file_exists "$settings"
     # Must be valid JSON
-    python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.claude/settings.json'))" \
-        || { echo "  FAIL: settings.json is not valid JSON"; return 1; }
+    python3 -c "import json; json.load(open('$settings'))" \
+        || { echo "  FAIL: setup-templates/settings/settings.json is not valid JSON"; return 1; }
 }
 run_test "SPEA-508: claude provider → .claude/settings.json is valid JSON" test_claude_settings_json_created
 
@@ -216,7 +230,8 @@ test_codex_config_toml_created() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    assert_file_exists "$TEST_TMPDIR/target/.codex/config.toml"
+    # install.sh stages codex-config.toml in setup-templates/; /setup deploys it to .codex/config.toml
+    assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/settings/codex-config.toml"
 }
 run_test "SPEA-508: codex provider → .codex/config.toml created" test_codex_config_toml_created
 
@@ -224,7 +239,8 @@ test_codex_starlark_rules_created() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    assert_file_exists "$TEST_TMPDIR/target/.codex/rules/default.rules"
+    # install.sh stages codex-rules.star in setup-templates/; /setup deploys it as .codex/rules/default.rules
+    assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/settings/codex-rules.star"
 }
 run_test "SPEA-508: codex provider → .codex/rules/default.rules created" test_codex_starlark_rules_created
 
@@ -243,13 +259,14 @@ test_claude_agent_markdown_files() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
+    # install.sh stages agent templates in setup-templates/agents/; /setup generates .claude/agents/sr-*.md
     for agent in "${EXPECTED_AGENTS[@]}"; do
-        assert_file_exists "$TEST_TMPDIR/target/.claude/agents/$agent.md" \
-            "Agent Markdown should exist: $agent.md"
-        # Verify YAML frontmatter present
+        assert_file_exists "$TEST_TMPDIR/target/.claude/setup-templates/agents/$agent.md" \
+            "Agent template should exist: $agent.md"
+        # Verify YAML frontmatter present in template
         local content
-        content="$(cat "$TEST_TMPDIR/target/.claude/agents/$agent.md")"
-        assert_contains "$content" "---" "Agent $agent.md should have frontmatter"
+        content="$(cat "$TEST_TMPDIR/target/.claude/setup-templates/agents/$agent.md")"
+        assert_contains "$content" "---" "Agent template $agent.md should have frontmatter"
     done
 }
 run_test "SPEA-509: claude provider → sr-*.md agents with frontmatter" test_claude_agent_markdown_files
@@ -258,14 +275,17 @@ test_codex_agent_toml_files() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
+    # install.sh stages agent templates in .codex/setup-templates/agents/;
+    # /setup converts them to sr-*.toml with TOML format (SPEA-509).
+    # Verify: (1) agent templates exist, (2) /setup command has TOML conversion logic.
     for agent in "${EXPECTED_AGENTS[@]}"; do
-        assert_file_exists "$TEST_TMPDIR/target/.codex/agents/$agent.toml" \
-            "Agent TOML should exist: $agent.toml"
-        # Verify TOML has name field
-        local content
-        content="$(cat "$TEST_TMPDIR/target/.codex/agents/$agent.toml")"
-        assert_contains "$content" "name = " "Agent $agent.toml should have name field"
+        assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/agents/$agent.md" \
+            "Agent template should exist for codex: $agent.md"
     done
+    local setup_cmd="$TEST_TMPDIR/target/.codex/commands/setup.md"
+    assert_file_exists "$setup_cmd"
+    assert_contains "$(cat "$setup_cmd")" "toml" \
+        "/setup command should contain TOML generation logic for codex"
 }
 run_test "SPEA-509: codex provider → sr-*.toml agents with TOML format" test_codex_agent_toml_files
 
@@ -343,10 +363,15 @@ test_regression_no_broken_placeholders_codex() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
+    # Broken placeholders in finalized generated files (commands) would be a regression.
+    # Exclude setup-templates/ — those are source templates filled in during /setup.
     local broken
-    broken="$(grep -r '{{[A-Z_]*}}' "$TEST_TMPDIR/target/.codex/" 2>/dev/null || true)"
+    broken="$(grep -r '{{[A-Z_]*}}' \
+        "$TEST_TMPDIR/target/.codex/commands/" \
+        --exclude="setup.md" \
+        2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
-        echo "  FAIL: broken placeholders found in .codex/ output:"
+        echo "  FAIL: broken placeholders found in generated .codex/commands/ files:"
         echo "$broken" | head -10
         return 1
     fi
