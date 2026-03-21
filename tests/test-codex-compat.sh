@@ -83,9 +83,10 @@ run_test "SPEA-506: only codex binary → proceeds without error" test_provider_
 test_provider_detection_neither_cli() {
     setup_mock_bin
     # No claude or codex in mock bin — only system binaries
+    # With SPECRAILS_SKIP_PREREQS=1, install warns and continues rather than hard-exiting.
     local output
     output="$(run_install_mocked)"
-    assert_contains "$output" "No AI CLI detected"
+    assert_contains "$output" "No AI CLI found"
 }
 run_test "SPEA-506: no AI CLI → prints informative error" test_provider_detection_neither_cli
 
@@ -320,11 +321,15 @@ test_regression_no_broken_placeholders_claude() {
     run_install_mocked >/dev/null
     # Broken placeholders in finalized generated files (agents, commands, skills) would be a regression.
     # Exclude setup-templates/ — those are source templates that get filled in during /setup.
+    # Exclude setup.md — it's a meta-template that documents {{PLACEHOLDER}} syntax for the AI.
     local broken
     broken="$(grep -r '{{[A-Z_]*}}' \
         "$TEST_TMPDIR/target/.claude/agents/" \
-        "$TEST_TMPDIR/target/.claude/commands/" \
         "$TEST_TMPDIR/target/.claude/skills/" \
+        2>/dev/null || true)"
+    broken+="$(grep -r '{{[A-Z_]*}}' \
+        "$TEST_TMPDIR/target/.claude/commands/" \
+        --exclude="setup.md" \
         2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
         echo "  FAIL: broken placeholders found in generated .claude/ files:"
