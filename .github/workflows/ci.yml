@@ -39,7 +39,7 @@ jobs:
           node-version: 20
       - name: Install kcov
         run: |
-          KCOV_VERSION=v44
+          KCOV_VERSION=v43
           sudo apt-get update && sudo apt-get install -y cmake libcurl4-gnutls-dev libelf-dev libdw-dev binutils-dev libiberty-dev
           curl -sSfL "https://github.com/SimonKagstrom/kcov/archive/refs/tags/${KCOV_VERSION}.tar.gz" | tar xz
           cd "kcov-${KCOV_VERSION#v}" && mkdir build && cd build && cmake .. && make -j"$(nproc)" && sudo make install
