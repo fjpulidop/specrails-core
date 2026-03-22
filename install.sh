@@ -44,6 +44,7 @@ SPECRAILS_DIR=""
 INSTRUCTIONS_FILE=""
 HAS_CLAUDE=false
 HAS_CODEX=false
+AGENT_TEAMS=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -264,6 +265,35 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
 else
     SPECRAILS_DIR=".claude"
     INSTRUCTIONS_FILE="CLAUDE.md"
+fi
+
+# 1.2b Agent Teams opt-in (Claude Code only)
+if [[ "$CLI_PROVIDER" == "claude" ]]; then
+    echo ""
+    if [ "$AUTO_YES" = true ]; then
+        # --yes flag: default to NOT installing (opt-in, not opt-out)
+        AGENT_TEAMS=false
+        info "Agent Teams commands: skipped (opt-in, use interactive mode to enable)"
+    else
+        echo -e "  ${BOLD}Agent Teams commands are available (experimental):${NC}"
+        echo "    /sr:team-review — Multi-perspective code review with AI reviewers"
+        echo "    /sr:team-debug  — Collaborative debugging with competing hypotheses"
+        echo ""
+        echo "  These require Claude Code Agent Teams (experimental feature)."
+        read -p "  Install Agent Teams commands? (y/n, default: n): " INSTALL_AGENT_TEAMS
+        if [[ "$INSTALL_AGENT_TEAMS" == "y" || "$INSTALL_AGENT_TEAMS" == "Y" ]]; then
+            AGENT_TEAMS=true
+            ok "Agent Teams commands will be installed"
+            echo ""
+            info "Remember to set the feature flag before using these commands:"
+            echo ""
+            echo "    export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+            echo ""
+        else
+            AGENT_TEAMS=false
+            info "Agent Teams commands: skipped"
+        fi
+    fi
 fi
 
 # 1.3 API key / authentication (provider-specific)
@@ -542,7 +572,8 @@ cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.provider-detection.json" << EO
 {
   "cli_provider": "$CLI_PROVIDER",
   "specrails_dir": "$SPECRAILS_DIR",
-  "instructions_file": "$INSTRUCTIONS_FILE"
+  "instructions_file": "$INSTRUCTIONS_FILE",
+  "agent_teams": $AGENT_TEAMS
 }
 EOF
 ok "Provider detection results written ($CLI_PROVIDER → $SPECRAILS_DIR/)"
@@ -589,6 +620,10 @@ echo ""
 echo -e "${BOLD}${GREEN}Installation summary:${NC}"
 echo ""
 echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
+if [[ "$AGENT_TEAMS" == "true" ]]; then
+    echo "  Agent Teams: installed (/sr:team-review, /sr:team-debug)"
+    echo "  Feature flag: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (required)"
+fi
 echo ""
 echo "  Files installed:"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
