@@ -11,7 +11,7 @@ echo ""
 
 # Helper: install specrails into target first
 install_to_target() {
-    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
 }
 
 # Helper: run update with 'n' piped to stdin (declines agent regeneration prompt)
