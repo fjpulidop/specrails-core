@@ -144,7 +144,7 @@ test_auth_error_mentions_both_options() {
 
     local output
     output="$(HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
-        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" 2>&1 || true)"
+        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" --provider claude 2>&1 || true)"
 
     rm -rf "$fake_home"
 

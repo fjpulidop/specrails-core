@@ -230,7 +230,7 @@ elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
         echo "      1) Claude Code (claude)  → output to .claude/"
         echo "      2) Codex (codex)         → output to .codex/"
         echo ""
-        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE
+        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE || PROVIDER_CHOICE="1"
         PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
         if [[ "$PROVIDER_CHOICE" == "2" ]]; then
             CLI_PROVIDER="codex"
@@ -280,7 +280,7 @@ if [[ "$CLI_PROVIDER" == "claude" ]]; then
         echo "    /sr:team-debug  — Collaborative debugging with competing hypotheses"
         echo ""
         echo "  These require Claude Code Agent Teams (experimental feature)."
-        read -p "  Install Agent Teams commands? (y/n, default: n): " INSTALL_AGENT_TEAMS
+        read -p "  Install Agent Teams commands? (y/n, default: n): " INSTALL_AGENT_TEAMS || INSTALL_AGENT_TEAMS="n"
         if [[ "$INSTALL_AGENT_TEAMS" == "y" || "$INSTALL_AGENT_TEAMS" == "Y" ]]; then
             AGENT_TEAMS=true
             ok "Agent Teams commands will be installed"
