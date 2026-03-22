@@ -99,7 +99,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     echo -e "${YELLOW}⚠${NC}  You're running the installer from inside the specrails source repo."
     echo -e "   specrails installs into a ${BOLD}target${NC} repository, not into itself."
     echo ""
-    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH
+    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH || TARGET_PATH="q"
     if [[ "$TARGET_PATH" == "q" || -z "$TARGET_PATH" ]]; then
         echo "   Aborted. No changes made."
         exit 0
@@ -364,7 +364,7 @@ elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
 else
     warn "OpenSpec CLI not found."
     if [ "$HAS_NPM" = true ]; then
-        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC; fi
+        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"; fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
             info "Installing OpenSpec CLI..."
             npm install -g @openspec/cli 2>/dev/null && {
@@ -469,7 +469,7 @@ fi
 if [ "$EXISTING_SETUP" = true ]; then
     echo ""
     warn "This repo already has some agent/command/openspec artifacts."
-    if [ "$AUTO_YES" = true ]; then CONTINUE="y"; else read -p "    Continue and merge with existing setup? (y/n): " CONTINUE; fi
+    if [ "$AUTO_YES" = true ]; then CONTINUE="y"; else read -p "    Continue and merge with existing setup? (y/n): " CONTINUE || CONTINUE="n"; fi
     if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
         info "Aborted. No changes made."
         exit 0
