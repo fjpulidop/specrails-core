@@ -366,10 +366,14 @@ test_regression_no_broken_placeholders_codex() {
     run_install_mocked "--provider codex" >/dev/null
     # Broken placeholders in finalized generated files (skills) would be a regression.
     # Exclude setup-templates/ — those are source templates filled in during /setup.
+    # Exclude .agents/skills/setup/ and .agents/skills/doctor/ — these are installer
+    # scaffold skills that wrap the setup/doctor wizard prompts, which intentionally
+    # document {{PLACEHOLDER}} syntax for the AI to substitute at runtime.
     local broken
     broken="$(grep -r '{{[A-Z_]*}}' \
         "$TEST_TMPDIR/target/.agents/skills/" \
-        --exclude="setup.md" \
+        --exclude-dir="setup" \
+        --exclude-dir="doctor" \
         2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
         echo "  FAIL: broken placeholders found in generated .agents/skills/ files:"
