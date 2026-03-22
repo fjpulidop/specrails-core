@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.1.0](https://github.com/fjpulidop/specrails-core/compare/v3.0.0...v3.1.0) (2026-03-22)
+
+
+### Features
+
+* add coverage tooling + expand test coverage ([#177](https://github.com/fjpulidop/specrails-core/issues/177)) ([1e0eab4](https://github.com/fjpulidop/specrails-core/commit/1e0eab4dbaef323b3435114df991c28106d6dca5))
+* Codex skills installer + Agent Teams commands ([#176](https://github.com/fjpulidop/specrails-core/issues/176)) ([a4ef830](https://github.com/fjpulidop/specrails-core/commit/a4ef83003548acadf00b27f400dea04243f8c7bf))
+
 ## [3.0.0](https://github.com/fjpulidop/specrails-core/compare/v2.1.3...v3.0.0) (2026-03-22)
 
 
