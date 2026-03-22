@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.3](https://github.com/fjpulidop/specrails-core/compare/v2.1.2...v2.1.3) (2026-03-22)
+
+
+### Bug Fixes
+
+* install Codex commands as Agent Skills ([#173](https://github.com/fjpulidop/specrails-core/issues/173)) ([0ae617c](https://github.com/fjpulidop/specrails-core/commit/0ae617c7b45c1f1239898386d43db2c0b97ceeaf))
+
 ## [2.1.2](https://github.com/fjpulidop/specrails-core/compare/v2.1.1...v2.1.2) (2026-03-21)
 
 
