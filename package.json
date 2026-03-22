@@ -50,6 +50,10 @@
   "bugs": {
     "url": "https://github.com/fjpulidop/specrails-core/issues"
   },
+  "scripts": {
+    "test": "bash tests/run-all.sh",
+    "test:coverage": "bash tests/run-coverage.sh"
+  },
   "license": "MIT",
   "author": "fjpulidop"
 }
