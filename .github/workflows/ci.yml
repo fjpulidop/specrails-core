@@ -38,7 +38,11 @@ jobs:
         with:
           node-version: 20
       - name: Install kcov
-        run: sudo apt-get update && sudo apt-get install -y kcov
+        run: |
+          KCOV_VERSION=v44
+          sudo apt-get update && sudo apt-get install -y cmake libcurl4-gnutls-dev libelf-dev libdw-dev binutils-dev libiberty-dev
+          curl -sSfL "https://github.com/SimonKagstrom/kcov/archive/refs/tags/${KCOV_VERSION}.tar.gz" | tar xz
+          cd "kcov-${KCOV_VERSION#v}" && mkdir build && cd build && cmake .. && make -j"$(nproc)" && sudo make install
       - name: Run tests with coverage
         run: bash tests/run-coverage.sh
       - name: Upload coverage report
