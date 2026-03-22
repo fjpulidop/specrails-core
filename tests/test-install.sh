@@ -42,7 +42,7 @@ run_test "--root-dir without value rejected" test_install_root_dir_missing_value
 
 test_install_fresh() {
     local output
-    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1)"
+    output="$(bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" 2>&1)"
     assert_contains "$output" "Installation complete" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-version" &&
     assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json" &&
@@ -55,7 +55,7 @@ test_install_fresh() {
 run_test "fresh install creates expected structure" test_install_fresh
 
 test_install_creates_version_file() {
-    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     local version
     version="$(cat "$TEST_TMPDIR/target/.specrails-version" | tr -d '[:space:]')"
     local expected
@@ -65,7 +65,7 @@ test_install_creates_version_file() {
 run_test "version file matches VERSION" test_install_creates_version_file
 
 test_install_manifest_valid_json() {
-    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.specrails-manifest.json'))"
 }
 run_test "manifest is valid JSON" test_install_manifest_valid_json
@@ -75,9 +75,9 @@ run_test "manifest is valid JSON" test_install_manifest_valid_json
 # ─────────────────────────────────────────────
 
 test_install_double() {
-    echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
+    bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     local output
-    output="$(echo "y" | bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" 2>&1 || true)"
+    output="$(bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" 2>&1 || true)"
     assert_contains "$output" "already"
 }
 run_test "double install warns about existing installation" test_install_double
@@ -118,8 +118,8 @@ test_auth_oauth_accepted() {
     git -C "$target" init -q
 
     local output
-    output="$(echo "y" | HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
-        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" 2>&1 || true)"
+    output="$(HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
+        bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$target" 2>&1 || true)"
 
     rm -rf "$fake_home"
 
@@ -144,7 +144,7 @@ test_auth_error_mentions_both_options() {
 
     local output
     output="$(HOME="$fake_home" PATH="$fake_home/bin:$PATH" SPECRAILS_SKIP_PREREQS=0 ANTHROPIC_API_KEY="" \
-        bash "$SPECRAILS_DIR/install.sh" --root-dir "$target" 2>&1 || true)"
+        bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$target" --provider claude 2>&1 || true)"
 
     rm -rf "$fake_home"
 

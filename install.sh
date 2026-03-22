@@ -44,6 +44,7 @@ SPECRAILS_DIR=""
 INSTRUCTIONS_FILE=""
 HAS_CLAUDE=false
 HAS_CODEX=false
+AGENT_TEAMS=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -98,7 +99,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     echo -e "${YELLOW}⚠${NC}  You're running the installer from inside the specrails source repo."
     echo -e "   specrails installs into a ${BOLD}target${NC} repository, not into itself."
     echo ""
-    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH
+    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH || TARGET_PATH="q"
     if [[ "$TARGET_PATH" == "q" || -z "$TARGET_PATH" ]]; then
         echo "   Aborted. No changes made."
         exit 0
@@ -229,7 +230,7 @@ elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
         echo "      1) Claude Code (claude)  → output to .claude/"
         echo "      2) Codex (codex)         → output to .codex/"
         echo ""
-        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE
+        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE || PROVIDER_CHOICE="1"
         PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
         if [[ "$PROVIDER_CHOICE" == "2" ]]; then
             CLI_PROVIDER="codex"
@@ -264,6 +265,35 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
 else
     SPECRAILS_DIR=".claude"
     INSTRUCTIONS_FILE="CLAUDE.md"
+fi
+
+# 1.2b Agent Teams opt-in (Claude Code only)
+if [[ "$CLI_PROVIDER" == "claude" ]]; then
+    echo ""
+    if [ "$AUTO_YES" = true ]; then
+        # --yes flag: default to NOT installing (opt-in, not opt-out)
+        AGENT_TEAMS=false
+        info "Agent Teams commands: skipped (opt-in, use interactive mode to enable)"
+    else
+        echo -e "  ${BOLD}Agent Teams commands are available (experimental):${NC}"
+        echo "    /sr:team-review — Multi-perspective code review with AI reviewers"
+        echo "    /sr:team-debug  — Collaborative debugging with competing hypotheses"
+        echo ""
+        echo "  These require Claude Code Agent Teams (experimental feature)."
+        read -p "  Install Agent Teams commands? (y/n, default: n): " INSTALL_AGENT_TEAMS || INSTALL_AGENT_TEAMS="n"
+        if [[ "$INSTALL_AGENT_TEAMS" == "y" || "$INSTALL_AGENT_TEAMS" == "Y" ]]; then
+            AGENT_TEAMS=true
+            ok "Agent Teams commands will be installed"
+            echo ""
+            info "Remember to set the feature flag before using these commands:"
+            echo ""
+            echo "    export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+            echo ""
+        else
+            AGENT_TEAMS=false
+            info "Agent Teams commands: skipped"
+        fi
+    fi
 fi
 
 # 1.3 API key / authentication (provider-specific)
@@ -334,7 +364,7 @@ elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
 else
     warn "OpenSpec CLI not found."
     if [ "$HAS_NPM" = true ]; then
-        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC; fi
+        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"; fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
             info "Installing OpenSpec CLI..."
             npm install -g @openspec/cli 2>/dev/null && {
@@ -439,7 +469,7 @@ fi
 if [ "$EXISTING_SETUP" = true ]; then
     echo ""
     warn "This repo already has some agent/command/openspec artifacts."
-    if [ "$AUTO_YES" = true ]; then CONTINUE="y"; else read -p "    Continue and merge with existing setup? (y/n): " CONTINUE; fi
+    if [ "$AUTO_YES" = true ]; then CONTINUE="y"; else read -p "    Continue and merge with existing setup? (y/n): " CONTINUE || CONTINUE="n"; fi
     if [ "$CONTINUE" != "y" ] && [ "$CONTINUE" != "Y" ]; then
         info "Aborted. No changes made."
         exit 0
@@ -544,7 +574,8 @@ cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.provider-detection.json" << EO
 {
   "cli_provider": "$CLI_PROVIDER",
   "specrails_dir": "$SPECRAILS_DIR",
-  "instructions_file": "$INSTRUCTIONS_FILE"
+  "instructions_file": "$INSTRUCTIONS_FILE",
+  "agent_teams": $AGENT_TEAMS
 }
 EOF
 ok "Provider detection results written ($CLI_PROVIDER → $SPECRAILS_DIR/)"
@@ -591,6 +622,10 @@ echo ""
 echo -e "${BOLD}${GREEN}Installation summary:${NC}"
 echo ""
 echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
+if [[ "$AGENT_TEAMS" == "true" ]]; then
+    echo "  Agent Teams: installed (/sr:team-review, /sr:team-debug)"
+    echo "  Feature flag: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (required)"
+fi
 echo ""
 echo "  Files installed:"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then

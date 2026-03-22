@@ -94,7 +94,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     echo -e "${YELLOW}⚠${NC}  You're running the updater from inside the specrails source repo."
     echo -e "   specrails updates a ${BOLD}target${NC} repository, not itself."
     echo ""
-    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH
+    read -p "   Enter the path to the target repo (or 'q' to quit): " TARGET_PATH || TARGET_PATH="q"
     if [[ "$TARGET_PATH" == "q" || -z "$TARGET_PATH" ]]; then
         echo "   Aborted. No changes made."
         exit 0
@@ -107,7 +107,7 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
     }
     if [[ ! -d "$REPO_ROOT/.git" ]]; then
         echo -e "${YELLOW}⚠${NC}  Warning: $REPO_ROOT does not appear to be a git repository."
-        read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT
+        read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT || CONTINUE_NOGIT="n"
         if [[ "$CONTINUE_NOGIT" != "y" && "$CONTINUE_NOGIT" != "Y" ]]; then
             echo "   Aborted. No changes made."
             exit 0
@@ -658,7 +658,7 @@ except Exception:
         fi
 
         local answer
-        read -p "    Regenerate agents? (y/N): " answer
+        read -p "    Regenerate agents? (y/N): " answer || answer="n"
         if [[ "$answer" == "y" ]] || [[ "$answer" == "Y" ]]; then
             NEEDS_SETUP_UPDATE=true
             ok "Will regenerate agents via /setup --update"

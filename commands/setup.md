@@ -314,21 +314,14 @@ When no flags are passed (the default), run this streamlined 3-question setup. D
 
 ### QS1: Ask the 3 questions
 
-Ask exactly these questions in sequence. Do not ask any other questions.
+Display the following prompt EXACTLY ONCE and then wait for the user's responses. Do NOT repeat the questions — output them a single time only.
 
-```
 Welcome to specrails! Let's get your AI agent team set up in 3 quick questions.
 
 1. What is this project? (one sentence)
-   > _
-
 2. Who are the target users?
-   > _
-
 3. Git access for agents — read-only or read-write?
    (read-only = agents can read and suggest; read-write = agents can commit)
-   > _
-```
 
 Store the answers as:
 - `QS_PROJECT_DESCRIPTION` — answer to question 1
