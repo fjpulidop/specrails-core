@@ -3,4 +3,5 @@
 .claude/compat-snapshots/
 .claude/worktrees/
 .claude/backlog-cache.json
+coverage/
 
