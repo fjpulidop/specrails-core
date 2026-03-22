@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.1.2](https://github.com/fjpulidop/specrails-core/compare/v2.1.1...v2.1.2) (2026-03-21)
+
+
+### Bug Fixes
+
+* support Codex OAuth login in installer auth check ([#171](https://github.com/fjpulidop/specrails-core/issues/171)) ([dd286d2](https://github.com/fjpulidop/specrails-core/commit/dd286d238bcf5d76f4bd761de2402363f01dace1))
+
 ## [2.1.1](https://github.com/fjpulidop/specrails-core/compare/v2.1.0...v2.1.1) (2026-03-21)
 
 
