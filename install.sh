@@ -521,7 +521,9 @@ chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
 ok "Installed specrails doctor (bin/doctor.sh)"
 
 # Copy templates (includes commands, skills, agents, rules, personas, settings)
-cp -r "$SCRIPT_DIR/templates/"* "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/"
+# Use tar to exclude node_modules and package-lock.json for performance
+tar -C "$SCRIPT_DIR/templates" --exclude='node_modules' --exclude='package-lock.json' -cf - . \
+    | tar -C "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/" -xf -
 ok "Installed setup templates (commands + skills)"
 
 # Write OSS detection results for /setup
