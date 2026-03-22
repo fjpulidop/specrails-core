@@ -282,10 +282,11 @@ test_codex_agent_toml_files() {
         assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/agents/$agent.md" \
             "Agent template should exist for codex: $agent.md"
     done
-    local setup_cmd="$TEST_TMPDIR/target/.codex/commands/setup.md"
-    assert_file_exists "$setup_cmd"
-    assert_contains "$(cat "$setup_cmd")" "toml" \
-        "/setup command should contain TOML generation logic for codex"
+    # Codex: setup is installed as an Agent Skill, not a command
+    local setup_skill="$TEST_TMPDIR/target/.agents/skills/setup/SKILL.md"
+    assert_file_exists "$setup_skill"
+    assert_contains "$(cat "$setup_skill")" "toml" \
+        "\$setup skill should contain TOML generation logic for codex"
 }
 run_test "SPEA-509: codex provider → sr-*.toml agents with TOML format" test_codex_agent_toml_files
 
@@ -363,15 +364,19 @@ test_regression_no_broken_placeholders_codex() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    # Broken placeholders in finalized generated files (commands) would be a regression.
+    # Broken placeholders in finalized generated files (skills) would be a regression.
     # Exclude setup-templates/ — those are source templates filled in during /setup.
+    # Exclude .agents/skills/setup/ and .agents/skills/doctor/ — these are installer
+    # scaffold skills that wrap the setup/doctor wizard prompts, which intentionally
+    # document {{PLACEHOLDER}} syntax for the AI to substitute at runtime.
     local broken
     broken="$(grep -r '{{[A-Z_]*}}' \
-        "$TEST_TMPDIR/target/.codex/commands/" \
-        --exclude="setup.md" \
+        "$TEST_TMPDIR/target/.agents/skills/" \
+        --exclude-dir="setup" \
+        --exclude-dir="doctor" \
         2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
-        echo "  FAIL: broken placeholders found in generated .codex/commands/ files:"
+        echo "  FAIL: broken placeholders found in generated .agents/skills/ files:"
         echo "$broken" | head -10
         return 1
     fi

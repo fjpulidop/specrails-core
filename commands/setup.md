@@ -176,8 +176,10 @@ grep -r '{{[A-Z_]*}}' .codex/agents/sr-*.toml 2>/dev/null || echo "OK: no broken
 
 For each command in the "changed commands" list from Phase U3:
 
-1. Read the NEW template from `.claude/setup-templates/commands/sr/<name>.md`
-2. Read stored backlog configuration from `.claude/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
+1. Read the NEW template:
+   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`
+   - If `cli_provider == "codex"`: from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`
+2. Read stored backlog configuration from `$SPECRAILS_DIR/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
    - `BACKLOG_PROVIDER` → `provider` field (`github`, `jira`, or `none`)
    - `BACKLOG_WRITE` → `write_access` field
    - `JIRA_BASE_URL` → `jira_base_url` field
@@ -192,12 +194,19 @@ For each command in the "changed commands" list from Phase U3:
    - `{{BACKLOG_VIEW_CMD}}` → provider-specific view command from backlog config
    - `{{BACKLOG_PREFLIGHT}}` → provider-specific preflight check from backlog config
    - Any other `{{PLACEHOLDER}}` values → use Phase U2 analysis data
-4. Write the updated command to `.claude/commands/sr/<name>.md`
-5. Show: `✓ Updated /sr:<name>`
+4. Write the updated file:
+   - If `cli_provider == "claude"`: to `.claude/commands/sr/<name>.md`
+   - If `cli_provider == "codex"`: to `.agents/skills/sr-<name>/SKILL.md`
+5. Show:
+   - If `cli_provider == "claude"`: `✓ Updated /sr:<name>`
+   - If `cli_provider == "codex"`: `✓ Updated $sr-<name>`
 
-After updating all changed commands, verify no unresolved placeholders remain in the updated files:
+After updating all changed commands/skills, verify no unresolved placeholders remain:
 ```bash
+# If cli_provider == "claude":
 grep -l '{{[A-Z_]*}}' .claude/commands/sr/*.md 2>/dev/null || echo "OK: no broken placeholders"
+# If cli_provider == "codex":
+grep -rl '{{[A-Z_]*}}' .agents/skills/sr-*/SKILL.md 2>/dev/null || echo "OK: no broken placeholders"
 ```
 If any placeholders remain unresolved, warn the user:
 > "⚠ Some placeholders in `<filename>` could not be resolved automatically. Please review the file and fill them in manually."
@@ -221,24 +230,32 @@ For each agent in the "new" list:
 
 For each command in the "new commands" list from Phase U3:
 
-1. Read the template from `.claude/setup-templates/commands/sr/<name>.md` to understand what it does (read the title and description)
+1. Read the template:
+   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`
+   - If `cli_provider == "codex"`: from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`
 2. Prompt the user:
-   > "New command available: `/sr:<name>` — [one-line description from template]. Install it? [Y/n]"
+   - If `cli_provider == "claude"`: `"New command available: /sr:<name> — [one-line description]. Install it? [Y/n]"`
+   - If `cli_provider == "codex"`: `"New skill available: $sr-<name> — [one-line description]. Install it? [Y/n]"`
 3. If the user accepts (or presses Enter):
    - Apply placeholder substitution using the same rules as Phase U4b (backlog config + codebase analysis)
-   - Write the command to `.claude/commands/sr/<name>.md`
-   - Show: `✓ Added /sr:<name>`
+   - If `cli_provider == "claude"`: write to `.claude/commands/sr/<name>.md` — show `✓ Added /sr:<name>`
+   - If `cli_provider == "codex"`: write to `.agents/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name>`
 4. If the user declines:
-   - Show: `→ Skipped /sr:<name>`
+   - If `cli_provider == "claude"`: show `→ Skipped /sr:<name>`
+   - If `cli_provider == "codex"`: show `→ Skipped $sr-<name>`
 
 ### Phase U6: Update Workflow Commands
 
 If any new agents were added in Phase U5:
 
-1. Read `.claude/commands/sr/implement.md`
+1. Read the implement command/skill:
+   - If `cli_provider == "claude"`: `.claude/commands/sr/implement.md`
+   - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
 2. Check if the file references agent names in its orchestration steps (look for `sr-architect`, `sr-developer`, `sr-reviewer` etc.)
 3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `sr-frontend-developer` or `sr-backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
-4. Write the updated `.claude/commands/sr/implement.md` if any changes were made
+4. Write the updated file if any changes were made:
+   - If `cli_provider == "claude"`: `.claude/commands/sr/implement.md`
+   - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
 5. Show which commands were updated, or "No command updates needed" if nothing changed
 
 This is a lightweight check — only update commands where the sr- agent clearly belongs. Do not restructure the entire command.
@@ -341,20 +358,31 @@ Store as `QS_IS_EXISTING_CODEBASE=true/false`.
 
 Before generating files, check if this is a re-run:
 
-1. Check if `.claude/commands/sr/` directory exists with any `.md` files:
-   ```bash
-   ls .claude/commands/sr/*.md 2>/dev/null
-   ```
-2. If `.md` files are found → this is a **re-run**. Store `QS_IS_RERUN=true`.
+1. Check if commands/skills already exist:
+   - If `cli_provider == "claude"`: check if `.claude/commands/sr/` directory exists with any `.md` files:
+     ```bash
+     ls .claude/commands/sr/*.md 2>/dev/null
+     ```
+   - If `cli_provider == "codex"`: check if `.agents/skills/sr-*/SKILL.md` files exist:
+     ```bash
+     ls .agents/skills/sr-*/SKILL.md 2>/dev/null
+     ```
+2. If files are found → this is a **re-run**. Store `QS_IS_RERUN=true`.
 3. If the directory does not exist or is empty → this is a **fresh install**. Store `QS_IS_RERUN=false`.
 
-In re-run mode, QS3 executes in **gap-fill mode** for command files:
-- For each command in the list, check if it already exists at `.claude/commands/sr/<name>.md`
-- If it exists: skip it and show `✓ Already installed: /sr:<name>`
-- If it does NOT exist: install it and show `✓ Added /sr:<name> (was missing)`
+In re-run mode, QS3 executes in **gap-fill mode** for command/skill files:
+- For each command in the list, check if it already exists:
+  - If `cli_provider == "claude"`: at `.claude/commands/sr/<name>.md`
+  - If `cli_provider == "codex"`: at `.agents/skills/sr-<name>/SKILL.md`
+- If it exists: skip it and show:
+  - Claude: `✓ Already installed: /sr:<name>`
+  - Codex: `✓ Already installed: $sr-<name>`
+- If it does NOT exist: install it and show:
+  - Claude: `✓ Added /sr:<name> (was missing)`
+  - Codex: `✓ Added $sr-<name> (was missing)`
 - Do NOT prompt the user for confirmation on missing files — install them automatically
 
-For CLAUDE.md and agent files, the existing per-file prompts already handle re-runs (user is asked before overwriting). No change needed there.
+For CLAUDE.md/AGENTS.md and agent files, the existing per-file prompts already handle re-runs (user is asked before overwriting). No change needed there.
 
 ### QS3: Generate files
 
@@ -404,11 +432,21 @@ Core commands (always install if missing):
 
 Do NOT copy `product-backlog.md` or `update-product-driven-backlog.md` (no backlog provider configured).
 
-If `QS_IS_RERUN=false` (fresh install): copy all core commands from `setup-templates/commands/sr/` to `.claude/commands/sr/`.
+**If `cli_provider == "claude"`:**
+
+If `QS_IS_RERUN=false` (fresh install): copy all core commands from `$SPECRAILS_DIR/setup-templates/commands/sr/` to `.claude/commands/sr/`.
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
 - If it exists: skip it — show `✓ Already installed: /sr:<name>`
-- If it does NOT exist: copy from `setup-templates/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
+- If it does NOT exist: copy from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
+
+**If `cli_provider == "codex"`:**
+
+If `QS_IS_RERUN=false` (fresh install): for each core command, copy the corresponding skill from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md` to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
+
+If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.agents/skills/sr-<name>/SKILL.md` already exists:
+- If it exists: skip it — show `✓ Already installed: $sr-<name>`
+- If it does NOT exist: copy from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name> (was missing)`
 
 **4. Cleanup**
 
@@ -954,9 +992,11 @@ Write each persona to `$SPECRAILS_DIR/agents/personas/`:
 - Use the VPC personas generated in Phase 2
 - File naming: kebab-case of persona nickname (e.g., `the-developer.md`, `the-admin.md`)
 
-### 4.3 Generate commands
+### 4.3 Generate commands / skills
 
-For each selected command, read the template and adapt:
+For each selected command, read the template and adapt.
+
+**If `cli_provider == "claude"` (default):**
 - `setup-templates/commands/sr/implement.md` → `.claude/commands/sr/implement.md`
 - `setup-templates/commands/sr/batch-implement.md` → `.claude/commands/sr/batch-implement.md`
 - `setup-templates/commands/sr/propose-spec.md` → `.claude/commands/sr/propose-spec.md`
@@ -966,6 +1006,32 @@ For each selected command, read the template and adapt:
 - `setup-templates/commands/sr/compat-check.md` → `.claude/commands/sr/compat-check.md`
 - `setup-templates/commands/sr/refactor-recommender.md` → `.claude/commands/sr/refactor-recommender.md`
 - `setup-templates/commands/sr/why.md` → `.claude/commands/sr/why.md`
+
+**If `cli_provider == "codex"`:**
+- `setup-templates/skills/sr-implement/SKILL.md` → `.agents/skills/sr-implement/SKILL.md`
+- `setup-templates/skills/sr-batch-implement/SKILL.md` → `.agents/skills/sr-batch-implement/SKILL.md`
+- `setup-templates/commands/sr/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
+- `setup-templates/commands/sr/product-backlog.md` → `.agents/skills/sr-product-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/commands/sr/update-product-driven-backlog.md` → `.agents/skills/sr-update-product-driven-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/skills/sr-health-check/SKILL.md` → `.agents/skills/sr-health-check/SKILL.md`
+- `setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
+- `setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
+- `setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
+
+**Codex skill frontmatter wrapping:** When a dedicated skill template does not exist in `setup-templates/skills/` for a command, generate the `SKILL.md` by prepending YAML frontmatter to the command content:
+```yaml
+---
+name: sr-<name>
+description: "<one-line description from the command's first heading>"
+license: MIT
+compatibility: "Requires git."
+metadata:
+  author: specrails
+  version: "1.0"
+---
+```
+
+For both providers, create the output directory before writing (`mkdir -p` for `.claude/commands/sr/` or `.agents/skills/sr-<name>/`).
 
 Adapt:
 - CI commands to match detected stack
@@ -980,7 +1046,7 @@ When adapting `update-product-driven-backlog.md` and `product-backlog.md`, subst
 
 | Placeholder | Substitution rule |
 |-------------|------------------|
-| `{{PERSONA_FILE_READ_LIST}}` | One bullet per persona file: `- Read \`.claude/agents/personas/{name}.md\`` |
+| `{{PERSONA_FILE_READ_LIST}}` | One bullet per persona file: `- Read \`$SPECRAILS_DIR/agents/personas/{name}.md\`` |
 | `{{PERSONA_SCORE_HEADERS}}` | Column headers for each persona nickname: e.g., `Alex \| Sara \| Kai` |
 | `{{PERSONA_SCORE_SEPARATORS}}` | One `------` separator per persona column |
 | `{{PERSONA_FIT_FORMAT}}` | Inline score display: e.g., `Alex: X/5, Sara: X/5, Kai: X/5` |
@@ -1017,7 +1083,7 @@ When adapting `update-product-driven-backlog.md` and `product-backlog.md`, subst
 - Issue view: `jira issue view {key}` or REST API
 - VPC scores stored in the issue description body (same markdown format, parsed from description)
 - Pre-flight check: `jira me` or test API connectivity
-- Store JIRA config in `.claude/backlog-config.json`:
+- Store JIRA config in `$SPECRAILS_DIR/backlog-config.json`:
   ```json
   {
     "provider": "jira",
@@ -1033,16 +1099,18 @@ The command templates use `{{BACKLOG_FETCH_CMD}}`, `{{BACKLOG_CREATE_CMD}}`, `{{
 ### 4.4 Generate rules
 
 For each detected layer, read the layer rule template and generate a layer-specific rules file:
-- `setup-templates/rules/layer.md` → `.claude/rules/{layer-name}.md`
+- `setup-templates/rules/layer.md` → `$SPECRAILS_DIR/rules/{layer-name}.md`
 
 Each rule file must:
 - Have the correct `paths:` frontmatter matching the layer's directory
 - Contain conventions specific to that layer (from Phase 1 analysis)
 - Reference actual file paths and patterns from the codebase
 
-### 4.5 Generate root CLAUDE.md
+### 4.5 Generate root instructions file
 
-If no CLAUDE.md exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
+**If `cli_provider == "claude"`:** If no `CLAUDE.md` exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
+
+**If `cli_provider == "codex"`:** If no `AGENTS.md` exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
 
 ### 4.6 Generate settings
 
@@ -1154,13 +1222,14 @@ ls .claude/agent-memory/
 # If cli_provider == "codex":
 ls .codex/agents/sr-*.toml
 ls .codex/agents/personas/*.md
-ls .codex/skills/sr-*/SKILL.md
+ls .agents/skills/sr-*/SKILL.md
 ls .codex/rules/*.md
 ls .codex/agent-memory/
 
 # These should NOT exist (scaffolding):
 # $SPECRAILS_DIR/setup-templates/  — GONE
-# $SPECRAILS_DIR/commands/setup.md  — GONE
+# If cli_provider == "claude": $SPECRAILS_DIR/commands/setup.md  — GONE
+# If cli_provider == "codex": .agents/skills/setup/  — GONE (installer scaffold, not a generated sr-skill)
 ```
 
 If any scaffolding artifact remains, remove it.
@@ -1198,7 +1267,8 @@ Display the complete installation summary:
 [For each user-generated persona:]
 | "[Name]" — The [Role] | $SPECRAILS_DIR/agents/personas/[name].md | Generated |
 
-### Commands Installed
+### Commands / Skills Installed
+[If cli_provider == "claude":]
 | Command | File |
 |---------|------|
 | /sr:implement | .claude/commands/sr/implement.md |
@@ -1210,33 +1280,58 @@ Display the complete installation summary:
 | /sr:compat-check | .claude/commands/sr/compat-check.md |
 | /sr:refactor-recommender | .claude/commands/sr/refactor-recommender.md |
 | /sr:why | .claude/commands/sr/why.md |
+[If cli_provider == "codex":]
+| Skill | File |
+|-------|------|
+| $sr-implement | .agents/skills/sr-implement/SKILL.md |
+| $sr-batch-implement | .agents/skills/sr-batch-implement/SKILL.md |
+| $sr-propose-spec | .agents/skills/sr-propose-spec/SKILL.md |
+| $sr-product-backlog | .agents/skills/sr-product-backlog/SKILL.md |
+| $sr-update-product-driven-backlog | .agents/skills/sr-update-product-driven-backlog/SKILL.md |
+| $sr-health-check | .agents/skills/sr-health-check/SKILL.md |
+| $sr-compat-check | .agents/skills/sr-compat-check/SKILL.md |
+| $sr-refactor-recommender | .agents/skills/sr-refactor-recommender/SKILL.md |
+| $sr-why | .agents/skills/sr-why/SKILL.md |
 
-Note: Only commands selected during setup are shown. Backlog commands are excluded if no backlog provider was configured.
+Note: Only commands/skills selected during setup are shown. Backlog commands are excluded if no backlog provider was configured.
 
 ### Rules Created
 | Layer | File |
 |-------|------|
-| Backend | .claude/rules/backend.md |
-| Frontend | .claude/rules/frontend.md |
+| Backend | $SPECRAILS_DIR/rules/backend.md |
+| Frontend | $SPECRAILS_DIR/rules/frontend.md |
 
 ### Scaffolding Removed
 | Artifact | Status |
 |----------|--------|
-| .claude/setup-templates/ | Deleted |
-| .claude/commands/setup.md | Deleted |
+| $SPECRAILS_DIR/setup-templates/ | Deleted |
+[If cli_provider == "claude":] | .claude/commands/setup.md | Deleted |
+[If cli_provider == "codex":] | .agents/skills/setup/ | Deleted |
 | specrails/ | [User's choice] |
 
 ### Next Steps
+[If cli_provider == "claude":]
 1. Review the generated files in .claude/
 2. Run `/sr:product-backlog` to see your backlog (if GitHub Issues exist)
 3. Run `/sr:update-product-driven-backlog` to generate feature ideas
 4. Run `/sr:implement #issue-number` to implement a feature
 5. Commit the .claude/ directory to version control
+[If cli_provider == "codex":]
+1. Review the generated files in .codex/ and .agents/skills/
+2. Run `$sr-product-backlog` to see your backlog (if GitHub Issues exist)
+3. Run `$sr-update-product-driven-backlog` to generate feature ideas
+4. Run `$sr-implement #issue-number` to implement a feature
+5. Commit the .codex/ and .agents/ directories to version control
 
 ### Quick Start
+[If cli_provider == "claude":]
 - `/sr:implement "describe a feature"` — implement something right now
 - `/sr:product-backlog` — see prioritized feature ideas
 - `/sr:update-product-driven-backlog` — discover new features using VPC
+[If cli_provider == "codex":]
+- `$sr-implement "describe a feature"` — implement something right now
+- `$sr-product-backlog` — see prioritized feature ideas
+- `$sr-update-product-driven-backlog` — discover new features using VPC
 ```
 
 ## First Task Prompt (Advanced Mode)
@@ -1248,7 +1343,10 @@ After displaying the setup complete summary above, detect the project type and o
 ✅ Setup complete.
 
 Try your first spec:
+[If cli_provider == "claude":]
   > /sr:product-backlog
+[If cli_provider == "codex":]
+  > $sr-product-backlog
 ```
 
 **Existing codebase** (one or more of the above files found in root):
@@ -1256,7 +1354,10 @@ Try your first spec:
 ✅ Setup complete.
 
 Try your first spec:
+[If cli_provider == "claude":]
   > /sr:health-check
+[If cli_provider == "codex":]
+  > $sr-health-check
 ```
 
 Then stop.

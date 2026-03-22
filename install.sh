@@ -456,7 +456,13 @@ step "Phase 3: Installing specrails artifacts"
 
 # Create directory structure
 mkdir -p "$REPO_ROOT/specrails"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    # Codex: install as Agent Skills (Codex doesn't support .codex/commands/)
+    mkdir -p "$REPO_ROOT/.agents/skills/setup"
+    mkdir -p "$REPO_ROOT/.agents/skills/doctor"
+else
+    mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands"
+fi
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/agents"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/commands"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/skills"
@@ -467,13 +473,46 @@ mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/settings"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
 
-# Copy the /setup command
-cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/setup.md"
-ok "Installed /setup command"
+# Copy the /setup and /doctor commands (or skills for Codex)
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    # Codex uses Agent Skills in .agents/skills/<name>/SKILL.md
+    {
+        echo '---'
+        echo 'name: setup'
+        echo 'description: "Interactive wizard to configure the full specrails agent workflow system for this repository."'
+        echo 'license: MIT'
+        echo 'compatibility: "Requires npm, git."'
+        echo 'metadata:'
+        echo '  author: specrails'
+        echo '  version: "1.0"'
+        echo '---'
+        echo ''
+        cat "$SCRIPT_DIR/commands/setup.md"
+    } > "$REPO_ROOT/.agents/skills/setup/SKILL.md"
+    ok "Installed \$setup skill"
 
-# Copy the /doctor command
-cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/doctor.md"
-ok "Installed /doctor command"
+    {
+        echo '---'
+        echo 'name: doctor'
+        echo 'description: "Health check for the specrails agent workflow system — validates agents, commands, rules, and configuration."'
+        echo 'license: MIT'
+        echo 'compatibility: "Requires npm, git."'
+        echo 'metadata:'
+        echo '  author: specrails'
+        echo '  version: "1.0"'
+        echo '---'
+        echo ''
+        cat "$SCRIPT_DIR/commands/doctor.md"
+    } > "$REPO_ROOT/.agents/skills/doctor/SKILL.md"
+    ok "Installed \$doctor skill"
+else
+    # Claude Code uses commands in .claude/commands/
+    cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/setup.md"
+    ok "Installed /setup command"
+
+    cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/doctor.md"
+    ok "Installed /doctor command"
+fi
 
 # Install bin/doctor.sh for standalone use
 mkdir -p "$REPO_ROOT/.specrails/bin"
@@ -552,7 +591,12 @@ echo ""
 echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
 echo ""
 echo "  Files installed:"
-echo "    $SPECRAILS_DIR/commands/setup.md          ← The /setup command"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    echo "    .agents/skills/setup/SKILL.md        ← The \$setup skill"
+    echo "    .agents/skills/doctor/SKILL.md       ← The \$doctor skill"
+else
+    echo "    $SPECRAILS_DIR/commands/setup.md          ← The /setup command"
+fi
 echo "    $SPECRAILS_DIR/setup-templates/           ← Templates: commands + skills (temporary, removed after setup)"
 echo "    .specrails-version                       ← Installed specrails version"
 echo "    .specrails-manifest.json                 ← Artifact checksums for update detection"
@@ -574,7 +618,11 @@ echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
 echo ""
 echo "  2. Run the setup wizard:"
 echo ""
-echo -e "     ${BOLD}/setup${NC}"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    echo -e "     ${BOLD}\$setup${NC}"
+else
+    echo -e "     ${BOLD}/setup${NC}"
+fi
 echo ""
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     echo "  Codex will analyze your codebase, ask about your users,"
