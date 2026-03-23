@@ -65,7 +65,8 @@ codex       # OpenAI Codex (beta)
 
 ```bash
 > /sr:implement "add user authentication"
-> /sr:implement #42, #43               # from GitHub Issues
+> /sr:implement #1, #2                 # from local tickets (default)
+> /sr:implement #42, #43               # from GitHub Issues (if configured)
 > /sr:update-product-driven-backlog    # discover new features with AI
 ```
 
@@ -162,7 +163,7 @@ rm -rf .claude/.dry-run/add-dark-mode/
 /sr:product-backlog UI, Decks        # filter by area
 ```
 
-Reads your GitHub Issues, scores by VPC persona match, recommends top 3 for next sprint.
+Reads your tickets (local or GitHub Issues), scores by VPC persona match, recommends top 3 for next sprint.
 
 ### `/sr:update-product-driven-backlog` — Discover features
 
@@ -171,7 +172,28 @@ Reads your GitHub Issues, scores by VPC persona match, recommends top 3 for next
 /sr:update-product-driven-backlog Analytics   # focus on one area
 ```
 
-AI product discovery using your personas. Evaluates ideas, creates GitHub Issues for the best ones.
+AI product discovery using your personas. Evaluates ideas, creates tickets (local or GitHub Issues) for the best ones.
+
+---
+
+## Local ticket management
+
+specrails-core ships with a built-in ticket system — no GitHub account or external tools required.
+
+Tickets live in `.claude/local-tickets.json` alongside your code. They're plain JSON, git-friendly, and bidirectionally synced with specrails-hub in real time.
+
+**Local tickets are the default.** The `/setup` wizard defaults to local tickets and skips GitHub/JIRA credential setup unless you opt in.
+
+```bash
+/sr:implement #1, #4           # implement by ticket ID
+/sr:product-backlog            # view prioritized backlog
+/sr:update-product-driven-backlog  # discover and create tickets with AI
+/sr:propose-spec               # create a ticket from a spec proposal
+```
+
+See [docs/local-tickets.md](./docs/local-tickets.md) for the full schema reference, concurrency model, and command integration details.
+
+Migrating from GitHub Issues or JIRA? See [docs/migration-guide.md](./docs/migration-guide.md).
 
 ---
 
@@ -200,8 +222,8 @@ Each persona scores features 0-5. Features are ranked by score/effort ratio. No 
 | **git** | Yes | Repository detection |
 | **npm / Node 18+** | Recommended | Needed for npx install and OpenSpec CLI |
 | **OpenSpec CLI** | Recommended | Structured design artifacts for `/sr:implement` |
-| **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation |
-| **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA |
+| **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation. Not needed with local tickets. |
+| **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA. Not needed with local tickets. |
 
 The installer checks for each tool and offers to install missing ones.
 
@@ -242,7 +264,10 @@ Run `npx specrails-core@latest init --root-dir <path>` again to re-scaffold, the
 Partially. Product discovery commands and individual agents work. `/sr:implement` and sr-architect rely on OpenSpec for structured design artifacts.
 
 **Does this work without GitHub CLI?**
-Yes. Use JIRA instead, or skip backlog commands. `/sr:implement "description"` works without `gh` — it just skips automated PR creation.
+Yes. Local tickets are the default and need no external tools. `/sr:implement "description"` also works without `gh` — it just skips automated PR creation.
+
+**Can I use local tickets and GitHub Issues together?**
+Not simultaneously for the same project — backlog commands use one active provider at a time. You can migrate from GitHub Issues to local tickets using the [migration guide](./docs/migration-guide.md).
 
 **How much does it cost to run?**
 A full `/sr:implement` cycle for one feature typically costs a few dollars in Claude API usage. The sr-product-manager uses Opus; all other agents use Sonnet or Haiku.
