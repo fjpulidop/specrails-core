@@ -161,6 +161,33 @@ The product-analyst receives this prompt:
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
 
+   #### If provider=local — Cache from Local Tickets
+
+   Read `$SPECRAILS_DIR/local-tickets.json` and parse the `tickets` map. For each ticket with `"product-driven-backlog"` in its `labels` array and `status` not `"cancelled"`, build a snapshot object:
+   - `number`: ticket `id` (integer)
+   - `title`: ticket `title` string
+   - `state`: map ticket `status` — `"done"` or `"cancelled"` → `"closed"`, otherwise → `"open"`
+   - `assignees`: `[ticket.assignee]` if non-null, else `[]`
+   - `labels`: ticket `labels` array, sorted alphabetically
+   - `body_sha`: SHA-256 of the ticket `description` string — compute with:
+     ```bash
+     echo -n "{description}" | sha256sum | cut -d' ' -f1
+     ```
+     If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
+   - `updated_at`: ticket `updated_at` value
+   - `captured_at`: current local time in ISO 8601 format
+
+   Write to `.claude/backlog-cache.json` with:
+   - `schema_version`: `"1"`
+   - `provider`: `"local"`
+   - `last_updated`: current ISO 8601 timestamp
+   - `written_by`: `"product-backlog"`
+   - `issues`: the map keyed by string ticket ID
+
+   If the write fails: print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.
+
+   #### If provider=github — Cache from GitHub Issues
+
    **Guard:** If `GH_AVAILABLE=false` (from Phase 0 pre-flight), print `[backlog-cache] Skipped — GH unavailable.` and return. Do not attempt the write.
 
    **Fetch all open backlog issues in one call:**
@@ -193,3 +220,7 @@ The product-analyst receives this prompt:
    - `issues`: the merged map keyed by string issue number
 
    If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.
+
+   #### If provider=jira or provider=none
+
+   Print `[backlog-cache] Skipped — provider does not support cache.` Do not attempt the write.

@@ -68,7 +68,7 @@ After the Explore agent completes:
 1. **Display** results to the user.
 
 2. Read `.claude/backlog-config.json` and extract:
-   - `BACKLOG_PROVIDER` (`github`, `jira`, or `none`)
+   - `BACKLOG_PROVIDER` (`local`, `github`, `jira`, or `none`)
    - `BACKLOG_WRITE` (from `write_access`)
 
 ### If `BACKLOG_WRITE=false` — Display only (no sync)
@@ -97,6 +97,46 @@ After the Explore agent completes:
    ```
 
 4. **Do NOT** create, modify, or comment on any issues/tickets.
+
+### If provider=local — Sync to Local Tickets
+
+Local tickets are always read-write. Sync directly to `$SPECRAILS_DIR/local-tickets.json`.
+
+3. **Fetch existing local tickets** to avoid duplicates:
+   ```
+   {{BACKLOG_FETCH_ALL_CMD}}
+   ```
+   Collect all ticket titles into a duplicate-check set.
+
+4. **Initialize labels** (idempotent):
+   ```
+   {{BACKLOG_INIT_LABELS_CMD}}
+   ```
+
+5. **For each proposed feature, create a local ticket** (skip if title matches an existing ticket):
+   ```
+   {{BACKLOG_CREATE_CMD}}
+   ```
+   Set the following fields on each new ticket:
+   - `title`: Feature name
+   - `description`: Full VPC body markdown (same format as the GitHub/JIRA issue body above)
+   - `status`: `"todo"`
+   - `priority`: Map effort to priority — Low effort → `"high"` priority, Medium → `"medium"`, High → `"low"`
+   - `labels`: `["product-driven-backlog", "area:{area}"]`
+   - `metadata.vpc_scores`: Object with per-persona scores from the VPC evaluation
+   - `metadata.effort_level`: `"High"`, `"Medium"`, or `"Low"`
+   - `metadata.user_story`: The user story text
+   - `metadata.area`: The area name (without `area:` prefix)
+   - `prerequisites`: Array of ticket IDs for any features this depends on (empty if none)
+   - `source`: `"product-backlog"`
+   - `created_by`: `"sr-product-manager"`
+
+6. **Report** sync results:
+   ```
+   Product discovery complete:
+   - Created: {N} new feature ideas as local tickets
+   - Skipped: {N} duplicates (already exist)
+   ```
 
 ### If provider=github and BACKLOG_WRITE=true — Sync to GitHub Issues
 

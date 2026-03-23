@@ -24,12 +24,22 @@ Check the environment variable `CLAUDE_CODE_ENTRYPOINT`. If it contains `remote_
 
 ### Checks to run (sequential, fail-fast)
 
-#### 1. GitHub CLI authentication
+#### 1. Backlog provider availability
 
+Read `.claude/backlog-config.json` and extract `BACKLOG_PROVIDER`.
+
+**If `BACKLOG_PROVIDER=local`:**
+```bash
+[[ -f "$SPECRAILS_DIR/local-tickets.json" ]] && echo "Local tickets storage: OK" || echo "WARNING: local-tickets.json not found"
+```
+- Set `LOCAL_TICKETS_AVAILABLE=true/false` based on file existence.
+- Set `GH_AVAILABLE=false` (GitHub CLI not needed for local provider).
+- Set `BACKLOG_AVAILABLE=true` if local-tickets.json exists.
+
+**Otherwise:**
 ```bash
 gh auth status 2>&1
 ```
-
 - Set `GH_AVAILABLE=true/false` for later phases.
 
 #### 2. OpenSpec CLI
@@ -107,7 +117,7 @@ Initialize conflict-tracking variables:
 - Set `SINGLE_MODE = true`. No worktrees, no parallelism.
 - **Skip Phase 1 and Phase 2** — go directly to Phase 3a.
 
-**If the user passed issue/ticket references** (e.g. `#85, #71` for GitHub or `PROJ-85, PROJ-71` for JIRA):
+**If the user passed issue/ticket references** (e.g. `#85, #71` for GitHub, `#1, #2` for local tickets, or `PROJ-85, PROJ-71` for JIRA):
 - Fetch each issue/ticket:
   ```bash
   {{BACKLOG_VIEW_CMD}}
@@ -120,7 +130,44 @@ Initialize conflict-tracking variables:
 
 After fetching issue refs, capture a baseline snapshot for conflict detection.
 
-**If `GH_AVAILABLE=true` and the input mode was issue numbers:**
+##### If `BACKLOG_PROVIDER=local` and input mode was issue numbers:
+
+For each resolved ticket ID, read `$SPECRAILS_DIR/local-tickets.json` and extract the ticket object at `tickets["{id}"]`.
+
+Build a snapshot object for each ticket:
+- `number`: ticket `id` (integer)
+- `title`: ticket `title` string
+- `state`: map ticket `status` — `"done"` or `"cancelled"` → `"closed"`, otherwise → `"open"`
+- `assignees`: `[ticket.assignee]` if non-null, else `[]`
+- `labels`: ticket `labels` array, sorted alphabetically
+- `body_sha`: SHA-256 of the ticket `description` string — compute with:
+  ```bash
+  echo -n "{description}" | sha256sum | cut -d' ' -f1
+  ```
+  If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
+- `updated_at`: ticket `updated_at` value
+- `captured_at`: current local time in ISO 8601 format
+
+Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
+
+```json
+{
+  "schema_version": "1",
+  "provider": "local",
+  "last_updated": "<ISO 8601 timestamp>",
+  "written_by": "implement",
+  "issues": {
+    "<id>": { <snapshot object> },
+    ...
+  }
+}
+```
+
+If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
+
+If the write fails: print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
+
+##### If `GH_AVAILABLE=true` and input mode was issue numbers (GitHub/JIRA):
 
 For each resolved issue number, run:
 
@@ -161,9 +208,9 @@ If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
 
 If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
 
-**If `GH_AVAILABLE=false` or input was not issue numbers:**
+##### Otherwise (no backlog available or non-issue input):
 
-Set `SNAPSHOTS_CAPTURED=false`. Print: `[conflict-check] Snapshot skipped — GH unavailable or non-issue input.`
+Set `SNAPSHOTS_CAPTURED=false`. Print: `[conflict-check] Snapshot skipped — backlog unavailable or non-issue input.`
 
 #### Gitignore advisory
 
@@ -267,7 +314,9 @@ Pick the single idea with the best impact/effort ratio from each exploration. Pr
 
 Otherwise, re-fetch each issue in scope and diff against the Phase 0 snapshot:
 
-For each issue number in `ISSUE_REFS`:
+**If `BACKLOG_PROVIDER=local`:** For each ticket ID in `ISSUE_REFS`, read `$SPECRAILS_DIR/local-tickets.json` and extract the ticket at `tickets["{id}"]`. If the ticket does not exist (deleted): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`. Otherwise, reconstruct a current snapshot using the same mapping as the Phase 0 local snapshot.
+
+**If `BACKLOG_PROVIDER=github`:** For each issue number in `ISSUE_REFS`:
 
 ```bash
 gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
@@ -275,7 +324,7 @@ gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
 
 If the `gh` command returns non-zero (issue deleted or inaccessible): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`.
 
-Otherwise, reconstruct a current snapshot (same shape as Phase 0: sort `assignees` and `labels`, compute `body_sha`).
+In both cases, reconstruct a current snapshot (same shape as Phase 0: sort `assignees` and `labels`, compute `body_sha`).
 
 **Short-circuit:** If `current.updatedAt == cached.updated_at`, mark the issue as clean and skip field comparison.
 
@@ -848,6 +897,9 @@ This check is independent of Phase 3a.0. Even if the user chose to continue thro
 
 Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
 
+**If `BACKLOG_PROVIDER=local`:** Read `$SPECRAILS_DIR/local-tickets.json` and extract each ticket by ID.
+
+**If `BACKLOG_PROVIDER=github`:**
 ```bash
 gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
 ```
@@ -881,8 +933,12 @@ Record skipped operations to `.cache-manifest.json` under `skipped_operations`:
 - `"git: commit"`
 - `"git: push"`
 - `"github: pr creation"` (if `GH_AVAILABLE=true`)
-- `"github: issue comment #N"` for each issue in scope (if `BACKLOG_WRITE=true`)
-- `"github: issue close #N (via PR merge)"` for each fully resolved issue (if `BACKLOG_WRITE=true`)
+- If `BACKLOG_PROVIDER=local` and `BACKLOG_WRITE=true`:
+  - `"local: ticket comment #{id}"` for each ticket in scope
+  - `"local: ticket status update #{id}"` for each fully resolved ticket
+- If `BACKLOG_PROVIDER=github` and `BACKLOG_WRITE=true`:
+  - `"github: issue comment #N"` for each issue in scope
+  - `"github: issue close #N (via PR merge)"` for each fully resolved issue
 
 Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 
@@ -934,17 +990,19 @@ All implementation is complete and CI checks pass.
 #### Backlog updates (both modes)
 
 **If `BACKLOG_WRITE=true`:**
-- For fully resolved issues/tickets: add a comment noting completion and reference the PR. Do NOT close the issue explicitly — use `Closes #N` in the PR body so GitHub/JIRA closes it automatically when the PR is merged:
+- For fully resolved issues/tickets: add a comment noting completion and reference the PR:
   ```bash
   {{BACKLOG_COMMENT_CMD}}
   ```
-  - GitHub: `gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."`
-  - JIRA: `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."`
-  - Ensure the PR body includes `Closes #N` for each fully resolved issue (GitHub auto-closes on merge)
+  - **Local:** Update the ticket status to `"done"` using `{{BACKLOG_UPDATE_CMD}}` and add a comment: `"Implemented in PR #XX. All acceptance criteria met."` via `{{BACKLOG_COMMENT_CMD}}`. Local tickets are closed directly — there is no auto-close-on-merge mechanism.
+  - **GitHub:** `gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."` — do NOT close the issue explicitly. Use `Closes #N` in the PR body so GitHub auto-closes on merge.
+  - **JIRA:** `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."`
+  - For GitHub/JIRA: ensure the PR body includes `Closes #N` for each fully resolved issue (auto-closes on merge)
 - For partially resolved issues/tickets: add a comment noting progress:
   ```bash
   {{BACKLOG_PARTIAL_COMMENT_CMD}}
   ```
+  - **Local:** Additionally update the ticket status to `"in_progress"` via `{{BACKLOG_UPDATE_CMD}}` if it is still `"todo"`.
 
 **If `BACKLOG_WRITE=false`:**
 - Do NOT create, modify, or comment on any issues/tickets.
