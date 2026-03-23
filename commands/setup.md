@@ -339,7 +339,7 @@ Use these defaults for all configuration not asked in QS1:
 | CLAUDE.md template | `templates/CLAUDE-quickstart.md` |
 | OpenSpec enabled | Yes if `openspec` CLI is detected in PATH, No otherwise |
 | Telemetry | Not configured (deferred to PRD-002) |
-| Backlog provider | None (user can configure later with `/setup --advanced`) |
+| Backlog provider | local (lightweight JSON-based, no external tools needed) |
 
 Detect whether this is an existing codebase or new project:
 - **Existing codebase**: `package.json`, `Gemfile`, `pyproject.toml`, `go.mod`, or `pom.xml` found in the repo root
@@ -422,24 +422,35 @@ Core commands (always install if missing):
 - `health-check.md`
 - `compat-check.md`
 - `why.md`
+- `product-backlog.md`
+- `update-product-driven-backlog.md`
 
-Do NOT copy `product-backlog.md` or `update-product-driven-backlog.md` (no backlog provider configured).
+**Initialize local ticket storage** (backlog provider defaults to `local`):
+1. Copy `templates/local-tickets-schema.json` to `$SPECRAILS_DIR/local-tickets.json` and set `last_updated` to the current ISO-8601 timestamp. Skip if the file already exists.
+2. Write `$SPECRAILS_DIR/backlog-config.json` (skip if already exists):
+   ```json
+   {
+     "provider": "local",
+     "write_access": true,
+     "git_auto": true
+   }
+   ```
 
 **If `cli_provider == "claude"`:**
 
-If `QS_IS_RERUN=false` (fresh install): copy all core commands from `$SPECRAILS_DIR/setup-templates/commands/sr/` to `.claude/commands/sr/`.
+If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Quick Start — run /setup --advanced to configure personas)`, then write to `.claude/commands/sr/<name>.md`.
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
 - If it exists: skip it — show `✓ Already installed: /sr:<name>`
-- If it does NOT exist: copy from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
+- If it does NOT exist: read template, substitute placeholders as above, write to `.claude/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
 
 **If `cli_provider == "codex"`:**
 
-If `QS_IS_RERUN=false` (fresh install): for each core command, copy the corresponding skill from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md` to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
+If `QS_IS_RERUN=false` (fresh install): for each core command, read the corresponding skill template from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`, substitute the backlog placeholders with local values and stub persona placeholders with `(Quick Start — run /setup --advanced to configure personas)`, then write to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.agents/skills/sr-<name>/SKILL.md` already exists:
 - If it exists: skip it — show `✓ Already installed: $sr-<name>`
-- If it does NOT exist: copy from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name> (was missing)`
+- If it does NOT exist: read template, substitute placeholders as above, write to `.agents/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name> (was missing)`
 
 **4. Cleanup**
 
@@ -682,21 +693,33 @@ Which agents do you want to install?
 
 ### 3.2 Backlog provider
 
-Ask the user where they manage their product backlog:
+Ask the user how they want to manage their product backlog. Default is local — no external tools or accounts required:
 
 ```
 ## Backlog Provider
 
-Where do you track your product backlog?
+Use local ticket management or connect an external provider?
 
-1. **Local tickets** (recommended) — lightweight JSON-based ticket management built into the project.
-   No external tools required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
-2. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
-3. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
-4. **None** — skip backlog commands (you can still use /implement with text descriptions)
+1. **Local tickets** (default, recommended) — lightweight JSON-based ticket management built into the project.
+   No external tools or accounts required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
+2. **External provider** — connect GitHub Issues, JIRA, or disable backlog commands
 ```
 
-Wait for the user's choice. Set `BACKLOG_PROVIDER` to `local`, `github`, `jira`, or `none`.
+If the user selects **1** or presses Enter without typing anything: set `BACKLOG_PROVIDER=local` and proceed directly to **If Local Tickets** below. Do NOT ask about GitHub CLI, JIRA credentials, or any external provider configuration.
+
+If the user selects **2**: display the secondary menu:
+
+```
+## External Backlog Provider
+
+Which external provider?
+
+1. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
+2. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
+3. **None** — skip backlog commands (you can still use /implement with text descriptions)
+```
+
+Set `BACKLOG_PROVIDER` to `github`, `jira`, or `none` based on the user's choice.
 
 #### If Local Tickets
 
