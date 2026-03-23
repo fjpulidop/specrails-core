@@ -295,6 +295,50 @@ test_settings_json_valid() {
 run_test "settings.json template is valid JSON" test_settings_json_valid
 
 # ─────────────────────────────────────────────
+# Local tickets schema template
+# ─────────────────────────────────────────────
+
+test_local_tickets_schema_exists() {
+    assert_file_exists "$SPECRAILS_DIR/templates/local-tickets-schema.json"
+}
+run_test "local-tickets-schema.json template exists" test_local_tickets_schema_exists
+
+test_local_tickets_schema_valid_json() {
+    python3 -c "import json; json.load(open('$SPECRAILS_DIR/templates/local-tickets-schema.json'))"
+}
+run_test "local-tickets-schema.json is valid JSON" test_local_tickets_schema_valid_json
+
+test_local_tickets_schema_required_fields() {
+    local schema
+    schema="$(python3 -c "import json,sys; d=json.load(open('$SPECRAILS_DIR/templates/local-tickets-schema.json')); fields=['schema_version','revision','last_updated','next_id','tickets']; missing=[f for f in fields if f not in d]; print(','.join(missing))")"
+    if [[ -n "$schema" ]]; then
+        echo "  Missing required fields: $schema"
+        return 1
+    fi
+}
+run_test "local-tickets-schema.json has required top-level fields" test_local_tickets_schema_required_fields
+
+test_local_tickets_schema_revision_is_zero() {
+    local revision
+    revision="$(python3 -c "import json; d=json.load(open('$SPECRAILS_DIR/templates/local-tickets-schema.json')); print(d.get('revision', 'missing'))")"
+    if [[ "$revision" != "0" ]]; then
+        echo "  Expected revision=0 in initial schema, got: $revision"
+        return 1
+    fi
+}
+run_test "local-tickets-schema.json initial revision is 0" test_local_tickets_schema_revision_is_zero
+
+test_local_tickets_schema_tickets_empty() {
+    local tickets
+    tickets="$(python3 -c "import json; d=json.load(open('$SPECRAILS_DIR/templates/local-tickets-schema.json')); print(len(d.get('tickets', {})))")"
+    if [[ "$tickets" != "0" ]]; then
+        echo "  Expected empty tickets map in initial schema, got $tickets entries"
+        return 1
+    fi
+}
+run_test "local-tickets-schema.json initial tickets map is empty" test_local_tickets_schema_tickets_empty
+
+# ─────────────────────────────────────────────
 # Cross-cutting: no trailing whitespace in templates
 # ─────────────────────────────────────────────
 

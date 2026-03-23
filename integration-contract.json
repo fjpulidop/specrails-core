@@ -35,5 +35,11 @@
     "refactor-recommender",
     "health-check",
     "compat-check"
-  ]
+  ],
+  "ticketProvider": {
+    "type": "local",
+    "storageFile": "local-tickets.json",
+    "lockFile": "local-tickets.json.lock",
+    "capabilities": ["crud", "labels", "status", "priorities", "dependencies", "comments"]
+  }
 }

@@ -689,12 +689,78 @@ Ask the user where they manage their product backlog:
 
 Where do you track your product backlog?
 
-1. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
-2. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
-3. **None** — skip backlog commands (you can still use /implement with text descriptions)
+1. **Local tickets** (recommended) — lightweight JSON-based ticket management built into the project.
+   No external tools required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
+2. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
+3. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
+4. **None** — skip backlog commands (you can still use /implement with text descriptions)
 ```
 
-Wait for the user's choice. Set `BACKLOG_PROVIDER` to `github`, `jira`, or `none`.
+Wait for the user's choice. Set `BACKLOG_PROVIDER` to `local`, `github`, `jira`, or `none`.
+
+#### If Local Tickets
+
+No external tools or credentials required. Initialize the storage file:
+
+1. Copy `templates/local-tickets-schema.json` to `$SPECRAILS_DIR/local-tickets.json`
+2. Set `last_updated` to the current ISO-8601 timestamp
+
+Store configuration in `$SPECRAILS_DIR/backlog-config.json`:
+```json
+{
+  "provider": "local",
+  "write_access": true,
+  "git_auto": true
+}
+```
+
+Local tickets are always read-write — there is no "read only" mode since the file is local.
+
+**Ticket schema** — each entry in the `tickets` map has these fields:
+
+```json
+{
+  "id": 1,
+  "title": "Feature title",
+  "description": "Markdown description",
+  "status": "todo",
+  "priority": "medium",
+  "labels": ["area:frontend", "effort:medium"],
+  "assignee": null,
+  "prerequisites": [],
+  "metadata": {
+    "vpc_scores": {},
+    "effort_level": "Medium",
+    "user_story": "",
+    "area": ""
+  },
+  "comments": [],
+  "created_at": "<ISO-8601>",
+  "updated_at": "<ISO-8601>",
+  "created_by": "user",
+  "source": "manual"
+}
+```
+
+**Status values:** `todo`, `in_progress`, `done`, `cancelled`
+**Priority values:** `critical`, `high`, `medium`, `low`
+**Labels:** Freeform strings following the `area:*` and `effort:*` convention
+**Source values:** `manual`, `product-backlog`, `propose-spec`
+
+**Advisory file locking protocol** (CLI agents and hub server must both follow this):
+
+The `revision` counter in the JSON root enables optimistic concurrency — increment it on **every** write. The lock file prevents concurrent corruption:
+
+1. **Acquire lock:** Check for `$SPECRAILS_DIR/local-tickets.json.lock`
+   - If the file exists and its `timestamp` is less than 30 seconds old: wait 500ms and retry (max 5 attempts before aborting with an error)
+   - If the file exists and its `timestamp` is 30+ seconds old (stale): delete it and proceed
+   - If no lock file exists: proceed immediately
+2. **Create lock file:** Write `{"agent": "<agent-name-or-process>", "timestamp": "<ISO-8601>"}` to `$SPECRAILS_DIR/local-tickets.json.lock`
+3. **Minimal lock window:** Read the JSON → modify in memory → write back → release
+4. **Release lock:** Delete `$SPECRAILS_DIR/local-tickets.json.lock`
+5. **Always increment `revision`** by 1 and update `last_updated` on every successful write
+
+The hub server uses `proper-lockfile` (or equivalent) to honor the same protocol via the `.lock` file path.
 
 #### If GitHub Issues
 
@@ -1059,6 +1125,27 @@ When adapting `update-product-driven-backlog.md` and `product-backlog.md`, subst
 
 **When `IS_OSS=false`**: All Kai-related persona references are omitted. `{{MAX_SCORE}}` reduces by 5. Tables and inline scores contain only user-generated personas.
 
+#### Local Tickets (`BACKLOG_PROVIDER=local`)
+
+For the local provider, backlog placeholders resolve to **inline file-operation instructions** embedded in the generated command markdown — not shell commands. Agents execute these by reading/writing `$SPECRAILS_DIR/local-tickets.json` directly using their file tools.
+
+All write operations must follow the **advisory file locking protocol** defined in Phase 3.2. Always increment `revision` and update `last_updated` on every write.
+
+| Placeholder | Substituted value |
+|-------------|-------------------|
+| `{{BACKLOG_PROVIDER_NAME}}` | `Local Tickets` |
+| `{{BACKLOG_PREFLIGHT}}` | `[[ -f "$SPECRAILS_DIR/local-tickets.json" ]] && echo "Local tickets storage: OK" \|\| echo "WARNING: $SPECRAILS_DIR/local-tickets.json not found — run /setup to initialize"` |
+| `{{BACKLOG_FETCH_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"todo"` or `"in_progress"`. |
+| `{{BACKLOG_FETCH_ALL_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries regardless of status. |
+| `{{BACKLOG_FETCH_CLOSED_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"done"` or `"cancelled"`. |
+| `{{BACKLOG_VIEW_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse JSON and return the full ticket object at `tickets["{id}"]`, or an error if not found. |
+| `{{BACKLOG_CREATE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → set `id = next_id`, increment `next_id`, set all ticket fields, set `created_at` and `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_UPDATE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → update fields in `tickets["{id}"]`, set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_DELETE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → delete `tickets["{id}"]`, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_COMMENT_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → append `{"author": "<agent-name>", "body": "<comment>", "created_at": "<ISO-8601>"}` to `tickets["{id}"].comments` (create the array if absent), set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_PARTIAL_COMMENT_CMD}}` | Same as `{{BACKLOG_COMMENT_CMD}}` but append `{"author": "<agent-name>", "body": "<comment>", "type": "progress", "created_at": "<ISO-8601>"}`. |
+| `{{BACKLOG_INIT_LABELS_CMD}}` | No label initialization required. Local tickets use freeform label strings. Standard label conventions: `area:frontend`, `area:backend`, `area:api`, `effort:low`, `effort:medium`, `effort:high`. |
+
 #### GitHub Issues (`BACKLOG_PROVIDER=github`)
 - Issue fetch: `gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body`
 - Issue create: `gh issue create --title "..." --label "..." --body "..."`
@@ -1087,7 +1174,7 @@ When adapting `update-product-driven-backlog.md` and `product-backlog.md`, subst
   }
   ```
 
-The command templates use `{{BACKLOG_FETCH_CMD}}`, `{{BACKLOG_CREATE_CMD}}`, `{{BACKLOG_VIEW_CMD}}`, and `{{BACKLOG_PREFLIGHT}}` placeholders that get filled with the provider-specific commands.
+The command templates use `{{BACKLOG_FETCH_CMD}}`, `{{BACKLOG_CREATE_CMD}}`, `{{BACKLOG_VIEW_CMD}}`, `{{BACKLOG_PREFLIGHT}}`, and related placeholders that get filled with the provider-specific commands (for `local`) or instructions (for `github`, `jira`). The `{{BACKLOG_PROVIDER_NAME}}` placeholder is substituted with a human-readable provider label in all three cases.
 
 ### 4.4 Generate rules
 
