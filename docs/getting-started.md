@@ -10,14 +10,17 @@ Think of it as hiring a full engineering team that lives inside your CLI.
 
 ## Prerequisites
 
-You only need two things:
+You need:
 
+- **Node.js 18+** — required for the installer (`node --version` to check)
 - **Git** — your project must be a git repository
 - **[Claude Code](https://claude.ai/claude-code)** — Anthropic's CLI tool
 
 Optional (recommended):
 
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — for automatic PR creation and issue tracking
+
+> **Using OpenAI Codex instead of Claude Code?** See [Installation](user-docs/installation.md) for Codex-specific setup.
 
 ## Install
 

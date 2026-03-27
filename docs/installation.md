@@ -8,6 +8,7 @@ This guide covers the complete installation process in detail. For the quick ver
 
 | Tool | Why | Install |
 |------|-----|---------|
+| **Node.js 18+** | Required for the installer | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
 | **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
 | **Claude Code** | The AI CLI that runs the agents | `npm install -g @anthropic-ai/claude-code` |
 
@@ -15,9 +16,7 @@ This guide covers the complete installation process in detail. For the quick ver
 
 | Tool | Why | Install |
 |------|-----|---------|
-| **npm** | OpenSpec CLI | Via [nvm](https://github.com/nvm-sh/nvm) |
 | **GitHub CLI** | Auto-create PRs, manage issues | `brew install gh` or [cli.github.com](https://cli.github.com/) |
-| **OpenSpec CLI** | Structured spec workflow | `npm install -g @openspec/cli` |
 
 ### Optional
 
