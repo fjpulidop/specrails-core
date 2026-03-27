@@ -159,4 +159,4 @@ Agents record their reasoning as they work. `/sr:why` searches those records in 
 
 ---
 
-[← Installation](installation.md) · [CLI Reference →](cli-reference.md) · [FAQ →](faq.md)
+[← Getting Started](../getting-started.md) · [← Installation](installation.md) · [CLI Reference →](cli-reference.md) · [FAQ →](faq.md)
