@@ -1,6 +1,6 @@
 # Agents
 
-SpecRails ships with **12 specialized agents**. Each has a clear role, a dedicated AI model, and knows exactly when to stay in its lane.
+SpecRails ships with **14 specialized agents**. Each has a clear role, a dedicated AI model, and knows exactly when to stay in its lane.
 
 ## Why specialized agents?
 
@@ -242,6 +242,48 @@ The Reviewer is the **last agent before ship**. It:
 - List of issues found and fixed
 - Files modified during fixes
 - Confidence score report (Phase 4b-conf)
+
+---
+
+### Merge Resolver
+
+| | |
+|-|-|
+| **Color** | Yellow |
+| **Model** | Sonnet |
+| **Trigger** | `/sr:merge-resolve`, `/sr:implement` (Phase 4a, after worktree merge) |
+| **Role** | AI-powered merge conflict resolution |
+
+When a multi-feature pipeline merges worktrees and produces conflict markers, the Merge Resolver analyzes each conflict block using the OpenSpec context bundles from both features. It applies resolutions where confidence is high enough and leaves clean markers for the conflicts it cannot safely resolve.
+
+**Configuration (in `.claude/agents/sr-merge-resolver.md`):**
+- `tone`: `terse` (default) or `verbose`
+- `risk_tolerance`: `conservative` (default) or `aggressive`
+- `confidence_threshold`: 0–100, default `70`
+
+**What it produces:**
+- Resolved conflict blocks written in place
+- Structured resolution report (file, block, confidence, resolution or left-as-marker)
+
+---
+
+### Performance Reviewer
+
+| | |
+|-|-|
+| **Color** | Yellow |
+| **Model** | Sonnet |
+| **Trigger** | `/sr:implement` (Phase 4, after Security Reviewer) |
+| **Role** | Performance regression detection |
+
+The Performance Reviewer benchmarks modified code paths after implementation, compares metrics against configured thresholds, and outputs a structured report. It never fixes code — findings above the threshold trigger the Developer to address them before the pipeline continues.
+
+**Configuration:** Create `.specrails/perf-thresholds.yml` to set custom thresholds per metric. The agent falls back to built-in defaults if the file is missing.
+
+**What it produces:**
+- Execution time, memory usage, and throughput metrics for modified paths
+- Pass/fail report against configured thresholds
+- `PERF_STATUS` result consumed by the pipeline orchestrator
 
 ---
 

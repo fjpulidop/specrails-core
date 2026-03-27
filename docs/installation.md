@@ -87,6 +87,40 @@ After installation, open Claude Code in your project and run:
 /setup
 ```
 
+There are two modes:
+
+| Mode | Command | When to use |
+|------|---------|-------------|
+| **Quick Start** (default) | `/setup` | Fastest path — 3 questions, sensible defaults, done in under a minute |
+| **Advanced** | `/setup --advanced` | Full 5-phase wizard — deep stack analysis, researched personas, full config |
+
+---
+
+### Quick Start Mode (default)
+
+Asks three questions and applies sensible defaults for everything else:
+
+1. What is this project? (one sentence)
+2. Who are the target users?
+3. Git access for agents — read-only or read-write?
+
+**What gets installed:**
+
+| Item | Detail |
+|------|--------|
+| Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
+| All workflow commands | `/sr:implement`, `/sr:health-check`, `/sr:product-backlog`, and 14 more |
+| Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
+| CLAUDE.md | Project-level context for agents |
+
+You can upgrade to the full configuration later by running `/setup --advanced`.
+
+---
+
+### Advanced Mode (`/setup --advanced`)
+
+The full 5-phase wizard — takes 5–10 minutes and produces deeply adapted agents.
+
 ### Phase 1: Codebase Analysis
 
 The wizard scans your project to detect:
@@ -116,10 +150,10 @@ Interactive prompts for:
 
 | Setting | Options |
 |---------|---------|
-| **Backlog provider** | GitHub Issues, JIRA, or none |
+| **Backlog provider** | Local tickets (default), GitHub Issues, JIRA, or none |
 | **Access mode** | Read-write or read-only |
 | **Git workflow** | Trunk-based, Git Flow, or custom |
-| **Agents** | Which agents to enable |
+| **Agents** | Which agents to enable (up to 14) |
 | **Commands** | Which commands to install |
 
 ### Phase 4: File Generation
@@ -132,7 +166,7 @@ The wizard fills all templates with your project-specific context:
 - `{{BACKEND_TECH_LIST}}` → your backend technologies
 - Every `{{PLACEHOLDER}}` resolved with real data
 
-**Generated files:**
+**Generated files (full set):**
 
 ```
 .claude/
@@ -145,13 +179,19 @@ The wizard fills all templates with your project-specific context:
 │   ├── sr-test-writer.md        # Uses your test framework
 │   ├── sr-security-reviewer.md  # Scans your patterns
 │   ├── sr-doc-sync.md           # Updates your doc format
+│   ├── sr-backend-developer.md  # Backend-specialized
+│   ├── sr-frontend-developer.md # Frontend-specialized
+│   ├── sr-backend-reviewer.md   # Backend quality audit
+│   ├── sr-frontend-reviewer.md  # Frontend quality audit
+│   ├── sr-merge-resolver.md     # AI-powered conflict resolution
+│   ├── sr-performance-reviewer.md # Performance regression detection
 │   └── [personas].md            # Your user personas
 ├── commands/
 │   └── sr/
 │       ├── implement.md
 │       ├── product-backlog.md
 │       ├── batch-implement.md
-│       └── ...
+│       └── ...                  # 17 commands total
 ├── rules/
 │   ├── backend.md
 │   ├── frontend.md

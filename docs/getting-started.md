@@ -54,17 +54,27 @@ Open Claude Code in your project and run:
 /setup
 ```
 
-The wizard walks you through 5 phases:
+By default, `/setup` runs **Quick Start Mode**: three questions, sensible defaults, done in under a minute.
+
+| Question | What it configures |
+|----------|-------------------|
+| What is this project? | Agent context and CLAUDE.md |
+| Who are the target users? | Persona stubs for product discovery |
+| Git access — read-only or read-write? | Whether agents can commit |
+
+Quick Start installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. Backlog provider defaults to local tickets — no GitHub or JIRA account required.
+
+**Need the full setup?** Run `/setup --advanced` for the complete 5-phase wizard:
 
 | Phase | What happens |
 |-------|-------------|
 | **1. Analyze** | Detects your tech stack, architecture layers, CI commands, and conventions |
-| **2. Personas** | Researches your competitive landscape and generates user personas (VPC profiles) |
-| **3. Configure** | Asks about your backlog provider, git workflow, and which agents/commands to enable |
+| **2. Personas** | Researches your competitive landscape and generates full VPC user personas |
+| **3. Configure** | Asks about your backlog provider, git workflow, and which agents to enable |
 | **4. Generate** | Fills all templates with your project-specific context |
 | **5. Cleanup** | Removes the wizard and templates, leaving only your tailored workflow files |
 
-After setup, your `.claude/` directory contains fully adapted agents, commands, and rules — ready to use.
+After either mode, your `.claude/` directory contains adapted agents, commands, and rules — ready to use.
 
 ## Your first feature
 

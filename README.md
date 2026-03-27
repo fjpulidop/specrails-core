@@ -78,9 +78,9 @@ That's it. The pipeline takes over.
 
 | Category | Files | Purpose |
 |----------|-------|---------|
-| **Agents** | `.claude/agents/*.md` | 12 specialized AI agents |
+| **Agents** | `.claude/agents/*.md` | 14 specialized AI agents |
 | **Personas** | `.claude/agents/personas/*.md` | VPC user profiles, generated from your users |
-| **Commands** | `.claude/commands/sr/*.md` | `/sr:implement`, `/sr:product-backlog`, `/sr:update-product-driven-backlog` |
+| **Commands** | `.claude/commands/sr/*.md` | 17 workflow commands: `/sr:implement`, `/sr:product-backlog`, `/sr:health-check`, `/sr:why`, and more |
 | **Rules** | `.claude/rules/*.md` | Per-layer coding conventions, loaded by file path |
 | **Memory** | `.claude/agent-memory/` | Persistent knowledge — agents learn across sessions |
 | **Config** | `.claude/settings.json`, `CLAUDE.md` | Permissions, architecture reference |
@@ -116,6 +116,8 @@ SpecRails is not a chat interface. It's a **development pipeline** that coordina
 | **sr-test-writer** | Sonnet | Generates unit, integration, and e2e tests |
 | **sr-security-reviewer** | Sonnet | Secrets detection, OWASP checks, dependency vulnerabilities |
 | **sr-doc-sync** | Sonnet | Updates changelogs, READMEs, API docs |
+| **sr-merge-resolver** | Sonnet | AI-powered merge conflict resolution for multi-feature pipelines |
+| **sr-performance-reviewer** | Sonnet | Performance regression detection after implementation |
 | **sr-product-manager** | Opus | Product discovery: competitive analysis, VPC evaluation |
 | **sr-product-analyst** | Haiku | Read-only backlog analysis and prioritization |
 

@@ -126,7 +126,7 @@ View your prioritized product backlog, ranked by VPC fit and effort.
 
 ### What it shows
 
-The Product Analyst reads your GitHub Issues (labeled `product-driven-backlog`) and produces:
+The Product Analyst reads your backlog (local tickets in `.claude/local-tickets.json` by default, or GitHub Issues labeled `product-driven-backlog` if configured) and produces:
 
 - **Backlog table** per area — sorted by Total Persona Score
 - **Top 3 recommendations** — ranked by VPC score / effort ratio, filtered to Wave 1 of the safe implementation order
@@ -166,7 +166,7 @@ Generate new feature ideas through product discovery. The Product Manager (Opus)
 2. Researches competitors via web search
 3. Generates 2–4 feature ideas per area
 4. Scores each against every persona (0–5)
-5. Creates GitHub Issues (if write access) or displays for manual creation
+5. Creates tickets in your active backlog provider (local tickets by default; GitHub Issues or JIRA if configured) or displays for manual creation
 
 ---
 
