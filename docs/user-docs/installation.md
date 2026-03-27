@@ -63,7 +63,6 @@ your-project/
     ├── skills/                   # Workflow skills (/sr:*, /opsx:*)
     ├── agents/                   # Agent definitions
     ├── rules/                    # Per-layer coding conventions
-    ├── web-manager/              # Pipeline Monitor dashboard (optional)
     └── settings.json             # Permissions
 ```
 
@@ -183,4 +182,4 @@ npx specrails-core@latest init --root-dir . --provider codex
 
 ---
 
-[Quick Start →](quick-start.md) · [Getting Started (Codex) →](getting-started-codex.md) · [CLI Reference →](cli-reference.md)
+[← Getting Started](../getting-started.md) · [Quick Start →](quick-start.md) · [Getting Started (Codex) →](getting-started-codex.md) · [CLI Reference →](cli-reference.md)

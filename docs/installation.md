@@ -15,7 +15,7 @@ This guide covers the complete installation process in detail. For the quick ver
 
 | Tool | Why | Install |
 |------|-----|---------|
-| **npm** | Pipeline Monitor dashboard, OpenSpec CLI | Via [nvm](https://github.com/nvm-sh/nvm) |
+| **npm** | OpenSpec CLI | Via [nvm](https://github.com/nvm-sh/nvm) |
 | **GitHub CLI** | Auto-create PRs, manage issues | `brew install gh` or [cli.github.com](https://cli.github.com/) |
 | **OpenSpec CLI** | Structured spec workflow | `npm install -g @openspec/cli` |
 
@@ -42,8 +42,8 @@ No cloning required. Downloads the latest version and runs the installer automat
 If you prefer to clone the repo first:
 
 ```bash
-git clone https://github.com/fjpulidop/specrails.git
-./specrails/install.sh --root-dir <your-project>
+git clone https://github.com/fjpulidop/specrails-core.git
+./specrails-core/install.sh --root-dir <your-project>
 ```
 
 ### From curl
@@ -51,7 +51,7 @@ git clone https://github.com/fjpulidop/specrails.git
 Alternatively, pipe the installer directly:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/fjpulidop/specrails/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/fjpulidop/specrails-core/main/install.sh | bash
 ```
 
 > **Important:** Always run the installer from the **target repository** — the project where you want SpecRails installed. If you run it from inside the SpecRails source repo, the installer will detect this and prompt you for the correct target path.
@@ -62,8 +62,7 @@ curl -sL https://raw.githubusercontent.com/fjpulidop/specrails/main/install.sh |
 2. **Detects existing setup** — warns if `.claude/agents/`, `.claude/commands/`, or `openspec/` already exist
 3. **Installs artifacts:**
    - `.claude/commands/setup.md` — the `/setup` wizard
-   - `.claude/setup-templates/` — all template files
-   - `.claude/web-manager/` — Pipeline Monitor dashboard
+   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/setup`)
    - `.claude/security-exemptions.yaml` — security scanner config
    - OpenSpec initialization (if CLI available)
 4. **Tracks version** — writes `.specrails-version` and `.specrails-manifest.json`
@@ -75,7 +74,6 @@ The installer only copies files. It does not:
 - Modify your existing code
 - Create commits
 - Push to any remote
-- Install npm dependencies (you do this manually for the web manager)
 
 ---
 
@@ -208,27 +206,6 @@ The quick path — three questions, sensible defaults, done in under a minute.
 | CLAUDE.md | Project-level context for agents |
 
 You can run the full wizard later to deepen configuration: personas, stack analysis, layer-specific conventions.
-
----
-
-## Pipeline Monitor (optional)
-
-SpecRails includes a web dashboard for visualizing pipeline execution.
-
-### Install
-
-```bash
-cd .claude/web-manager && npm install
-cd client && npm install
-```
-
-### Run
-
-```bash
-cd .claude/web-manager && npm run dev
-```
-
-Opens at `http://localhost:4201` by default.
 
 ---
 

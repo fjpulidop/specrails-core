@@ -17,18 +17,6 @@ npx specrails-core@latest init --root-dir .
 
 > **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex CLI](https://github.com/openai/codex) (choose one), Node 18+, git
 
-<!--
-  BOARD: Add demo GIF here — this is the #1 conversion driver on Product Hunt and npm.
-  Record a 60-90s screen capture showing:
-    1. `npx specrails-core@latest init --root-dir .` running
-    2. The `/setup` wizard completing (phases 1-5)
-    3. `/sr:implement "add dark mode"` → agents working → PR created
-  Recommended tools: Loom or QuickTime to record; Kap (https://getkap.co) to export as GIF.
-  Then replace this comment with:
-
-  ![specrails-core demo](./assets/demo.gif)
--->
-
 ---
 
 ## How it works

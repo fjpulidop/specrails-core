@@ -17,7 +17,6 @@ You only need two things:
 
 Optional (recommended):
 
-- **npm** — for installing the Pipeline Monitor dashboard
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — for automatic PR creation and issue tracking
 
 ## Install
@@ -33,8 +32,8 @@ npx specrails-core@latest init --root-dir <your-project>
 **git clone**
 
 ```bash
-git clone https://github.com/fjpulidop/specrails.git
-./specrails/install.sh --root-dir <your-project>
+git clone https://github.com/fjpulidop/specrails-core.git
+./specrails-core/install.sh --root-dir <your-project>
 ```
 
 The installer will:
@@ -113,5 +112,7 @@ Now that you're running, learn how the system thinks:
 - [Workflows & Commands](workflows.md) — master the full command set
 
 ---
+
+**Looking for step-by-step guides?** See [Quick Start](user-docs/quick-start.md) for a walkthrough of your first feature, or [Installation](user-docs/installation.md) for detailed install options including Codex support.
 
 [← Back to Docs](README.md) · [Core Concepts →](concepts.md)
