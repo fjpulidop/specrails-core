@@ -4,4 +4,5 @@
 .claude/worktrees/
 .claude/backlog-cache.json
 coverage/
+templates/web-manager/node_modules/
 
