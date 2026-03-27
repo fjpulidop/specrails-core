@@ -1,5 +1,28 @@
 # Changelog
 
+## [3.3.1](https://github.com/fjpulidop/specrails-core/compare/v3.3.0...v3.3.1) (2026-03-27)
+
+
+### Bug Fixes
+
+* configure release-please with config file and sync VERSION ([#197](https://github.com/fjpulidop/specrails-core/issues/197)) ([3d70bf1](https://github.com/fjpulidop/specrails-core/commit/3d70bf1fc06d4f4f80c9be5d148bf18b6afa742f))
+* set include-component-in-tag to false for release-please ([#199](https://github.com/fjpulidop/specrails-core/issues/199)) ([49566eb](https://github.com/fjpulidop/specrails-core/commit/49566eb7b15f0eee37ed2f497cfc4e008ea4e5fb))
+
+
+### Code Refactoring
+
+* remove hub/dashboard-only openspec archives and specs ([#195](https://github.com/fjpulidop/specrails-core/issues/195)) ([eca985a](https://github.com/fjpulidop/specrails-core/commit/eca985a700f5fef67d2ca8e57bfa8e0b795ac3bb))
+* remove sr:health-check skill template and references ([#193](https://github.com/fjpulidop/specrails-core/issues/193)) ([be7ca61](https://github.com/fjpulidop/specrails-core/commit/be7ca611bb4ca41563ebc36fe77c94d689aea3ae))
+* remove web-manager template and hub integration artifacts ([#191](https://github.com/fjpulidop/specrails-core/issues/191)) ([0c6782c](https://github.com/fjpulidop/specrails-core/commit/0c6782c2d3c15242dd52e3e0bd1d83a4afccd2db))
+* resolve unresolved stack placeholders and update gitignore (SPEA-709) ([#196](https://github.com/fjpulidop/specrails-core/issues/196)) ([354c20e](https://github.com/fjpulidop/specrails-core/commit/354c20e23a153df0eeafc685eed1eec0c964c4ea))
+
+
+### Documentation
+
+* consolidate getting-started guides and fix prerequisite contradictions ([#194](https://github.com/fjpulidop/specrails-core/issues/194)) ([a368bd8](https://github.com/fjpulidop/specrails-core/commit/a368bd8d11a5584af29d023261e7920decb04c30))
+* fix documentation inconsistencies and stale content ([#192](https://github.com/fjpulidop/specrails-core/issues/192)) ([adaeb70](https://github.com/fjpulidop/specrails-core/commit/adaeb707b1744214a63fca349e40e76d88ac3169))
+* remove hub and dashboard references from documentation ([#190](https://github.com/fjpulidop/specrails-core/issues/190)) ([fdcb046](https://github.com/fjpulidop/specrails-core/commit/fdcb046ae4ab4c7732e020d2f9361853b23dc1a8))
+
 ## [3.3.0](https://github.com/fjpulidop/specrails-core/compare/v3.2.0...v3.3.0) (2026-03-27)
 
 
