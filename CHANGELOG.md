@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/fjpulidop/specrails-core/compare/v3.2.0...v3.3.0) (2026-03-27)
+
+
+### Features
+
+* full wizard as /setup default, --lite for quick mode (SPEA-697/698) ([#188](https://github.com/fjpulidop/specrails-core/issues/188)) ([96a7e6c](https://github.com/fjpulidop/specrails-core/commit/96a7e6cd7884ec15d454e7f74998c752ad1f465e))
+
 ## [3.2.0](https://github.com/fjpulidop/specrails-core/compare/v3.1.0...v3.2.0) (2026-03-23)
 
 
