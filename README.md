@@ -182,7 +182,7 @@ AI product discovery using your personas. Evaluates ideas, creates tickets (loca
 
 specrails-core ships with a built-in ticket system — no GitHub account or external tools required.
 
-Tickets live in `.claude/local-tickets.json` alongside your code. They're plain JSON, git-friendly, and bidirectionally synced with specrails-hub in real time.
+Tickets live in `.claude/local-tickets.json` alongside your code. They're plain JSON and git-friendly.
 
 **Local tickets are the default.** The `/setup` wizard defaults to local tickets and skips GitHub/JIRA credential setup unless you opt in.
 
@@ -281,8 +281,6 @@ Yes. Everything runs locally through Claude Code. No external services beyond th
 
 ## Also in the SpecRails ecosystem
 
-- **[specrails-hub](https://github.com/fjpulidop/specrails-hub)** — GUI for specrails-core. Manage your agents, run commands, and view pipeline results from a web interface.
-- **[specrails.dev](https://specrails.dev)** — Official website and documentation.
 - **Product Hunt** — [Vote for SpecRails on launch day](https://www.producthunt.com) _(link goes live on launch day — star this repo to get notified)_
 
 ---
