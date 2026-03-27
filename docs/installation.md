@@ -91,33 +91,12 @@ There are two modes:
 
 | Mode | Command | When to use |
 |------|---------|-------------|
-| **Quick Start** (default) | `/setup` | Fastest path — 3 questions, sensible defaults, done in under a minute |
-| **Advanced** | `/setup --advanced` | Full 5-phase wizard — deep stack analysis, researched personas, full config |
+| **Full wizard** (default) | `/setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
+| **Lite** | `/setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
 
 ---
 
-### Quick Start Mode (default)
-
-Asks three questions and applies sensible defaults for everything else:
-
-1. What is this project? (one sentence)
-2. Who are the target users?
-3. Git access for agents — read-only or read-write?
-
-**What gets installed:**
-
-| Item | Detail |
-|------|--------|
-| Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
-| All workflow commands | `/sr:implement`, `/sr:health-check`, `/sr:product-backlog`, and 14 more |
-| Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
-| CLAUDE.md | Project-level context for agents |
-
-You can upgrade to the full configuration later by running `/setup --advanced`.
-
----
-
-### Advanced Mode (`/setup --advanced`)
+### Full Wizard (default)
 
 The full 5-phase wizard — takes 5–10 minutes and produces deeply adapted agents.
 
@@ -208,6 +187,27 @@ The wizard removes itself:
 - Leaves only the final generated files
 
 After this phase, `/setup` is no longer available — your workflow is ready.
+
+---
+
+### Lite Mode (`/setup --lite`)
+
+The quick path — three questions, sensible defaults, done in under a minute.
+
+1. What is this project? (one sentence)
+2. Who are the target users?
+3. Git access for agents — read-only or read-write?
+
+**What gets installed:**
+
+| Item | Detail |
+|------|--------|
+| Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
+| All workflow commands | `/sr:implement`, `/sr:health-check`, `/sr:product-backlog`, and 14 more |
+| Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
+| CLAUDE.md | Project-level context for agents |
+
+You can run the full wizard later to deepen configuration: personas, stack analysis, layer-specific conventions.
 
 ---
 

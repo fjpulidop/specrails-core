@@ -54,17 +54,7 @@ Open Claude Code in your project and run:
 /setup
 ```
 
-By default, `/setup` runs **Quick Start Mode**: three questions, sensible defaults, done in under a minute.
-
-| Question | What it configures |
-|----------|-------------------|
-| What is this project? | Agent context and CLAUDE.md |
-| Who are the target users? | Persona stubs for product discovery |
-| Git access — read-only or read-write? | Whether agents can commit |
-
-Quick Start installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. Backlog provider defaults to local tickets — no GitHub or JIRA account required.
-
-**Need the full setup?** Run `/setup --advanced` for the complete 5-phase wizard:
+By default, `/setup` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
 
 | Phase | What happens |
 |-------|-------------|
@@ -73,6 +63,16 @@ Quick Start installs the four core agents (architect, developer, reviewer, produ
 | **3. Configure** | Asks about your backlog provider, git workflow, and which agents to enable |
 | **4. Generate** | Fills all templates with your project-specific context |
 | **5. Cleanup** | Removes the wizard and templates, leaving only your tailored workflow files |
+
+**In a hurry?** Run `/setup --lite` for the quick version: three questions, sensible defaults, done in under a minute.
+
+| Question | What it configures |
+|----------|-------------------|
+| What is this project? | Agent context and CLAUDE.md |
+| Who are the target users? | Persona stubs for product discovery |
+| Git access — read-only or read-write? | Whether agents can commit |
+
+Lite mode installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. You can run the full wizard later to deepen the configuration.
 
 After either mode, your `.claude/` directory contains adapted agents, commands, and rules — ready to use.
 
