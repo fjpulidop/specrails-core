@@ -68,7 +68,7 @@ That's it. The pipeline takes over.
 |----------|-------|---------|
 | **Agents** | `.claude/agents/*.md` | 14 specialized AI agents |
 | **Personas** | `.claude/agents/personas/*.md` | VPC user profiles, generated from your users |
-| **Commands** | `.claude/commands/sr/*.md` | 17 workflow commands: `/sr:implement`, `/sr:product-backlog`, `/sr:health-check`, `/sr:why`, and more |
+| **Commands** | `.claude/commands/sr/*.md` | 17 workflow commands: `/sr:implement`, `/sr:product-backlog`, `/sr:why`, and more |
 | **Rules** | `.claude/rules/*.md` | Per-layer coding conventions, loaded by file path |
 | **Memory** | `.claude/agent-memory/` | Persistent knowledge — agents learn across sessions |
 | **Config** | `.claude/settings.json`, `CLAUDE.md` | Permissions, architecture reference |

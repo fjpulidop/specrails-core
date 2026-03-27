@@ -21,7 +21,7 @@ A command template should use `{{PLACEHOLDER}}` when:
 ## Examples
 
 - `templates/commands/why.md` — static (searches a fixed memory directory)
-- `templates/commands/health-check.md` — check against this as the canonical example of a static command
+- `templates/commands/compat-check.md` — static (reads baseline snapshot, no project-specific paths)
 - `templates/commands/implement.md` — heavily templated (CI commands, backlog provider, routing rules)
 
 ## Why

@@ -166,7 +166,6 @@ EXPECTED_SKILLS=(
     "sr-batch-implement"
     "sr-product-backlog"
     "sr-update-backlog"
-    "sr-health-check"
     "sr-compat-check"
     "sr-why"
     "sr-refactor-recommender"

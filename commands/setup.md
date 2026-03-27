@@ -56,7 +56,7 @@ Read the following files to understand the current installation state:
    ```bash
    ls $SPECRAILS_DIR/setup-templates/commands/sr/
    ```
-   Command template files include `implement.md`, `batch-implement.md`, `health-check.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
+   Command template files include `implement.md`, `batch-implement.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
    If this directory does not exist, skip command template checking for this update.
 
 6. Read `$SPECRAILS_DIR/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
@@ -130,7 +130,6 @@ Display the combined analysis to the user:
 - refactor-recommender.md
 
 ### Commands — Unchanged (keeping current)
-- health-check.md
 - compat-check.md
 - why.md
 ```
@@ -419,7 +418,6 @@ Core commands (always install if missing):
 - `implement.md`
 - `batch-implement.md`
 - `propose-spec.md`
-- `health-check.md`
 - `compat-check.md`
 - `why.md`
 - `product-backlog.md`
@@ -463,7 +461,7 @@ Remove `commands/setup.md` from `.claude/commands/` if it was copied there by th
 After generating all files, display the setup complete message.
 
 Then, based on `QS_IS_EXISTING_CODEBASE`:
-- **Existing codebase** (`true`): recommend `/sr:health-check`
+- **Existing codebase** (`true`): recommend `/sr:refactor-recommender`
 - **New project** (`false`): recommend `/sr:product-backlog`
 
 If `QS_IS_RERUN=false`, display:
@@ -473,7 +471,7 @@ If `QS_IS_RERUN=false`, display:
 Try your first command:
   > /sr:product-backlog
 ```
-(Replace `/sr:product-backlog` with `/sr:health-check` for existing codebases.)
+(Replace `/sr:product-backlog` with `/sr:refactor-recommender` for existing codebases.)
 
 If `QS_IS_RERUN=true`, display the gap-fill summary and stop:
 ```
@@ -950,7 +948,6 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 | /sr:propose-spec | Interactively propose and refine a feature spec, then create a GitHub issue | GitHub CLI |
 | /sr:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
 | /sr:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
-| /sr:health-check | Run tests, linting, coverage, complexity, and dependency audit | None |
 | /sr:compat-check | Snapshot API surface and detect breaking changes | None |
 | /sr:refactor-recommender | Scan for refactoring opportunities ranked by impact/effort | None |
 | /sr:why | Search past architectural decisions from agent memory | None |
@@ -1086,7 +1083,6 @@ For each selected command, read the template and adapt.
 - `setup-templates/commands/sr/propose-spec.md` → `.claude/commands/sr/propose-spec.md`
 - `setup-templates/commands/sr/product-backlog.md` → `.claude/commands/sr/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
 - `setup-templates/commands/sr/update-product-driven-backlog.md` → `.claude/commands/sr/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
-- `setup-templates/commands/sr/health-check.md` → `.claude/commands/sr/health-check.md`
 - `setup-templates/commands/sr/compat-check.md` → `.claude/commands/sr/compat-check.md`
 - `setup-templates/commands/sr/refactor-recommender.md` → `.claude/commands/sr/refactor-recommender.md`
 - `setup-templates/commands/sr/why.md` → `.claude/commands/sr/why.md`
@@ -1097,7 +1093,6 @@ For each selected command, read the template and adapt.
 - `setup-templates/commands/sr/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
 - `setup-templates/commands/sr/product-backlog.md` → `.agents/skills/sr-product-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
 - `setup-templates/commands/sr/update-product-driven-backlog.md` → `.agents/skills/sr-update-product-driven-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
-- `setup-templates/skills/sr-health-check/SKILL.md` → `.agents/skills/sr-health-check/SKILL.md`
 - `setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
 - `setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
 - `setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
@@ -1381,7 +1376,6 @@ Display the complete installation summary:
 | /sr:propose-spec | .claude/commands/sr/propose-spec.md |
 | /sr:product-backlog | .claude/commands/sr/product-backlog.md |
 | /sr:update-product-driven-backlog | .claude/commands/sr/update-product-driven-backlog.md |
-| /sr:health-check | .claude/commands/sr/health-check.md |
 | /sr:compat-check | .claude/commands/sr/compat-check.md |
 | /sr:refactor-recommender | .claude/commands/sr/refactor-recommender.md |
 | /sr:why | .claude/commands/sr/why.md |
@@ -1393,7 +1387,6 @@ Display the complete installation summary:
 | $sr-propose-spec | .agents/skills/sr-propose-spec/SKILL.md |
 | $sr-product-backlog | .agents/skills/sr-product-backlog/SKILL.md |
 | $sr-update-product-driven-backlog | .agents/skills/sr-update-product-driven-backlog/SKILL.md |
-| $sr-health-check | .agents/skills/sr-health-check/SKILL.md |
 | $sr-compat-check | .agents/skills/sr-compat-check/SKILL.md |
 | $sr-refactor-recommender | .agents/skills/sr-refactor-recommender/SKILL.md |
 | $sr-why | .agents/skills/sr-why/SKILL.md |
@@ -1460,9 +1453,9 @@ Try your first spec:
 
 Try your first spec:
 [If cli_provider == "claude":]
-  > /sr:health-check
+  > /sr:refactor-recommender
 [If cli_provider == "codex":]
-  > $sr-health-check
+  > $sr-refactor-recommender
 ```
 
 Then stop.

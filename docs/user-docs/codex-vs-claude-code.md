@@ -31,7 +31,6 @@ SpecRails Skills use `SKILL.md` format, which is shared between Codex and Claude
 
 - `/sr:implement` — full pipeline (design → code → review → PR)
 - `/sr:product-backlog` — VPC-ranked backlog view
-- `/sr:health-check` — codebase quality analysis
 - `/opsx:ff` — OpenSpec fast-forward
 - All other workflow skills
 

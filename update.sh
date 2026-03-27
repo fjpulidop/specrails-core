@@ -419,7 +419,6 @@ do_migrate_sr_prefix() {
         "batch-implement"
         "product-backlog"
         "update-product-driven-backlog"
-        "health-check"
         "compat-check"
         "refactor-recommender"
         "why"

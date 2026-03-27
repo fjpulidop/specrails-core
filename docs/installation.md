@@ -201,7 +201,7 @@ The quick path — three questions, sensible defaults, done in under a minute.
 | Item | Detail |
 |------|--------|
 | Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
-| All workflow commands | `/sr:implement`, `/sr:health-check`, `/sr:product-backlog`, and 14 more |
+| All workflow commands | `/sr:implement`, `/sr:product-backlog`, and 14 more |
 | Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
 | CLAUDE.md | Project-level context for agents |
 
