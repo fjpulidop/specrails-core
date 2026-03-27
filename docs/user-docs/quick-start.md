@@ -46,7 +46,7 @@ Then run:
 /setup
 ```
 
-The wizard runs automatically and takes about 5 minutes. It analyzes your codebase and configures SpecRails for your specific project:
+The wizard runs the full 5-phase setup (about 5 minutes). It analyzes your codebase and configures SpecRails for your specific project:
 
 ```
 Phase 1/5  Analyzing codebase...
@@ -59,14 +59,14 @@ Phase 2/5  Generating user personas...
            → Created 3 VPC profiles
 
 Phase 3/5  Configuration...
-           → Backlog provider: GitHub Issues
+           → Backlog provider: local
            → Git workflow: trunk-based
 
 Phase 4/5  Generating files...
            → sr-architect.md (adapted to your stack)
            → sr-developer.md (knows your CI commands)
            → sr-reviewer.md (runs your specific checks)
-           → 9 more agents
+           → 11 more agents
 
 Phase 5/5  Cleanup complete. /setup removed.
 
@@ -74,6 +74,8 @@ Phase 5/5  Cleanup complete. /setup removed.
 ```
 
 After setup, the `/setup` command is gone — it's a one-time wizard.
+
+**In a hurry?** Use `/setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
 
 ## Step 3: Implement your first feature
 
@@ -129,7 +131,7 @@ One command. The PR is ready for human review.
 /sr:product-backlog
 ```
 
-See your GitHub Issues ranked by persona fit and effort. The top 3 are safe to implement next.
+See your tickets ranked by persona fit and effort. The top 3 are safe to implement next. Uses local tickets by default.
 
 **Generate new feature ideas:**
 
@@ -137,7 +139,7 @@ See your GitHub Issues ranked by persona fit and effort. The top 3 are safe to i
 /sr:update-product-driven-backlog
 ```
 
-The Product Manager researches your competitive landscape and creates well-formed GitHub Issues for new features.
+The Product Manager researches your competitive landscape and creates new tickets (local by default, or GitHub Issues if configured).
 
 **Run multiple features in parallel:**
 
