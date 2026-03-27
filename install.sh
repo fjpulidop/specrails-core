@@ -276,8 +276,8 @@ if [[ "$CLI_PROVIDER" == "claude" ]]; then
         info "Agent Teams commands: skipped (opt-in, use interactive mode to enable)"
     else
         echo -e "  ${BOLD}Agent Teams commands are available (experimental):${NC}"
-        echo "    /sr:team-review — Multi-perspective code review with AI reviewers"
-        echo "    /sr:team-debug  — Collaborative debugging with competing hypotheses"
+        echo "    /specrails:team-review — Multi-perspective code review with AI reviewers"
+        echo "    /specrails:team-debug  — Collaborative debugging with competing hypotheses"
         echo ""
         echo "  These require Claude Code Agent Teams (experimental feature)."
         read -p "  Install Agent Teams commands? (y/n, default: n): " INSTALL_AGENT_TEAMS || INSTALL_AGENT_TEAMS="n"
@@ -623,7 +623,7 @@ echo -e "${BOLD}${GREEN}Installation summary:${NC}"
 echo ""
 echo "  Provider: $CLI_PROVIDER → output to $SPECRAILS_DIR/"
 if [[ "$AGENT_TEAMS" == "true" ]]; then
-    echo "  Agent Teams: installed (/sr:team-review, /sr:team-debug)"
+    echo "  Agent Teams: installed (/specrails:team-review, /specrails:team-debug)"
     echo "  Feature flag: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (required)"
 fi
 echo ""

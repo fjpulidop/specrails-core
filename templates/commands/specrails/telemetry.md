@@ -5,7 +5,7 @@ category: Workflow
 tags: [workflow, telemetry, cost, metrics, analytics, agents]
 ---
 
-Analyze **specrails-core** agent execution telemetry — token usage, API cost estimates, run throughput, and performance trends across all `sr-*` agents.
+Analyze **{{PROJECT_NAME}}** agent execution telemetry — token usage, API cost estimates, run throughput, and performance trends across all `sr-*` agents.
 
 **Input:** `$ARGUMENTS` — optional flags:
 
@@ -326,7 +326,7 @@ Render output according to `FORMAT`.
 ### FORMAT = "markdown"
 
 ```
-## Agent Telemetry Dashboard — specrails-core
+## Agent Telemetry Dashboard — {{PROJECT_NAME}}
 Period: <today | last 7 days | all time>  |  As of: <ISO date>  |  Data source: <logs + memory | memory only>
 
 ---
@@ -452,14 +452,14 @@ Run with `--save` to persist a baseline for future trend analysis.
 6. **Memory not cleared** — if any agent has > 50 memory files:
    ```
    🗂️  <agent-name> has N memory files. Large memory stores may slow context loading.
-   Action: Run `/sr:memory-inspect --prune` to clean stale entries.
+   Action: Run `/specrails:memory-inspect --prune` to clean stale entries.
    ```
 
 7. **Data gap warning** — if `LOGS_AVAILABLE=false`:
    ```
    ℹ️  Telemetry is based on agent-memory metadata only (no JSONL logs found).
    Token and cost data are unavailable. To enable full telemetry:
-     - Run /sr:implement with Claude CLI configured to persist session logs.
+     - Run /specrails:implement with Claude CLI configured to persist session logs.
      - Check your Claude CLI version for `--output-format` or `--log` options.
    ```
 
@@ -476,7 +476,7 @@ Emit a single JSON object to stdout:
 ```json
 {
   "schema_version": "1",
-  "project": "specrails-core",
+  "project": "{{PROJECT_NAME}}",
   "period": "<today|week|all>",
   "period_start": "<ISO datetime or null>",
   "generated_at": "<ISO datetime>",

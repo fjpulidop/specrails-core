@@ -3,9 +3,13 @@ name: "Product Backlog"
 description: "View product-driven backlog from GitHub Issues and propose top 3 for implementation"
 category: Workflow
 tags: [workflow, backlog, viewer, product-driven]
+phases:
+  - key: analyst
+    label: Analyst
+    description: "Reads and prioritizes the product backlog"
 ---
 
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/sr:update-product-driven-backlog` to generate new ideas.
+Display the product-driven backlog by reading issues from GitHub Issues. These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:update-product-driven-backlog` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -13,13 +17,13 @@ Display the product-driven backlog by reading issues/tickets from the configured
 
 ## Phase 0: Environment Pre-flight
 
-Verify the backlog provider is accessible:
+Verify GitHub CLI is accessible:
 
 ```bash
-{{BACKLOG_PREFLIGHT}}
+gh auth status 2>&1
 ```
 
-If the backlog provider is unavailable, stop and inform the user.
+If GitHub CLI is unavailable, stop and inform the user.
 
 ---
 
@@ -29,14 +33,14 @@ Launch a **single** sr-product-analyst agent (`subagent_type: sr-product-analyst
 
 The product-analyst receives this prompt:
 
-> You are reading the product-driven backlog from {{BACKLOG_PROVIDER_NAME}} and producing a prioritized view.
+> You are reading the product-driven backlog from GitHub Issues and producing a prioritized view.
 
 1. **Fetch all open product-driven backlog items:**
    ```bash
-   {{BACKLOG_FETCH_CMD}}
+   gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body
    ```
 
-2. **Parse each issue/ticket** to extract metadata from the body:
+2. **Parse each issue** to extract metadata from the body:
    - **Area**: from `area:*` label
    - **Persona Fit**: from the body's Overview table — extract per-persona scores and total
    - **Effort**: from the body's Overview table (High/Medium/Low)
@@ -100,14 +104,14 @@ The product-analyst receives this prompt:
    ## Product-Driven Backlog
 
    {N} open issues | Source: VPC-based product discovery
-   Personas: {{PERSONA_NAMES_WITH_ROLES}}
+   Personas: "Alex" (Lead Dev), "Sara" (Product Founder), "Kai" (Maintainer)
 
    ### {Area Name}
 
-   | # | Issue | {{PERSONA_SCORE_HEADERS}} | Total | Effort | Prereqs |
-   |---|-------|{{PERSONA_SCORE_SEPARATORS}}|-------|--------|---------|
-   | 1 | #42 Feature name [blocked] | ... | X/{{MAX_SCORE}} | Low | #12, #17 |
-   | 2 | #43 Other feature | ... | X/{{MAX_SCORE}} | High | — |
+   | # | Issue | Alex | Sara | Kai | Total | Effort | Prereqs |
+   |---|-------|------|------|-----|-------|--------|---------|
+   | 1 | #42 Feature name [blocked] | X/5 | X/5 | X/5 | X/15 | Low | #12, #17 |
+   | 2 | #43 Other feature | X/5 | X/5 | X/5 | X/15 | High | — |
 
    ---
 
@@ -115,15 +119,15 @@ The product-analyst receives this prompt:
 
    Ranked by VPC persona score / effort ratio:
 
-   | Priority | Issue | Area | {{PERSONA_SCORE_HEADERS}} | Total | Effort | Rationale |
-   |----------|-------|------|{{PERSONA_SCORE_SEPARATORS}}|-------|--------|-----------|
+   | Priority | Issue | Area | Alex | Sara | Kai | Total | Effort | Rationale |
+   |----------|-------|------|------|------|-----|-------|--------|-----------|
 
    ### Selection criteria
    - Cross-persona features (both 4+/5) prioritized over single-persona
    - Low effort preferred over high effort at same score
    - Critical pain relief weighted higher than gain creation
 
-   Run `/sr:implement` to start implementing these items.
+   Run `/specrails:implement` to start implementing these items.
    ```
 
 9. **Render Safe Implementation Order section** after the Recommended Next Sprint table:
@@ -138,55 +142,28 @@ The product-analyst receives this prompt:
 
    | Wave | Issue | Title | Prereqs | Score | Effort |
    |------|-------|-------|---------|-------|--------|
-   | 1    | #N    | ...   | —       | X/{{MAX_SCORE}} | Low |
-   | 2    | #M    | ...   | #N      | X/{{MAX_SCORE}} | Medium |
+   | 1    | #N    | ...   | —       | X/15 | Low |
+   | 2    | #M    | ...   | #N      | X/15 | Medium |
 
    To implement in this order:
-     /sr:batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
+     /specrails:batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
 
    [If no edges exist in the DAG, omit the --deps clause:]
-     /sr:batch-implement <issue-refs>
+     /specrails:batch-implement <issue-refs>
 
    [If CYCLE_MEMBERS is non-empty, append:]
    Cycle members excluded from ordering: #A, #B
    Fix the Prerequisites fields in these issues to include them.
    ```
 
-   Issue refs in the `/sr:batch-implement` command are listed in wave order (wave 1 first, then wave 2, etc.), sorted by persona score within each wave. The `--deps` string is constructed from all edges in the DAG: `"A -> B"` for each edge, comma-separated. If the backlog has no dependencies at all (DAG has no edges), the section still renders showing all features in wave 1 and the `--deps` clause is omitted.
+   Issue refs in the `/specrails:batch-implement` command are listed in wave order (wave 1 first, then wave 2, etc.), sorted by persona score within each wave. The `--deps` string is constructed from all edges in the DAG: `"A -> B"` for each edge, comma-separated. If the backlog has no dependencies at all (DAG has no edges), the section still renders showing all features in wave 1 and the `--deps` clause is omitted.
 
 10. If no issues exist:
     ```
-    No product-driven backlog issues found. Run `/sr:update-product-driven-backlog` to generate feature ideas.
+    No product-driven backlog issues found. Run `/specrails:update-product-driven-backlog` to generate feature ideas.
     ```
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
-
-   #### If provider=local — Cache from Local Tickets
-
-   Read `$SPECRAILS_DIR/local-tickets.json` and parse the `tickets` map. For each ticket with `"product-driven-backlog"` in its `labels` array and `status` not `"cancelled"`, build a snapshot object:
-   - `number`: ticket `id` (integer)
-   - `title`: ticket `title` string
-   - `state`: map ticket `status` — `"done"` or `"cancelled"` → `"closed"`, otherwise → `"open"`
-   - `assignees`: `[ticket.assignee]` if non-null, else `[]`
-   - `labels`: ticket `labels` array, sorted alphabetically
-   - `body_sha`: SHA-256 of the ticket `description` string — compute with:
-     ```bash
-     echo -n "{description}" | sha256sum | cut -d' ' -f1
-     ```
-     If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
-   - `updated_at`: ticket `updated_at` value
-   - `captured_at`: current local time in ISO 8601 format
-
-   Write to `.claude/backlog-cache.json` with:
-   - `schema_version`: `"1"`
-   - `provider`: `"local"`
-   - `last_updated`: current ISO 8601 timestamp
-   - `written_by`: `"product-backlog"`
-   - `issues`: the map keyed by string ticket ID
-
-   If the write fails: print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.
-
-   #### If provider=github — Cache from GitHub Issues
 
    **Guard:** If `GH_AVAILABLE=false` (from Phase 0 pre-flight), print `[backlog-cache] Skipped — GH unavailable.` and return. Do not attempt the write.
 
@@ -210,7 +187,7 @@ The product-analyst receives this prompt:
    - `updated_at`: the `updatedAt` value from the GitHub API response
    - `captured_at`: current local time in ISO 8601 format
 
-   **Merge strategy:** If `.claude/backlog-cache.json` already exists and is valid JSON, read it and merge: new snapshot entries overwrite existing entries by issue number key; entries for issue numbers not in the current fetch are preserved (they may be needed by an in-progress `/sr:implement` run). If the file does not exist or is malformed, create it fresh.
+   **Merge strategy:** If `.claude/backlog-cache.json` already exists and is valid JSON, read it and merge: new snapshot entries overwrite existing entries by issue number key; entries for issue numbers not in the current fetch are preserved (they may be needed by an in-progress `/specrails:implement` run). If the file does not exist or is malformed, create it fresh.
 
    Write the merged result back to `.claude/backlog-cache.json` with:
    - `schema_version`: `"1"`
@@ -220,7 +197,3 @@ The product-analyst receives this prompt:
    - `issues`: the merged map keyed by string issue number
 
    If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.
-
-   #### If provider=jira or provider=none
-
-   Print `[backlog-cache] Skipped — provider does not support cache.` Do not attempt the write.

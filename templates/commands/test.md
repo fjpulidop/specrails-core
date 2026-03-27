@@ -27,7 +27,7 @@ Invoke the `sr-test-writer` agent to generate comprehensive tests for recently c
 if [ -z "$ARGUMENTS" ]; then
   RESOLVED_FILES="$(git diff --name-only HEAD)"
   if [ -z "$RESOLVED_FILES" ]; then
-    echo "No changed files found. Pass explicit file paths or make changes before running /sr:test."
+    echo "No changed files found. Pass explicit file paths or make changes before running /specrails:test."
     exit 0
   fi
 else
@@ -43,7 +43,7 @@ The resolved file list (`RESOLVED_FILES`) is passed to `sr-test-writer` as `IMPL
 Launch the `sr-test-writer` agent with the following inputs:
 
 - `IMPLEMENTED_FILES_LIST:` the resolved file list from Step 1 (one file per line)
-- `TASK_DESCRIPTION:` "Standalone test generation run via /sr:test"
+- `TASK_DESCRIPTION:` "Standalone test generation run via /specrails:test"
 
 Run the agent in the foreground (`run_in_background: false`) and wait for completion before proceeding to Step 3.
 

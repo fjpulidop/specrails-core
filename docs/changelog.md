@@ -8,8 +8,8 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### New commands
 
-- **`/sr:merge-conflict`** — Smart merge conflict resolver. Analyzes conflict context, understands intent of both sides, and proposes the correct resolution with an explanation.
-- **`/sr:refactor-recommender` (enhanced)** — Now includes VPC context-aware scoring: debt items are ranked against persona Jobs/Pains/Gains for product-aligned prioritization.
+- **`/specrails:merge-conflict`** — Smart merge conflict resolver. Analyzes conflict context, understands intent of both sides, and proposes the correct resolution with an explanation.
+- **`/specrails:refactor-recommender` (enhanced)** — Now includes VPC context-aware scoring: debt items are ranked against persona Jobs/Pains/Gains for product-aligned prioritization.
 
 ### Agents
 
@@ -41,8 +41,8 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### New commands
 
-- **`/sr:opsx-diff`** — Change diff visualizer. Shows a structured, human-readable diff of what changed between two points in time across agents, commands, and templates.
-- **`/sr:telemetry`** — Agent telemetry and cost tracking. Reports per-agent token usage, run counts, and cost estimates with trend analysis.
+- **`/specrails:opsx-diff`** — Change diff visualizer. Shows a structured, human-readable diff of what changed between two points in time across agents, commands, and templates.
+- **`/specrails:telemetry`** — Agent telemetry and cost tracking. Reports per-agent token usage, run counts, and cost estimates with trend analysis.
 
 ### Agents
 
@@ -54,8 +54,8 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### New commands
 
-- **`/sr:vpc-drift`** — Detects when your VPC personas have drifted from what your product actually delivers. Compares persona Jobs/Pains/Gains against the backlog and agent memory; produces per-persona alignment scores and concrete update recommendations.
-- **`/sr:memory-inspect`** — Inspect and manage agent memory directories. Shows per-agent stats, recent entries, and stale file detection with optional pruning.
+- **`/specrails:vpc-drift`** — Detects when your VPC personas have drifted from what your product actually delivers. Compares persona Jobs/Pains/Gains against the backlog and agent memory; produces per-persona alignment scores and concrete update recommendations.
+- **`/specrails:memory-inspect`** — Inspect and manage agent memory directories. Shows per-agent stats, recent entries, and stale file detection with optional pruning.
 
 ---
 
@@ -63,7 +63,7 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### New commands
 
-- **`/sr:retry`** — Smart failure recovery. Resumes a failed `/sr:implement` pipeline from the last successful phase without restarting from scratch. Reads saved pipeline state to identify what completed, then re-executes only the remaining phases.
+- **`/specrails:retry`** — Smart failure recovery. Resumes a failed `/specrails:implement` pipeline from the last successful phase without restarting from scratch. Reads saved pipeline state to identify what completed, then re-executes only the remaining phases.
 
 ### Agents
 
@@ -75,7 +75,7 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### Improvements
 
-- **`/sr:health-check` extended with static code analysis** — Now includes complexity metrics, dead code detection, and architectural pattern analysis in addition to test coverage and dependency health.
+- **`/specrails:health-check` extended with static code analysis** — Now includes complexity metrics, dead code detection, and architectural pattern analysis in addition to test coverage and dependency health.
 
 ---
 
@@ -107,7 +107,7 @@ Initial stable release.
 
 ### ⚠ Breaking changes
 
-All commands renamed from `/<name>` to `/sr:<name>`. All agent files renamed from `<name>.md` to `sr-<name>.md`. Existing installations are auto-migrated by `update.sh`.
+All commands renamed from `/<name>` to `/specrails:<name>`. All agent files renamed from `<name>.md` to `sr-<name>.md`. Existing installations are auto-migrated by `update.sh`.
 
 ### What shipped in 1.0
 
@@ -117,17 +117,17 @@ All commands renamed from `/<name>` to `/sr:<name>`. All agent files renamed fro
 - Security Reviewer, Doc Sync, Product Analyst
 
 **11 commands**
-- `/sr:implement` — full 8-phase pipeline (architecture → code → tests → docs → review → PR)
-- `/sr:batch-implement` — parallel multi-feature orchestrator using git worktrees
-- `/sr:health-check` — codebase quality dashboard with regression detection
-- `/sr:compat-check` — backwards compatibility analyzer and migration guide generator
-- `/sr:product-backlog` — VPC-scored backlog view with safe implementation ordering
-- `/sr:update-product-driven-backlog` — AI-powered product discovery via personas
-- `/sr:refactor-recommender` — tech debt scanner ranked by impact/effort
-- `/sr:why` — semantic search over agent decision records
-- `/sr:retry` — smart failure recovery (added in 1.3)
-- `/sr:vpc-drift` — persona drift detection (added in 1.4)
-- `/sr:propose-spec` — structured feature proposal generator
+- `/specrails:implement` — full 8-phase pipeline (architecture → code → tests → docs → review → PR)
+- `/specrails:batch-implement` — parallel multi-feature orchestrator using git worktrees
+- `/specrails:health-check` — codebase quality dashboard with regression detection
+- `/specrails:compat-check` — backwards compatibility analyzer and migration guide generator
+- `/specrails:product-backlog` — VPC-scored backlog view with safe implementation ordering
+- `/specrails:update-product-driven-backlog` — AI-powered product discovery via personas
+- `/specrails:refactor-recommender` — tech debt scanner ranked by impact/effort
+- `/specrails:why` — semantic search over agent decision records
+- `/specrails:retry` — smart failure recovery (added in 1.3)
+- `/specrails:vpc-drift` — persona drift detection (added in 1.4)
+- `/specrails:propose-spec` — structured feature proposal generator
 
 **Pipeline Monitor (web-manager)**
 - Real-time job queue dashboard

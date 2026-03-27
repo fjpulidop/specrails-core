@@ -4,7 +4,7 @@ Everything SpecRails generates is editable markdown. Here's how to adapt it to y
 
 ## What gets generated
 
-After running `/sr:setup`, your project data lives in `.specrails/` (plugin method) or `.claude/` (scaffold method):
+After running `/specrails:setup`, your project data lives in `.specrails/` (plugin method) or `.claude/` (scaffold method):
 
 **Plugin method — `.specrails/`**
 
@@ -241,13 +241,13 @@ Both agents run in parallel during Phase 4b and feed their findings into the gen
 
 ## Backwards compatibility baseline
 
-Use `/sr:compat-check --save` to snapshot your current API surface as a baseline:
+Use `/specrails:compat-check --save` to snapshot your current API surface as a baseline:
 
 ```
-/sr:compat-check --save
+/specrails:compat-check --save
 ```
 
-This writes the current API surface to `.claude/compat-baseline.json`. Future runs of `/sr:compat-check` and the Architect's Phase 6 auto-check compare against this baseline to detect breaking changes. Re-run `--save` after any intentional breaking release to advance the baseline.
+This writes the current API surface to `.claude/compat-baseline.json`. Future runs of `/specrails:compat-check` and the Architect's Phase 6 auto-check compare against this baseline to detect breaking changes. Re-run `--save` after any intentional breaking release to advance the baseline.
 
 ---
 

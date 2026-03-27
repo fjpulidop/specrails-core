@@ -4,7 +4,7 @@
 
 ## How specrails parallelizes work
 
-When you pass multiple issue numbers to `/sr:batch-implement`, specrails spawns one git worktree per feature. Each worktree has its own branch, its own isolated copy of the working tree, and its own full agent pipeline running concurrently. Features do not queue — they run in parallel from Phase 3a (Architecture) through Phase 5 (PR creation).
+When you pass multiple issue numbers to `/specrails:batch-implement`, specrails spawns one git worktree per feature. Each worktree has its own branch, its own isolated copy of the working tree, and its own full agent pipeline running concurrently. Features do not queue — they run in parallel from Phase 3a (Architecture) through Phase 5 (PR creation).
 
 This is not a simulation of parallelism. Each pipeline is a separate Claude Code session with no shared state. The Architect for issue #71 has no visibility into the Architect for issue #63. Each Developer commits to its own branch. Each Reviewer runs CI independently. The worktrees are merged into the base branch at the end of the batch run.
 
@@ -22,7 +22,7 @@ Not every combination of features is safe to run in parallel. A feature is safe 
 
 4. **Wave 1 in the dependency DAG**: the feature has no unimplemented prerequisites. A feature with `Prerequisites: #71` cannot run in the same batch as #71 — it must wait for #71 to ship first.
 
-When in doubt, run `/sr:product-backlog` to see the dependency ordering before composing your batch.
+When in doubt, run `/specrails:product-backlog` to see the dependency ordering before composing your batch.
 
 ## What's not safe
 
@@ -38,10 +38,10 @@ Some combinations look independent but are not:
 
 ## Reading the dependency DAG
 
-Run `/sr:product-backlog` before composing any parallel batch. The output includes a prioritized backlog table with dependency metadata. Wave 1 features — those with no unimplemented prerequisites — are your safe parallel batch candidates.
+Run `/specrails:product-backlog` before composing any parallel batch. The output includes a prioritized backlog table with dependency metadata. Wave 1 features — those with no unimplemented prerequisites — are your safe parallel batch candidates.
 
 ```
-/sr:product-backlog
+/specrails:product-backlog
 
 ┌─ API ──────────────────────────────────────────┐
 │ #  Issue   Score  Effort  Description           │
@@ -72,13 +72,13 @@ Reading the issue bodies:
 #71 and #63 are independent of each other and have no prerequisites. They are Wave 1. Run them in parallel:
 
 ```
-/sr:batch-implement #71, #63
+/specrails:batch-implement #71, #63
 ```
 
 Both pipelines run concurrently. Each produces a PR. After both PRs are merged, #85 is unblocked. Run it alone:
 
 ```
-/sr:implement #85
+/specrails:implement #85
 ```
 
 Attempting to include #85 in the first batch would have caused the Developer for #85 to run without the rate limiting middleware in place, producing code that imports a module that doesn't exist yet.
@@ -103,7 +103,7 @@ After all worktree pipelines complete, specrails attempts to merge each feature 
 
 | Pattern | Why it works |
 |---------|-------------|
-| Run `/sr:product-backlog` before composing a batch | Surfaces the dependency DAG so you batch only Wave 1 features |
+| Run `/specrails:product-backlog` before composing a batch | Surfaces the dependency DAG so you batch only Wave 1 features |
 | Keep batches to 2–4 features | Smaller batches reduce conflict surface area and keep the merge step fast |
 | Ensure all specs are approved before starting the batch | Prevents mid-batch spec revisions that invalidate a running pipeline |
 | Sequence database migration features before features that consume the schema | Eliminates the most common class of parallel dev failures |
@@ -117,7 +117,7 @@ After all worktree pipelines complete, specrails attempts to merge each feature 
 
 ## What's next?
 
-- [Workflows & Commands](workflows.md) — full reference for `/sr:batch-implement`, `/sr:implement`, and `/sr:product-backlog`
+- [Workflows & Commands](workflows.md) — full reference for `/specrails:batch-implement`, `/specrails:implement`, and `/specrails:product-backlog`
 
 ---
 

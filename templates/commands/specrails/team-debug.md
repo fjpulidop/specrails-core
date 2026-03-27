@@ -65,13 +65,13 @@ Parse `$ARGUMENTS` to determine the bug context and flags.
 
 If `$ARGUMENTS` is empty, print usage and stop:
 ```
-Usage: /sr:team-debug <bug-description> [--scope <paths>] [--depth <level>]
+Usage: /specrails:team-debug <bug-description> [--scope <paths>] [--depth <level>]
 
 Examples:
-  /sr:team-debug "Login fails silently when email has uppercase letters"
-  /sr:team-debug tests/auth.test.ts --depth deep
-  /sr:team-debug "TypeError: Cannot read property 'id' of undefined" --scope src/api
-  /sr:team-debug #42
+  /specrails:team-debug "Login fails silently when email has uppercase letters"
+  /specrails:team-debug tests/auth.test.ts --depth deep
+  /specrails:team-debug "TypeError: Cannot read property 'id' of undefined" --scope src/api
+  /specrails:team-debug #42
 ```
 
 ---

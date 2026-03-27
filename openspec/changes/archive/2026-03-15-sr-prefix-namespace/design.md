@@ -2,13 +2,13 @@
 
 specrails installs agents and commands into `.claude/agents/` and `.claude/commands/` using generic names like `architect.md`, `developer.md`, `/implement`. Community agent collections (VoltAgent's awesome-claude-code-subagents) use the same directory and often the same filenames. When both are installed, files silently overwrite each other, breaking the `/implement` pipeline without any error message.
 
-The rename adds an `sr-` prefix to all specrails agents and moves commands under an `sr/` subdirectory (producing `/sr:*` slash commands), creating a clean namespace boundary.
+The rename adds an `sr-` prefix to all specrails agents and moves commands under an `sr/` subdirectory (producing `/specrails:*` slash commands), creating a clean namespace boundary.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - Namespace all specrails agents with `sr-` prefix to avoid filename collisions
-- Namespace all specrails commands under `/sr:` to avoid command name collisions
+- Namespace all specrails commands under `/specrails:` to avoid command name collisions
 - Auto-migrate existing installations via `update.sh`
 - Update all documentation (specrails and specrails-web)
 
@@ -21,7 +21,7 @@ The rename adds an `sr-` prefix to all specrails agents and moves commands under
 
 ### D1: Prefix choice — `sr-` for agents, `sr/` directory for commands
 
-**Rationale:** Claude Code resolves `subagent_type` to `.claude/agents/<name>.md`. Adding `sr-` to the filename means `subagent_type: sr-architect` resolves to `sr-architect.md`. For commands, Claude Code uses directory structure as namespace: `.claude/commands/sr/implement.md` becomes `/sr:implement`.
+**Rationale:** Claude Code resolves `subagent_type` to `.claude/agents/<name>.md`. Adding `sr-` to the filename means `subagent_type: sr-architect` resolves to `sr-architect.md`. For commands, Claude Code uses directory structure as namespace: `.claude/commands/specrails/implement.md` becomes `/specrails:implement`.
 
 **Alternatives considered:**
 - `specrails-` prefix: too verbose (`specrails-architect.md`)
@@ -54,9 +54,9 @@ Commands move from flat to nested:
 BEFORE:                          AFTER:
 .claude/commands/                .claude/commands/
 ├── implement.md                 ├── sr/
-├── batch-implement.md           │   ├── implement.md        → /sr:implement
-├── product-backlog.md           │   ├── batch-implement.md  → /sr:batch-implement
-├── health-check.md              │   ├── product-backlog.md  → /sr:product-backlog
+├── batch-implement.md           │   ├── implement.md        → /specrails:implement
+├── product-backlog.md           │   ├── batch-implement.md  → /specrails:batch-implement
+├── health-check.md              │   ├── product-backlog.md  → /specrails:product-backlog
 ├── why.md                       │   ├── update-product-driven-backlog.md
 ├── ...                          │   ├── health-check.md
 └── setup.md  (stays)            │   ├── compat-check.md
@@ -70,7 +70,7 @@ BEFORE:                          AFTER:
 
 ## Risks / Trade-offs
 
-**[User muscle memory]** → Users who memorized `/implement` need to relearn `/sr:implement`. Mitigated by: clear update message during migration, updated docs.
+**[User muscle memory]** → Users who memorized `/implement` need to relearn `/specrails:implement`. Mitigated by: clear update message during migration, updated docs.
 
 **[subagent_type resolution]** → We assume Claude Code maps `subagent_type: sr-architect` to `sr-architect.md`. This follows documented behavior but hasn't been explicitly tested with prefixed names. → Mitigation: test manually before release. If it fails, fall back to D1 alternative (subdirectory).
 
@@ -88,7 +88,7 @@ BEFORE:                          AFTER:
 1. DETECT: Check if .claude/agents/architect.md exists (old naming)
 2. RENAME AGENTS: For each agent in the known list, mv <name>.md → sr-<name>.md
 3. RENAME PERSONAS: For each persona, mv <name>.md → sr-<name>.md
-4. MOVE COMMANDS: mkdir -p .claude/commands/sr/; mv .claude/commands/{implement,batch-implement,...}.md .claude/commands/sr/
+4. MOVE COMMANDS: mkdir -p .claude/commands/specrails/; mv .claude/commands/{implement,batch-implement,...}.md .claude/commands/specrails/
 5. RENAME AGENT MEMORY: For each directory in agent-memory/, mv <name>/ → sr-<name>/
 6. UPDATE SETTINGS: Replace agent/command references in settings.json
 7. REGENERATE MANIFEST: Rebuild .specrails-manifest.json with new paths

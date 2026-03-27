@@ -45,7 +45,7 @@
     },
     "86": {
       "number": 86,
-      "title": "Add /sr:implement-with-agent-teams command (Level 1 Agent Teams integration)",
+      "title": "Add /specrails:implement-with-agent-teams command (Level 1 Agent Teams integration)",
       "state": "OPEN",
       "assignees": [],
       "labels": [
@@ -114,7 +114,7 @@
     },
     "63": {
       "number": 63,
-      "title": "Continuous Product Discovery (/sr:pulse)",
+      "title": "Continuous Product Discovery (/specrails:pulse)",
       "state": "OPEN",
       "assignees": [],
       "labels": [

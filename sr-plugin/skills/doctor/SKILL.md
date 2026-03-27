@@ -42,7 +42,7 @@ which npm && npm --version 2>/dev/null || echo "NOT_INSTALLED (optional)"
 ```
 
 - `git` — required
-- `openspec` — required for OpenSpec workflow (`/sr:opsx:*` skills)
+- `openspec` — required for OpenSpec workflow (`/specrails:opsx:*` skills)
 - `gh` — required only if `BACKLOG_PROVIDER=github`
 - `npm` — required only if project uses Node.js
 
@@ -51,12 +51,12 @@ which npm && npm --version 2>/dev/null || echo "NOT_INSTALLED (optional)"
 ## Check 3: Project configuration
 
 Check for `.specrails/config.yaml`:
-- If missing: `WARN` — run `/sr:setup` to create it
+- If missing: `WARN` — run `/specrails:setup` to create it
 - If exists: parse and validate required fields (`project.name`, `stack.description`, `ci.command`)
 - Flag any fields with placeholder values like `"<STACK>"` or `"<CI_COMMAND>"`
 
 Check for `.claude/backlog-config.json`:
-- If missing: `WARN` — run `/sr:setup` to create it
+- If missing: `WARN` — run `/specrails:setup` to create it
 - If exists: validate `BACKLOG_PROVIDER` is one of `github`, `local`, `none`
 
 ---
@@ -78,7 +78,7 @@ If `--fix` is set: create missing directories automatically.
 ## Check 5: Personas
 
 Check for persona files in `.specrails/personas/` or `.claude/agents/personas/`:
-- If no persona files found: `WARN` — "No personas defined. Run `/sr:setup` to create starter personas, or add `.specrails/personas/*.md` files manually."
+- If no persona files found: `WARN` — "No personas defined. Run `/specrails:setup` to create starter personas, or add `.specrails/personas/*.md` files manually."
 - If found: count files and list them
 
 ---
@@ -87,7 +87,7 @@ Check for persona files in `.specrails/personas/` or `.claude/agents/personas/`:
 
 Check for `openspec/` directory:
 - If present: check `openspec/config.yaml` exists and `openspec/specs/` directory exists
-- If missing: `INFO` — "No OpenSpec workspace found. Run `openspec init` to initialize if you plan to use `/sr:opsx:*` skills."
+- If missing: `INFO` — "No OpenSpec workspace found. Run `openspec init` to initialize if you plan to use `/specrails:opsx:*` skills."
 
 ---
 
@@ -131,12 +131,12 @@ If `--verbose` flag is set: scan `.specrails/config.yaml` for unreplaced placeho
 ### Warnings
 
 1. **gh CLI not installed**
-   - Required for: `/sr:product-backlog`, `/sr:implement` (when BACKLOG_PROVIDER=github), `/sr:update-product-driven-backlog`
+   - Required for: `/specrails:product-backlog`, `/specrails:implement` (when BACKLOG_PROVIDER=github), `/specrails:update-product-driven-backlog`
    - Fix: `brew install gh && gh auth login`
 
 2. **CLAUDE.md missing specrails section**
    - Agents read project context from CLAUDE.md. Without a specrails section, agents fall back to defaults.
-   - Fix: Run `/sr:setup --skip-setup` or manually add a "## SpecRails Workflow" section to CLAUDE.md
+   - Fix: Run `/specrails:setup --skip-setup` or manually add a "## SpecRails Workflow" section to CLAUDE.md
 ```
 
 **Status meanings:**

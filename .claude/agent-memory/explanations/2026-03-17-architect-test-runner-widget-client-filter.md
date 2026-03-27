@@ -11,11 +11,11 @@ date: 2026-03-17
 
 ## Why This Approach
 
-`DashboardPage` already fetches up to 10 recent jobs. Filtering that array for `command.includes('/sr:test')` is O(n) over at most 10 items — effectively free. Adding a server-side `?command=` filter would require changes to `project-router.ts`, `db.ts` (SQL query), and new test coverage, all for a query that returns at most 1 relevant result. The client-side approach is correct for v1 given the small data volume per project.
+`DashboardPage` already fetches up to 10 recent jobs. Filtering that array for `command.includes('/specrails:test')` is O(n) over at most 10 items — effectively free. Adding a server-side `?command=` filter would require changes to `project-router.ts`, `db.ts` (SQL query), and new test coverage, all for a query that returns at most 1 relevant result. The client-side approach is correct for v1 given the small data volume per project.
 
 ## Alternatives Considered
 
-- New `/jobs?command=/sr:test` API endpoint: More "correct" architecturally but over-engineered for the scale. Can be added later if job lists grow large.
+- New `/jobs?command=/specrails:test` API endpoint: More "correct" architecturally but over-engineered for the scale. Can be added later if job lists grow large.
 - Separate `/test-writer/last-run` endpoint: Even more over-engineered, introduces a new resource type.
 
 ## See Also

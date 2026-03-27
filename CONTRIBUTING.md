@@ -73,7 +73,7 @@ chore: bump dev dependencies
 Breaking changes must be flagged with `!` or a `BREAKING CHANGE:` footer:
 
 ```
-feat!: rename all commands to /sr: namespace
+feat!: rename all commands to /specrails: namespace
 ```
 
 ## Submitting a Pull Request

@@ -1,13 +1,13 @@
-# Spec: `/sr:test` Command
+# Spec: `/specrails:test` Command
 
 ## Overview
 
-The `/sr:test` command is a standalone invocation of the `sr-test-writer` agent. It accepts an optional argument — a comma-separated list of file paths — and runs the test writer against those files. If no argument is provided, it defaults to `git diff --name-only HEAD` to determine recently changed files.
+The `/specrails:test` command is a standalone invocation of the `sr-test-writer` agent. It accepts an optional argument — a comma-separated list of file paths — and runs the test writer against those files. If no argument is provided, it defaults to `git diff --name-only HEAD` to determine recently changed files.
 
 ## Input
 
 ```
-/sr:test [<file-path>, <file-path>, ...]
+/specrails:test [<file-path>, <file-path>, ...]
 ```
 
 | Argument | Required | Description |
@@ -61,7 +61,7 @@ The command is non-blocking in the manager. Status is reflected through the thre
 **No prior runs:**
 ```
 [FlaskConical icon]  No test runs yet
-                     Run /sr:test to generate tests for this project
+                     Run /specrails:test to generate tests for this project
 [Run Tests button → opens TestWizard]
 ```
 
@@ -97,5 +97,5 @@ Description: Generate tests for specific files, or leave empty to test all recen
 ## Files
 
 - `templates/commands/test.md` — canonical command template (no placeholder substitution needed)
-- `.claude/commands/sr/test.md` — specrails self-hosted copy (identical to template)
+- `.claude/commands/specrails/test.md` — specrails self-hosted copy (identical to template)
 - `templates/agents/sr-test-writer.md` — the agent template invoked by this command

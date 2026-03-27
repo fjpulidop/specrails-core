@@ -455,14 +455,14 @@ Run with `--save` to persist a baseline for future trend analysis.
 6. **Memory not cleared** — if any agent has > 50 memory files:
    ```
    🗂️  <agent-name> has N memory files. Large memory stores may slow context loading.
-   Action: Run `/sr:memory-inspect --prune` to clean stale entries.
+   Action: Run `/specrails:memory-inspect --prune` to clean stale entries.
    ```
 
 7. **Data gap warning** — if `LOGS_AVAILABLE=false`:
    ```
    ℹ️  Telemetry is based on agent-memory metadata only (no JSONL logs found).
    Token and cost data are unavailable. To enable full telemetry:
-     - Run /sr:implement with Claude CLI configured to persist session logs.
+     - Run /specrails:implement with Claude CLI configured to persist session logs.
      - Check your Claude CLI version for `--output-format` or `--log` options.
    ```
 

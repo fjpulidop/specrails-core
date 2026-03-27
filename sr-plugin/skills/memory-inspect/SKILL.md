@@ -49,8 +49,8 @@ If no directories are found:
 ```
 No agent memory directories found under .claude/agent-memory/.
 
-Agent memory is written by sr-* agents during the /sr:implement pipeline.
-Run /sr:implement on a feature to generate your first memory entries.
+Agent memory is written by sr-* agents during the /specrails:implement pipeline.
+Run /specrails:implement on a feature to generate your first memory entries.
 ```
 Then stop.
 
@@ -230,7 +230,7 @@ Print a final recommendations section based on findings:
 
 1. **Prune stale data** — if `STALE_COUNT > 0` across any agent and `PRUNE_MODE=false`:
    ```
-   - N stale files detected. Run `/sr:memory-inspect --prune` to remove them and free N KB.
+   - N stale files detected. Run `/specrails:memory-inspect --prune` to remove them and free N KB.
    ```
 
 2. **Investigate large memory** — if any single agent's `TOTAL_SIZE > 1 MB`:

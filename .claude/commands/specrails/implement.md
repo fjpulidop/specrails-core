@@ -249,7 +249,7 @@ Write the initial state file:
 }
 ```
 
-If the write fails: print `[pipeline-state] Warning: could not write state file. Smart retry (/sr:retry) will not be available for this run.` Set `PIPELINE_STATE_AVAILABLE=false`. Do NOT abort the pipeline.
+If the write fails: print `[pipeline-state] Warning: could not write state file. Smart retry (/specrails:retry) will not be available for this run.` Set `PIPELINE_STATE_AVAILABLE=false`. Do NOT abort the pipeline.
 
 If the write succeeds: set `PIPELINE_STATE_AVAILABLE=true`.
 
@@ -342,7 +342,7 @@ For `body_sha` rows in the table, display only the first 8 characters of each SH
 - Re-prompt on any other input, up to 3 times total.
 - After 3 invalid inputs: print `[conflict-abort] Defaulting to abort after 3 invalid inputs.` and abort.
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /sr:implement after resolving the issues.` and exit. No git state is left behind.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /specrails:implement after resolving the issues.` and exit. No git state is left behind.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "3a.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 3a.
 
@@ -796,9 +796,9 @@ The reviewer's confidence scores do not meet configured thresholds.
 
 ### Next Steps
 
-1. Address the concerns above and re-run `/sr:implement`.
+1. Address the concerns above and re-run `/specrails:implement`.
 2. Or, if you have reviewed the concerns and accept the risk, re-run with an override:
-   `/sr:implement #N --confidence-override "reason"`
+   `/specrails:implement #N --confidence-override "reason"`
 
 Pipeline halted. No git operations have been performed.
 ```
@@ -830,7 +830,7 @@ If all issues are clean: print `[conflict-check] All issues clean (Phase 4c.0). 
 
 If conflicts exist: print the same conflict report format as Phase 3a.0 (with `Phase 4c.0` context) and await `A`/`C` input (same re-prompt and default-abort logic).
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /sr:implement after resolving the issues.` and exit. No git operations have been performed at this point.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /specrails:implement after resolving the issues.` and exit. No git operations have been performed at this point.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "4c.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 4c.
 
@@ -839,7 +839,7 @@ If conflicts exist: print the same conflict report format as Phase 3a.0 (with `P
 **Security gate:** If `SECURITY_BLOCKED=true`:
 1. Print all Critical findings from the security-reviewer output
 2. Do NOT create a branch, commit, push, or PR
-3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /sr:implement."
+3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /specrails:implement."
 4. Skip to Phase 4e.
 
 ### Dry-Run Gate
@@ -889,7 +889,7 @@ This phase uses **automatic** shipping (GIT_AUTO=true) and **read & write** back
    <checklist>
 
    ---
-   Implemented via `/sr:implement` pipeline (sr-architect → sr-developer → sr-reviewer)
+   Implemented via `/specrails:implement` pipeline (sr-architect → sr-developer → sr-reviewer)
    EOF
    )"
    ```
@@ -954,7 +954,7 @@ Check CI status after pushing. Fix failures (up to 2 retries).
 
 To apply these changes and ship:
 ```
-/sr:implement --apply <feature-name>
+/specrails:implement --apply <feature-name>
 ```
 
 To discard this dry run:

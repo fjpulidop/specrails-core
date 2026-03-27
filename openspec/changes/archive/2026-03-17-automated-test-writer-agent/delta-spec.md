@@ -9,18 +9,18 @@ This document specifies the exact changes to existing specs and the new specs in
 
 ---
 
-## Spec 1: `/sr:test` Command (NEW)
+## Spec 1: `/specrails:test` Command (NEW)
 
 **File:** `openspec/specs/test-command.md` (to be created)
 
 ### Description
 
-The `/sr:test` command is a standalone invocation of the `sr-test-writer` agent. It accepts an optional argument — a comma-separated list of file paths — and runs the test writer against those files. If no argument is provided, it defaults to `git diff --name-only HEAD` to determine recently changed files.
+The `/specrails:test` command is a standalone invocation of the `sr-test-writer` agent. It accepts an optional argument — a comma-separated list of file paths — and runs the test writer against those files. If no argument is provided, it defaults to `git diff --name-only HEAD` to determine recently changed files.
 
 ### Input
 
 ```
-/sr:test [<file-path>, <file-path>, ...]
+/specrails:test [<file-path>, <file-path>, ...]
 ```
 
 | Argument | Required | Description |
@@ -58,13 +58,13 @@ The command is non-blocking in the manager (no pipeline phases that wait on each
 
 **File:** `openspec/specs/implement.md`
 
-No changes required. The implement.md spec does not enumerate individual phases — it describes flags and behavior matrix. Phase 3c (test writer) is already present in the `.claude/commands/sr/implement.md` command file from the prior archived change.
+No changes required. The implement.md spec does not enumerate individual phases — it describes flags and behavior matrix. Phase 3c (test writer) is already present in the `.claude/commands/specrails/implement.md` command file from the prior archived change.
 
 ---
 
 ## Spec 3: `sr-test-writer` Agent (EXISTING — no changes)
 
-The agent spec is the agent prompt file itself at `templates/agents/sr-test-writer.md`. No changes are required to this file. The standalone `/sr:test` command delegates to it unchanged.
+The agent spec is the agent prompt file itself at `templates/agents/sr-test-writer.md`. No changes are required to this file. The standalone `/specrails:test` command delegates to it unchanged.
 
 ---
 
@@ -78,7 +78,7 @@ The `TestRunnerWidget` renders as follows:
 
 ```
 [FlaskConical icon]  No test runs yet
-                     Run /sr:test to generate tests for this project
+                     Run /specrails:test to generate tests for this project
 [Run Tests button]
 ```
 
@@ -105,7 +105,7 @@ The `TestRunnerWidget` renders as follows:
                      [pulsing dot animation]
 ```
 
-The widget reads from the `jobs` prop (already fetched by `DashboardPage`). It filters for `job.command.includes('/sr:test')` and takes the most recent result.
+The widget reads from the `jobs` prop (already fetched by `DashboardPage`). It filters for `job.command.includes('/specrails:test')` and takes the most recent result.
 
 ---
 

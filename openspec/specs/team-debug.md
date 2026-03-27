@@ -1,6 +1,6 @@
-# Spec: /sr:team-debug Command
+# Spec: /specrails:team-debug Command
 
-The `/sr:team-debug` command orchestrates collaborative debugging using Claude Code Agent Teams (experimental). Multiple investigators work as teammates — each pursuing a different hypothesis about a bug's root cause — then challenge each other's findings via mailbox before the team lead synthesizes a root cause analysis ranked by confidence.
+The `/specrails:team-debug` command orchestrates collaborative debugging using Claude Code Agent Teams (experimental). Multiple investigators work as teammates — each pursuing a different hypothesis about a bug's root cause — then challenge each other's findings via mailbox before the team lead synthesizes a root cause analysis ranked by confidence.
 
 ---
 
@@ -100,13 +100,13 @@ Parse `$ARGUMENTS` to determine the bug context.
 
 If `$ARGUMENTS` is empty, print usage and stop:
 ```
-Usage: /sr:team-debug <bug-description> [--scope <paths>] [--depth <level>]
+Usage: /specrails:team-debug <bug-description> [--scope <paths>] [--depth <level>]
 
 Examples:
-  /sr:team-debug "Login fails silently when email has uppercase letters"
-  /sr:team-debug tests/auth.test.ts --depth deep
-  /sr:team-debug "TypeError: Cannot read property 'id' of undefined" --scope src/api
-  /sr:team-debug #42
+  /specrails:team-debug "Login fails silently when email has uppercase letters"
+  /specrails:team-debug tests/auth.test.ts --depth deep
+  /specrails:team-debug "TypeError: Cannot read property 'id' of undefined" --scope src/api
+  /specrails:team-debug #42
 ```
 
 ### Phase 2: Hypothesis Generation
@@ -313,7 +313,7 @@ Note: Team debug used ~<N>x the tokens of a single-agent investigation (<N> para
 ---
 
 ### Requirement: Command namespace
-The `/team-debug` command SHALL be invoked as `/sr:team-debug`. The command file SHALL be located at `.claude/commands/sr/team-debug.md`.
+The `/team-debug` command SHALL be invoked as `/specrails:team-debug`. The command file SHALL be located at `.claude/commands/specrails/team-debug.md`.
 
 ### Requirement: Agent Teams experimental guard
 The command MUST check `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` before proceeding. If not set, it MUST print setup instructions and exit gracefully.

@@ -62,7 +62,7 @@ specrails doctor
 ✅ Git: initialized
 ✅ npm: found (v10.2.3)
 
-All checks passed. Run /sr:product-backlog to get started.
+All checks passed. Run /specrails:product-backlog to get started.
 ```
 
 **Check 3 detail**: When agent files are found, print the count and a parenthetical list of agent directory names (derived from directories containing `AGENTS.md`). Example: `4 agents found (ceo, cto, tech-lead, founding-engineer)`.
@@ -98,7 +98,7 @@ specrails doctor
 
 | All checks pass | Exit Code | Summary line |
 |:--------------:|-----------|-------------|
-| Yes | `0` | `All checks passed. Run /sr:product-backlog to get started.` |
+| Yes | `0` | `All checks passed. Run /specrails:product-backlog to get started.` |
 | No | `1` | `N check(s) failed.` |
 
 ---

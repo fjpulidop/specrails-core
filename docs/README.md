@@ -13,10 +13,10 @@ Welcome to the SpecRails docs. This guide will take you from zero to a fully aut
 
 | Guide | What it covers |
 |-------|----------------|
-| [Installation & Setup](installation.md) | Detailed setup, prerequisites, the `/sr:setup` wizard |
+| [Installation & Setup](installation.md) | Detailed setup, prerequisites, the `/specrails:setup` wizard |
 | [Plugin Architecture](plugin-architecture.md) | Plugin vs scaffold, what lives where, how updates work |
 | [Agents](agents.md) | Every agent explained — role, when it runs, why it exists |
-| [Workflows & Commands](workflows.md) | How to use `/sr:implement`, `/sr:product-backlog`, and more |
+| [Workflows & Commands](workflows.md) | How to use `/specrails:implement`, `/specrails:product-backlog`, and more |
 | [Customization](customization.md) | Adapt agents, rules, personas, and conventions to your project |
 | [Updating](updating.md) | Keep SpecRails up to date without losing your customizations |
 

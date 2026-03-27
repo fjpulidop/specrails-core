@@ -83,7 +83,7 @@ Print: `Created GitHub Issue #{number}: {title}`
 
 ### If provider=jira and BACKLOG_WRITE=true — Create JIRA Story
 
-Create a JIRA Story using the same authentication and API pattern as `/sr:update-product-driven-backlog`:
+Create a JIRA Story using the same authentication and API pattern as `/specrails:update-product-driven-backlog`:
 - Summary: The Spec Title
 - Description: Full structured proposal in Atlassian Document Format
 - Labels: `spec-proposal`

@@ -95,14 +95,14 @@ Print to stdout:
 ✅ Setup complete.
 
 Try your first spec:
-  > /sr:product-backlog
+  > /specrails:product-backlog
 ```
 
 If `CODEBASE_TYPE` is `existing`, replace the last two lines with:
 
 ```
 Try your first spec:
-  > /sr:tech-audit
+  > /specrails:tech-audit
 ```
 
 This is the final output of Quick Start mode. No additional prompts.

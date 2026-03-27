@@ -2,17 +2,17 @@
 
 SpecRails commands are Claude Code slash commands that orchestrate the agent pipeline. Here's every command, what it does, and when to use it.
 
-## The main workflow: `/sr:implement`
+## The main workflow: `/specrails:implement`
 
 This is the command you'll use most. It takes a feature request and drives it through the entire pipeline — from architecture to shipped PR.
 
 ### Usage
 
 ```
-/sr:implement #85                          # From a GitHub Issue
-/sr:implement #85, #71, #63               # Multiple issues (parallel)
-/sr:implement "add dark mode toggle"       # Text description
-/sr:implement UI, Analytics               # By area (explores + selects)
+/specrails:implement #85                          # From a GitHub Issue
+/specrails:implement #85, #71, #63               # Multiple issues (parallel)
+/specrails:implement "add dark mode toggle"       # Text description
+/specrails:implement UI, Analytics               # By area (explores + selects)
 ```
 
 ### Flags
@@ -24,7 +24,7 @@ This is the command you'll use most. It takes a feature request and drives it th
 
 ### Pipeline phases
 
-When you run `/sr:implement #85`, here's what happens:
+When you run `/specrails:implement #85`, here's what happens:
 
 ```
 Phase -1    Environment check
@@ -65,7 +65,7 @@ For multiple features, each gets its own isolated worktree. Agents run concurren
 ### Example output
 
 ```
-/sr:implement #85
+/specrails:implement #85
 ```
 
 ```
@@ -103,25 +103,25 @@ PR #42 created: feat: add health check endpoint
 
 ---
 
-## `/sr:batch-implement`
+## `/specrails:batch-implement`
 
 Orchestrates **multiple independent features** in parallel using git worktrees. Use this when you have several unrelated features to ship at once.
 
 ```
-/sr:batch-implement #85, #71, #63
+/specrails:batch-implement #85, #71, #63
 ```
 
 Each feature gets its own worktree, its own agent pipeline, and its own PR. Features run concurrently for maximum speed.
 
 ---
 
-## `/sr:product-backlog`
+## `/specrails:product-backlog`
 
 View your prioritized product backlog, ranked by VPC fit and effort.
 
 ```
-/sr:product-backlog                # Full backlog
-/sr:product-backlog UI, API        # Filter by area
+/specrails:product-backlog                # Full backlog
+/specrails:product-backlog UI, API        # Filter by area
 ```
 
 ### What it shows
@@ -151,13 +151,13 @@ Safe Implementation Order (Wave 1):
 
 ---
 
-## `/sr:update-product-driven-backlog`
+## `/specrails:update-product-driven-backlog`
 
 Generate new feature ideas through product discovery. The Product Manager (Opus) researches your competitive landscape and generates ideas evaluated against your personas.
 
 ```
-/sr:update-product-driven-backlog              # All areas
-/sr:update-product-driven-backlog UI, API      # Focus areas
+/specrails:update-product-driven-backlog              # All areas
+/specrails:update-product-driven-backlog UI, API      # Focus areas
 ```
 
 ### What it does
@@ -170,28 +170,28 @@ Generate new feature ideas through product discovery. The Product Manager (Opus)
 
 ---
 
-## `/sr:refactor-recommender`
+## `/specrails:refactor-recommender`
 
 Scan for refactoring opportunities ranked by impact/effort ratio.
 
 ```
-/sr:refactor-recommender
+/specrails:refactor-recommender
 ```
 
 Identifies duplicates, long functions, large files, dead code, outdated patterns, and complex logic. Optionally creates GitHub Issues for tracking.
 
 ---
 
-## `/sr:compat-check`
+## `/specrails:compat-check`
 
 Analyze the backwards compatibility impact of a proposed change before implementation.
 
 ```
-/sr:compat-check #85                    # Check a specific issue
-/sr:compat-check #85 --save             # Check and save as the new API baseline
+/specrails:compat-check #85                    # Check a specific issue
+/specrails:compat-check #85 --save             # Check and save as the new API baseline
 ```
 
-The Architect's Phase 6 auto-check runs this analysis as part of every `/sr:implement` pipeline. You can also run it standalone to evaluate a change before committing to it.
+The Architect's Phase 6 auto-check runs this analysis as part of every `/specrails:implement` pipeline. You can also run it standalone to evaluate a change before committing to it.
 
 ### What it detects
 
@@ -206,17 +206,17 @@ When breaking changes are found, `compat-check` generates a **migration guide** 
 
 ---
 
-## `/sr:why`
+## `/specrails:why`
 
 Search agent explanation records in plain language.
 
 ```
-/sr:why "why did we switch to event sourcing"
-/sr:why "why is pagination implemented this way"
-/sr:why "explain the auth middleware design"
+/specrails:why "why did we switch to event sourcing"
+/specrails:why "why is pagination implemented this way"
+/specrails:why "explain the auth middleware design"
 ```
 
-The Architect, Developer, and Reviewer record decision rationale in `.claude/agent-memory/explanations/` as they work. `/sr:why` searches these records semantically and surfaces the relevant context.
+The Architect, Developer, and Reviewer record decision rationale in `.claude/agent-memory/explanations/` as they work. `/specrails:why` searches these records semantically and surfaces the relevant context.
 
 This is useful for onboarding, code review, and revisiting past decisions without digging through git history.
 
@@ -282,14 +282,14 @@ Open-ended thinking mode. Use for brainstorming, investigating problems, or clar
 /opsx:explore
 ```
 
-### `/sr:opsx-diff` — Spec Change Diff
+### `/specrails:opsx-diff` — Spec Change Diff
 
 Visualize the before/after diff of an OpenSpec change — what behavioral requirements are being added, modified, or removed.
 
 ```
-/sr:opsx-diff <change-name>
-/sr:opsx-diff my-feature --format json
-/sr:opsx-diff my-feature --summary-only
+/specrails:opsx-diff <change-name>
+/specrails:opsx-diff my-feature --format json
+/specrails:opsx-diff my-feature --summary-only
 ```
 
 | Flag | Effect |
@@ -322,16 +322,16 @@ Or step by step:
 
 ---
 
-## `/sr:telemetry`
+## `/specrails:telemetry`
 
 Inspect per-agent execution metrics: token usage, estimated API cost, run count, average duration, and success/failure rate.
 
 ```
-/sr:telemetry
-/sr:telemetry --period today
-/sr:telemetry --agent sr-developer
-/sr:telemetry --format json
-/sr:telemetry --save
+/specrails:telemetry
+/specrails:telemetry --period today
+/specrails:telemetry --agent sr-developer
+/specrails:telemetry --format json
+/specrails:telemetry --save
 ```
 
 ### Flags
@@ -347,14 +347,14 @@ Reads Claude CLI JSONL session logs and agent-memory files to produce a cost das
 
 ---
 
-## `/sr:merge-resolve`
+## `/specrails:merge-resolve`
 
 Resolve git conflict markers using AI-powered context analysis.
 
 ```
-/sr:merge-resolve
-/sr:merge-resolve --files src/api/routes.ts src/db/schema.ts
-/sr:merge-resolve --context openspec/changes/
+/specrails:merge-resolve
+/specrails:merge-resolve --files src/api/routes.ts src/db/schema.ts
+/specrails:merge-resolve --context openspec/changes/
 ```
 
 ### Flags
@@ -369,32 +369,32 @@ For each conflict block, the command reads the OpenSpec context bundles from the
 
 ---
 
-## `/sr:retry`
+## `/specrails:retry`
 
-Resume a failed `/sr:implement` run from the last successful phase — without restarting from scratch.
+Resume a failed `/specrails:implement` run from the last successful phase — without restarting from scratch.
 
 ```
-/sr:retry <feature-name>              # Resume from the failed phase
-/sr:retry --list                      # List all available pipeline states
-/sr:retry <feature-name> --from architect   # Force resume from a specific phase
-/sr:retry <feature-name> --dry-run    # Resume in preview mode
+/specrails:retry <feature-name>              # Resume from the failed phase
+/specrails:retry --list                      # List all available pipeline states
+/specrails:retry <feature-name> --from architect   # Force resume from a specific phase
+/specrails:retry <feature-name> --dry-run    # Resume in preview mode
 ```
 
-When a pipeline fails mid-run (e.g., the reviewer hits a flaky CI issue), SpecRails saves pipeline state to `.claude/pipeline-state/<feature-name>.json`. `/sr:retry` reads that state, identifies which phases completed, and re-executes only the remaining phases.
+When a pipeline fails mid-run (e.g., the reviewer hits a flaky CI issue), SpecRails saves pipeline state to `.claude/pipeline-state/<feature-name>.json`. `/specrails:retry` reads that state, identifies which phases completed, and re-executes only the remaining phases.
 
 Valid `--from` phase values: `architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci`.
 
 ---
 
-## `/sr:vpc-drift`
+## `/specrails:vpc-drift`
 
 Detect when your VPC personas have drifted from what your product actually delivers.
 
 ```
-/sr:vpc-drift                         # Analyze all personas
-/sr:vpc-drift --persona "Alex,Sara"   # Filter to specific personas
-/sr:vpc-drift --verbose               # Show full attribute lists
-/sr:vpc-drift --format json           # Emit report as JSON
+/specrails:vpc-drift                         # Analyze all personas
+/specrails:vpc-drift --persona "Alex,Sara"   # Filter to specific personas
+/specrails:vpc-drift --verbose               # Show full attribute lists
+/specrails:vpc-drift --format json           # Emit report as JSON
 ```
 
 Compares persona Jobs/Pains/Gains against the product backlog, implemented features, and agent memory to surface alignment gaps. Produces a per-persona alignment score and concrete recommendations for updating your VPC.
@@ -403,27 +403,27 @@ Run this when your backlog feels disconnected from your users, or after a major 
 
 ---
 
-## `/sr:memory-inspect`
+## `/specrails:memory-inspect`
 
 Inspect agent memory directories to understand what your agents remember and clean up stale data.
 
 ```
-/sr:memory-inspect                    # Inspect all agent memory
-/sr:memory-inspect sr-developer       # Inspect a specific agent
-/sr:memory-inspect --stale 14         # Flag files older than 14 days
-/sr:memory-inspect --prune            # Delete stale files (after confirmation)
+/specrails:memory-inspect                    # Inspect all agent memory
+/specrails:memory-inspect sr-developer       # Inspect a specific agent
+/specrails:memory-inspect --stale 14         # Flag files older than 14 days
+/specrails:memory-inspect --prune            # Delete stale files (after confirmation)
 ```
 
-Agents write persistent memory to `.claude/agent-memory/sr-*/`. Over time this can accumulate stale or orphaned files. `/sr:memory-inspect` shows per-agent stats (file count, size, last modified), recent entries, and actionable cleanup recommendations.
+Agents write persistent memory to `.claude/agent-memory/sr-*/`. Over time this can accumulate stale or orphaned files. `/specrails:memory-inspect` shows per-agent stats (file count, size, last modified), recent entries, and actionable cleanup recommendations.
 
 ---
 
-## `/sr:propose-spec`
+## `/specrails:propose-spec`
 
 Explore a feature idea and produce a structured proposal ready for the OpenSpec pipeline.
 
 ```
-/sr:propose-spec "add rate limiting to the API"
+/specrails:propose-spec "add rate limiting to the API"
 ```
 
 The command explores your codebase to understand existing patterns, then produces a structured proposal with: problem statement, proposed solution, out-of-scope items, acceptance criteria, technical considerations, and a complexity estimate.
@@ -437,7 +437,7 @@ Use this before creating a GitHub Issue when you want a well-formed spec rather 
 Any workflow can be run in preview mode to see what would happen without making changes:
 
 ```
-/sr:implement --dry-run #85
+/specrails:implement --dry-run #85
 ```
 
 Preview mode runs the full pipeline but skips:
@@ -448,7 +448,7 @@ Preview mode runs the full pipeline but skips:
 The results are cached. Apply them later with:
 
 ```
-/sr:implement --apply health-check-endpoint
+/specrails:implement --apply health-check-endpoint
 ```
 
 ---

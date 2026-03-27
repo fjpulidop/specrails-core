@@ -13,9 +13,9 @@ metadata:
 Generate comprehensive tests for implementation files using the `sr:test-writer` agent.
 
 **Input:** $ARGUMENTS
-- File paths: `/sr:test src/api/users.ts src/utils/auth.ts`
-- Glob: `/sr:test "src/**/*.ts"`
-- Empty: `/sr:test` — tests all files changed since last commit
+- File paths: `/specrails:test src/api/users.ts src/utils/auth.ts`
+- Glob: `/specrails:test "src/**/*.ts"`
+- Empty: `/specrails:test` — tests all files changed since last commit
 
 ---
 

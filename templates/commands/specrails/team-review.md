@@ -63,12 +63,12 @@ Parse `$ARGUMENTS` to determine the review target and flags.
 
 If `$ARGUMENTS` is empty, print usage and stop:
 ```
-Usage: /sr:team-review <target> [--base <branch>] [--focus <areas>]
+Usage: /specrails:team-review <target> [--base <branch>] [--focus <areas>]
 
 Examples:
-  /sr:team-review #42
-  /sr:team-review feat/new-auth --focus security
-  /sr:team-review abc123..def456
+  /specrails:team-review #42
+  /specrails:team-review feat/new-auth --focus security
+  /specrails:team-review abc123..def456
 ```
 
 ---

@@ -5,7 +5,7 @@ SpecRails agents and commands use generic names (architect, developer, reviewer,
 ## What Changes
 
 - **BREAKING**: All 12 agent files renamed from `<name>.md` to `sr-<name>.md` (e.g., `architect.md` → `sr-architect.md`)
-- **BREAKING**: All 8 command files moved from `.claude/commands/<name>.md` to `.claude/commands/sr/<name>.md`, changing slash commands from `/<name>` to `/sr:<name>` (e.g., `/implement` → `/sr:implement`)
+- **BREAKING**: All 8 command files moved from `.claude/commands/<name>.md` to `.claude/commands/specrails/<name>.md`, changing slash commands from `/<name>` to `/specrails:<name>` (e.g., `/implement` → `/specrails:implement`)
 - **BREAKING**: Persona files renamed to `sr-<name>.md`
 - **BREAKING**: Agent memory directories renamed to match new agent names (e.g., `agent-memory/architect/` → `agent-memory/sr-architect/`)
 - All `subagent_type` references in commands updated to match new filenames
@@ -21,11 +21,11 @@ SpecRails agents and commands use generic names (architect, developer, reviewer,
 - `sr-prefix-migration`: Automatic detection and migration of legacy (unprefixed) installations to sr-prefixed naming during `update.sh` runs
 
 ### Modified Capabilities
-- `implement`: All agent references (`subagent_type` values, memory paths, prose) updated to sr-prefixed names; command becomes `/sr:implement`
-- `batch-implement`: References to `/implement` become `/sr:implement`; command becomes `/sr:batch-implement`
+- `implement`: All agent references (`subagent_type` values, memory paths, prose) updated to sr-prefixed names; command becomes `/specrails:implement`
+- `batch-implement`: References to `/implement` become `/specrails:implement`; command becomes `/specrails:batch-implement`
 - `setup-update-mode`: Template filenames, agent discovery, and manifest paths updated to sr-prefixed names; migration function added to update flow
 - `confidence-scoring`: Reviewer agent references updated to `sr-reviewer`
-- `compat-check`: Agent name surface entries updated to sr-prefixed names; command becomes `/sr:compat-check`
+- `compat-check`: Agent name surface entries updated to sr-prefixed names; command becomes `/specrails:compat-check`
 
 ## Impact
 
@@ -35,4 +35,4 @@ SpecRails agents and commands use generic names (architect, developer, reviewer,
 - **openspec/specs/**: 5 spec files need delta updates for new naming
 - **specrails-web**: docs (6 files), components (3 TSX files), manifest, and embedded specrails copy all need updating
 - **Existing installations**: Require one `update.sh` run to migrate — the migration function handles renaming files, directories, and regenerating manifests
-- **User muscle memory**: `/implement` becomes `/sr:implement` — breaking change for existing users
+- **User muscle memory**: `/implement` becomes `/specrails:implement` — breaking change for existing users

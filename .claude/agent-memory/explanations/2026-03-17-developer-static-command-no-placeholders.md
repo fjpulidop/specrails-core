@@ -11,7 +11,7 @@ date: 2026-03-17
 
 ## Why This Approach
 
-Command templates in specrails that invoke agents by name do not need placeholder substitution. The only dynamic input is `$ARGUMENTS`, which is substituted at spawn time by the queue manager, not at install time. This contrasts with agent templates (`sr-*.md`) which require `{{TECH_EXPERTISE}}`, `{{MEMORY_PATH}}`, etc. substituted during `/setup`. Keeping `test.md` static means both `templates/commands/test.md` and `.claude/commands/sr/test.md` are identical, enabling a `diff`-based equality test.
+Command templates in specrails that invoke agents by name do not need placeholder substitution. The only dynamic input is `$ARGUMENTS`, which is substituted at spawn time by the queue manager, not at install time. This contrasts with agent templates (`sr-*.md`) which require `{{TECH_EXPERTISE}}`, `{{MEMORY_PATH}}`, etc. substituted during `/setup`. Keeping `test.md` static means both `templates/commands/test.md` and `.claude/commands/specrails/test.md` are identical, enabling a `diff`-based equality test.
 
 ## See Also
 

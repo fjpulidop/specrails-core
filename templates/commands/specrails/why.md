@@ -1,10 +1,4 @@
----
-name: "In-Context Help"
-description: "Searches explanation records written by agents during the implementation pipeline"
-phases: []
----
-
-# /sr:why — In-Context Help
+# /specrails:why — In-Context Help
 
 Searches explanation records written by sr-architect, sr-developer, and sr-reviewer agents
 during the OpenSpec implementation pipeline.
@@ -13,8 +7,8 @@ Records are stored in `.claude/agent-memory/explanations/` as Markdown files wit
 YAML frontmatter (agent, feature, tags, date).
 
 **Usage:**
-- `/sr:why` — list the 20 most recent explanation records
-- `/sr:why <query>` — search records by keyword or tag
+- `/specrails:why` — list the 20 most recent explanation records
+- `/specrails:why <query>` — search records by keyword or tag
 
 ---
 
@@ -27,10 +21,10 @@ Print:
 ```
 No explanation records found yet.
 
-Explanation records are written by the architect, developer, and reviewer agents
+Explanation records are written by the sr-architect, sr-developer, and sr-reviewer agents
 when they make significant decisions during feature implementation.
 
-Run `/sr:implement` on a feature to generate your first explanation records.
+Run `/specrails:implement` on a feature to generate your first explanation records.
 ```
 Then stop.
 
@@ -48,7 +42,7 @@ Sort records by `date` descending. Print the 20 most recent as a Markdown table:
 
 | Date | Agent | Feature | Tags | Decision |
 |------|-------|---------|------|----------|
-| 2026-03-14 | architect | in-context-help | [templates, commands] | Chose flat directory over per-agent subdirectories. |
+| 2026-03-14 | sr-architect | in-context-help | [templates, commands] | Chose flat directory over per-agent subdirectories. |
 | ...  | ...   | ...     | ...  | ...      |
 ```
 
@@ -80,7 +74,7 @@ Then list all unique tags from existing records:
 
 [sorted list of all unique tags from all explanation records]
 
-Try `/sr:why <tag>` with one of the tags above, or `/sr:why` to browse all records.
+Try `/specrails:why <tag>` with one of the tags above, or `/specrails:why` to browse all records.
 ```
 
 If records match, print each matching record in full, separated by `---`:
