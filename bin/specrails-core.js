@@ -8,6 +8,7 @@ const COMMANDS = {
   init: "install.sh",
   update: "update.sh",
   doctor: "bin/doctor.sh",
+  "perf-check": "bin/perf-check.sh",
 };
 
 const args = process.argv.slice(2);
@@ -17,9 +18,10 @@ if (!subcommand) {
   console.log(`specrails-core — Agent Workflow System for Claude Code
 
 Usage:
-  specrails-core init   [--root-dir <path>]     Install into a repository
-  specrails-core update [--only <component>]    Update an existing installation
-  specrails-core doctor                         Run health checks
+  specrails-core init       [--root-dir <path>]     Install into a repository
+  specrails-core update     [--only <component>]    Update an existing installation
+  specrails-core doctor                             Run health checks
+  specrails-core perf-check [--files <list>]        Performance regression check (CI)
 
 More info: https://github.com/fjpulidop/specrails-core`);
   process.exit(0);
@@ -29,7 +31,7 @@ const script = COMMANDS[subcommand];
 
 if (!script) {
   console.error(`Unknown command: ${subcommand}\n`);
-  console.error("Available commands: init, update, doctor");
+  console.error("Available commands: init, update, doctor, perf-check");
   process.exit(1);
 }
 
@@ -40,6 +42,7 @@ const ALLOWED_FLAGS = {
   init: ["--root-dir", "--yes", "-y"],
   update: ["--only"],
   doctor: [],
+  "perf-check": ["--files", "--context"],
 };
 
 const subargs = args.slice(1);
