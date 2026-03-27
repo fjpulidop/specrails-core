@@ -14,17 +14,20 @@ It creates a `.claude/` directory with agent templates, commands, and configurat
 
 Yes. Node 18+ is required to run `npx specrails-core@latest`. Once installed, SpecRails works with any language or framework — the agents adapt to whatever stack your project uses.
 
-**Can I run SpecRails on a project that doesn't have GitHub Issues?**
+**Do I need GitHub Issues?**
 
-Yes. During `/setup`, you can choose "none" as your backlog provider. Commands like `/sr:implement` will accept plain text descriptions instead of issue numbers:
+No. SpecRails ships with a built-in local ticket system — no GitHub account required. Local tickets are the default. Commands like `/sr:implement` accept ticket IDs or plain text:
 
 ```
+/sr:implement #1, #4
 /sr:implement "add rate limiting to the API"
 ```
 
+You can switch to GitHub Issues or JIRA during `/setup` (Phase 3) if you prefer.
+
 **How long does /setup take?**
 
-About 5 minutes. Most of the time is spent on Phase 2 (persona generation), which does web research on your domain.
+The full wizard takes about 5 minutes — most of the time is Phase 2 (persona research via web search). For a faster start, use `/setup --lite`: three questions, under a minute, no web research.
 
 ---
 

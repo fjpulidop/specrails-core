@@ -95,7 +95,7 @@ codex     # Codex
 /setup
 ```
 
-The wizard runs 5 phases:
+By default, `/setup` runs the full 5-phase wizard:
 
 | Phase | What happens |
 |-------|-------------|
@@ -104,6 +104,8 @@ The wizard runs 5 phases:
 | **3. Configure** | Asks about your backlog provider, git workflow, and agent selection |
 | **4. Generate** | Fills all templates with your project-specific context |
 | **5. Cleanup** | Removes setup files, leaving only your tailored workflow |
+
+**In a hurry?** Run `/setup --lite` instead — three questions, sensible defaults, done in under a minute.
 
 After setup, `.claude/` contains fully configured agents and commands ready to use. The `/setup` command removes itself — it only runs once.
 
