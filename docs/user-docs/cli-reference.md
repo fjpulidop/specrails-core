@@ -174,18 +174,6 @@ The Product Manager researches your competitive landscape, generates 2–4 featu
 
 ## Analysis and inspection
 
-### `/sr:health-check` ✅ Both
-
-Run a comprehensive codebase quality analysis.
-
-```
-/sr:health-check
-```
-
-Analyzes code quality, test coverage, technical debt, complexity, and dependency health. Compares with previous runs to detect regressions.
-
----
-
 ### `/sr:refactor-recommender` ✅ Both
 
 Scan the codebase for refactoring opportunities, ranked by impact/effort ratio.

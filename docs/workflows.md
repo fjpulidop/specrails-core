@@ -170,18 +170,6 @@ Generate new feature ideas through product discovery. The Product Manager (Opus)
 
 ---
 
-## `/sr:health-check`
-
-Run a comprehensive codebase quality analysis.
-
-```
-/sr:health-check
-```
-
-Analyzes code quality, test coverage, technical debt, and dependency health. Compares with previous runs to detect regressions.
-
----
-
 ## `/sr:refactor-recommender`
 
 Scan for refactoring opportunities ranked by impact/effort ratio.

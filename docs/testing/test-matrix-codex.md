@@ -40,7 +40,6 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 | SKILL.md format `.claude/skills/sr-*/` | ✅ | ✅ |
 | `sr:implement` skill | ✅ | ✅ |
 | `sr:product-backlog` skill | ✅ | ✅ |
-| `sr:health-check` skill | ✅ | ✅ |
 | `sr:compat-check` skill | ✅ | ✅ |
 | `sr:why` skill | ✅ | ✅ |
 | `sr:refactor-recommender` skill | ✅ | ✅ |
