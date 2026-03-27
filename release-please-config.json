@@ -3,6 +3,7 @@
   "packages": {
     ".": {
       "release-type": "node",
+      "include-component-in-tag": false,
       "extra-files": ["VERSION"],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
