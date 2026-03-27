@@ -2,15 +2,26 @@
 
 This guide covers the complete installation process in detail. For the quick version, see [Getting Started](getting-started.md).
 
-## Prerequisites
+## Installation methods
 
-### Required
+SpecRails supports three distribution channels:
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Claude Code plugin** (recommended) | `claude plugin install sr` | Most projects — no Node.js required, auto-updates |
+| **Claude Code scaffold** | `npx specrails-core@latest init` | Full offline control, Codex users, custom agent edits |
+| **Codex project** | `npx specrails-core@latest init` | OpenAI Codex CLI users |
+
+---
+
+## Method 1: Claude Code plugin (recommended)
+
+### Prerequisites
 
 | Tool | Why | Install |
 |------|-----|---------|
-| **Node.js 18+** | Required for the installer | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
-| **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
 | **Claude Code** | The AI CLI that runs the agents | `npm install -g @anthropic-ai/claude-code` |
+| **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
 
 ### Recommended
 
@@ -18,17 +29,37 @@ This guide covers the complete installation process in detail. For the quick ver
 |------|-----|---------|
 | **GitHub CLI** | Auto-create PRs, manage issues | `brew install gh` or [cli.github.com](https://cli.github.com/) |
 
-### Optional
+### Install
 
-| Tool | Why |
-|------|-----|
-| **JIRA CLI** | If using JIRA for backlog instead of GitHub Issues |
+```bash
+claude plugin install sr
+```
 
-The installer checks for all of these and offers to install missing tools.
+That's it. No cloning, no npm, no Node.js required.
 
-## Installation
+To update the plugin later:
 
-### From npx (recommended)
+```bash
+claude plugin update sr
+```
+
+### What the plugin contains
+
+The plugin bundles the logic layer — agents, skills, commands, hooks, and references. It does **not** touch your project files.
+
+---
+
+## Method 2: Scaffold (npx)
+
+### Prerequisites
+
+| Tool | Why | Install |
+|------|-----|---------|
+| **Node.js 18+** | Required for the installer | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
+| **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
+| **Claude Code** or **Codex CLI** | The AI CLI that runs the agents | See [codex-vs-claude-code.md](user-docs/codex-vs-claude-code.md) |
+
+### Install
 
 ```bash
 npx specrails-core@latest init --root-dir <your-project>
@@ -38,58 +69,41 @@ No cloning required. Downloads the latest version and runs the installer automat
 
 ### From a local clone
 
-If you prefer to clone the repo first:
-
 ```bash
 git clone https://github.com/fjpulidop/specrails-core.git
 ./specrails-core/install.sh --root-dir <your-project>
 ```
 
-### From curl
+> **Important:** Always run the installer from the **target repository** — the project where you want SpecRails installed.
 
-Alternatively, pipe the installer directly:
+### What the scaffold installer does
 
-```bash
-curl -sL https://raw.githubusercontent.com/fjpulidop/specrails-core/main/install.sh | bash
-```
-
-> **Important:** Always run the installer from the **target repository** — the project where you want SpecRails installed. If you run it from inside the SpecRails source repo, the installer will detect this and prompt you for the correct target path.
-
-### What the installer does
-
-1. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm, gh, OpenSpec
-2. **Detects existing setup** — warns if `.claude/agents/`, `.claude/commands/`, or `openspec/` already exist
+1. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm and gh
+2. **Detects existing setup** — warns if SpecRails artifacts already exist
 3. **Installs artifacts:**
-   - `.claude/commands/setup.md` — the `/setup` wizard
-   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/setup`)
+   - `.claude/commands/sr/setup.md` — the `/sr:setup` wizard
+   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/sr:setup`)
    - `.claude/security-exemptions.yaml` — security scanner config
-   - OpenSpec initialization (if CLI available)
 4. **Tracks version** — writes `.specrails-version` and `.specrails-manifest.json`
 
-### What it does NOT do
-
-The installer only copies files. It does not:
-
-- Modify your existing code
-- Create commits
-- Push to any remote
+The scaffold installer only copies files. It does not modify your existing code, create commits, or push to any remote.
 
 ---
 
 ## The Setup Wizard
 
-After installation, open Claude Code in your project and run:
+After either installation method, open Claude Code (or Codex) in your project and run:
 
 ```
-/setup
+/sr:setup
 ```
 
 There are two modes:
 
 | Mode | Command | When to use |
 |------|---------|-------------|
-| **Full wizard** (default) | `/setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
-| **Lite** | `/setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
+| **Full wizard** (default) | `/sr:setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
+| **Lite** | `/sr:setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
 
 ---
 
@@ -142,7 +156,23 @@ The wizard fills all templates with your project-specific context:
 - `{{BACKEND_TECH_LIST}}` → your backend technologies
 - Every `{{PLACEHOLDER}}` resolved with real data
 
-**Generated files (full set):**
+**Generated files (full set, plugin method):**
+
+```
+.specrails/
+├── config.yaml               # Stack, CI commands, git workflow
+├── personas/
+│   ├── [persona-1].md        # Your user personas (VPC profiles)
+│   └── [persona-2].md
+├── rules/
+│   ├── backend.md            # Per-layer coding conventions
+│   ├── frontend.md
+│   └── ...
+├── agent-memory/             # Persistent agent knowledge
+└── pipeline/                 # In-flight feature state
+```
+
+**Generated files (full set, scaffold method):**
 
 ```
 .claude/
@@ -179,15 +209,15 @@ The wizard fills all templates with your project-specific context:
 
 The wizard removes itself:
 
-- Deletes `.claude/commands/setup.md`
+- Deletes `.claude/commands/sr/setup.md`
 - Deletes `.claude/setup-templates/`
 - Leaves only the final generated files
 
-After this phase, `/setup` is no longer available — your workflow is ready.
+After this phase, `/sr:setup` is no longer available until re-run — your workflow is ready.
 
 ---
 
-### Lite Mode (`/setup --lite`)
+### Lite Mode (`/sr:setup --lite`)
 
 The quick path — three questions, sensible defaults, done in under a minute.
 
@@ -213,13 +243,16 @@ You can run the full wizard later to deepen configuration: personas, stack analy
 After setup, verify everything is in place:
 
 ```bash
-# Check generated agents
+# Plugin method: check generated project data
+ls .specrails/
+
+# Scaffold method: check generated agents
 ls .claude/agents/
 
-# Check for unresolved placeholders (should return nothing)
+# Scaffold method: check for unresolved placeholders (should return nothing)
 grep -r '{{[A-Z_]*}}' .claude/agents/ .claude/commands/ .claude/rules/
 
-# Check version
+# Scaffold method: check version
 cat .specrails-version
 ```
 
@@ -269,7 +302,7 @@ The installer warns if SpecRails artifacts already exist. You can:
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files, the `/setup` wizard didn't complete. Re-run `/setup` or manually fill the values.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/sr:setup` wizard didn't complete. Re-run `/sr:setup` or manually fill the values.
 
 ---
 

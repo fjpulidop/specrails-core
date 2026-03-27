@@ -8,11 +8,11 @@ Yes. SpecRails runs on top of Claude Code, which requires an Anthropic account. 
 
 **What does the installer actually do to my project?**
 
-It creates a `.claude/` directory with agent templates, commands, and configuration files. It does not modify your source code, create commits, or push anything. Your project is unchanged — `.claude/` is the only addition.
+The plugin method (`claude plugin install sr`) installs logic into Claude Code's plugin system — nothing is added to your project until you run `/sr:setup`. The scaffold method (`npx specrails-core@latest init`) copies templates into `.claude/`. Neither method modifies your source code, creates commits, or pushes anything.
 
 **Do I need Node.js if my project is not JavaScript?**
 
-Yes. Node 18+ is required to run `npx specrails-core@latest`. Once installed, SpecRails works with any language or framework — the agents adapt to whatever stack your project uses.
+Not for the plugin method (`claude plugin install sr`). Node.js 18+ is only required for the scaffold method (`npx specrails-core@latest init`). Once installed, SpecRails works with any language or framework.
 
 **Do I need GitHub Issues?**
 
@@ -23,11 +23,11 @@ No. SpecRails ships with a built-in local ticket system — no GitHub account re
 /sr:implement "add rate limiting to the API"
 ```
 
-You can switch to GitHub Issues or JIRA during `/setup` (Phase 3) if you prefer.
+You can switch to GitHub Issues or JIRA during `/sr:setup` (Phase 3) if you prefer.
 
-**How long does /setup take?**
+**How long does /sr:setup take?**
 
-The full wizard takes about 5 minutes — most of the time is Phase 2 (persona research via web search). For a faster start, use `/setup --lite`: three questions, under a minute, no web research.
+The full wizard takes about 5 minutes — most of the time is Phase 2 (persona research via web search). For a faster start, use `/sr:setup --lite`: three questions, under a minute, no web research.
 
 ---
 
@@ -35,7 +35,7 @@ The full wizard takes about 5 minutes — most of the time is Phase 2 (persona r
 
 **Can I run SpecRails on an existing project with existing code?**
 
-Yes, that's the intended use case. The `/setup` wizard analyzes your existing codebase — your tech stack, layers, CI commands, and conventions — and generates agents configured specifically for it.
+Yes, that's the intended use case. The `/sr:setup` wizard analyzes your existing codebase — your tech stack, layers, CI commands, and conventions — and generates agents configured specifically for it.
 
 **Does /sr:implement always create a PR?**
 
@@ -71,13 +71,13 @@ Each feature gets an isolated git worktree. Pipelines run concurrently and the r
 
 **Can I customize the agents?**
 
-Yes. After setup, the generated agent files are in `.claude/agents/`. Edit them directly to change behavior, add constraints, or update instructions. Changes take effect on the next run.
+Yes. With the plugin method, edit your project data files in `.specrails/` — personas, rules, config. With the scaffold method, agent files in `.claude/agents/` are also directly editable. Changes take effect on the next run.
 
-For layer-specific coding conventions, edit `.claude/rules/*.md`.
+For layer-specific coding conventions, edit `.specrails/rules/*.md` (plugin) or `.claude/rules/*.md` (scaffold).
 
 **What is a VPC persona?**
 
-VPC stands for Value Proposition Canvas. Personas are structured profiles of your target users with their Jobs (what they're trying to accomplish), Pains (what frustrates them), and Gains (what they want). The Product Manager and Architect use these to make better design decisions. They're generated during `/setup` and stored in `.claude/agents/personas/`.
+VPC stands for Value Proposition Canvas. Personas are structured profiles of your target users with their Jobs (what they're trying to accomplish), Pains (what frustrates them), and Gains (what they want). The Product Manager and Architect use these to make better design decisions. They're generated during `/sr:setup` and stored in `.specrails/personas/` (plugin) or `.claude/agents/personas/` (scaffold).
 
 ---
 
@@ -85,11 +85,11 @@ VPC stands for Value Proposition Canvas. Personas are structured profiles of you
 
 **Does SpecRails work with monorepos?**
 
-Yes. During `/setup`, the architect detects your monorepo structure and generates separate layer configurations for each package or service.
+Yes. During `/sr:setup`, the architect detects your monorepo structure and generates separate layer configurations for each package or service.
 
 **Which languages and frameworks are supported?**
 
-SpecRails works with any stack. The agents are general-purpose and adapt based on what `/setup` detects in your codebase. It's been used with Node.js, Python, Go, Ruby, Rust, and mixed-stack projects.
+SpecRails works with any stack. The agents are general-purpose and adapt based on what `/sr:setup` detects in your codebase. It's been used with Node.js, Python, Go, Ruby, Rust, and mixed-stack projects.
 
 **Does it work with private repositories?**
 
@@ -101,13 +101,19 @@ Yes, for code generation. For features that require GitHub integration (PR creat
 
 **How do I update SpecRails?**
 
-Run the installer again in your project:
+Plugin method:
+
+```bash
+claude plugin update sr
+```
+
+Scaffold method:
 
 ```bash
 npx specrails-core@latest init --root-dir .
 ```
 
-Then re-run `/setup` to regenerate agents with any new templates. See the [updating guide](../updating.md) for details.
+Then re-run `/sr:setup` to regenerate project data with any new templates. See the [updating guide](../updating.md) for details.
 
 **How do I know which version is installed?**
 
@@ -119,13 +125,13 @@ cat .specrails-version
 
 ## Troubleshooting
 
-**The /setup command isn't available after installing.**
+**The /sr:setup command isn't available after installing.**
 
-Claude Code loads commands from `.claude/commands/`. Make sure you opened Claude Code from inside your project directory (the one where you ran `npx specrails-core@latest init`).
+For the plugin method: make sure the plugin is installed (`claude plugin list` should show `sr`). For the scaffold method: Claude Code loads commands from `.claude/commands/` — make sure you opened Claude Code from inside your project directory.
 
 **Generated files contain `{{PLACEHOLDER}}` text.**
 
-The `/setup` wizard did not complete all phases. Re-run `/setup` — it will pick up where it left off.
+The `/sr:setup` wizard did not complete all phases. Re-run `/sr:setup` — it will pick up where it left off.
 
 **The pipeline created a PR but the CI checks failed.**
 

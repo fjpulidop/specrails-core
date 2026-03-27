@@ -6,16 +6,30 @@ SpecRails runs locally — no cloud infrastructure required. Choose the setup th
 
 | Option | Best for | Setup time |
 |--------|----------|------------|
-| [Local (npx)](#local-npx) | Quick start, individual developers | ~2 minutes |
+| [Plugin](#plugin-recommended) | Quick start, individual developers | ~1 minute |
+| [Local (npx)](#local-npx) | Scaffold/Codex, full offline control | ~2 minutes |
 | [Local (git clone)](#local-git-clone) | Customization, contributing | ~5 minutes |
 | [Docker](#docker) | Reproducible environments, teams | ~5 minutes |
 | [CI/CD](#cicd-github-actions) | Automated workflows, GitHub Actions | ~10 minutes |
 
 ---
 
+## Plugin (recommended)
+
+The fastest way to get started. No Node.js required.
+
+```bash
+claude plugin install sr
+/sr:setup
+```
+
+**Requirements:** Claude Code, git
+
+---
+
 ## Local — npx
 
-The fastest way to get started. No install required.
+For Codex users or when you need full control over agent files.
 
 ```bash
 npx specrails-core@latest init --root-dir .
@@ -23,10 +37,11 @@ npx specrails-core@latest init --root-dir .
 
 This will:
 1. Scaffold a `.claude/` directory in your project
-2. Install the default agent set
-3. Run the `/setup` wizard to configure your preferences
+2. Install agent templates and the `/sr:setup` wizard
 
-**Requirements:** Node.js ≥18, Claude API key
+After install, open Claude Code or Codex and run `/sr:setup` to configure.
+
+**Requirements:** Node.js ≥18, Claude Code or Codex CLI
 
 ---
 

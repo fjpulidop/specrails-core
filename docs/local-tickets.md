@@ -87,7 +87,7 @@ The file is read and written by specrails-core during command execution.
 
 ## Setup
 
-Local tickets become the default during `/setup`. The wizard prompts:
+Local tickets become the default during `/sr:setup`. The wizard prompts:
 
 ```
 ## Backlog Provider
@@ -112,8 +112,7 @@ Pressing **Enter** or selecting **1** initializes `.claude/local-tickets.json` w
 To switch providers later, re-run the setup wizard:
 
 ```bash
-npx specrails-core@latest init --root-dir .
-> /setup
+> /sr:setup
 ```
 
 ---

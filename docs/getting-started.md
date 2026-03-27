@@ -12,7 +12,6 @@ Think of it as hiring a full engineering team that lives inside your CLI.
 
 You need:
 
-- **Node.js 18+** — required for the installer (`node --version` to check)
 - **Git** — your project must be a git repository
 - **[Claude Code](https://claude.ai/claude-code)** — Anthropic's CLI tool
 
@@ -20,53 +19,43 @@ Optional (recommended):
 
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — for automatic PR creation and issue tracking
 
-> **Using OpenAI Codex instead of Claude Code?** See [Installation](user-docs/installation.md) for Codex-specific setup.
+> **Using OpenAI Codex instead of Claude Code?** See [getting-started-codex.md](user-docs/getting-started-codex.md) for Codex-specific setup.
 
 ## Install
 
-Pick your preferred method:
+**Plugin method (recommended) — no Node.js required**
 
-**npx (recommended)**
+```bash
+claude plugin install sr
+```
+
+**Scaffold method (for Codex users or full offline control)**
 
 ```bash
 npx specrails-core@latest init --root-dir <your-project>
 ```
 
-**git clone**
-
-```bash
-git clone https://github.com/fjpulidop/specrails-core.git
-./specrails-core/install.sh --root-dir <your-project>
-```
-
-The installer will:
-
-1. Check your prerequisites
-2. Copy templates and commands into `.claude/`
-3. Initialize OpenSpec (if available)
-4. Track the installed version for future updates
-
-> **Note:** Run this from the repo where you want SpecRails — not from the SpecRails source repo itself.
+See [installation.md](installation.md) for full details on both methods and when to use each.
 
 ## Run the Setup Wizard
 
 Open Claude Code in your project and run:
 
 ```
-/setup
+/sr:setup
 ```
 
-By default, `/setup` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
+By default, `/sr:setup` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
 
 | Phase | What happens |
 |-------|-------------|
 | **1. Analyze** | Detects your tech stack, architecture layers, CI commands, and conventions |
 | **2. Personas** | Researches your competitive landscape and generates full VPC user personas |
 | **3. Configure** | Asks about your backlog provider, git workflow, and which agents to enable |
-| **4. Generate** | Fills all templates with your project-specific context |
-| **5. Cleanup** | Removes the wizard and templates, leaving only your tailored workflow files |
+| **4. Generate** | Generates your project data files (`.specrails/`) with project-specific context |
+| **5. Cleanup** | Removes the wizard scaffolding, leaving only your tailored workflow files |
 
-**In a hurry?** Run `/setup --lite` for the quick version: three questions, sensible defaults, done in under a minute.
+**In a hurry?** Run `/sr:setup --lite` for the quick version: three questions, sensible defaults, done in under a minute.
 
 | Question | What it configures |
 |----------|-------------------|
@@ -76,7 +65,7 @@ By default, `/setup` runs the **full 5-phase wizard** — deep stack analysis, r
 
 Lite mode installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. You can run the full wizard later to deepen the configuration.
 
-After either mode, your `.claude/` directory contains adapted agents, commands, and rules — ready to use.
+After either mode, your project data files are ready to use and your `/sr:*` commands are live.
 
 ## Your first feature
 
