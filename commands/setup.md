@@ -714,12 +714,14 @@ If the user selects **2**: display the secondary menu:
 
 Which external provider?
 
-1. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
-2. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
-3. **None** — skip backlog commands (you can still use /implement with text descriptions)
+1. **Local tickets** (recommended) — lightweight JSON-based ticket management built into the project.
+   No external tools required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
+2. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
+3. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
+4. **None** — skip backlog commands (you can still use /implement with text descriptions)
 ```
 
-Set `BACKLOG_PROVIDER` to `github`, `jira`, or `none` based on the user's choice.
+Wait for the user's choice. Set `BACKLOG_PROVIDER` to `local`, `github`, `jira`, or `none`.
 
 #### If Local Tickets
 

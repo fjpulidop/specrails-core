@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.2.0](https://github.com/fjpulidop/specrails-core/compare/v3.1.0...v3.2.0) (2026-03-23)
+
+
+### Features
+
+* add local ticket management system (Phase 1.1-1.2) ([#183](https://github.com/fjpulidop/specrails-core/issues/183)) ([8fb4dce](https://github.com/fjpulidop/specrails-core/commit/8fb4dce4bc31d7622ac11f963431a99a02a256d2))
+* add local ticket provider to command templates (Phase 1.4) ([#184](https://github.com/fjpulidop/specrails-core/issues/184)) ([73e3ef5](https://github.com/fjpulidop/specrails-core/commit/73e3ef536371d4c50a1c6e05f25ddd1d176c3c64))
+
 ## [3.1.0](https://github.com/fjpulidop/specrails-core/compare/v3.0.0...v3.1.0) (2026-03-22)
 
 
