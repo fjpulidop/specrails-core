@@ -18,7 +18,7 @@ SpecRails runs locally — no cloud infrastructure required. Choose the setup th
 The fastest way to get started. No install required.
 
 ```bash
-npx specrails-core@latest setup
+npx specrails-core@latest init --root-dir .
 ```
 
 This will:
@@ -35,10 +35,10 @@ This will:
 Clone the repository for full control and the ability to customize agents.
 
 ```bash
-git clone https://github.com/specrails-ai/specrails-core
+git clone https://github.com/fjpulidop/specrails-core
 cd specrails-core
 npm install
-npm run setup
+./install.sh --root-dir <your-project>
 ```
 
 ### Updating
@@ -90,7 +90,7 @@ docker compose run specrails setup
 ### Building locally
 
 ```bash
-git clone https://github.com/specrails-ai/specrails-core
+git clone https://github.com/fjpulidop/specrails-core
 cd specrails-core
 docker build -t specrails:local .
 docker run -it \
