@@ -11,7 +11,6 @@ Switching is optional. GitHub Issues and JIRA remain fully supported. Local tick
 **Switch to local tickets if:**
 - Your team prefers a simple, zero-dependency setup
 - You want tickets version-controlled alongside your code
-- You use specrails-hub and want the visual ticket panel
 - You don't need GitHub/JIRA for other workflows (project boards, external stakeholders)
 
 **Stay on GitHub Issues / JIRA if:**

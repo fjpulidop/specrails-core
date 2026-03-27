@@ -12,7 +12,7 @@ Tickets live in `.claude/local-tickets.json` at your project root. Because it's 
 - **Offline-first** — no network calls, no rate limits
 - **Tool-agnostic** — readable by any script or editor
 
-The file is shared between specrails-core (which reads and writes tickets during command execution) and specrails-hub (which provides a visual ticket panel with real-time sync).
+The file is read and written by specrails-core during command execution.
 
 ---
 
@@ -120,7 +120,7 @@ npx specrails-core@latest init --root-dir .
 
 ## Concurrency model
 
-Both CLI agents and specrails-hub can modify `local-tickets.json` simultaneously. The system uses two complementary mechanisms:
+Multiple agents can modify `local-tickets.json` simultaneously. The system uses two complementary mechanisms:
 
 ### Advisory file lock
 
@@ -141,7 +141,7 @@ The lock is deleted immediately after the write completes. The window is minimal
 
 ### Revision counter
 
-Every write increments `revision`. Readers that want to detect external changes compare the `revision` they last saw against the current value. This is how specrails-hub avoids echoing its own writes back through the file watcher.
+Every write increments `revision`. Readers that want to detect external changes compare the `revision` they last saw against the current value.
 
 ---
 
@@ -184,32 +184,6 @@ Created local ticket #12: Add analytics export
 ```
 
 The ticket captures the full proposal as its description and is tagged `source: "propose-spec"` with the label `spec-proposal`.
-
----
-
-## integration-contract.json
-
-The `ticketProvider` section tells specrails-hub where to find and how to use the ticket store:
-
-```json
-{
-  "ticketProvider": {
-    "type": "local",
-    "storageFile": "local-tickets.json",
-    "lockFile": "local-tickets.json.lock",
-    "capabilities": ["crud", "labels", "status", "priorities", "dependencies", "comments"]
-  }
-}
-```
-
-| Field | Description |
-|-------|-------------|
-| `type` | `"local"` — file-based storage (the only supported type currently) |
-| `storageFile` | Filename relative to the project's specrails dir (`.claude/` or `.codex/`) |
-| `lockFile` | Advisory lock filename, same directory |
-| `capabilities` | Features the hub enables based on what the provider supports |
-
-specrails-hub reads this file when it loads a project. If the file is missing or the `ticketProvider` key is absent, hub falls back to safe defaults (`type: "local"`, `storageFile: "local-tickets.json"`).
 
 ---
 
