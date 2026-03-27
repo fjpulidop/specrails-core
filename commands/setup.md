@@ -10,11 +10,11 @@ Interactive wizard to configure the full agent workflow system for this reposito
 
 Check `$ARGUMENTS` in this order:
 
-1. If `--update` is present → execute **Update Mode** (below), then stop. Do NOT continue to Phase 1 or Quick Start.
-2. If `--advanced` is present → skip directly to **Phase 1** and execute the full 5-phase wizard.
-3. Otherwise (no flags) → execute **Quick Start Mode** (below), then stop. Do NOT execute Phase 1.
+1. If `--update` is present → execute **Update Mode** (below), then stop. Do NOT continue to Phase 1 or Lite Mode.
+2. If `--lite` is present → execute **Lite Mode** (below), then stop. Do NOT execute Phase 1.
+3. Otherwise (no flags) → skip directly to **Phase 1** and execute the full 5-phase wizard.
 
-**Default is Quick Start.** The full wizard only runs when `--advanced` is explicitly passed.
+**Default is the full wizard.** Lite Mode only runs when `--lite` is explicitly passed.
 
 ---
 
@@ -308,9 +308,9 @@ Update `.specrails-manifest.json` to reflect the new checksums for all regenerat
 
 ---
 
-## Quick Start Mode
+## Lite Mode
 
-When no flags are passed (the default), run this streamlined 3-question setup. Do NOT run Phase 1–5. When QS4 is complete, stop.
+When `--lite` is passed, run this streamlined 3-question setup. Do NOT run Phase 1–5. When QS4 is complete, stop.
 
 ### QS1: Ask the 3 questions
 
@@ -332,8 +332,8 @@ Store the answers as:
 
 Use these defaults for all configuration not asked in QS1:
 
-| Setting | Quick Start Default |
-|---------|-------------------|
+| Setting | Lite Mode Default |
+|---------|------------------|
 | Agents enabled | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
 | Git mode | Derived from QS_GIT_ACCESS |
 | CLAUDE.md template | `templates/CLAUDE-quickstart.md` |
@@ -379,7 +379,7 @@ For CLAUDE.md/AGENTS.md and agent files, the existing per-file prompts already h
 
 ### QS3: Generate files
 
-Generate files using the Quick Start defaults.
+Generate files using the Lite Mode defaults.
 
 **1. CLAUDE.md**
 
@@ -406,10 +406,10 @@ Fill placeholders with best-effort values from the limited context available:
 - `{{PROJECT_DESCRIPTION}}` → `QS_PROJECT_DESCRIPTION`
 - `{{TARGET_USERS}}` → `QS_TARGET_USERS`
 - `{{GIT_ACCESS}}` → `QS_GIT_ACCESS`
-- `{{ARCHITECTURE_DIAGRAM}}` → "(Quick Start — run `/setup --advanced` for full architecture analysis)"
-- `{{TECH_EXPERTISE}}` → "(Quick Start — run `/setup --advanced` for codebase-specific expertise)"
+- `{{ARCHITECTURE_DIAGRAM}}` → "(Lite Mode — run `/setup` for full architecture analysis)"
+- `{{TECH_EXPERTISE}}` → "(Lite Mode — run `/setup` for codebase-specific expertise)"
 - `{{LAYER_TAGS}}` → detect from package.json / Gemfile / go.mod if present; otherwise leave empty
-- All other placeholders → "(not configured — run `/setup --advanced`)"
+- All other placeholders → "(not configured — run `/setup`)"
 
 Create memory directories: `$SPECRAILS_DIR/agent-memory/sr-<name>/`
 
@@ -438,7 +438,7 @@ Core commands (always install if missing):
 
 **If `cli_provider == "claude"`:**
 
-If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Quick Start — run /setup --advanced to configure personas)`, then write to `.claude/commands/sr/<name>.md`.
+If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Lite Mode — run /setup to configure personas)`, then write to `.claude/commands/sr/<name>.md`.
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
 - If it exists: skip it — show `✓ Already installed: /sr:<name>`
@@ -446,7 +446,7 @@ If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check
 
 **If `cli_provider == "codex"`:**
 
-If `QS_IS_RERUN=false` (fresh install): for each core command, read the corresponding skill template from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`, substitute the backlog placeholders with local values and stub persona placeholders with `(Quick Start — run /setup --advanced to configure personas)`, then write to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
+If `QS_IS_RERUN=false` (fresh install): for each core command, read the corresponding skill template from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`, substitute the backlog placeholders with local values and stub persona placeholders with `(Lite Mode — run /setup to configure personas)`, then write to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.agents/skills/sr-<name>/SKILL.md` already exists:
 - If it exists: skip it — show `✓ Already installed: $sr-<name>`
@@ -1437,7 +1437,7 @@ Note: Only commands/skills selected during setup are shown. Backlog commands are
 - `$sr-update-product-driven-backlog` — discover new features using VPC
 ```
 
-## First Task Prompt (Advanced Mode)
+## First Task Prompt (Full Wizard)
 
 After displaying the setup complete summary above, detect the project type and output:
 
