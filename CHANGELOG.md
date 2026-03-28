@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.2](https://github.com/fjpulidop/specrails-core/compare/v3.4.1...v3.4.2) (2026-03-28)
+
+
+### Bug Fixes
+
+* plugin validation errors + namespace migration (SPEA-706) ([#207](https://github.com/fjpulidop/specrails-core/issues/207)) ([2e3d4d8](https://github.com/fjpulidop/specrails-core/commit/2e3d4d881be827567900c2327bf32caee5c2d96a))
+
 ## [3.4.1](https://github.com/fjpulidop/specrails-core/compare/v3.4.0...v3.4.1) (2026-03-28)
 
 
