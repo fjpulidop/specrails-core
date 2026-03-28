@@ -46,7 +46,7 @@ specrails doctor
 Or inside Claude Code:
 
 ```
-/doctor
+/specrails:doctor
 ```
 
 ---

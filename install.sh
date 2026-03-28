@@ -3,7 +3,7 @@ set -euo pipefail
 
 # specrails installer
 # Installs the agent workflow system into any repository.
-# Step 1 of 2: Prerequisites + scaffold. Step 2: Run /setup inside Claude Code.
+# Step 1 of 2: Prerequisites + scaffold. Step 2: Run /specrails:setup inside Claude Code.
 
 # Detect pipe mode (curl | bash) vs local execution
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then
@@ -169,13 +169,13 @@ generate_manifest() {
         artifacts_json="${artifacts_json},"
     fi
     artifacts_json="${artifacts_json}
-    \"commands/setup.md\": \"${setup_checksum}\""
+    \"commands/specrails/setup.md\": \"${setup_checksum}\""
 
     # Include commands/doctor.md
     local doctor_checksum
     doctor_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/doctor.md" | awk '{print $1}')"
     artifacts_json="${artifacts_json},
-    \"commands/doctor.md\": \"${doctor_checksum}\""
+    \"commands/specrails/doctor.md\": \"${doctor_checksum}\""
 
     cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
 {
@@ -433,8 +433,8 @@ if command -v jira &> /dev/null; then
     HAS_JIRA=true
 else
     HAS_JIRA=false
-    # Don't warn here — JIRA is only relevant if chosen during /setup.
-    # If the user selects JIRA in /setup and it's not installed, the setup
+    # Don't warn here — JIRA is only relevant if chosen during /specrails:setup.
+    # If the user selects JIRA in /specrails:setup and it's not installed, the setup
     # wizard will offer to install it (go-jira via brew/go, or Atlassian CLI).
 fi
 
@@ -491,7 +491,7 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
     mkdir -p "$REPO_ROOT/.agents/skills/setup"
     mkdir -p "$REPO_ROOT/.agents/skills/doctor"
 else
-    mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands"
+    mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails"
 fi
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/agents"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/commands"
@@ -503,7 +503,7 @@ mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/settings"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
 
-# Copy the /setup and /doctor commands (or skills for Codex)
+# Copy the /specrails:setup and /specrails:doctor commands (or skills for Codex)
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     # Codex uses Agent Skills in .agents/skills/<name>/SKILL.md
     {
@@ -536,12 +536,12 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
     } > "$REPO_ROOT/.agents/skills/doctor/SKILL.md"
     ok "Installed \$doctor skill"
 else
-    # Claude Code uses commands in .claude/commands/
-    cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/setup.md"
-    ok "Installed /setup command"
+    # Claude Code uses commands in .claude/commands/specrails/ (namespaced as /specrails:*)
+    cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails/setup.md"
+    ok "Installed /specrails:setup command"
 
-    cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/doctor.md"
-    ok "Installed /doctor command"
+    cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails/doctor.md"
+    ok "Installed /specrails:doctor command"
 fi
 
 # Install bin/doctor.sh for standalone use
@@ -556,7 +556,7 @@ tar -C "$SCRIPT_DIR/templates" --exclude='node_modules' --exclude='package-lock.
     | tar -C "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/" -xf -
 ok "Installed setup templates (commands + skills)"
 
-# Write OSS detection results for /setup
+# Write OSS detection results for /specrails:setup
 cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.oss-detection.json" << EOF
 {
   "is_oss": $IS_OSS,
@@ -632,7 +632,7 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
     echo "    .agents/skills/setup/SKILL.md        ← The \$setup skill"
     echo "    .agents/skills/doctor/SKILL.md       ← The \$doctor skill"
 else
-    echo "    $SPECRAILS_DIR/commands/setup.md          ← The /setup command"
+    echo "    $SPECRAILS_DIR/commands/specrails/setup.md  ← The /specrails:setup command"
 fi
 echo "    $SPECRAILS_DIR/setup-templates/           ← Templates: commands + skills (temporary, removed after setup)"
 echo "    .specrails-version                       ← Installed specrails version"
@@ -658,7 +658,7 @@ echo ""
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     echo -e "     ${BOLD}\$setup${NC}"
 else
-    echo -e "     ${BOLD}/setup${NC}"
+    echo -e "     ${BOLD}/specrails:setup${NC}"
 fi
 echo ""
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
