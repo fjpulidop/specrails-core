@@ -1,16 +1,6 @@
 ---
 name: security-reviewer
-description: "Use this agent to scan all modified files for secrets, hardcoded credentials, and security vulnerability patterns after implementation. Runs as part of Phase 4 in the implement pipeline. Do NOT use this agent to fix issues — it scans and reports only.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Reviewer completed. Now run the security scan.
-  assistant: "Launching the security-reviewer agent to scan modified files for secrets and vulnerabilities."
-
-- Example 2:
-  user: (orchestrator) Implementation complete. Run security gate before shipping.
-  assistant: "I'll launch the security-reviewer agent to perform the security scan.""
+description: "Use this agent to scan all modified files for secrets, hardcoded credentials, and security vulnerability patterns after implementation. Runs as part of Phase 4 in the implement pipeline. Do NOT use this agent to fix issues — it scans and reports only.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Reviewer completed. Now run the security scan.\n  assistant: Launching the security-reviewer agent to scan modified files for secrets and vulnerabilities.\n\n- Example 2:\n  user: (orchestrator) Implementation complete. Run security gate before shipping.\n  assistant: I'll launch the security-reviewer agent to perform the security scan."
 model: sonnet
 color: orange
 memory: project

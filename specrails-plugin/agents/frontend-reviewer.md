@@ -1,16 +1,6 @@
 ---
 name: frontend-reviewer
-description: "Use this agent when frontend files have been modified. Scan-and-report only. Scans for bundle size regressions, accessibility violations (WCAG 2.1 AA), and render performance issues. Do NOT use this agent to fix issues — it scans and reports only.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Frontend files were modified. Run frontend layer review.
-  assistant: "Launching the frontend-reviewer agent to scan modified frontend files for bundle, accessibility, and render issues."
-
-- Example 2:
-  user: (orchestrator) Phase 4b Step 2: launch layer reviewers in parallel.
-  assistant: "I'll launch the frontend-reviewer agent to perform the frontend layer scan.""
+description: "Use this agent when frontend files have been modified. Scan-and-report only. Scans for bundle size regressions, accessibility violations (WCAG 2.1 AA), and render performance issues. Do NOT use this agent to fix issues — it scans and reports only.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Frontend files were modified. Run frontend layer review.\n  assistant: Launching the frontend-reviewer agent to scan modified frontend files for bundle, accessibility, and render issues.\n\n- Example 2:\n  user: (orchestrator) Phase 4b Step 2: launch layer reviewers in parallel.\n  assistant: I'll launch the frontend-reviewer agent to perform the frontend layer scan."
 model: sonnet
 color: blue
 memory: project
