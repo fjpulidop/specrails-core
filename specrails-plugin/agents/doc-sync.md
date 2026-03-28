@@ -1,16 +1,6 @@
 ---
 name: doc-sync
-description: "Use this agent after tests are written to detect documentation drift and update docs — changelog entries, README updates, and API docs — keeping docs in sync with code changes. Runs as Phase 3d in the implement pipeline.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Tests complete. Update docs for the implemented files.
-  assistant: "Launching the doc-sync agent to detect drift and update documentation for the implemented code."
-
-- Example 2:
-  user: (orchestrator) Implementation and tests done. Sync docs.
-  assistant: "I'll use the doc-sync agent to detect drift, generate changelog entries, and update docs.""
+description: "Use this agent after tests are written to detect documentation drift and update docs — changelog entries, README updates, and API docs — keeping docs in sync with code changes. Runs as Phase 3d in the implement pipeline.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Tests complete. Update docs for the implemented files.\n  assistant: Launching the doc-sync agent to detect drift and update documentation for the implemented code.\n\n- Example 2:\n  user: (orchestrator) Implementation and tests done. Sync docs.\n  assistant: I'll use the doc-sync agent to detect drift, generate changelog entries, and update docs."
 model: sonnet
 color: yellow
 memory: project

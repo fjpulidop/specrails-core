@@ -1,16 +1,6 @@
 ---
 name: test-writer
-description: "Use this agent after a developer agent completes implementation, to generate comprehensive tests for the implemented code. Runs as Phase 3c in the implement pipeline, before the reviewer.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Developer agent completed. Write tests for the implemented files.
-  assistant: "Launching the test-writer agent to generate tests for the implemented code."
-
-- Example 2:
-  user: (orchestrator) Implementation done. Run test writer before review.
-  assistant: "I'll use the test-writer agent to write tests following the project's test patterns.""
+description: "Use this agent after a developer agent completes implementation, to generate comprehensive tests for the implemented code. Runs as Phase 3c in the implement pipeline, before the reviewer.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Developer agent completed. Write tests for the implemented files.\n  assistant: Launching the test-writer agent to generate tests for the implemented code.\n\n- Example 2:\n  user: (orchestrator) Implementation done. Run test writer before review.\n  assistant: I'll use the test-writer agent to write tests following the project's test patterns."
 model: sonnet
 color: cyan
 memory: project

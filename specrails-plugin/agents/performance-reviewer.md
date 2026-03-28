@@ -1,16 +1,6 @@
 ---
 name: performance-reviewer
-description: "Use this agent to detect performance regressions after implementation. It benchmarks modified code paths, compares metrics against configured thresholds, and outputs a structured report. Runs as part of Phase 4 in the implement pipeline. Do NOT use this agent to fix regressions — it measures and reports only.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Implementation complete. Run the performance check before shipping.
-  assistant: "I'll launch the performance-reviewer agent to check for regressions."
-
-- Example 2:
-  user: (orchestrator) Security reviewer passed. Now run performance check.
-  assistant: "Launching the performance-reviewer agent to benchmark modified files.""
+description: "Use this agent to detect performance regressions after implementation. It benchmarks modified code paths, compares metrics against configured thresholds, and outputs a structured report. Runs as part of Phase 4 in the implement pipeline. Do NOT use this agent to fix regressions — it measures and reports only.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Implementation complete. Run the performance check before shipping.\n  assistant: I'll launch the performance-reviewer agent to check for regressions.\n\n- Example 2:\n  user: (orchestrator) Security reviewer passed. Now run performance check.\n  assistant: Launching the performance-reviewer agent to benchmark modified files."
 model: sonnet
 color: yellow
 memory: project

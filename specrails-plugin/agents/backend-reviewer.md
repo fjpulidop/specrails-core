@@ -1,16 +1,6 @@
 ---
 name: backend-reviewer
-description: "Use this agent when backend files have been modified. Scan-and-report only. Scans for N+1 query patterns, connection pool safety issues, pagination safety problems, and missing database indexes. Do NOT use this agent to fix issues — it scans and reports only.
-
-Examples:
-
-- Example 1:
-  user: (orchestrator) Backend files were modified. Run backend layer review.
-  assistant: "Launching the backend-reviewer agent to scan modified backend files for N+1, connection pool, pagination, and index issues."
-
-- Example 2:
-  user: (orchestrator) Phase 4b Step 2: launch layer reviewers in parallel.
-  assistant: "I'll launch the backend-reviewer agent to perform the backend layer scan.""
+description: "Use this agent when backend files have been modified. Scan-and-report only. Scans for N+1 query patterns, connection pool safety issues, pagination safety problems, and missing database indexes. Do NOT use this agent to fix issues — it scans and reports only.\n\nExamples:\n\n- Example 1:\n  user: (orchestrator) Backend files were modified. Run backend layer review.\n  assistant: Launching the backend-reviewer agent to scan modified backend files for N+1, connection pool, pagination, and index issues.\n\n- Example 2:\n  user: (orchestrator) Phase 4b Step 2: launch layer reviewers in parallel.\n  assistant: I'll launch the backend-reviewer agent to perform the backend layer scan."
 model: sonnet
 color: purple
 memory: project
