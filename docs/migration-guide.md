@@ -118,11 +118,11 @@ The original JIRA key is preserved in `metadata.jira_key` so you can cross-refer
 
 ## Step 3: Regenerate commands (optional but recommended)
 
-Command templates are generated at `/setup` time with provider-specific instructions baked in. After switching providers, regenerate them so commands use the local file operations instead of GitHub/JIRA CLI calls:
+Command templates are generated at `/sr:setup` time with provider-specific instructions baked in. After switching providers, regenerate them so commands use the local file operations instead of GitHub/JIRA CLI calls:
 
 ```bash
 npx specrails-core@latest init --root-dir .
-> /setup --update
+> /sr:setup --update
 ```
 
 The `--update` flag regenerates only the backlog commands (`product-backlog`, `update-product-driven-backlog`, `implement`) without re-running the full stack analysis.
@@ -133,8 +133,8 @@ The `--update` flag regenerates only the backlog commands (`product-backlog`, `u
 
 To revert to GitHub Issues:
 
-1. Edit `.claude/backlog-config.json` and set `"provider": "github"`
-2. Re-run `/setup --update` to regenerate commands
+1. Edit `.specrails/config.yaml` (or `.claude/backlog-config.json` for scaffold installs) and set `provider: github`
+2. Re-run `/sr:setup --update` to regenerate commands
 3. Your `local-tickets.json` is preserved — switch back any time
 
 Local tickets and external provider data are independent. Switching providers does not delete tickets from either system.

@@ -7,7 +7,6 @@ Get SpecRails running in your project in under 10 minutes.
 ## Before you begin
 
 You need:
-- **Node.js 18+** — check with `node --version`
 - **Claude Code** — install from [docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code)
 - **A git repository** — your project must have a `.git` directory
 
@@ -16,21 +15,19 @@ Optional:
 
 ## Step 1: Install
 
-From inside your project directory:
+### Plugin method (recommended — no Node.js required)
+
+```bash
+claude plugin install sr
+```
+
+### Scaffold method (if you need Node.js / Codex)
 
 ```bash
 npx specrails-core@latest init --root-dir .
 ```
 
-Expected output:
-
-```
-✓ Prerequisites checked
-✓ Templates installed → .claude/
-✓ Version tracked → .specrails-version
-```
-
-This copies agent templates and commands into `.claude/`. Your existing code is not touched.
+Your existing code is not touched by either method.
 
 ## Step 2: Run the setup wizard
 
@@ -43,7 +40,7 @@ claude
 Then run:
 
 ```
-/setup
+/sr:setup
 ```
 
 The wizard runs the full 5-phase setup (about 5 minutes). It analyzes your codebase and configures SpecRails for your specific project:
@@ -63,19 +60,16 @@ Phase 3/5  Configuration...
            → Git workflow: trunk-based
 
 Phase 4/5  Generating files...
-           → sr-architect.md (adapted to your stack)
-           → sr-developer.md (knows your CI commands)
-           → sr-reviewer.md (runs your specific checks)
-           → 11 more agents
+           → .specrails/config.yaml
+           → .specrails/personas/ (3 VPC profiles)
+           → .specrails/rules/ (per-layer conventions)
 
-Phase 5/5  Cleanup complete. /setup removed.
+Phase 5/5  Cleanup complete.
 
 ✓ SpecRails is ready. Run /sr:implement to start building.
 ```
 
-After setup, the `/setup` command is gone — it's a one-time wizard.
-
-**In a hurry?** Use `/setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
+**In a hurry?** Use `/sr:setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
 
 ## Step 3: Implement your first feature
 

@@ -1,6 +1,6 @@
 # Installation
 
-Install SpecRails into any git repository in two steps: run the installer, then run `/setup` inside your AI CLI.
+Install SpecRails into any git repository in two steps: install, then run `/sr:setup` inside your AI CLI.
 
 SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison.
 
@@ -8,16 +8,24 @@ SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer dete
 
 ## Requirements
 
+### Plugin method (recommended)
+
+| Tool | Version | Notes |
+|------|---------|-------|
+| **Claude Code** | Latest | [install guide](https://docs.anthropic.com/en/docs/claude-code) |
+| **Git** | Any | Your project must be a git repository |
+
+No Node.js required.
+
+### Scaffold method (npx / Codex)
+
 | Tool | Version | Notes |
 |------|---------|-------|
 | **Node.js** | 18+ | Required for the installer |
-| **Claude Code** | Latest | Stable — [install guide](https://docs.anthropic.com/en/docs/claude-code) |
-| **Codex CLI** | Latest | Beta — `npm i -g @openai/codex` |
+| **Claude Code** or **Codex CLI** | Latest | See [Codex vs Claude Code](codex-vs-claude-code.md) |
 | **Git** | Any | Your project must be a git repository |
 
-You need at least one of Claude Code or Codex CLI. If both are installed, the installer uses Claude Code by default. Override with `--provider codex` (or the env var `CLI_PROVIDER=codex`).
-
-Optional but recommended:
+Optional but recommended (both methods):
 
 | Tool | Why |
 |------|-----|
@@ -25,16 +33,28 @@ Optional but recommended:
 
 ## Install
 
-Run the installer from inside your project directory:
+### Plugin method (Claude Code)
+
+```bash
+claude plugin install sr
+```
+
+No cloning, no npm, nothing else. The plugin is now ready in all your Claude Code sessions.
+
+To update later: `claude plugin update sr`
+
+### Scaffold method (Claude Code or Codex)
+
+Run from inside your project directory:
 
 ```bash
 cd your-project
 npx specrails-core@latest init --root-dir .
 ```
 
-The installer copies agent templates, skills, and configuration files into `.claude/` (Claude Code) or `.codex/` (Codex). It does not modify your existing code.
+The installer copies templates and commands into `.claude/` (Claude Code) or `.codex/` (Codex). It does not modify your existing code.
 
-### Flags
+#### Flags
 
 | Flag | Effect |
 |------|--------|
@@ -42,26 +62,14 @@ The installer copies agent templates, skills, and configuration files into `.cla
 | `--yes` / `-y` | Skip confirmation prompts |
 | `--provider <claude\|codex>` | Force a specific AI CLI (default: auto-detect) |
 
-You can also force a specific provider:
-
-```bash
-npx specrails-core@latest init --root-dir . --provider codex
-```
-
-Alternatively, use the `CLI_PROVIDER` env var (legacy):
-
-```bash
-CLI_PROVIDER=codex npx specrails-core@latest init --root-dir .
-```
-
-### What gets installed
+#### What gets installed (scaffold method)
 
 **Claude Code:**
 
 ```
 your-project/
 └── .claude/
-    ├── commands/setup.md         # The /setup wizard
+    ├── commands/sr/setup.md      # The /sr:setup wizard
     ├── skills/                   # Workflow skills (/sr:*, /opsx:*)
     ├── agents/                   # Agent definitions
     ├── rules/                    # Per-layer coding conventions
@@ -82,9 +90,9 @@ your-project/
 
 The installer also writes `.specrails-version` and `.specrails-manifest.json` to track the installed version.
 
-## Configure with /setup
+## Configure with /sr:setup
 
-After installation, open your AI CLI in your project and run the setup wizard:
+After either installation method, open your AI CLI in your project and run:
 
 ```bash
 claude    # Claude Code
@@ -93,35 +101,36 @@ codex     # Codex
 ```
 
 ```
-/setup
+/sr:setup
 ```
 
-By default, `/setup` runs the full 5-phase wizard:
+By default, `/sr:setup` runs the full 5-phase wizard:
 
 | Phase | What happens |
 |-------|-------------|
 | **1. Analyze** | Detects your tech stack, architecture layers, and CI commands |
 | **2. Personas** | Researches your domain and generates VPC user profiles |
 | **3. Configure** | Asks about your backlog provider, git workflow, and agent selection |
-| **4. Generate** | Fills all templates with your project-specific context |
-| **5. Cleanup** | Removes setup files, leaving only your tailored workflow |
+| **4. Generate** | Generates project data files (`.specrails/` or `.claude/`) with your context |
+| **5. Cleanup** | Removes setup scaffolding, leaving only your tailored workflow |
 
-**In a hurry?** Run `/setup --lite` instead — three questions, sensible defaults, done in under a minute.
-
-After setup, `.claude/` contains fully configured agents and commands ready to use. The `/setup` command removes itself — it only runs once.
+**In a hurry?** Run `/sr:setup --lite` instead — three questions, sensible defaults, done in under a minute.
 
 ## Verify
 
 Check that everything installed correctly:
 
 ```bash
-# List generated agents
+# Plugin method: check project data was generated
+ls .specrails/
+
+# Scaffold method: list generated agents
 ls .claude/agents/
 
-# Check for unresolved placeholders (should return nothing)
+# Scaffold method: check for unresolved placeholders (should return nothing)
 grep -r '{{[A-Z_]*}}' .claude/agents/ .claude/commands/ .claude/rules/
 
-# Check the installed version
+# Scaffold method: check the installed version
 cat .specrails-version
 ```
 
@@ -142,7 +151,7 @@ The installer warns if SpecRails artifacts already exist. You can merge (install
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files, the `/setup` wizard did not complete. Re-run `/setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/sr:setup` wizard did not complete. Re-run `/sr:setup` or fill the values manually.
 
 ### "No Claude API key configured"
 

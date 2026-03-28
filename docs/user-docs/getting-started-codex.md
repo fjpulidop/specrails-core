@@ -84,13 +84,13 @@ codex
 Then invoke the setup skill:
 
 ```
-/setup
+/sr:setup
 ```
 
 Or run it non-interactively:
 
 ```bash
-codex exec "run /setup --yes"
+codex exec "run /sr:setup --yes"
 ```
 
 The wizard runs 5 phases:
@@ -186,7 +186,7 @@ The installer warns if SpecRails artifacts already exist. You can merge or abort
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files, `/setup` did not complete. Re-run `/setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files, `/sr:setup` did not complete. Re-run `/sr:setup` or fill the values manually.
 
 ---
 

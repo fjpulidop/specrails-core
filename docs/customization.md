@@ -4,7 +4,20 @@ Everything SpecRails generates is editable markdown. Here's how to adapt it to y
 
 ## What gets generated
 
-After running `/setup`, your `.claude/` directory looks like this:
+After running `/sr:setup`, your project data lives in `.specrails/` (plugin method) or `.claude/` (scaffold method):
+
+**Plugin method — `.specrails/`**
+
+```
+.specrails/
+├── config.yaml           # Stack, CI commands, git workflow
+├── personas/             # VPC user personas
+├── rules/                # Per-layer conventions
+├── agent-memory/         # Persistent agent memory
+└── pipeline/             # In-flight feature state
+```
+
+**Scaffold method — `.claude/`**
 
 ```
 .claude/
@@ -17,7 +30,7 @@ After running `/setup`, your `.claude/` directory looks like this:
 └── security-exemptions.yaml
 ```
 
-All files are standard Markdown or JSON/YAML. Edit them directly — no special tools needed.
+All files are standard Markdown or YAML. Edit them directly — no special tools needed.
 
 ## Agents
 
