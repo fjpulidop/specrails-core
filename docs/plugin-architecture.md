@@ -12,7 +12,7 @@ SpecRails separates **logic** (the plugin) from **project data** (your repo).
 │  agents · skills · hooks · refs     │
 │  updated via: claude plugin update  │
 └────────────────┬────────────────────┘
-                 │  /sr:setup generates
+                 │  /specrails:setup generates
                  ▼
 ┌─────────────────────────────────────┐
 │       .specrails/ (project data)    │
@@ -28,7 +28,7 @@ The plugin contains everything that doesn't change per project:
 | Component | Description |
 |-----------|-------------|
 | **Agent prompts** | sr-architect, sr-developer, sr-reviewer, sr-product-manager, and 10 more |
-| **Skills** | OpenSpec skills (`/opsx:*`), workflow commands (`/sr:*`) |
+| **Skills** | OpenSpec skills (`/opsx:*`), workflow commands (`/specrails:*`) |
 | **Hooks** | Pre/post-tool hooks for agent coordination |
 | **References** | Agent reference docs, API patterns, test conventions |
 
@@ -36,7 +36,7 @@ You never edit these directly. To update them, run `claude plugin update sr`.
 
 ### What lives in your project (`.specrails/`)
 
-`/sr:setup` generates ~8–10 files adapted to your specific codebase:
+`/specrails:setup` generates ~8–10 files adapted to your specific codebase:
 
 | File | Description |
 |------|-------------|
@@ -57,7 +57,7 @@ SpecRails supports three installation paths:
 
 ```bash
 claude plugin install sr   # install
-/sr:setup                  # configure for your project
+/specrails:setup                  # configure for your project
 claude plugin update sr    # update logic anytime
 ```
 
@@ -67,10 +67,10 @@ claude plugin update sr    # update logic anytime
 
 ```bash
 npx specrails-core@latest init --root-dir .   # copy templates
-/sr:setup                                      # configure
+/specrails:setup                                      # configure
 ```
 
-The scaffold copies the full agent+command set into `.claude/` — you own and version those files. Updates require re-running `npx` and re-running `/sr:setup`.
+The scaffold copies the full agent+command set into `.claude/` — you own and version those files. Updates require re-running `npx` and re-running `/specrails:setup`.
 
 **Best for:** Teams that want to version the agent prompts themselves, or projects that need full offline control.
 
@@ -79,16 +79,16 @@ The scaffold copies the full agent+command set into `.claude/` — you own and v
 ```bash
 npx specrails-core@latest init --root-dir .   # same as scaffold
 codex                                          # open Codex
-/sr:setup                                      # configure
+/specrails:setup                                      # configure
 ```
 
 Codex does not support the Claude Code plugin system. Use the scaffold method.
 
 **Best for:** OpenAI Codex CLI users.
 
-## The `/sr:setup` wizard
+## The `/specrails:setup` wizard
 
-`/sr:setup` is a 5-phase setup wizard that generates your project data. It runs once (or re-runs to regenerate).
+`/specrails:setup` is a 5-phase setup wizard that generates your project data. It runs once (or re-runs to regenerate).
 
 | Phase | Output |
 |-------|--------|
@@ -98,7 +98,7 @@ Codex does not support the Claude Code plugin system. Use the scaffold method.
 | **4. Generate** | Writes `.specrails/config.yaml`, personas, rules, CLAUDE.md |
 | **5. Cleanup** | Removes wizard scaffolding |
 
-Quick mode: `/sr:setup --lite` — three questions, done in under a minute.
+Quick mode: `/specrails:setup --lite` — three questions, done in under a minute.
 
 ## OpenSpec skills
 
@@ -112,7 +112,7 @@ The `sr` plugin bundles the full OpenSpec skill set. These are available as `/op
 | `/opsx:archive` | Archive a completed change |
 | `/opsx:explore` | Explore ideas before writing a spec |
 
-OpenSpec is the structured design layer that powers `/sr:implement` — the architect uses it to produce a technical design before the developer begins coding.
+OpenSpec is the structured design layer that powers `/specrails:implement` — the architect uses it to produce a technical design before the developer begins coding.
 
 ## Updating
 
@@ -127,7 +127,7 @@ Updates agents, skills, hooks, and references. Does not touch `.specrails/` proj
 ### Regenerate project data
 
 ```bash
-/sr:setup
+/specrails:setup
 ```
 
 Re-runs the wizard and regenerates `.specrails/`. Useful when your stack changes significantly or you want to refresh personas.

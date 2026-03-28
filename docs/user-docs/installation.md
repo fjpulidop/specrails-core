@@ -1,6 +1,6 @@
 # Installation
 
-Install SpecRails into any git repository in two steps: install, then run `/sr:setup` inside your AI CLI.
+Install SpecRails into any git repository in two steps: install, then run `/specrails:setup` inside your AI CLI.
 
 SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison.
 
@@ -69,8 +69,8 @@ The installer copies templates and commands into `.claude/` (Claude Code) or `.c
 ```
 your-project/
 └── .claude/
-    ├── commands/sr/setup.md      # The /sr:setup wizard
-    ├── skills/                   # Workflow skills (/sr:*, /opsx:*)
+    ├── commands/specrails/setup.md      # The /specrails:setup wizard
+    ├── skills/                   # Workflow skills (/specrails:*, /opsx:*)
     ├── agents/                   # Agent definitions
     ├── rules/                    # Per-layer coding conventions
     └── settings.json             # Permissions
@@ -82,7 +82,7 @@ your-project/
 your-project/
 ├── AGENTS.md                     # SpecRails agent instructions for Codex
 └── .codex/
-    ├── skills/                   # Workflow skills (/sr:*, /opsx:*)
+    ├── skills/                   # Workflow skills (/specrails:*, /opsx:*)
     ├── agents/                   # Agent definitions (TOML)
     ├── rules/                    # Per-layer coding conventions
     └── config.toml               # Permissions
@@ -90,7 +90,7 @@ your-project/
 
 The installer also writes `.specrails-version` and `.specrails-manifest.json` to track the installed version.
 
-## Configure with /sr:setup
+## Configure with /specrails:setup
 
 After either installation method, open your AI CLI in your project and run:
 
@@ -101,10 +101,10 @@ codex     # Codex
 ```
 
 ```
-/sr:setup
+/specrails:setup
 ```
 
-By default, `/sr:setup` runs the full 5-phase wizard:
+By default, `/specrails:setup` runs the full 5-phase wizard:
 
 | Phase | What happens |
 |-------|-------------|
@@ -114,7 +114,7 @@ By default, `/sr:setup` runs the full 5-phase wizard:
 | **4. Generate** | Generates project data files (`.specrails/` or `.claude/`) with your context |
 | **5. Cleanup** | Removes setup scaffolding, leaving only your tailored workflow |
 
-**In a hurry?** Run `/sr:setup --lite` instead — three questions, sensible defaults, done in under a minute.
+**In a hurry?** Run `/specrails:setup --lite` instead — three questions, sensible defaults, done in under a minute.
 
 ## Verify
 
@@ -151,7 +151,7 @@ The installer warns if SpecRails artifacts already exist. You can merge (install
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/sr:setup` wizard did not complete. Re-run `/sr:setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:setup` wizard did not complete. Re-run `/specrails:setup` or fill the values manually.
 
 ### "No Claude API key configured"
 

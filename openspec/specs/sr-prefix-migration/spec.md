@@ -28,11 +28,11 @@ The migration function SHALL rename all persona files from `<name>.md` to `sr-<n
 - **THEN** all persona files are renamed with `sr-` prefix
 
 ### Requirement: Command directory migration
-The migration function SHALL move all specrails workflow commands from `.claude/commands/<name>.md` to `.claude/commands/sr/<name>.md`.
+The migration function SHALL move all specrails workflow commands from `.claude/commands/<name>.md` to `.claude/commands/specrails/<name>.md`.
 
 #### Scenario: Commands moved to sr/ subdirectory
 - **WHEN** migration runs with legacy command files present
-- **THEN** commands implement, batch-implement, product-backlog, update-product-driven-backlog, health-check, compat-check, refactor-recommender, and why are moved to `.claude/commands/sr/`
+- **THEN** commands implement, batch-implement, product-backlog, update-product-driven-backlog, health-check, compat-check, refactor-recommender, and why are moved to `.claude/commands/specrails/`
 
 #### Scenario: Non-specrails commands preserved
 - **WHEN** migration runs and `.claude/commands/` contains files not in the specrails command list (e.g., user-created commands)

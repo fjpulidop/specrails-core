@@ -23,4 +23,4 @@ In `--update` mode, `/setup` SHALL update workflow commands to reference any new
 
 #### Scenario: New agent added to implement pipeline
 - **WHEN** an `sr-frontend-developer` agent was added during update
-- **THEN** `/sr:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant
+- **THEN** `/specrails:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant

@@ -87,7 +87,7 @@ The file is read and written by specrails-core during command execution.
 
 ## Setup
 
-Local tickets become the default during `/sr:setup`. The wizard prompts:
+Local tickets become the default during `/specrails:setup`. The wizard prompts:
 
 ```
 ## Backlog Provider
@@ -112,7 +112,7 @@ Pressing **Enter** or selecting **1** initializes `.claude/local-tickets.json` w
 To switch providers later, re-run the setup wizard:
 
 ```bash
-> /sr:setup
+> /specrails:setup
 ```
 
 ---
@@ -146,35 +146,35 @@ Every write increments `revision`. Readers that want to detect external changes 
 
 ## Command integration
 
-### `/sr:implement`
+### `/specrails:implement`
 
 Pass local ticket IDs the same way you would GitHub issue numbers:
 
 ```bash
-/sr:implement #1, #4, #7
+/specrails:implement #1, #4, #7
 ```
 
 The command reads each ticket from `local-tickets.json`, extracts metadata (area, effort, description), and tracks the ticket through the pipeline — updating status to `in_progress` on start and `done` on successful completion.
 
-### `/sr:product-backlog`
+### `/specrails:product-backlog`
 
 ```bash
-/sr:product-backlog              # all areas
-/sr:product-backlog UI, Backend  # filter by area
+/specrails:product-backlog              # all areas
+/specrails:product-backlog UI, Backend  # filter by area
 ```
 
 Reads all `todo` and `in_progress` tickets, scores them by VPC match, respects the `prerequisites` dependency graph, and recommends the top 3 for your next sprint.
 
-### `/sr:update-product-driven-backlog`
+### `/specrails:update-product-driven-backlog`
 
 ```bash
-/sr:update-product-driven-backlog            # explore all areas
-/sr:update-product-driven-backlog Analytics  # focus on one area
+/specrails:update-product-driven-backlog            # explore all areas
+/specrails:update-product-driven-backlog Analytics  # focus on one area
 ```
 
 Runs product discovery using your VPC personas. Creates new local tickets for discovered feature ideas, tagged with `source: "product-backlog"` and `labels: ["product-driven-backlog", "area:<area>"]`. Existing tickets are checked for duplicates before creating new ones.
 
-### `/sr:propose-spec`
+### `/specrails:propose-spec`
 
 When a proposal is finalized, a local ticket is created automatically:
 

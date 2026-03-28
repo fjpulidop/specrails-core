@@ -21,15 +21,15 @@ codex    # Codex
 
 ## Core workflow
 
-### `/sr:implement` ✅ Both
+### `/specrails:implement` ✅ Both
 
 Implement a feature through the full agent pipeline: design → code → tests → docs → review → PR.
 
 ```
-/sr:implement #85
-/sr:implement #85, #71, #63
-/sr:implement "add a health check endpoint"
-/sr:implement UI, Analytics
+/specrails:implement #85
+/specrails:implement #85, #71, #63
+/specrails:implement "add a health check endpoint"
+/specrails:implement UI, Analytics
 ```
 
 **Flags:**
@@ -60,16 +60,16 @@ A single issue runs sequentially on the current branch. Multiple issues run in p
 
 ---
 
-### `/sr:telemetry` ✅ Both
+### `/specrails:telemetry` ✅ Both
 
 Inspect per-agent execution metrics: token usage, estimated API cost, run count, average duration, and success/failure rate.
 
 ```
-/sr:telemetry
-/sr:telemetry --period today
-/sr:telemetry --agent sr-developer
-/sr:telemetry --format json
-/sr:telemetry --save
+/specrails:telemetry
+/specrails:telemetry --period today
+/specrails:telemetry --agent sr-developer
+/specrails:telemetry --format json
+/specrails:telemetry --save
 ```
 
 **Flags:**
@@ -83,14 +83,14 @@ Inspect per-agent execution metrics: token usage, estimated API cost, run count,
 
 ---
 
-### `/sr:merge-resolve` ✅ Both
+### `/specrails:merge-resolve` ✅ Both
 
 Resolve git conflict markers using AI-powered context analysis.
 
 ```
-/sr:merge-resolve
-/sr:merge-resolve --files src/api/routes.ts
-/sr:merge-resolve --context openspec/changes/
+/specrails:merge-resolve
+/specrails:merge-resolve --files src/api/routes.ts
+/specrails:merge-resolve --context openspec/changes/
 ```
 
 **Flags:**
@@ -105,15 +105,15 @@ Reads OpenSpec context bundles from the features that produced each conflict, in
 
 ---
 
-### `/sr:retry` ✅ Both
+### `/specrails:retry` ✅ Both
 
-Resume a failed `/sr:implement` run from the last successful phase.
+Resume a failed `/specrails:implement` run from the last successful phase.
 
 ```
-/sr:retry <feature-name>
-/sr:retry --list
-/sr:retry <feature-name> --from architect
-/sr:retry <feature-name> --dry-run
+/specrails:retry <feature-name>
+/specrails:retry --list
+/specrails:retry <feature-name> --from architect
+/specrails:retry <feature-name> --dry-run
 ```
 
 **Flags:**
@@ -130,15 +130,15 @@ Pipeline state is saved to `.claude/pipeline-state/<feature-name>.json` after ea
 
 ---
 
-### `/sr:batch-implement` ⚠️ Limited on Codex
+### `/specrails:batch-implement` ⚠️ Limited on Codex
 
 Implement multiple independent features in parallel using git worktrees.
 
 ```
-/sr:batch-implement #85, #71, #63
+/specrails:batch-implement #85, #71, #63
 ```
 
-Each feature gets its own worktree, its own agent pipeline, and its own PR. Use this instead of `/sr:implement` with multiple issues when you want explicit control over parallel execution.
+Each feature gets its own worktree, its own agent pipeline, and its own PR. Use this instead of `/specrails:implement` with multiple issues when you want explicit control over parallel execution.
 
 > **Codex note**: Worktree isolation is limited in Codex CLI beta. Prefer Codex Cloud for parallel batch work.
 
@@ -146,26 +146,26 @@ Each feature gets its own worktree, its own agent pipeline, and its own PR. Use 
 
 ## Product and backlog
 
-### `/sr:product-backlog` ✅ Both
+### `/specrails:product-backlog` ✅ Both
 
 View your prioritized product backlog, ranked by VPC persona fit and estimated effort.
 
 ```
-/sr:product-backlog
-/sr:product-backlog UI, API
+/specrails:product-backlog
+/specrails:product-backlog UI, API
 ```
 
 Reads GitHub Issues labeled `product-driven-backlog`. Produces a ranked table per area, top 3 recommendations, and a safe implementation order based on issue dependencies.
 
 ---
 
-### `/sr:update-product-driven-backlog` ✅ Both
+### `/specrails:update-product-driven-backlog` ✅ Both
 
 Generate new feature ideas through product discovery and create GitHub Issues.
 
 ```
-/sr:update-product-driven-backlog
-/sr:update-product-driven-backlog UI, API
+/specrails:update-product-driven-backlog
+/specrails:update-product-driven-backlog UI, API
 ```
 
 The Product Manager researches your competitive landscape, generates 2–4 feature ideas per area, and scores each against your user personas. Creates GitHub Issues with full VPC evaluation if write access is available.
@@ -174,73 +174,73 @@ The Product Manager researches your competitive landscape, generates 2–4 featu
 
 ## Analysis and inspection
 
-### `/sr:refactor-recommender` ✅ Both
+### `/specrails:refactor-recommender` ✅ Both
 
 Scan the codebase for refactoring opportunities, ranked by impact/effort ratio.
 
 ```
-/sr:refactor-recommender
+/specrails:refactor-recommender
 ```
 
 Identifies duplicates, overly long functions, large files, dead code, outdated patterns, and complex logic. Optionally creates GitHub Issues for tracking.
 
 ---
 
-### `/sr:compat-check` ✅ Both
+### `/specrails:compat-check` ✅ Both
 
 Analyze the backwards-compatibility impact of a proposed change.
 
 ```
-/sr:compat-check #85
-/sr:compat-check #85 --save
+/specrails:compat-check #85
+/specrails:compat-check #85 --save
 ```
 
 Detects removed endpoints, changed method signatures, changed response shapes, and behavioral changes. When breaking changes are found, generates a migration guide.
 
 `--save` updates the stored API baseline so future checks compare against the new surface.
 
-The Architect runs this automatically as part of every `/sr:implement` pipeline.
+The Architect runs this automatically as part of every `/specrails:implement` pipeline.
 
 ---
 
-### `/sr:why` ✅ Both
+### `/specrails:why` ✅ Both
 
 Search agent explanation records in plain language.
 
 ```
-/sr:why "why did we choose this database schema"
-/sr:why "explain the auth middleware design"
-/sr:why "why is pagination implemented this way"
+/specrails:why "why did we choose this database schema"
+/specrails:why "explain the auth middleware design"
+/specrails:why "why is pagination implemented this way"
 ```
 
-Agents write decision rationale to `.claude/agent-memory/explanations/` as they work. `/sr:why` searches these records semantically. Useful for onboarding, code review, and revisiting past decisions.
+Agents write decision rationale to `.claude/agent-memory/explanations/` as they work. `/specrails:why` searches these records semantically. Useful for onboarding, code review, and revisiting past decisions.
 
 ---
 
-### `/sr:vpc-drift` ✅ Both
+### `/specrails:vpc-drift` ✅ Both
 
 Detect when your VPC personas have drifted from what your product actually delivers.
 
 ```
-/sr:vpc-drift
-/sr:vpc-drift --persona "Alex,Sara"
-/sr:vpc-drift --verbose
-/sr:vpc-drift --format json
+/specrails:vpc-drift
+/specrails:vpc-drift --persona "Alex,Sara"
+/specrails:vpc-drift --verbose
+/specrails:vpc-drift --format json
 ```
 
 Compares persona Jobs/Pains/Gains against your backlog, implemented features, and agent memory. Produces a per-persona alignment score and recommendations for updating your VPC.
 
 ---
 
-### `/sr:memory-inspect` ✅ Both
+### `/specrails:memory-inspect` ✅ Both
 
 Inspect and clean up agent memory directories.
 
 ```
-/sr:memory-inspect
-/sr:memory-inspect sr-developer
-/sr:memory-inspect --stale 14
-/sr:memory-inspect --prune
+/specrails:memory-inspect
+/specrails:memory-inspect sr-developer
+/specrails:memory-inspect --stale 14
+/specrails:memory-inspect --prune
 ```
 
 **Flags:**
@@ -254,12 +254,12 @@ Agent memory lives in `.claude/agent-memory/sr-*/` (Claude Code) or `.codex/agen
 
 ---
 
-### `/sr:propose-spec` ✅ Both
+### `/specrails:propose-spec` ✅ Both
 
 Explore a feature idea and produce a structured proposal ready for the OpenSpec pipeline.
 
 ```
-/sr:propose-spec "add rate limiting to the API"
+/specrails:propose-spec "add rate limiting to the API"
 ```
 
 Produces: problem statement, proposed solution, out-of-scope items, acceptance criteria, technical considerations, and a complexity estimate.
@@ -346,14 +346,14 @@ Open-ended thinking mode for brainstorming, investigating problems, or clarifyin
 
 ---
 
-### `/sr:opsx-diff` — Spec Change Diff
+### `/specrails:opsx-diff` — Spec Change Diff
 
 Visualize the before/after diff of an OpenSpec change.
 
 ```
-/sr:opsx-diff <change-name>
-/sr:opsx-diff my-feature --format json
-/sr:opsx-diff my-feature --summary-only
+/specrails:opsx-diff <change-name>
+/specrails:opsx-diff my-feature --format json
+/specrails:opsx-diff my-feature --summary-only
 ```
 
 **Flags:**

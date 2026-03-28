@@ -8,7 +8,7 @@
 #
 # Related tasks:
 #   SPEA-506: Provider detection & directory abstraction
-#   SPEA-507: Skills migration (/sr:* → SKILL.md)
+#   SPEA-507: Skills migration (/specrails:* → SKILL.md)
 #   SPEA-508: Dual permissions config (settings.json + config.toml)
 #   SPEA-509: Agent definitions dual format (Markdown + TOML)
 set -euo pipefail
@@ -203,8 +203,8 @@ test_backward_compat_slash_commands() {
     setup_mock_bin
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
-    # Legacy slash commands are staged in setup-templates/; /setup deploys them to .claude/commands/sr/
-    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates/commands/sr"
+    # Legacy slash commands are staged in setup-templates/; /setup deploys them to .claude/commands/specrails/
+    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates/commands/specrails"
 }
 run_test "SPEA-507: backward compat — slash commands still present for claude provider" test_backward_compat_slash_commands
 

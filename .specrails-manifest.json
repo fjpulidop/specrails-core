@@ -3,8 +3,8 @@
   "installed_at": "2026-03-15T15:52:54Z",
   "artifacts": {
     "commands/setup.md": "sha256:bc1b775142b489cd9d00eed73cc0fb4f0c1383ffc5339f996e89357b7b2540d9",
-    "templates/commands/sr/product-backlog.md": "sha256:c80af36558d94177eba3f892091ac9362f0370dabe04f1706cfa54c2fad086cd",
-    "templates/commands/sr/update-product-driven-backlog.md": "sha256:923a058bf4461eea1ab35f244d4ff23040755eb16cf6253a3838d9ae02795eb0",
+    "templates/commands/specrails/product-backlog.md": "sha256:c80af36558d94177eba3f892091ac9362f0370dabe04f1706cfa54c2fad086cd",
+    "templates/commands/specrails/update-product-driven-backlog.md": "sha256:923a058bf4461eea1ab35f244d4ff23040755eb16cf6253a3838d9ae02795eb0",
     "templates/agents/sr-architect.md": "sha256:29af3f8d5ba361d32ea9073f34a2f887597e2fe476587bdeee207118bb8956ba",
     "templates/agents/sr-developer.md": "sha256:d9e1eb1285c67fbc6f6ba33741f76477c55d1de97ae7d8531307f6bbea1208d3",
     "templates/agents/sr-reviewer.md": "sha256:59286a927f682b52233417170fa01f8d887e0a23a462d42fa3aa5bccc96ef676",

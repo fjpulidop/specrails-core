@@ -109,15 +109,23 @@ run_test "all agent templates have non-empty body (5+ lines)" test_agent_templat
 # ─────────────────────────────────────────────
 
 EXPECTED_COMMANDS=(
-    "sr/implement"
-    "sr/product-backlog"
-    "sr/batch-implement"
-    "sr/compat-check"
-    "sr/refactor-recommender"
-    "sr/update-product-driven-backlog"
-    "sr/why"
-    "sr/retry"
-    "sr/telemetry"
+    "specrails/implement"
+    "specrails/product-backlog"
+    "specrails/batch-implement"
+    "specrails/compat-check"
+    "specrails/refactor-recommender"
+    "specrails/update-product-driven-backlog"
+    "specrails/why"
+    "specrails/retry"
+    "specrails/telemetry"
+    "specrails/health-check"
+    "specrails/memory-inspect"
+    "specrails/merge-resolve"
+    "specrails/opsx-diff"
+    "specrails/propose-spec"
+    "specrails/team-debug"
+    "specrails/team-review"
+    "specrails/vpc-drift"
     "test"
 )
 

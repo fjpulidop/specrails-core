@@ -413,7 +413,7 @@ do_migrate_sr_prefix() {
         done < <(find "$personas_dir" -maxdepth 1 -name "*.md" -not -name "sr-*.md" -print0 2>/dev/null)
     fi
 
-    # Create .claude/commands/sr/ and migrate workflow commands
+    # Create .claude/commands/specrails/ and migrate workflow commands
     local workflow_commands=(
         "implement"
         "batch-implement"
@@ -431,7 +431,7 @@ do_migrate_sr_prefix() {
             local dst="$commands_dir/sr/${cmd}.md"
             if [[ -f "$src" ]] && [[ ! -f "$dst" ]]; then
                 mv "$src" "$dst"
-                info "Moved: commands/${cmd}.md → commands/sr/${cmd}.md"
+                info "Moved: commands/${cmd}.md → commands/specrails/${cmd}.md"
                 migrated_commands=$(( migrated_commands + 1 ))
             fi
         done

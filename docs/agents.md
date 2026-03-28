@@ -21,7 +21,7 @@ The result: better quality at every stage, with clear accountability.
 |-|-|
 | **Color** | Blue |
 | **Model** | Opus (creative reasoning) |
-| **Trigger** | `/opsx:explore`, `/sr:update-product-driven-backlog` |
+| **Trigger** | `/opsx:explore`, `/specrails:update-product-driven-backlog` |
 | **Role** | Feature ideation and product strategy |
 
 The Product Manager is the **starting point** of the pipeline. It researches your competitive landscape (via web search), evaluates ideas against your user personas using the VPC framework, and produces prioritized feature recommendations.
@@ -42,7 +42,7 @@ The Product Manager is the **starting point** of the pipeline. It researches you
 |-|-|
 | **Color** | Cyan |
 | **Model** | Haiku (fast, read-only) |
-| **Trigger** | `/sr:product-backlog` |
+| **Trigger** | `/specrails:product-backlog` |
 | **Role** | Backlog analysis and reporting |
 
 The Product Analyst is a **read-only** agent. It reads your backlog, specs, and archived changes to produce structured reports. It never writes code or makes decisions — it just gives you the data.
@@ -62,7 +62,7 @@ The Product Analyst is a **read-only** agent. It reads your backlog, specs, and 
 |-|-|
 | **Color** | Green |
 | **Model** | Sonnet |
-| **Trigger** | `/opsx:ff`, `/opsx:continue`, `/sr:implement` (Phase 3a) |
+| **Trigger** | `/opsx:ff`, `/opsx:continue`, `/specrails:implement` (Phase 3a) |
 | **Role** | System design and task breakdown |
 
 The Architect translates **what to build** into **how to build it**. It reads the relevant specs, analyzes the codebase, and produces a detailed implementation design with ordered tasks.
@@ -76,7 +76,7 @@ The Architect translates **what to build** into **how to build it**. It reads th
 - Risks and considerations
 - Backwards compatibility impact report (Phase 6 auto-check against API surface)
 
-The Architect also records decision rationale in `.claude/agent-memory/explanations/` — queryable later with `/sr:why`.
+The Architect also records decision rationale in `.claude/agent-memory/explanations/` — queryable later with `/specrails:why`.
 
 ---
 
@@ -86,7 +86,7 @@ The Architect also records decision rationale in `.claude/agent-memory/explanati
 |-|-|
 | **Color** | Purple |
 | **Model** | Sonnet |
-| **Trigger** | `/opsx:apply`, `/sr:implement` (Phase 3b) |
+| **Trigger** | `/opsx:apply`, `/specrails:implement` (Phase 3b) |
 | **Role** | Full-stack implementation |
 
 The Developer is the **workhorse**. It reads the Architect's design, loads the relevant layer conventions, and writes production-quality code across all layers. It follows a strict process: understand, plan, implement, verify.
@@ -106,7 +106,7 @@ Before starting implementation, the Developer reads any **failure records** from
 |-|-|
 | **Colors** | Purple (backend), Blue (frontend) |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` with parallel pipeline |
+| **Trigger** | `/specrails:implement` with parallel pipeline |
 | **Role** | Layer-specific implementation |
 
 For large full-stack features, SpecRails can split work between **Backend Developer** and **Frontend Developer** running in **parallel git worktrees**. Each has a lighter prompt focused on their stack and runs only the relevant CI checks.
@@ -121,7 +121,7 @@ For large full-stack features, SpecRails can split work between **Backend Develo
 |-|-|
 | **Color** | Cyan |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 3c) |
+| **Trigger** | `/specrails:implement` (Phase 3c) |
 | **Role** | Automated test generation |
 
 After the Developer finishes, the Test Writer generates comprehensive tests for the new code. It auto-detects your test framework, reads 3 existing tests to learn your patterns, and targets >80% coverage of new code.
@@ -143,7 +143,7 @@ After the Developer finishes, the Test Writer generates comprehensive tests for 
 |-|-|
 | **Color** | Yellow |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 3d) |
+| **Trigger** | `/specrails:implement` (Phase 3d) |
 | **Role** | Keep documentation in sync with code |
 
 Doc Sync detects and updates your project's documentation after implementation:
@@ -162,7 +162,7 @@ Doc Sync detects and updates your project's documentation after implementation:
 |-|-|
 | **Color** | Cyan |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 4b, parallel) |
+| **Trigger** | `/specrails:implement` (Phase 4b, parallel) |
 | **Role** | Frontend-specific quality audit |
 
 The Frontend Reviewer runs in parallel with the Backend Reviewer during Phase 4b, specializing in client-side concerns that a generalist reviewer might miss.
@@ -180,7 +180,7 @@ The Frontend Reviewer runs in parallel with the Backend Reviewer during Phase 4b
 |-|-|
 | **Color** | Cyan |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 4b, parallel) |
+| **Trigger** | `/specrails:implement` (Phase 4b, parallel) |
 | **Role** | Backend-specific quality audit |
 
 The Backend Reviewer runs in parallel with the Frontend Reviewer during Phase 4b, specializing in server-side concerns.
@@ -199,7 +199,7 @@ The Backend Reviewer runs in parallel with the Frontend Reviewer during Phase 4b
 |-|-|
 | **Color** | Orange |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 4) |
+| **Trigger** | `/specrails:implement` (Phase 4) |
 | **Role** | Security audit |
 
 The Security Reviewer scans new code for:
@@ -221,7 +221,7 @@ You can suppress known false positives via `.claude/security-exemptions.yaml`.
 |-|-|
 | **Color** | Red |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 4b), after all developers complete |
+| **Trigger** | `/specrails:implement` (Phase 4b), after all developers complete |
 | **Role** | Final quality gate |
 
 The Reviewer is the **last agent before ship**. It:
@@ -251,7 +251,7 @@ The Reviewer is the **last agent before ship**. It:
 |-|-|
 | **Color** | Yellow |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:merge-resolve`, `/sr:implement` (Phase 4a, after worktree merge) |
+| **Trigger** | `/specrails:merge-resolve`, `/specrails:implement` (Phase 4a, after worktree merge) |
 | **Role** | AI-powered merge conflict resolution |
 
 When a multi-feature pipeline merges worktrees and produces conflict markers, the Merge Resolver analyzes each conflict block using the OpenSpec context bundles from both features. It applies resolutions where confidence is high enough and leaves clean markers for the conflicts it cannot safely resolve.
@@ -273,7 +273,7 @@ When a multi-feature pipeline merges worktrees and produces conflict markers, th
 |-|-|
 | **Color** | Yellow |
 | **Model** | Sonnet |
-| **Trigger** | `/sr:implement` (Phase 4, after Security Reviewer) |
+| **Trigger** | `/specrails:implement` (Phase 4, after Security Reviewer) |
 | **Role** | Performance regression detection |
 
 The Performance Reviewer benchmarks modified code paths after implementation, compares metrics against configured thresholds, and outputs a structured report. It never fixes code — findings above the threshold trigger the Developer to address them before the pipeline continues.
@@ -301,7 +301,7 @@ Every agent stores observations in `.claude/agent-memory/<agent>/MEMORY.md`. Thi
 └── ...
 ```
 
-Memory is automatic — you don't need to manage it. Agents read relevant memories at the start of each task and write new observations as they work. Use `/sr:why` to search the explanations directory in plain language.
+Memory is automatic — you don't need to manage it. Agents read relevant memories at the start of each task and write new observations as they work. Use `/specrails:why` to search the explanations directory in plain language.
 
 ## What's next?
 

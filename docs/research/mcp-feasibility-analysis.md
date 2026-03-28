@@ -45,7 +45,7 @@ npx specrails-core@latest init    →   install.sh (bash)    →   /setup (Claud
 
 ```
 Claude Code
-├── Commands (/sr:implement, /sr:product-backlog, ...)
+├── Commands (/specrails:implement, /specrails:product-backlog, ...)
 ├── Skills (/opsx:new, /opsx:apply, /opsx:ff, ...)
 ├── Agents (sr-architect, sr-developer, sr-reviewer, ...)
 ├── Rules (.claude/rules/ — layer-specific conventions)
@@ -146,7 +146,7 @@ The current architecture tightly couples specrails to Claude Code's command/skil
 │  Specs, Personas, Memory, Config, Analysis   │
 ├─────────────────────────────────────────────┤
 │         Claude Code (Orchestration)          │
-│  /sr:implement, /sr:batch-implement, agents  │
+│  /specrails:implement, /specrails:batch-implement, agents  │
 └─────────────────────────────────────────────┘
 ```
 
@@ -168,7 +168,7 @@ Skills and commands already provide strong Claude Code integration. MCP adds com
 
 #### B. Orchestration Can't Move to MCP
 
-The `/sr:implement` pipeline requires Claude Code's Agent tool (subagent spawning, worktree isolation, background execution). MCP tools are request/response — they can't replicate multi-phase orchestration.
+The `/specrails:implement` pipeline requires Claude Code's Agent tool (subagent spawning, worktree isolation, background execution). MCP tools are request/response — they can't replicate multi-phase orchestration.
 
 **Counter:** This is exactly why the recommendation is scoped. Orchestration stays in Claude Code; only knowledge access moves to MCP.
 
@@ -333,8 +333,8 @@ These capabilities require Claude Code's runtime and should NOT be exposed via M
 
 | Capability | Reason |
 |------------|--------|
-| `/sr:implement` pipeline | Requires Agent tool (subagent spawning) |
-| `/sr:batch-implement` | Requires git worktree isolation |
+| `/specrails:implement` pipeline | Requires Agent tool (subagent spawning) |
+| `/specrails:batch-implement` | Requires git worktree isolation |
 | Agent invocation (sr-*) | Requires Claude Code's Agent subagent system |
 | OpenSpec artifact creation | Interactive, context-heavy (requires conversation) |
 | `/setup` wizard | Multi-step interactive configuration |

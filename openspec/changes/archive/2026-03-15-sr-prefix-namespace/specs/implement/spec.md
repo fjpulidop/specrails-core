@@ -1,10 +1,10 @@
 ## MODIFIED Requirements
 
 ### Requirement: Command namespace
-The `/implement` command SHALL be invoked as `/sr:implement`. The command file SHALL be located at `.claude/commands/sr/implement.md`.
+The `/implement` command SHALL be invoked as `/specrails:implement`. The command file SHALL be located at `.claude/commands/specrails/implement.md`.
 
 #### Scenario: Command invocation
-- **WHEN** user types `/sr:implement #85`
+- **WHEN** user types `/specrails:implement #85`
 - **THEN** the full implementation pipeline runs identically to the former `/implement #85`
 
 ### Requirement: Agent references
@@ -46,8 +46,8 @@ All references to agent memory paths within the implement pipeline SHALL use `sr
 - **THEN** the path used is `.claude/agent-memory/sr-reviewer/common-fixes.md`
 
 ### Requirement: Confidence override flag
-The confidence override flag SHALL reference `/sr:implement` in its documentation.
+The confidence override flag SHALL reference `/specrails:implement` in its documentation.
 
 #### Scenario: Override flag documentation
-- **WHEN** `--confidence-override` is passed to `/sr:implement`
+- **WHEN** `--confidence-override` is passed to `/specrails:implement`
 - **THEN** the behavior is identical to the former `/implement --confidence-override`

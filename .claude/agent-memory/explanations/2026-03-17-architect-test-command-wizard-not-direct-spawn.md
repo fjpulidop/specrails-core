@@ -7,7 +7,7 @@ date: 2026-03-17
 
 ## Decision
 
-The `/sr:test` command opens a `TestWizard` modal rather than spawning directly when clicked in the dashboard.
+The `/specrails:test` command opens a `TestWizard` modal rather than spawning directly when clicked in the dashboard.
 
 ## Why This Approach
 

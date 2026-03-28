@@ -1,6 +1,6 @@
 ## Why
 
-The pipeline progress in `/sr:implement` and other commands was hardcoded to the `architect → developer → reviewer → ship` workflow. Every other command (product-backlog, health-check, refactor-recommender, etc.) had no way to declare its own phases, making it impossible to accurately represent their progress.
+The pipeline progress in `/specrails:implement` and other commands was hardcoded to the `architect → developer → reviewer → ship` workflow. Every other command (product-backlog, health-check, refactor-recommender, etc.) had no way to declare its own phases, making it impossible to accurately represent their progress.
 
 ## What Changes
 
@@ -13,5 +13,5 @@ The pipeline progress in `/sr:implement` and other commands was hardcoded to the
 
 ## Impact
 
-- **Command files**: All 8 command `.md` files in `.claude/commands/sr/` get a `phases` frontmatter field.
+- **Command files**: All 8 command `.md` files in `.claude/commands/specrails/` get a `phases` frontmatter field.
 - **Breaking**: None — phases are metadata only and do not affect pipeline execution logic.

@@ -17,7 +17,7 @@ These tasks are independent and can run in parallel.
 
 ### Task A1 — Create `templates/commands/test.md` [specrails]
 
-**Description:** Create the canonical `/sr:test` command template. This is a static command file (no `{{PLACEHOLDER}}` substitution needed — it references `sr-test-writer` by agent name). The file is copied verbatim into target repos by `install.sh`.
+**Description:** Create the canonical `/specrails:test` command template. This is a static command file (no `{{PLACEHOLDER}}` substitution needed — it references `sr-test-writer` by agent name). The file is copied verbatim into target repos by `install.sh`.
 
 **File to create:** `/Users/javi/repos/specrails/templates/commands/test.md`
 
@@ -47,7 +47,7 @@ phases:
 4. `## Step 1: Resolve Files to Test` — bash block showing: if `$ARGUMENTS` is empty, run `git diff --name-only HEAD`; if git diff is also empty, output a message and stop; otherwise use `$ARGUMENTS` split into a list
 5. `## Step 2: Invoke sr-test-writer` — instructions to launch the `sr-test-writer` agent with:
    - `IMPLEMENTED_FILES_LIST:` the resolved file list from Step 1
-   - `TASK_DESCRIPTION:` "Standalone test generation run via /sr:test"
+   - `TASK_DESCRIPTION:` "Standalone test generation run via /specrails:test"
    - Note: run in foreground (`run_in_background: false`), wait for completion
 6. `## Step 3: Forward Results` — output the full `## Test Writer Results` block from the agent response directly to the user
 7. `## Edge Cases` — what to do when: no files found, all files skipped, test framework not detected
@@ -65,11 +65,11 @@ phases:
 
 ---
 
-### Task A2 — Create `.claude/commands/sr/test.md` [specrails]
+### Task A2 — Create `.claude/commands/specrails/test.md` [specrails]
 
-**Description:** Create the specrails-self-hosted version of the `/sr:test` command. Since `test.md` has no placeholders, this file is identical to `templates/commands/test.md`.
+**Description:** Create the specrails-self-hosted version of the `/specrails:test` command. Since `test.md` has no placeholders, this file is identical to `templates/commands/test.md`.
 
-**File to create:** `/Users/javi/repos/specrails/.claude/commands/sr/test.md`
+**File to create:** `/Users/javi/repos/specrails/.claude/commands/specrails/test.md`
 
 **Content:** Copy the exact content from `templates/commands/test.md` (same file, no substitutions applied).
 
@@ -172,7 +172,7 @@ const WIZARD_COMMANDS = new Set(['implement', 'batch-implement', 'test'])
 
 ### Task C2 — Create `TestWizard.tsx` component [manager-client]
 
-**Description:** Create a new wizard modal for the `/sr:test` command. Users can optionally enter file paths; submitting with empty input runs the command against all changed files.
+**Description:** Create a new wizard modal for the `/specrails:test` command. Users can optionally enter file paths; submitting with empty input runs the command against all changed files.
 
 **File to create:** `/Users/javi/repos/specrails-manager/client/src/components/TestWizard.tsx`
 
@@ -195,7 +195,7 @@ interface TestWizardProps {
 **Spawn behavior:**
 ```typescript
 // Empty input → spawn without arguments
-const command = paths.trim() ? `/sr:test ${paths.trim()}` : '/sr:test'
+const command = paths.trim() ? `/specrails:test ${paths.trim()}` : '/specrails:test'
 // POST to /spawn with { command }
 ```
 
@@ -211,8 +211,8 @@ const command = paths.trim() ? `/sr:test ${paths.trim()}` : '/sr:test'
 **Acceptance criteria:**
 - Component is exported as named export: `export function TestWizard(...)`
 - Dialog closes on cancel, on success (after 800ms), and on backdrop click
-- Empty input spawns `/sr:test` (no trailing space or arguments)
-- Non-empty input spawns `/sr:test <trimmed input>`
+- Empty input spawns `/specrails:test` (no trailing space or arguments)
+- Non-empty input spawns `/specrails:test <trimmed input>`
 - Spinner shown during submit
 - Error from API shown inline
 - TypeScript compilation passes
@@ -239,7 +239,7 @@ interface TestRunnerWidgetProps {
 **Internal logic:**
 ```typescript
 // Filter for test-writer jobs, take most recent
-const testJobs = jobs.filter(j => j.command.includes('/sr:test'))
+const testJobs = jobs.filter(j => j.command.includes('/specrails:test'))
 const lastTestJob = testJobs[0] ?? null
 const isRunning = lastTestJob?.status === 'running'
 ```
@@ -249,7 +249,7 @@ const isRunning = lastTestJob?.status === 'running'
 State 1 — No prior runs (`lastTestJob === null`):
 ```
 [FlaskConical icon, text-dracula-cyan]  No test runs yet
-                                         Run /sr:test to generate tests for this project.
+                                         Run /specrails:test to generate tests for this project.
 [Run Tests button → calls onLaunch]
 ```
 
@@ -413,7 +413,7 @@ set -euo pipefail
 
 ### Task D2 — Create `tests/test-test-command.sh` [tests] [specrails]
 
-**Description:** Bash test script that validates the `/sr:test` command template and its installed copy.
+**Description:** Bash test script that validates the `/specrails:test` command template and its installed copy.
 
 **File to create:** `/Users/javi/repos/specrails/tests/test-test-command.sh`
 
@@ -450,10 +450,10 @@ test_template_no_broken_placeholders()
 # grep -c '{{[A-Z_]*}}' templates/commands/test.md → assert_eq "0"
 
 test_installed_command_exists()
-# assert_file_exists "$SPECRAILS_DIR/.claude/commands/sr/test.md"
+# assert_file_exists "$SPECRAILS_DIR/.claude/commands/specrails/test.md"
 
 test_installed_matches_template()
-# diff templates/commands/test.md .claude/commands/sr/test.md
+# diff templates/commands/test.md .claude/commands/specrails/test.md
 # assert_eq "0" "$?" "installed command should be identical to template"
 ```
 
@@ -606,7 +606,7 @@ C3 → C4
 After all tasks are complete, verify:
 
 - [ ] `templates/commands/test.md` exists and has valid frontmatter with 3 phases
-- [ ] `.claude/commands/sr/test.md` exists and matches the template
+- [ ] `.claude/commands/specrails/test.md` exists and matches the template
 - [ ] `scanCommands` is exported from `server/config.ts`
 - [ ] `TestWizard.tsx` opens when Test Writer card is clicked in manager
 - [ ] `TestRunnerWidget.tsx` shows correct state for no-runs, running, completed

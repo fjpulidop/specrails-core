@@ -9,7 +9,7 @@ metadata:
 ---
 
 
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/sr:update-product-driven-backlog` to generate new ideas.
+Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:update-product-driven-backlog` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -127,7 +127,7 @@ The product-analyst receives this prompt:
    - Low effort preferred over high effort at same score
    - Critical pain relief weighted higher than gain creation
 
-   Run `/sr:implement` to start implementing these items.
+   Run `/specrails:implement` to start implementing these items.
    ```
 
 9. **Render Safe Implementation Order section** after the Recommended Next Sprint table:
@@ -146,21 +146,21 @@ The product-analyst receives this prompt:
    | 2    | #M    | ...   | #N      | X/{{MAX_SCORE}} | Medium |
 
    To implement in this order:
-     /sr:batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
+     /specrails:batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
 
    [If no edges exist in the DAG, omit the --deps clause:]
-     /sr:batch-implement <issue-refs>
+     /specrails:batch-implement <issue-refs>
 
    [If CYCLE_MEMBERS is non-empty, append:]
    Cycle members excluded from ordering: #A, #B
    Fix the Prerequisites fields in these issues to include them.
    ```
 
-   Issue refs in the `/sr:batch-implement` command are listed in wave order (wave 1 first, then wave 2, etc.), sorted by persona score within each wave. The `--deps` string is constructed from all edges in the DAG: `"A -> B"` for each edge, comma-separated. If the backlog has no dependencies at all (DAG has no edges), the section still renders showing all features in wave 1 and the `--deps` clause is omitted.
+   Issue refs in the `/specrails:batch-implement` command are listed in wave order (wave 1 first, then wave 2, etc.), sorted by persona score within each wave. The `--deps` string is constructed from all edges in the DAG: `"A -> B"` for each edge, comma-separated. If the backlog has no dependencies at all (DAG has no edges), the section still renders showing all features in wave 1 and the `--deps` clause is omitted.
 
 10. If no issues exist:
     ```
-    No product-driven backlog issues found. Run `/sr:update-product-driven-backlog` to generate feature ideas.
+    No product-driven backlog issues found. Run `/specrails:update-product-driven-backlog` to generate feature ideas.
     ```
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
@@ -187,7 +187,7 @@ The product-analyst receives this prompt:
    - `updated_at`: the `updatedAt` value from the GitHub API response
    - `captured_at`: current local time in ISO 8601 format
 
-   **Merge strategy:** If `.claude/backlog-cache.json` already exists and is valid JSON, read it and merge: new snapshot entries overwrite existing entries by issue number key; entries for issue numbers not in the current fetch are preserved (they may be needed by an in-progress `/sr:implement` run). If the file does not exist or is malformed, create it fresh.
+   **Merge strategy:** If `.claude/backlog-cache.json` already exists and is valid JSON, read it and merge: new snapshot entries overwrite existing entries by issue number key; entries for issue numbers not in the current fetch are preserved (they may be needed by an in-progress `/specrails:implement` run). If the file does not exist or is malformed, create it fresh.
 
    Write the merged result back to `.claude/backlog-cache.json` with:
    - `schema_version`: `"1"`
