@@ -93,7 +93,7 @@ ci:
   command: "<CI_COMMAND>"
 
 backlog:
-  provider: github  # options: github, local, none
+  provider: local  # options: github, local, none
   write: true       # whether agents can create issues
 
 openspec:
@@ -180,7 +180,7 @@ role: Engineer or team member who builds and maintains the product
 
 ```json
 {
-  "BACKLOG_PROVIDER": "github",
+  "BACKLOG_PROVIDER": "local",
   "BACKLOG_WRITE": true,
   "BACKLOG_LABEL": "product-driven-backlog"
 }
