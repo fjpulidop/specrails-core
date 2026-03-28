@@ -40,7 +40,7 @@ claude
 Then run:
 
 ```
-/sr:setup
+/specrails:setup
 ```
 
 The wizard runs the full 5-phase setup (about 5 minutes). It analyzes your codebase and configures SpecRails for your specific project:
@@ -66,23 +66,23 @@ Phase 4/5  Generating files...
 
 Phase 5/5  Cleanup complete.
 
-✓ SpecRails is ready. Run /sr:implement to start building.
+✓ SpecRails is ready. Run /specrails:implement to start building.
 ```
 
-**In a hurry?** Use `/sr:setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
+**In a hurry?** Use `/specrails:setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
 
 ## Step 3: Implement your first feature
 
 Pick something small. Either reference a GitHub Issue or describe it in plain text:
 
 ```
-/sr:implement #42
+/specrails:implement #42
 ```
 
 or:
 
 ```
-/sr:implement "add a health check endpoint to the API"
+/specrails:implement "add a health check endpoint to the API"
 ```
 
 The pipeline runs automatically:
@@ -122,7 +122,7 @@ One command. The PR is ready for human review.
 **Explore the backlog:**
 
 ```
-/sr:product-backlog
+/specrails:product-backlog
 ```
 
 See your tickets ranked by persona fit and effort. The top 3 are safe to implement next. Uses local tickets by default.
@@ -130,7 +130,7 @@ See your tickets ranked by persona fit and effort. The top 3 are safe to impleme
 **Generate new feature ideas:**
 
 ```
-/sr:update-product-driven-backlog
+/specrails:update-product-driven-backlog
 ```
 
 The Product Manager researches your competitive landscape and creates new tickets (local by default, or GitHub Issues if configured).
@@ -138,7 +138,7 @@ The Product Manager researches your competitive landscape and creates new ticket
 **Run multiple features in parallel:**
 
 ```
-/sr:implement #42, #43, #44
+/specrails:implement #42, #43, #44
 ```
 
 Each feature gets its own git worktree. Pipelines run concurrently and merge automatically.
@@ -146,10 +146,10 @@ Each feature gets its own git worktree. Pipelines run concurrently and merge aut
 **Ask why a decision was made:**
 
 ```
-/sr:why "why did we choose this database schema"
+/specrails:why "why did we choose this database schema"
 ```
 
-Agents record their reasoning as they work. `/sr:why` searches those records in plain language.
+Agents record their reasoning as they work. `/specrails:why` searches those records in plain language.
 
 ---
 

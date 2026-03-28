@@ -34,7 +34,7 @@ specrails-core/
 └── .claude/                # Generated output (after /setup)
     ├── agents/             # Adapted agent prompts + personas (sr-*.md)
     ├── commands/
-    │   └── sr/             # Adapted workflow commands (/sr:* namespace)
+    │   └── specrails/      # Adapted workflow commands (/specrails:* namespace)
     ├── rules/              # Per-layer convention rules
     ├── skills/             # OpenSpec skills (opsx:*)
     ├── agent-memory/       # Persistent agent memory (sr-<agent>/ dirs)

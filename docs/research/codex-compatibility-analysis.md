@@ -12,7 +12,7 @@
 
 Claude Code y Codex han convergido arquitectónicamente de forma significativa durante 2025–2026. Comparten el mismo formato de Skills (OpenAI adoptó la spec de Anthropic en diciembre 2025), ambos soportan MCP como mecanismo de extensión, ambos usan ficheros Markdown jerárquicos como instrucciones de agente (`AGENTS.md` vs `CLAUDE.md`), y ambos soportan subagentes y ejecución paralela.
 
-El camino de menor resistencia para dar soporte a Codex **no requiere reescribir specrails-core** — requiere refactorizar los comandos `/sr:*` de slash commands Claude Code-only a Skills (formato ya compatible con ambas plataformas), y añadir una capa de abstracción mínima en el instalador.
+El camino de menor resistencia para dar soporte a Codex **no requiere reescribir specrails-core** — requiere refactorizar los comandos `/specrails:*` de slash commands Claude Code-only a Skills (formato ya compatible con ambas plataformas), y añadir una capa de abstracción mínima en el instalador.
 
 | Dimensión | Valoración |
 |-----------|-----------|
@@ -83,7 +83,7 @@ Esta es la finding más importante de la investigación.
 
 OpenAI adoptó en diciembre 2025 el **mismo formato `SKILL.md`** que publicó Anthropic. Esto significa que:
 
-> **Todos los Skills de specrails (`/sr:implement`, `/opsx:ff`, etc.) son compatible con Codex sin cambios de formato.**
+> **Todos los Skills de specrails (`/specrails:implement`, `/opsx:ff`, etc.) son compatible con Codex sin cambios de formato.**
 
 La implicación práctica: si specrails migra sus comandos de workflow de "slash commands Claude Code-only" a "Skills" (lo que en gran medida ya está ocurriendo), esos Skills funcionan en ambas plataformas.
 
@@ -103,12 +103,12 @@ La implicación práctica: si specrails migra sus comandos de workflow de "slash
 
 #### B. Comandos Slash vs Skills
 
-**Estado actual**: Los comandos `/sr:*` son slash commands Claude Code-only, definidos como markdown en `.claude/commands/sr/`. Codex no permite slash commands user-definables.
+**Estado actual**: Los comandos `/specrails:*` son slash commands Claude Code-only, definidos como markdown en `.claude/commands/specrails/`. Codex no permite slash commands user-definables.
 
-**Solución (crítica)**: Los Skills ya son el mecanismo correcto. specrails ya tiene muchos `/sr:*` implementados como Skills (el `.claude/skills/` directory). La migración es convertir los comandos restantes a formato Skill.
+**Solución (crítica)**: Los Skills ya son el mecanismo correcto. specrails ya tiene muchos `/specrails:*` implementados como Skills (el `.claude/skills/` directory). La migración es convertir los comandos restantes a formato Skill.
 
 ```markdown
-# Antes: .claude/commands/sr/implement.md (Claude Code-only)
+# Antes: .claude/commands/specrails/implement.md (Claude Code-only)
 # Después: .claude/skills/sr-implement/SKILL.md (compatible con ambos)
 ```
 
@@ -165,7 +165,7 @@ model = "codex-mini-latest"
 
 #### F. Variables de entorno Claude Code-specific
 
-**Estado actual**: El comando `/sr:implement` detecta `CLAUDE_CODE_ENTRYPOINT` y `CLAUDE_CODE_REMOTE`.
+**Estado actual**: El comando `/specrails:implement` detecta `CLAUDE_CODE_ENTRYPOINT` y `CLAUDE_CODE_REMOTE`.
 
 **Solución**: Abstracción — detectar environment vars de ambas CLIs o usar las propias del runner.
 
@@ -239,7 +239,7 @@ specrails-hub se comunica con specrails-core vía `integration-contract.json`. E
 
 ### Approach B: Skills-First (Recomendado)
 
-**Descripción**: Refactorizar los comandos `/sr:*` como Skills (ya compatibles con ambas plataformas). El core de workflow no depende de la CLI — funciona igual en Claude Code y Codex. La integración de agentes se hace vía Skills y MCP.
+**Descripción**: Refactorizar los comandos `/specrails:*` como Skills (ya compatibles con ambas plataformas). El core de workflow no depende de la CLI — funciona igual en Claude Code y Codex. La integración de agentes se hace vía Skills y MCP.
 
 **Por qué es el approach correcto**:
 - Skills son el mínimo común denominador entre CLIs
@@ -298,7 +298,7 @@ Hay señales claras de que Codex está ganando tracción rápidamente (open sour
 **Proceder con Approach B (Skills-First) como Phase 1, con roadmap hacia Approach A.**
 
 ### Fase 1 — Skills-First (Q2 2026, ~3-4 semanas)
-- Migrar comandos `/sr:*` a Skills format
+- Migrar comandos `/specrails:*` a Skills format
 - Añadir detección de CLI en install.sh
 - Soporte de `.codex/` directory como alternativa a `.claude/`
 - Hub detection layer
@@ -323,7 +323,7 @@ Si el board aprueba proceder:
 1. **Crear epic SPEA-Codex-Support** en specrails-core project
 2. **Asignar al Tech Lead (specrails-core)** el diseño técnico detallado de la abstracción de provider
 3. **Crear subtareas**:
-   - Skills migration completa (`/sr:*` → Skills format)
+   - Skills migration completa (`/specrails:*` → Skills format)
    - install.sh provider detection
    - Hub detection layer
    - Integration testing con Codex CLI
@@ -335,8 +335,8 @@ Si el board aprueba proceder:
 
 | specrails (actual) | Claude Code invocation | Codex invocation |
 |-------------------|----------------------|-----------------|
-| `/sr:implement` | Slash command | Skill (mismo `SKILL.md`) |
-| `/sr:product-backlog` | Slash command | Skill |
+| `/specrails:implement` | Slash command | Skill (mismo `SKILL.md`) |
+| `/specrails:product-backlog` | Slash command | Skill |
 | `/opsx:ff` | Slash command | Skill |
 | `/setup` | Slash command | `codex exec "run setup"` |
 | Agent `sr-architect` | `.claude/agents/sr-architect.md` | `.codex/agents/sr-architect.toml` |

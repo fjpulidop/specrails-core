@@ -52,9 +52,9 @@ Read the following files to understand the current installation state:
    ```
    Template files are named with `sr-` prefix (e.g., `sr-architect.md`, `sr-developer.md`).
 
-5. List all template files in `$SPECRAILS_DIR/setup-templates/commands/sr/` — these are the NEW command templates from the update:
+5. List all template files in `$SPECRAILS_DIR/setup-templates/commands/specrails/` — these are the NEW command templates from the update:
    ```bash
-   ls $SPECRAILS_DIR/setup-templates/commands/sr/
+   ls $SPECRAILS_DIR/setup-templates/commands/specrails/
    ```
    Command template files include `implement.md`, `batch-implement.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
    If this directory does not exist, skip command template checking for this update.
@@ -94,16 +94,16 @@ Build three lists for agents:
 2. **New agents**: template file exists in `.claude/setup-templates/agents/` but the agent name is NOT in the manifest → mark for evaluation
 3. **Unchanged agents**: agent name exists in manifest AND checksum matches → skip
 
-**Command templates:** If `.claude/setup-templates/commands/sr/` exists, for each command template file, find its entry in the manifest's `artifacts` map (keyed as `templates/commands/sr/<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/commands/sr/`:
+**Command templates:** If `.claude/setup-templates/commands/specrails/` exists, for each command template file, find its entry in the manifest's `artifacts` map (keyed as `templates/commands/specrails/<name>.md`). Compute the SHA-256 checksum of the corresponding file in `.claude/setup-templates/commands/specrails/`:
 
 ```bash
-sha256sum .claude/setup-templates/commands/sr/<name>.md
+sha256sum .claude/setup-templates/commands/specrails/<name>.md
 ```
 
 Build three lists for commands:
 
 1. **Changed commands**: command name exists in manifest AND the current template checksum differs from the manifest checksum → mark for update
-2. **New commands**: template file exists in `.claude/setup-templates/commands/sr/` but the command name is NOT in the manifest → mark for evaluation
+2. **New commands**: template file exists in `.claude/setup-templates/commands/specrails/` but the command name is NOT in the manifest → mark for evaluation
 3. **Unchanged commands**: command name exists in manifest AND checksum matches → skip
 
 Display the combined analysis to the user:
@@ -176,7 +176,7 @@ grep -r '{{[A-Z_]*}}' .codex/agents/sr-*.toml 2>/dev/null || echo "OK: no broken
 For each command in the "changed commands" list from Phase U3:
 
 1. Read the NEW template:
-   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`
+   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/specrails/<name>.md`
    - If `cli_provider == "codex"`: from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`
 2. Read stored backlog configuration from `$SPECRAILS_DIR/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
    - `BACKLOG_PROVIDER` → `provider` field (`github`, `jira`, or `none`)
@@ -194,16 +194,16 @@ For each command in the "changed commands" list from Phase U3:
    - `{{BACKLOG_PREFLIGHT}}` → provider-specific preflight check from backlog config
    - Any other `{{PLACEHOLDER}}` values → use Phase U2 analysis data
 4. Write the updated file:
-   - If `cli_provider == "claude"`: to `.claude/commands/sr/<name>.md`
+   - If `cli_provider == "claude"`: to `.claude/commands/specrails/<name>.md`
    - If `cli_provider == "codex"`: to `.agents/skills/sr-<name>/SKILL.md`
 5. Show:
-   - If `cli_provider == "claude"`: `✓ Updated /sr:<name>`
+   - If `cli_provider == "claude"`: `✓ Updated /specrails:<name>`
    - If `cli_provider == "codex"`: `✓ Updated $sr-<name>`
 
 After updating all changed commands/skills, verify no unresolved placeholders remain:
 ```bash
 # If cli_provider == "claude":
-grep -l '{{[A-Z_]*}}' .claude/commands/sr/*.md 2>/dev/null || echo "OK: no broken placeholders"
+grep -l '{{[A-Z_]*}}' .claude/commands/specrails/*.md 2>/dev/null || echo "OK: no broken placeholders"
 # If cli_provider == "codex":
 grep -rl '{{[A-Z_]*}}' .agents/skills/sr-*/SKILL.md 2>/dev/null || echo "OK: no broken placeholders"
 ```
@@ -230,17 +230,17 @@ For each agent in the "new" list:
 For each command in the "new commands" list from Phase U3:
 
 1. Read the template:
-   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`
+   - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/specrails/<name>.md`
    - If `cli_provider == "codex"`: from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`
 2. Prompt the user:
-   - If `cli_provider == "claude"`: `"New command available: /sr:<name> — [one-line description]. Install it? [Y/n]"`
+   - If `cli_provider == "claude"`: `"New command available: /specrails:<name> — [one-line description]. Install it? [Y/n]"`
    - If `cli_provider == "codex"`: `"New skill available: $sr-<name> — [one-line description]. Install it? [Y/n]"`
 3. If the user accepts (or presses Enter):
    - Apply placeholder substitution using the same rules as Phase U4b (backlog config + codebase analysis)
-   - If `cli_provider == "claude"`: write to `.claude/commands/sr/<name>.md` — show `✓ Added /sr:<name>`
+   - If `cli_provider == "claude"`: write to `.claude/commands/specrails/<name>.md` — show `✓ Added /specrails:<name>`
    - If `cli_provider == "codex"`: write to `.agents/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name>`
 4. If the user declines:
-   - If `cli_provider == "claude"`: show `→ Skipped /sr:<name>`
+   - If `cli_provider == "claude"`: show `→ Skipped /specrails:<name>`
    - If `cli_provider == "codex"`: show `→ Skipped $sr-<name>`
 
 ### Phase U6: Update Workflow Commands
@@ -248,12 +248,12 @@ For each command in the "new commands" list from Phase U3:
 If any new agents were added in Phase U5:
 
 1. Read the implement command/skill:
-   - If `cli_provider == "claude"`: `.claude/commands/sr/implement.md`
+   - If `cli_provider == "claude"`: `.claude/commands/specrails/implement.md`
    - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
 2. Check if the file references agent names in its orchestration steps (look for `sr-architect`, `sr-developer`, `sr-reviewer` etc.)
 3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `sr-frontend-developer` or `sr-backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
 4. Write the updated file if any changes were made:
-   - If `cli_provider == "claude"`: `.claude/commands/sr/implement.md`
+   - If `cli_provider == "claude"`: `.claude/commands/specrails/implement.md`
    - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
 5. Show which commands were updated, or "No command updates needed" if nothing changed
 
@@ -301,7 +301,7 @@ All agents and commands are now up to date.
 Update `.specrails-manifest.json` to reflect the new checksums for all regenerated/updated and added agents and commands:
 - For each regenerated agent: update its checksum entry to the new template's checksum (keyed as `templates/agents/sr-<name>.md`)
 - For each added agent: add a new entry with its checksum
-- For each updated command: update its checksum entry to the new template's checksum (keyed as `templates/commands/sr/<name>.md`)
+- For each updated command: update its checksum entry to the new template's checksum (keyed as `templates/commands/specrails/<name>.md`)
 - For each added command: add a new entry with its checksum
 - Update the `version` field to the version read from `.specrails-version`
 
@@ -351,9 +351,9 @@ Store as `QS_IS_EXISTING_CODEBASE=true/false`.
 Before generating files, check if this is a re-run:
 
 1. Check if commands/skills already exist:
-   - If `cli_provider == "claude"`: check if `.claude/commands/sr/` directory exists with any `.md` files:
+   - If `cli_provider == "claude"`: check if `.claude/commands/specrails/` directory exists with any `.md` files:
      ```bash
-     ls .claude/commands/sr/*.md 2>/dev/null
+     ls .claude/commands/specrails/*.md 2>/dev/null
      ```
    - If `cli_provider == "codex"`: check if `.agents/skills/sr-*/SKILL.md` files exist:
      ```bash
@@ -364,13 +364,13 @@ Before generating files, check if this is a re-run:
 
 In re-run mode, QS3 executes in **gap-fill mode** for command/skill files:
 - For each command in the list, check if it already exists:
-  - If `cli_provider == "claude"`: at `.claude/commands/sr/<name>.md`
+  - If `cli_provider == "claude"`: at `.claude/commands/specrails/<name>.md`
   - If `cli_provider == "codex"`: at `.agents/skills/sr-<name>/SKILL.md`
 - If it exists: skip it and show:
-  - Claude: `✓ Already installed: /sr:<name>`
+  - Claude: `✓ Already installed: /specrails:<name>`
   - Codex: `✓ Already installed: $sr-<name>`
 - If it does NOT exist: install it and show:
-  - Claude: `✓ Added /sr:<name> (was missing)`
+  - Claude: `✓ Added /specrails:<name> (was missing)`
   - Codex: `✓ Added $sr-<name> (was missing)`
 - Do NOT prompt the user for confirmation on missing files — install them automatically
 
@@ -436,11 +436,11 @@ Core commands (always install if missing):
 
 **If `cli_provider == "claude"`:**
 
-If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `$SPECRAILS_DIR/setup-templates/commands/sr/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Lite Mode — run /setup to configure personas)`, then write to `.claude/commands/sr/<name>.md`.
+If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `$SPECRAILS_DIR/setup-templates/commands/specrails/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Lite Mode — run /setup to configure personas)`, then write to `.claude/commands/specrails/<name>.md`.
 
-If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/sr/<name>.md` already exists:
-- If it exists: skip it — show `✓ Already installed: /sr:<name>`
-- If it does NOT exist: read template, substitute placeholders as above, write to `.claude/commands/sr/<name>.md` — show `✓ Added /sr:<name> (was missing)`
+If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/specrails/<name>.md` already exists:
+- If it exists: skip it — show `✓ Already installed: /specrails:<name>`
+- If it does NOT exist: read template, substitute placeholders as above, write to `.claude/commands/specrails/<name>.md` — show `✓ Added /specrails:<name> (was missing)`
 
 **If `cli_provider == "codex"`:**
 
@@ -461,25 +461,25 @@ Remove `commands/setup.md` from `.claude/commands/` if it was copied there by th
 After generating all files, display the setup complete message.
 
 Then, based on `QS_IS_EXISTING_CODEBASE`:
-- **Existing codebase** (`true`): recommend `/sr:refactor-recommender`
-- **New project** (`false`): recommend `/sr:product-backlog`
+- **Existing codebase** (`true`): recommend `/specrails:refactor-recommender`
+- **New project** (`false`): recommend `/specrails:product-backlog`
 
 If `QS_IS_RERUN=false`, display:
 ```
 ✅ Setup complete.
 
 Try your first command:
-  > /sr:product-backlog
+  > /specrails:product-backlog
 ```
-(Replace `/sr:product-backlog` with `/sr:refactor-recommender` for existing codebases.)
+(Replace `/specrails:product-backlog` with `/specrails:refactor-recommender` for existing codebases.)
 
 If `QS_IS_RERUN=true`, display the gap-fill summary and stop:
 ```
 ✅ Re-run complete.
 
 Commands status:
-  ✓ Already installed: /sr:<name>
-  ✓ Added /sr:<name> (was missing)
+  ✓ Already installed: /specrails:<name>
+  ✓ Added /specrails:<name> (was missing)
   [... one line per command ...]
 
 All commands are up to date.
@@ -913,8 +913,8 @@ Store the full configuration in `.claude/backlog-config.json`:
 
 #### If None
 
-- Skip `/sr:product-backlog` and `/sr:update-product-driven-backlog` commands.
-- The `/sr:implement` command will still work with text descriptions.
+- Skip `/specrails:product-backlog` and `/specrails:update-product-driven-backlog` commands.
+- The `/specrails:implement` command will still work with text descriptions.
 
 ### 3.3 Git & shipping workflow
 
@@ -943,14 +943,14 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 
 | Command | Purpose | Requires |
 |---------|---------|----------|
-| /sr:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
-| /sr:batch-implement | Orchestrate multiple features in dependency-aware waves | sr-architect + sr-developer + sr-reviewer |
-| /sr:propose-spec | Interactively propose and refine a feature spec, then create a GitHub issue | GitHub CLI |
-| /sr:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
-| /sr:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
-| /sr:compat-check | Snapshot API surface and detect breaking changes | None |
-| /sr:refactor-recommender | Scan for refactoring opportunities ranked by impact/effort | None |
-| /sr:why | Search past architectural decisions from agent memory | None |
+| /specrails:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
+| /specrails:batch-implement | Orchestrate multiple features in dependency-aware waves | sr-architect + sr-developer + sr-reviewer |
+| /specrails:propose-spec | Interactively propose and refine a feature spec, then create a GitHub issue | GitHub CLI |
+| /specrails:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
+| /specrails:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
+| /specrails:compat-check | Snapshot API surface and detect breaking changes | None |
+| /specrails:refactor-recommender | Scan for refactoring opportunities ranked by impact/effort | None |
+| /specrails:why | Search past architectural decisions from agent memory | None |
 
 [All] [Custom selection]
 ```
@@ -1078,21 +1078,21 @@ Write each persona to `$SPECRAILS_DIR/agents/personas/`:
 For each selected command, read the template and adapt.
 
 **If `cli_provider == "claude"` (default):**
-- `setup-templates/commands/sr/implement.md` → `.claude/commands/sr/implement.md`
-- `setup-templates/commands/sr/batch-implement.md` → `.claude/commands/sr/batch-implement.md`
-- `setup-templates/commands/sr/propose-spec.md` → `.claude/commands/sr/propose-spec.md`
-- `setup-templates/commands/sr/product-backlog.md` → `.claude/commands/sr/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
-- `setup-templates/commands/sr/update-product-driven-backlog.md` → `.claude/commands/sr/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
-- `setup-templates/commands/sr/compat-check.md` → `.claude/commands/sr/compat-check.md`
-- `setup-templates/commands/sr/refactor-recommender.md` → `.claude/commands/sr/refactor-recommender.md`
-- `setup-templates/commands/sr/why.md` → `.claude/commands/sr/why.md`
+- `setup-templates/commands/specrails/implement.md` → `.claude/commands/specrails/implement.md`
+- `setup-templates/commands/specrails/batch-implement.md` → `.claude/commands/specrails/batch-implement.md`
+- `setup-templates/commands/specrails/propose-spec.md` → `.claude/commands/specrails/propose-spec.md`
+- `setup-templates/commands/specrails/product-backlog.md` → `.claude/commands/specrails/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/specrails/update-product-driven-backlog.md` → `.claude/commands/specrails/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/specrails/compat-check.md` → `.claude/commands/specrails/compat-check.md`
+- `setup-templates/commands/specrails/refactor-recommender.md` → `.claude/commands/specrails/refactor-recommender.md`
+- `setup-templates/commands/specrails/why.md` → `.claude/commands/specrails/why.md`
 
 **If `cli_provider == "codex"`:**
 - `setup-templates/skills/sr-implement/SKILL.md` → `.agents/skills/sr-implement/SKILL.md`
 - `setup-templates/skills/sr-batch-implement/SKILL.md` → `.agents/skills/sr-batch-implement/SKILL.md`
-- `setup-templates/commands/sr/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
-- `setup-templates/commands/sr/product-backlog.md` → `.agents/skills/sr-product-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
-- `setup-templates/commands/sr/update-product-driven-backlog.md` → `.agents/skills/sr-update-product-driven-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/commands/specrails/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
+- `setup-templates/commands/specrails/product-backlog.md` → `.agents/skills/sr-product-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/commands/specrails/update-product-driven-backlog.md` → `.agents/skills/sr-update-product-driven-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
 - `setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
 - `setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
 - `setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
@@ -1110,7 +1110,7 @@ metadata:
 ---
 ```
 
-For both providers, create the output directory before writing (`mkdir -p` for `.claude/commands/sr/` or `.agents/skills/sr-<name>/`).
+For both providers, create the output directory before writing (`mkdir -p` for `.claude/commands/specrails/` or `.agents/skills/sr-<name>/`).
 
 Adapt:
 - CI commands to match detected stack
@@ -1315,7 +1315,7 @@ After cleanup, verify that only the intended files remain:
 # If cli_provider == "claude":
 ls .claude/agents/sr-*.md
 ls .claude/agents/personas/*.md
-ls .claude/commands/sr/*.md
+ls .claude/commands/specrails/*.md
 ls .claude/rules/*.md
 ls .claude/agent-memory/
 
@@ -1371,14 +1371,14 @@ Display the complete installation summary:
 [If cli_provider == "claude":]
 | Command | File |
 |---------|------|
-| /sr:implement | .claude/commands/sr/implement.md |
-| /sr:batch-implement | .claude/commands/sr/batch-implement.md |
-| /sr:propose-spec | .claude/commands/sr/propose-spec.md |
-| /sr:product-backlog | .claude/commands/sr/product-backlog.md |
-| /sr:update-product-driven-backlog | .claude/commands/sr/update-product-driven-backlog.md |
-| /sr:compat-check | .claude/commands/sr/compat-check.md |
-| /sr:refactor-recommender | .claude/commands/sr/refactor-recommender.md |
-| /sr:why | .claude/commands/sr/why.md |
+| /specrails:implement | .claude/commands/specrails/implement.md |
+| /specrails:batch-implement | .claude/commands/specrails/batch-implement.md |
+| /specrails:propose-spec | .claude/commands/specrails/propose-spec.md |
+| /specrails:product-backlog | .claude/commands/specrails/product-backlog.md |
+| /specrails:update-product-driven-backlog | .claude/commands/specrails/update-product-driven-backlog.md |
+| /specrails:compat-check | .claude/commands/specrails/compat-check.md |
+| /specrails:refactor-recommender | .claude/commands/specrails/refactor-recommender.md |
+| /specrails:why | .claude/commands/specrails/why.md |
 [If cli_provider == "codex":]
 | Skill | File |
 |-------|------|
@@ -1410,9 +1410,9 @@ Note: Only commands/skills selected during setup are shown. Backlog commands are
 ### Next Steps
 [If cli_provider == "claude":]
 1. Review the generated files in .claude/
-2. Run `/sr:product-backlog` to see your backlog (if GitHub Issues exist)
-3. Run `/sr:update-product-driven-backlog` to generate feature ideas
-4. Run `/sr:implement #issue-number` to implement a feature
+2. Run `/specrails:product-backlog` to see your backlog (if GitHub Issues exist)
+3. Run `/specrails:update-product-driven-backlog` to generate feature ideas
+4. Run `/specrails:implement #issue-number` to implement a feature
 5. Commit the .claude/ directory to version control
 [If cli_provider == "codex":]
 1. Review the generated files in .codex/ and .agents/skills/
@@ -1423,9 +1423,9 @@ Note: Only commands/skills selected during setup are shown. Backlog commands are
 
 ### Quick Start
 [If cli_provider == "claude":]
-- `/sr:implement "describe a feature"` — implement something right now
-- `/sr:product-backlog` — see prioritized feature ideas
-- `/sr:update-product-driven-backlog` — discover new features using VPC
+- `/specrails:implement "describe a feature"` — implement something right now
+- `/specrails:product-backlog` — see prioritized feature ideas
+- `/specrails:update-product-driven-backlog` — discover new features using VPC
 [If cli_provider == "codex":]
 - `$sr-implement "describe a feature"` — implement something right now
 - `$sr-product-backlog` — see prioritized feature ideas
@@ -1442,7 +1442,7 @@ After displaying the setup complete summary above, detect the project type and o
 
 Try your first spec:
 [If cli_provider == "claude":]
-  > /sr:product-backlog
+  > /specrails:product-backlog
 [If cli_provider == "codex":]
   > $sr-product-backlog
 ```
@@ -1453,7 +1453,7 @@ Try your first spec:
 
 Try your first spec:
 [If cli_provider == "claude":]
-  > /sr:refactor-recommender
+  > /specrails:refactor-recommender
 [If cli_provider == "codex":]
   > $sr-refactor-recommender
 ```

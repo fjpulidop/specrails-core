@@ -81,8 +81,8 @@ git clone https://github.com/fjpulidop/specrails-core.git
 1. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm and gh
 2. **Detects existing setup** — warns if SpecRails artifacts already exist
 3. **Installs artifacts:**
-   - `.claude/commands/sr/setup.md` — the `/sr:setup` wizard
-   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/sr:setup`)
+   - `.claude/commands/specrails/setup.md` — the `/specrails:setup` wizard
+   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/specrails:setup`)
    - `.claude/security-exemptions.yaml` — security scanner config
 4. **Tracks version** — writes `.specrails-version` and `.specrails-manifest.json`
 
@@ -95,15 +95,15 @@ The scaffold installer only copies files. It does not modify your existing code,
 After either installation method, open Claude Code (or Codex) in your project and run:
 
 ```
-/sr:setup
+/specrails:setup
 ```
 
 There are two modes:
 
 | Mode | Command | When to use |
 |------|---------|-------------|
-| **Full wizard** (default) | `/sr:setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
-| **Lite** | `/sr:setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
+| **Full wizard** (default) | `/specrails:setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
+| **Lite** | `/specrails:setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
 
 ---
 
@@ -209,15 +209,15 @@ The wizard fills all templates with your project-specific context:
 
 The wizard removes itself:
 
-- Deletes `.claude/commands/sr/setup.md`
+- Deletes `.claude/commands/specrails/setup.md`
 - Deletes `.claude/setup-templates/`
 - Leaves only the final generated files
 
-After this phase, `/sr:setup` is no longer available until re-run — your workflow is ready.
+After this phase, `/specrails:setup` is no longer available until re-run — your workflow is ready.
 
 ---
 
-### Lite Mode (`/sr:setup --lite`)
+### Lite Mode (`/specrails:setup --lite`)
 
 The quick path — three questions, sensible defaults, done in under a minute.
 
@@ -230,7 +230,7 @@ The quick path — three questions, sensible defaults, done in under a minute.
 | Item | Detail |
 |------|--------|
 | Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
-| All workflow commands | `/sr:implement`, `/sr:product-backlog`, and 14 more |
+| All workflow commands | `/specrails:implement`, `/specrails:product-backlog`, and 14 more |
 | Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
 | CLAUDE.md | Project-level context for agents |
 
@@ -302,7 +302,7 @@ The installer warns if SpecRails artifacts already exist. You can:
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/sr:setup` wizard didn't complete. Re-run `/sr:setup` or manually fill the values.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:setup` wizard didn't complete. Re-run `/specrails:setup` or manually fill the values.
 
 ---
 

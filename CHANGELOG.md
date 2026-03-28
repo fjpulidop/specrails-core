@@ -51,14 +51,14 @@
 
 ### ⚠ BREAKING CHANGES
 
-* All commands renamed from /<name> to /sr:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
+* All commands renamed from /<name> to /specrails:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
 
 ### Features
 
 * add --provider CLI flag to install.sh arg parser (SPEA-517) ([44dac30](https://github.com/fjpulidop/specrails-core/commit/44dac30b6bd5de7a3bfa94da3625f2246c659c1a))
 * add --root-dir parameter to install.sh for monorepo support ([77cd24b](https://github.com/fjpulidop/specrails-core/commit/77cd24bdc805c884532c8e25b028ee0ed210a031))
 * add --yes flag to install.sh for non-interactive mode ([29173cd](https://github.com/fjpulidop/specrails-core/commit/29173cdca11c9b02f0a91eb59efd7dd64ae4ff79))
-* add /sr:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
+* add /specrails:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
 * add agent confidence scoring & validation framework ([#37](https://github.com/fjpulidop/specrails-core/issues/37)) ([b95f97f](https://github.com/fjpulidop/specrails-core/commit/b95f97fda91f8fedd4b9f75dcebe327023a73e23))
 * add agent personality customization (backlog [#15](https://github.com/fjpulidop/specrails-core/issues/15)) ([#115](https://github.com/fjpulidop/specrails-core/issues/115)) ([f87e2dd](https://github.com/fjpulidop/specrails-core/commit/f87e2dd8520331e2b9662ae74f49a444386a7d0e))
 * add agent post-mortem & failure learning loop ([#39](https://github.com/fjpulidop/specrails-core/issues/39)) ([e6c519a](https://github.com/fjpulidop/specrails-core/commit/e6c519a3e5e349293dfb7b7365b861269ff4e7e5))
@@ -86,27 +86,27 @@
 * add SQLite persistence and stream-json parsing to web-manager ([#57](https://github.com/fjpulidop/specrails-core/issues/57)) ([85a68b8](https://github.com/fjpulidop/specrails-core/commit/85a68b8332048d2e38e0b722a48cb76583ac4cd5))
 * add sr- prefix namespace to all agents and sr: namespace to commands ([e86f0ed](https://github.com/fjpulidop/specrails-core/commit/e86f0ede6037a066a9259be50e846981dd8159e4))
 * add srm CLI wrapper for terminal-to-web-manager bridge ([#58](https://github.com/fjpulidop/specrails-core/issues/58)) ([4e6dc58](https://github.com/fjpulidop/specrails-core/commit/4e6dc58652de8b05223ac93f48c9d4552e0c9113))
-* add standalone /sr:test command and test writer integration ([#166](https://github.com/fjpulidop/specrails-core/issues/166)) ([c315363](https://github.com/fjpulidop/specrails-core/commit/c315363aa39f11b5d9fc1d6b7ae3e123e7dcf301)), closes [#6](https://github.com/fjpulidop/specrails-core/issues/6)
+* add standalone /specrails:test command and test writer integration ([#166](https://github.com/fjpulidop/specrails-core/issues/166)) ([c315363](https://github.com/fjpulidop/specrails-core/commit/c315363aa39f11b5d9fc1d6b7ae3e123e7dcf301)), closes [#6](https://github.com/fjpulidop/specrails-core/issues/6)
 * add status filter, job details, and clear jobs modal to RecentJobs ([f75f123](https://github.com/fjpulidop/specrails-core/commit/f75f123bd21b61f327da22c20bdd2028182dcc74))
 * add versioning and update system for specrails installations ([b4a6a16](https://github.com/fjpulidop/specrails-core/commit/b4a6a16b496695ef71df2b04eec8e4a21c9938e6))
 * add web manager MVP - Pipeline Monitor dashboard ([54b8e68](https://github.com/fjpulidop/specrails-core/commit/54b8e683057c076b05ae14d82aba7d0c04d884d3)), closes [#29](https://github.com/fjpulidop/specrails-core/issues/29)
 * **agents:** add performance regression detector agent and CI workflow ([#133](https://github.com/fjpulidop/specrails-core/issues/133)) ([693d6ef](https://github.com/fjpulidop/specrails-core/commit/693d6efce2ab854063759db13fa234f9a6663fa5))
 * **agents:** enhance sr-doc-sync with drift detection and severity ([56e9280](https://github.com/fjpulidop/specrails-core/commit/56e9280462bbf1afc64eff4fc8f1e2d063c24359))
 * chat panel ([#79](https://github.com/fjpulidop/specrails-core/issues/79)) and analytics dashboard ([#80](https://github.com/fjpulidop/specrails-core/issues/80)) ([1a4bea5](https://github.com/fjpulidop/specrails-core/commit/1a4bea51c4b14d9bd9acb2b39ce1621cdf413c73))
-* **commands:** add /sr:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
-* **commands:** add /sr:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
-* **commands:** add /sr:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
-* **commands:** add /sr:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
-* **commands:** add /sr:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
+* **commands:** add /specrails:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
+* **commands:** add /specrails:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
+* **commands:** add /specrails:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
+* **commands:** add /specrails:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
+* **commands:** add /specrails:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
 * **commands:** add smart merge conflict resolver (backlog [#3](https://github.com/fjpulidop/specrails-core/issues/3)) ([#134](https://github.com/fjpulidop/specrails-core/issues/134)) ([562b237](https://github.com/fjpulidop/specrails-core/commit/562b23720a5d35f703effb830ddbdc22590fda6e))
 * **commands:** add VPC context-aware scoring to refactor-recommender ([5c6fbfa](https://github.com/fjpulidop/specrails-core/commit/5c6fbfa1a2521dd64b191dbdb815b25bc3b1d3b7))
 * **commands:** add VPC context-aware scoring to refactor-recommender ([#135](https://github.com/fjpulidop/specrails-core/issues/135)) ([ad0c195](https://github.com/fjpulidop/specrails-core/commit/ad0c1953059309906d76125f5bef615a54cc5e1c))
-* **commands:** extend /sr:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
+* **commands:** extend /specrails:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
 * complete UI/UX redesign of web-manager with Tailwind + shadcn/ui ([#69](https://github.com/fjpulidop/specrails-core/issues/69)) ([2993e8b](https://github.com/fjpulidop/specrails-core/commit/2993e8bedaacd4d0b1794b0c8d33f88b2aecd4b4))
 * dynamic pipeline phases per command and fix log streaming ([bc1ef91](https://github.com/fjpulidop/specrails-core/commit/bc1ef912ab2470661127d65fd975e39df46842ea))
 * implement security reviewer agent, dry-run mode, and OSS maintainer persona ([2a17c68](https://github.com/fjpulidop/specrails-core/commit/2a17c6811d8779a140057ab56ea5acfc56bf8805))
 * integrate web manager notifications into implement pipeline ([a64e7c2](https://github.com/fjpulidop/specrails-core/commit/a64e7c2aeb1b7ef9cb39bc8a5b8511847e91fe60))
-* migrate /sr:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
+* migrate /specrails:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
 * **onboarding:** specrails-core Onboarding v1 (RFC-001) ([e08dda5](https://github.com/fjpulidop/specrails-core/commit/e08dda520a23060a8af89bd2047661cd1f9b1b95))
 * **product:** formalize OSS Maintainer persona Kai (backlog [#13](https://github.com/fjpulidop/specrails-core/issues/13)) ([#124](https://github.com/fjpulidop/specrails-core/issues/124)) ([f3d58e1](https://github.com/fjpulidop/specrails-core/commit/f3d58e1071307b200178d59940543bebfcfc47fb))
 * rename package to specrails-core, add CI/CD release pipeline ([def4013](https://github.com/fjpulidop/specrails-core/commit/def40135e58b2ae52d47109faff228081b4ec77f))
@@ -142,16 +142,16 @@
 * **docs:** remove DeckDex-contaminated documentation files ([#129](https://github.com/fjpulidop/specrails-core/issues/129)) ([0785f05](https://github.com/fjpulidop/specrails-core/commit/0785f05ae6386f2c2e2b2ce832a8217a3458cf08))
 * **docs:** remove DeckDex-contaminated documentation files ([#131](https://github.com/fjpulidop/specrails-core/issues/131)) ([69aa4e9](https://github.com/fjpulidop/specrails-core/commit/69aa4e902532c5dbbd52d22de103fa17eea10ab5))
 * expose phasesForCommand as public method on QueueManager ([b573964](https://github.com/fjpulidop/specrails-core/commit/b5739649c69981f87f955fe5819f928836f7956b))
-* ImplementWizard always uses /sr:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
+* ImplementWizard always uses /specrails:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
 * ImplementWizard sends single command with all issues instead of one per issue ([9e7a701](https://github.com/fjpulidop/specrails-core/commit/9e7a701b590ff3223c514a3265412a5255886798))
-* ImplementWizard uses /sr:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
+* ImplementWizard uses /specrails:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
 * install Codex commands as Agent Skills ([#173](https://github.com/fjpulidop/specrails-core/issues/173)) ([0ae617c](https://github.com/fjpulidop/specrails-core/commit/0ae617c7b45c1f1239898386d43db2c0b97ceeaf))
 * JobDetailPage uses shared WS_URL and stable useCallback for live logs ([ef53ddd](https://github.com/fjpulidop/specrails-core/commit/ef53ddd353effd83732119c4f4c2f70be24d5ede))
 * LogViewer only renders log and result events to prevent duplicates ([9dda2d4](https://github.com/fjpulidop/specrails-core/commit/9dda2d41b377709fcd70b832d82b872a29c8fa53))
 * lower collapsed chat icon padding to pt-8 ([44fb60d](https://github.com/fjpulidop/specrails-core/commit/44fb60df7a8ea45511839e4521f2fc226cc61841))
 * make do_core and do_web_manager selective updates ([56f185c](https://github.com/fjpulidop/specrails-core/commit/56f185cdef7759bb1fec9e5881b23081214755ae))
 * make job rows clickable instead of showing a View button ([eca7239](https://github.com/fjpulidop/specrails-core/commit/eca72396bbc162d230ce3b8dcd4c2a6e099fb85b))
-* move propose-feature.md to templates/commands/sr/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
+* move propose-feature.md to templates/commands/specrails/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
 * navbar tooltips render above chat panel with z-50 ([40c64ff](https://github.com/fjpulidop/specrails-core/commit/40c64ffbda754084b5d483332c1d72f2951d14f2))
 * pass command as single -p argument to claude CLI ([4a36d87](https://github.com/fjpulidop/specrails-core/commit/4a36d870e5e6b59aea76dc3030697d6137e09bc4))
 * persist display text from structured events as log entries in DB ([eaa8770](https://github.com/fjpulidop/specrails-core/commit/eaa87702a0204f21a716508e221944434bdf6296))
@@ -215,21 +215,21 @@
 
 ### Features
 
-* add standalone /sr:test command and test writer integration ([#166](https://github.com/fjpulidop/specrails-core/issues/166)) ([c315363](https://github.com/fjpulidop/specrails-core/commit/c315363aa39f11b5d9fc1d6b7ae3e123e7dcf301)), closes [#6](https://github.com/fjpulidop/specrails-core/issues/6)
+* add standalone /specrails:test command and test writer integration ([#166](https://github.com/fjpulidop/specrails-core/issues/166)) ([c315363](https://github.com/fjpulidop/specrails-core/commit/c315363aa39f11b5d9fc1d6b7ae3e123e7dcf301)), closes [#6](https://github.com/fjpulidop/specrails-core/issues/6)
 
 ## [2.0.0](https://github.com/fjpulidop/specrails-core/compare/v1.8.0...v2.0.0) (2026-03-21)
 
 
 ### ⚠ BREAKING CHANGES
 
-* All commands renamed from /<name> to /sr:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
+* All commands renamed from /<name> to /specrails:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
 
 ### Features
 
 * add --provider CLI flag to install.sh arg parser (SPEA-517) ([44dac30](https://github.com/fjpulidop/specrails-core/commit/44dac30b6bd5de7a3bfa94da3625f2246c659c1a))
 * add --root-dir parameter to install.sh for monorepo support ([77cd24b](https://github.com/fjpulidop/specrails-core/commit/77cd24bdc805c884532c8e25b028ee0ed210a031))
 * add --yes flag to install.sh for non-interactive mode ([29173cd](https://github.com/fjpulidop/specrails-core/commit/29173cdca11c9b02f0a91eb59efd7dd64ae4ff79))
-* add /sr:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
+* add /specrails:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
 * add agent confidence scoring & validation framework ([#37](https://github.com/fjpulidop/specrails-core/issues/37)) ([b95f97f](https://github.com/fjpulidop/specrails-core/commit/b95f97fda91f8fedd4b9f75dcebe327023a73e23))
 * add agent personality customization (backlog [#15](https://github.com/fjpulidop/specrails-core/issues/15)) ([#115](https://github.com/fjpulidop/specrails-core/issues/115)) ([f87e2dd](https://github.com/fjpulidop/specrails-core/commit/f87e2dd8520331e2b9662ae74f49a444386a7d0e))
 * add agent post-mortem & failure learning loop ([#39](https://github.com/fjpulidop/specrails-core/issues/39)) ([e6c519a](https://github.com/fjpulidop/specrails-core/commit/e6c519a3e5e349293dfb7b7365b861269ff4e7e5))
@@ -263,20 +263,20 @@
 * **agents:** add performance regression detector agent and CI workflow ([#133](https://github.com/fjpulidop/specrails-core/issues/133)) ([693d6ef](https://github.com/fjpulidop/specrails-core/commit/693d6efce2ab854063759db13fa234f9a6663fa5))
 * **agents:** enhance sr-doc-sync with drift detection and severity ([56e9280](https://github.com/fjpulidop/specrails-core/commit/56e9280462bbf1afc64eff4fc8f1e2d063c24359))
 * chat panel ([#79](https://github.com/fjpulidop/specrails-core/issues/79)) and analytics dashboard ([#80](https://github.com/fjpulidop/specrails-core/issues/80)) ([1a4bea5](https://github.com/fjpulidop/specrails-core/commit/1a4bea51c4b14d9bd9acb2b39ce1621cdf413c73))
-* **commands:** add /sr:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
-* **commands:** add /sr:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
-* **commands:** add /sr:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
-* **commands:** add /sr:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
-* **commands:** add /sr:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
+* **commands:** add /specrails:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
+* **commands:** add /specrails:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
+* **commands:** add /specrails:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
+* **commands:** add /specrails:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
+* **commands:** add /specrails:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
 * **commands:** add smart merge conflict resolver (backlog [#3](https://github.com/fjpulidop/specrails-core/issues/3)) ([#134](https://github.com/fjpulidop/specrails-core/issues/134)) ([562b237](https://github.com/fjpulidop/specrails-core/commit/562b23720a5d35f703effb830ddbdc22590fda6e))
 * **commands:** add VPC context-aware scoring to refactor-recommender ([5c6fbfa](https://github.com/fjpulidop/specrails-core/commit/5c6fbfa1a2521dd64b191dbdb815b25bc3b1d3b7))
 * **commands:** add VPC context-aware scoring to refactor-recommender ([#135](https://github.com/fjpulidop/specrails-core/issues/135)) ([ad0c195](https://github.com/fjpulidop/specrails-core/commit/ad0c1953059309906d76125f5bef615a54cc5e1c))
-* **commands:** extend /sr:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
+* **commands:** extend /specrails:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
 * complete UI/UX redesign of web-manager with Tailwind + shadcn/ui ([#69](https://github.com/fjpulidop/specrails-core/issues/69)) ([2993e8b](https://github.com/fjpulidop/specrails-core/commit/2993e8bedaacd4d0b1794b0c8d33f88b2aecd4b4))
 * dynamic pipeline phases per command and fix log streaming ([bc1ef91](https://github.com/fjpulidop/specrails-core/commit/bc1ef912ab2470661127d65fd975e39df46842ea))
 * implement security reviewer agent, dry-run mode, and OSS maintainer persona ([2a17c68](https://github.com/fjpulidop/specrails-core/commit/2a17c6811d8779a140057ab56ea5acfc56bf8805))
 * integrate web manager notifications into implement pipeline ([a64e7c2](https://github.com/fjpulidop/specrails-core/commit/a64e7c2aeb1b7ef9cb39bc8a5b8511847e91fe60))
-* migrate /sr:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
+* migrate /specrails:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
 * **onboarding:** specrails-core Onboarding v1 (RFC-001) ([e08dda5](https://github.com/fjpulidop/specrails-core/commit/e08dda520a23060a8af89bd2047661cd1f9b1b95))
 * **product:** formalize OSS Maintainer persona Kai (backlog [#13](https://github.com/fjpulidop/specrails-core/issues/13)) ([#124](https://github.com/fjpulidop/specrails-core/issues/124)) ([f3d58e1](https://github.com/fjpulidop/specrails-core/commit/f3d58e1071307b200178d59940543bebfcfc47fb))
 * rename package to specrails-core, add CI/CD release pipeline ([def4013](https://github.com/fjpulidop/specrails-core/commit/def40135e58b2ae52d47109faff228081b4ec77f))
@@ -312,15 +312,15 @@
 * **docs:** remove DeckDex-contaminated documentation files ([#129](https://github.com/fjpulidop/specrails-core/issues/129)) ([0785f05](https://github.com/fjpulidop/specrails-core/commit/0785f05ae6386f2c2e2b2ce832a8217a3458cf08))
 * **docs:** remove DeckDex-contaminated documentation files ([#131](https://github.com/fjpulidop/specrails-core/issues/131)) ([69aa4e9](https://github.com/fjpulidop/specrails-core/commit/69aa4e902532c5dbbd52d22de103fa17eea10ab5))
 * expose phasesForCommand as public method on QueueManager ([b573964](https://github.com/fjpulidop/specrails-core/commit/b5739649c69981f87f955fe5819f928836f7956b))
-* ImplementWizard always uses /sr:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
+* ImplementWizard always uses /specrails:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
 * ImplementWizard sends single command with all issues instead of one per issue ([9e7a701](https://github.com/fjpulidop/specrails-core/commit/9e7a701b590ff3223c514a3265412a5255886798))
-* ImplementWizard uses /sr:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
+* ImplementWizard uses /specrails:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
 * JobDetailPage uses shared WS_URL and stable useCallback for live logs ([ef53ddd](https://github.com/fjpulidop/specrails-core/commit/ef53ddd353effd83732119c4f4c2f70be24d5ede))
 * LogViewer only renders log and result events to prevent duplicates ([9dda2d4](https://github.com/fjpulidop/specrails-core/commit/9dda2d41b377709fcd70b832d82b872a29c8fa53))
 * lower collapsed chat icon padding to pt-8 ([44fb60d](https://github.com/fjpulidop/specrails-core/commit/44fb60df7a8ea45511839e4521f2fc226cc61841))
 * make do_core and do_web_manager selective updates ([56f185c](https://github.com/fjpulidop/specrails-core/commit/56f185cdef7759bb1fec9e5881b23081214755ae))
 * make job rows clickable instead of showing a View button ([eca7239](https://github.com/fjpulidop/specrails-core/commit/eca72396bbc162d230ce3b8dcd4c2a6e099fb85b))
-* move propose-feature.md to templates/commands/sr/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
+* move propose-feature.md to templates/commands/specrails/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
 * navbar tooltips render above chat panel with z-50 ([40c64ff](https://github.com/fjpulidop/specrails-core/commit/40c64ffbda754084b5d483332c1d72f2951d14f2))
 * pass command as single -p argument to claude CLI ([4a36d87](https://github.com/fjpulidop/specrails-core/commit/4a36d870e5e6b59aea76dc3030697d6137e09bc4))
 * persist display text from structured events as log entries in DB ([eaa8770](https://github.com/fjpulidop/specrails-core/commit/eaa87702a0204f21a716508e221944434bdf6296))
@@ -365,7 +365,7 @@
 * add dual permissions config generation for Codex support (SPEA-508) ([7d32bcf](https://github.com/fjpulidop/specrails-core/commit/7d32bcff647abec7b1a5076f28b2439658ea5f6d))
 * add dual-format agent generation for Codex compatibility (SPEA-509) ([7b398fd](https://github.com/fjpulidop/specrails-core/commit/7b398fd483d12e34362a678a03a877af9da754d3))
 * add provider detection and directory abstraction for Codex support (SPEA-506) ([a8a06f5](https://github.com/fjpulidop/specrails-core/commit/a8a06f502e4727ee5d7151cc49972f0076eae693))
-* migrate /sr:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
+* migrate /specrails:* commands to Skills format for Codex compatibility (SPEA-507) ([c080b31](https://github.com/fjpulidop/specrails-core/commit/c080b310c1934316577406028fc5067ddb141944))
 * upgrade integration-contract to v2.0 for dual-CLI support (SPEA-510) ([f92168d](https://github.com/fjpulidop/specrails-core/commit/f92168d9bbc289a2e5df94df499019e147d5b7f1))
 
 
@@ -430,8 +430,8 @@
 
 ### Features
 
-* **commands:** add /sr:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
-* **commands:** add /sr:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
+* **commands:** add /specrails:opsx-diff change diff visualizer (backlog [#16](https://github.com/fjpulidop/specrails-core/issues/16)) ([#122](https://github.com/fjpulidop/specrails-core/issues/122)) ([5109726](https://github.com/fjpulidop/specrails-core/commit/5109726a81efc18b93fce3334f3d0f9e4bd4cd8f))
+* **commands:** add /specrails:telemetry agent telemetry & cost tracking ([#123](https://github.com/fjpulidop/specrails-core/issues/123)) ([38eea04](https://github.com/fjpulidop/specrails-core/commit/38eea04dbb1d3ed5d5a5b13eb8819e9b96853d90))
 * **product:** formalize OSS Maintainer persona Kai (backlog [#13](https://github.com/fjpulidop/specrails-core/issues/13)) ([#124](https://github.com/fjpulidop/specrails-core/issues/124)) ([f3d58e1](https://github.com/fjpulidop/specrails-core/commit/f3d58e1071307b200178d59940543bebfcfc47fb))
 
 ## [1.4.0](https://github.com/fjpulidop/specrails-core/compare/v1.3.0...v1.4.0) (2026-03-20)
@@ -439,8 +439,8 @@
 
 ### Features
 
-* **commands:** add /sr:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
-* **commands:** add /sr:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
+* **commands:** add /specrails:memory-inspect agent memory inspector ([#119](https://github.com/fjpulidop/specrails-core/issues/119)) ([e81bc29](https://github.com/fjpulidop/specrails-core/commit/e81bc29b15b2698dc8aaaee1c94db9a4da755eb5))
+* **commands:** add /specrails:vpc-drift VPC persona drift detection (backlog [#12](https://github.com/fjpulidop/specrails-core/issues/12)) ([#120](https://github.com/fjpulidop/specrails-core/issues/120)) ([49ac863](https://github.com/fjpulidop/specrails-core/commit/49ac863fbc88f7eab9a5fdff2942d1df85130b18))
 
 ## [1.3.0](https://github.com/fjpulidop/specrails-core/compare/v1.2.0...v1.3.0) (2026-03-20)
 
@@ -448,14 +448,14 @@
 ### Features
 
 * add agent personality customization (backlog [#15](https://github.com/fjpulidop/specrails-core/issues/15)) ([#115](https://github.com/fjpulidop/specrails-core/issues/115)) ([f87e2dd](https://github.com/fjpulidop/specrails-core/commit/f87e2dd8520331e2b9662ae74f49a444386a7d0e))
-* **commands:** add /sr:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
+* **commands:** add /specrails:retry smart failure recovery ([#117](https://github.com/fjpulidop/specrails-core/issues/117)) ([2cf08d4](https://github.com/fjpulidop/specrails-core/commit/2cf08d4fcf8de7c27e4257ac040838af235b821d))
 
 ## [1.2.0](https://github.com/fjpulidop/specrails-core/compare/v1.1.0...v1.2.0) (2026-03-20)
 
 
 ### Features
 
-* **commands:** extend /sr:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
+* **commands:** extend /specrails:health-check with static code analysis ([#109](https://github.com/fjpulidop/specrails-core/issues/109)) ([3ab3fde](https://github.com/fjpulidop/specrails-core/commit/3ab3fdee48f97e07a9005bab96116c5536257a60))
 
 ## [1.1.0](https://github.com/fjpulidop/specrails-core/compare/v1.0.1...v1.1.0) (2026-03-20)
 
@@ -479,15 +479,15 @@
 
 ### ⚠ BREAKING CHANGES
 
-* All commands renamed from /<name> to /sr:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
+* All commands renamed from /<name> to /specrails:<name>. All agent files renamed from <name>.md to sr-<name>.md. Existing installations are auto-migrated by update.sh.
 
 ### Features
 
-* /sr:propose-feature command template ([85ce947](https://github.com/fjpulidop/specrails-core/commit/85ce947f0c35c977549cd222d6da2367b1d7e4f7))
+* /specrails:propose-feature command template ([85ce947](https://github.com/fjpulidop/specrails-core/commit/85ce947f0c35c977549cd222d6da2367b1d7e4f7))
 * add --root-dir param to install.sh for monorepos ([#27](https://github.com/fjpulidop/specrails-core/issues/27)) ([e74ef84](https://github.com/fjpulidop/specrails-core/commit/e74ef846baaeaf2230e9a152f1b9e133255714cf))
 * add --root-dir parameter to install.sh for monorepo support ([77cd24b](https://github.com/fjpulidop/specrails-core/commit/77cd24bdc805c884532c8e25b028ee0ed210a031))
 * add --yes flag to install.sh for non-interactive mode ([29173cd](https://github.com/fjpulidop/specrails-core/commit/29173cdca11c9b02f0a91eb59efd7dd64ae4ff79))
-* add /sr:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
+* add /specrails:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
 * add agent confidence scoring & validation framework ([c8db883](https://github.com/fjpulidop/specrails-core/commit/c8db883b4fe4b1c2fbbfaa499462cc288084ce72))
 * add agent confidence scoring & validation framework ([#37](https://github.com/fjpulidop/specrails-core/issues/37)) ([b95f97f](https://github.com/fjpulidop/specrails-core/commit/b95f97fda91f8fedd4b9f75dcebe327023a73e23))
 * add agent post-mortem & failure learning loop ([047e20c](https://github.com/fjpulidop/specrails-core/commit/047e20cbaa2fff0af5e6f1f9c2a19f2ac87408c7))
@@ -545,7 +545,7 @@
 
 ### Bug Fixes
 
-* add /sr:propose-spec to setup installation flow (v0.7.1) ([d1cb459](https://github.com/fjpulidop/specrails-core/commit/d1cb45959a3324cb03d5dda500b9cb7590c4fe8d))
+* add /specrails:propose-spec to setup installation flow (v0.7.1) ([d1cb459](https://github.com/fjpulidop/specrails-core/commit/d1cb45959a3324cb03d5dda500b9cb7590c4fe8d))
 * add border-radius to glass-card utility ([5b7deb3](https://github.com/fjpulidop/specrails-core/commit/5b7deb398ba424d5ac67a6400cfe468559ca28c1))
 * add card background and border-radius to RecentJobs ([7213288](https://github.com/fjpulidop/specrails-core/commit/72132883ca61ea118308e1d128d661df5a3c3312))
 * add missing -e flag to echo in installer prompt ([3a3fed4](https://github.com/fjpulidop/specrails-core/commit/3a3fed4cecf55c1e108f406811eafd95c9748a04))
@@ -565,15 +565,15 @@
 * detect when update.sh runs from specrails source repo ([6898171](https://github.com/fjpulidop/specrails-core/commit/689817160da4f32f70f6b02f1e14a08cb0420bb8))
 * detect when update.sh runs from specrails source repo ([acc6d3e](https://github.com/fjpulidop/specrails-core/commit/acc6d3efdb8d479f6121312632d14f88ac4a8841))
 * expose phasesForCommand as public method on QueueManager ([b573964](https://github.com/fjpulidop/specrails-core/commit/b5739649c69981f87f955fe5819f928836f7956b))
-* ImplementWizard always uses /sr:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
+* ImplementWizard always uses /specrails:implement, never batch-implement ([3fc1626](https://github.com/fjpulidop/specrails-core/commit/3fc1626f0d13e4f4f1bdf6d123ff0192baa05774))
 * ImplementWizard sends single command with all issues instead of one per issue ([9e7a701](https://github.com/fjpulidop/specrails-core/commit/9e7a701b590ff3223c514a3265412a5255886798))
-* ImplementWizard uses /sr:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
+* ImplementWizard uses /specrails:batch-implement when multiple issues selected ([61d6154](https://github.com/fjpulidop/specrails-core/commit/61d6154346c3ef3002ce872bb58dd978a3c458f2))
 * JobDetailPage uses shared WS_URL and stable useCallback for live logs ([ef53ddd](https://github.com/fjpulidop/specrails-core/commit/ef53ddd353effd83732119c4f4c2f70be24d5ede))
 * LogViewer only renders log and result events to prevent duplicates ([9dda2d4](https://github.com/fjpulidop/specrails-core/commit/9dda2d41b377709fcd70b832d82b872a29c8fa53))
 * lower collapsed chat icon padding to pt-8 ([44fb60d](https://github.com/fjpulidop/specrails-core/commit/44fb60df7a8ea45511839e4521f2fc226cc61841))
 * make do_core and do_web_manager selective updates ([56f185c](https://github.com/fjpulidop/specrails-core/commit/56f185cdef7759bb1fec9e5881b23081214755ae))
 * make job rows clickable instead of showing a View button ([eca7239](https://github.com/fjpulidop/specrails-core/commit/eca72396bbc162d230ce3b8dcd4c2a6e099fb85b))
-* move propose-feature.md to templates/commands/sr/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
+* move propose-feature.md to templates/commands/specrails/ ([fa78822](https://github.com/fjpulidop/specrails-core/commit/fa78822de6a9e06fe09ec67345745f01ced5454d))
 * navbar tooltips render above chat panel with z-50 ([40c64ff](https://github.com/fjpulidop/specrails-core/commit/40c64ffbda754084b5d483332c1d72f2951d14f2))
 * pass command as single -p argument to claude CLI ([4a36d87](https://github.com/fjpulidop/specrails-core/commit/4a36d870e5e6b59aea76dc3030697d6137e09bc4))
 * persist display text from structured events as log entries in DB ([eaa8770](https://github.com/fjpulidop/specrails-core/commit/eaa87702a0204f21a716508e221944434bdf6296))

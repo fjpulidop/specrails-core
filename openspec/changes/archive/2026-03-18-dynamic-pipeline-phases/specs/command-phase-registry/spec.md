@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Commands declare pipeline phases via frontmatter
-Each command `.md` file in `.claude/commands/sr/` MAY declare a `phases` array in its YAML frontmatter. Each phase entry SHALL have `key` (identifier), `label` (display name), and `description` (tooltip text).
+Each command `.md` file in `.claude/commands/specrails/` MAY declare a `phases` array in its YAML frontmatter. Each phase entry SHALL have `key` (identifier), `label` (display name), and `description` (tooltip text).
 
 #### Scenario: Command with phases
 - **WHEN** a command file contains frontmatter with a `phases` array
@@ -12,11 +12,11 @@ Each command `.md` file in `.claude/commands/sr/` MAY declare a `phases` array i
 - **THEN** the command SHALL have an empty phases array and no pipeline bar SHALL be rendered
 
 #### Scenario: Implement command phases
-- **WHEN** the `/sr:implement` command is loaded
+- **WHEN** the `/specrails:implement` command is loaded
 - **THEN** its phases SHALL be `[architect, developer, reviewer, ship]` as declared in its frontmatter
 
 #### Scenario: Product-backlog command phases
-- **WHEN** the `/sr:product-backlog` command is loaded
+- **WHEN** the `/specrails:product-backlog` command is loaded
 - **THEN** its phases SHALL be `[analyst]` as declared in its frontmatter
 
 ### Requirement: Server exposes phase definitions in config API

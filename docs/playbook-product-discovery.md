@@ -45,7 +45,7 @@ The difference is not length — it is specificity. The Architect can produce a 
 
 The Product Analyst reads your GitHub Issues labeled `product-driven-backlog` to build the dependency DAG and score your backlog. The issue body structure matters.
 
-**The `Prerequisites:` field** is how you tell the Product Analyst that one issue depends on another. When you run `/sr:product-backlog`, the dependency DAG is built from these declarations. Issues without prerequisites are Wave 1 candidates — safe to implement in parallel. Issues with prerequisites are scheduled after their dependencies complete.
+**The `Prerequisites:` field** is how you tell the Product Analyst that one issue depends on another. When you run `/specrails:product-backlog`, the dependency DAG is built from these declarations. Issues without prerequisites are Wave 1 candidates — safe to implement in parallel. Issues with prerequisites are scheduled after their dependencies complete.
 
 ```
 Prerequisites: #71 (rate limiting middleware must exist before we can display rate limit status)

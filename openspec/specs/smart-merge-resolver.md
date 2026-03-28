@@ -1,14 +1,14 @@
 # Spec: Smart Merge Conflict Resolver
 
-The Smart Merge Conflict Resolver adds AI-powered conflict resolution to the `/sr:implement` pipeline. When the Phase 4a worktree merge produces conflict markers, instead of stopping and requiring manual intervention, the system launches a `sr-merge-resolver` agent that uses context from both features' OpenSpec artifacts to intelligently resolve each conflicting hunk. Unresolvable conflicts fall back to clean marker format for manual resolution.
+The Smart Merge Conflict Resolver adds AI-powered conflict resolution to the `/specrails:implement` pipeline. When the Phase 4a worktree merge produces conflict markers, instead of stopping and requiring manual intervention, the system launches a `sr-merge-resolver` agent that uses context from both features' OpenSpec artifacts to intelligently resolve each conflicting hunk. Unresolvable conflicts fall back to clean marker format for manual resolution.
 
-A standalone `/sr:merge-resolve` command is also provided so users can invoke the resolver on any file with git conflict markers, independent of the implement pipeline.
+A standalone `/specrails:merge-resolve` command is also provided so users can invoke the resolver on any file with git conflict markers, independent of the implement pipeline.
 
 ---
 
 ## Motivation
 
-The `/sr:implement` pipeline supports parallel multi-feature development via worktrees. When two features modify the same file, Phase 4a produces conflict markers in the output. Currently, the pipeline logs these as `requires_resolution` and asks the user to fix them manually before the reviewer can run CI.
+The `/specrails:implement` pipeline supports parallel multi-feature development via worktrees. When two features modify the same file, Phase 4a produces conflict markers in the output. Currently, the pipeline logs these as `requires_resolution` and asks the user to fix them manually before the reviewer can run CI.
 
 This creates a bottleneck: the pipeline cannot proceed autonomously, and the user must understand both features' changes well enough to resolve conflicts correctly. The Smart Merge Conflict Resolver eliminates this bottleneck by:
 
@@ -23,7 +23,7 @@ This creates a bottleneck: the pipeline cannot proceed autonomously, and the use
 
 ### 1. `sr-merge-resolver` agent
 
-A sub-agent launched by the `/sr:implement` orchestrator (and by `/sr:merge-resolve`) after Phase 4a conflict detection.
+A sub-agent launched by the `/specrails:implement` orchestrator (and by `/specrails:merge-resolve`) after Phase 4a conflict detection.
 
 **Inputs (passed via prompt):**
 - `CONFLICTED_FILES`: list of file paths containing conflict markers
@@ -94,14 +94,14 @@ The following conflicts require manual resolution. Search for `<<<<<<<` in each 
 
 ---
 
-### 2. `/sr:merge-resolve` command
+### 2. `/specrails:merge-resolve` command
 
 Standalone command. Can be invoked outside the implement pipeline to resolve conflicts in any file.
 
 **Syntax:**
 
 ```
-/sr:merge-resolve [--files <glob-or-paths>] [--context <bundle-dir>] [--threshold N] [--mode auto|manual-fallback-only]
+/specrails:merge-resolve [--files <glob-or-paths>] [--context <bundle-dir>] [--threshold N] [--mode auto|manual-fallback-only]
 ```
 
 **Flags:**
@@ -123,7 +123,7 @@ Standalone command. Can be invoked outside the implement pipeline to resolve con
 
 ---
 
-### 3. Integration with `/sr:implement` Phase 4a
+### 3. Integration with `/specrails:implement` Phase 4a
 
 After Phase 4a's merge step, if `MERGE_REPORT.requires_resolution` is non-empty:
 

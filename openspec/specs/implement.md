@@ -1,6 +1,6 @@
-# Spec: /sr:implement Command
+# Spec: /specrails:implement Command
 
-The `/sr:implement` command runs the full OpenSpec pipeline: sr-product-manager explores, sr-architect designs, sr-developer implements, sr-reviewer validates, and the result is shipped via git. This spec documents the command's flags, cache structure, and behavior matrix.
+The `/specrails:implement` command runs the full OpenSpec pipeline: sr-product-manager explores, sr-architect designs, sr-developer implements, sr-reviewer validates, and the result is shipped via git. This spec documents the command's flags, cache structure, and behavior matrix.
 
 ---
 
@@ -184,10 +184,10 @@ When `DRY_RUN=true`, Phase 4a MUST apply the identical merge algorithm writing t
 ---
 
 ### Requirement: Command namespace
-The `/implement` command SHALL be invoked as `/sr:implement`. The command file SHALL be located at `.claude/commands/sr/implement.md`.
+The `/implement` command SHALL be invoked as `/specrails:implement`. The command file SHALL be located at `.claude/commands/specrails/implement.md`.
 
 #### Scenario: Command invocation
-- **WHEN** user types `/sr:implement #85`
+- **WHEN** user types `/specrails:implement #85`
 - **THEN** the full implementation pipeline runs identically to the former `/implement #85`
 
 ### Requirement: Agent references
@@ -229,10 +229,10 @@ All references to agent memory paths within the implement pipeline SHALL use `sr
 - **THEN** the path used is `.claude/agent-memory/sr-reviewer/common-fixes.md`
 
 ### Requirement: Confidence override flag
-The confidence override flag SHALL reference `/sr:implement` in its documentation.
+The confidence override flag SHALL reference `/specrails:implement` in its documentation.
 
 #### Scenario: Override flag documentation
-- **WHEN** `--confidence-override` is passed to `/sr:implement`
+- **WHEN** `--confidence-override` is passed to `/specrails:implement`
 - **THEN** the behavior is identical to the former `/implement --confidence-override`
 
 ---
@@ -257,7 +257,7 @@ The gate compares each score in `confidence-score.json` against the correspondin
 
 ### Override
 
-If `--confidence-override "<reason>"` is passed to `/sr:implement` and `override_allowed: true` in the config, the gate is bypassed. The override reason is recorded in the Phase 4e report.
+If `--confidence-override "<reason>"` is passed to `/specrails:implement` and `override_allowed: true` in the config, the gate is bypassed. The override reason is recorded in the Phase 4e report.
 
 ### Missing Score File
 

@@ -11,7 +11,7 @@ This document is a complete, self-contained context package for the sr-developer
 
 ## What You Are Building
 
-You are implementing a standalone `/sr:test` command that lets users invoke the existing `sr-test-writer` agent independently, and adding manager UI support for it. The agent template already exists — you are not creating a new agent. You are creating the command orchestrator and the manager UI.
+You are implementing a standalone `/specrails:test` command that lets users invoke the existing `sr-test-writer` agent independently, and adding manager UI support for it. The agent template already exists — you are not creating a new agent. You are creating the command orchestrator and the manager UI.
 
 **Repos involved:**
 - `/Users/javi/repos/specrails` — command template files, agent template, bash tests
@@ -24,22 +24,22 @@ You are implementing a standalone `/sr:test` command that lets users invoke the 
 ### How specrails commands work
 
 1. `install.sh` copies `templates/` to `.claude/setup-templates/` in the target repo
-2. `/setup` runs and writes adapted versions to `.claude/commands/sr/`
+2. `/setup` runs and writes adapted versions to `.claude/commands/specrails/`
 3. `templates/commands/test.md` — this is the SOURCE. It has no `{{PLACEHOLDER}}` strings.
-4. `.claude/commands/sr/test.md` — this is the LIVE COPY for specrails itself.
+4. `.claude/commands/specrails/test.md` — this is the LIVE COPY for specrails itself.
 5. Both files are identical (no substitution needed for command files that reference agents by name).
 
 ### How the manager discovers commands
 
-`server/config.ts::scanCommands(commandsDir)` reads all `.md` files in `.claude/commands/sr/`, parses YAML frontmatter, and returns `CommandInfo[]`. The `phases` array in frontmatter is used by `PipelineProgress.tsx` in `JobDetailPage.tsx`.
+`server/config.ts::scanCommands(commandsDir)` reads all `.md` files in `.claude/commands/specrails/`, parses YAML frontmatter, and returns `CommandInfo[]`. The `phases` array in frontmatter is used by `PipelineProgress.tsx` in `JobDetailPage.tsx`.
 
-When `test.md` exists with a `phases` array, the manager automatically shows 3 phase indicators when a `/sr:test` job is running.
+When `test.md` exists with a `phases` array, the manager automatically shows 3 phase indicators when a `/specrails:test` job is running.
 
 ### How the manager spawns commands
 
-`CommandGrid.tsx` calls `POST /spawn { command: "/sr:test" }` → `project-router.ts` → `QueueManager.enqueue` → `_resolveCommand` reads `.claude/commands/sr/test.md`, strips frontmatter, substitutes `$ARGUMENTS`, passes to `claude` CLI.
+`CommandGrid.tsx` calls `POST /spawn { command: "/specrails:test" }` → `project-router.ts` → `QueueManager.enqueue` → `_resolveCommand` reads `.claude/commands/specrails/test.md`, strips frontmatter, substitutes `$ARGUMENTS`, passes to `claude` CLI.
 
-The `sr-test-writer` agent is invoked BY the `/sr:test` command body. The command runs in the main Claude Code session (the orchestrator). The orchestrator then spawns the `sr-test-writer` sub-agent.
+The `sr-test-writer` agent is invoked BY the `/specrails:test` command body. The command runs in the main Claude Code session (the orchestrator). The orchestrator then spawns the `sr-test-writer` sub-agent.
 
 ---
 
@@ -47,7 +47,7 @@ The `sr-test-writer` agent is invoked BY the `/sr:test` command body. The comman
 
 ### In specrails:
 - `/Users/javi/repos/specrails/templates/agents/sr-test-writer.md` — the agent you are orchestrating (understand its inputs and output format)
-- `/Users/javi/repos/specrails/.claude/commands/sr/implement.md` — lines 1-60 — see how a command references an agent
+- `/Users/javi/repos/specrails/.claude/commands/specrails/implement.md` — lines 1-60 — see how a command references an agent
 - `/Users/javi/repos/specrails/tests/test-helpers.sh` — the test harness you must use
 - `/Users/javi/repos/specrails/tests/test-install.sh` — exact pattern your tests must follow
 
@@ -132,7 +132,7 @@ Do not install any new packages. All required UI primitives (`Dialog`, `Button`,
 
 ### Files to CREATE:
 - `/Users/javi/repos/specrails/templates/commands/test.md`
-- `/Users/javi/repos/specrails/.claude/commands/sr/test.md`
+- `/Users/javi/repos/specrails/.claude/commands/specrails/test.md`
 - `/Users/javi/repos/specrails/tests/test-test-writer-template.sh`
 - `/Users/javi/repos/specrails/tests/test-test-command.sh`
 - `/Users/javi/repos/specrails-manager/server/test-writer.test.ts`
@@ -184,11 +184,11 @@ Run these after implementation to verify correctness:
 ```bash
 # specrails: check for broken placeholders in new command files
 grep -r '{{[A-Z_]*}}' /Users/javi/repos/specrails/templates/commands/test.md
-grep -r '{{[A-Z_]*}}' /Users/javi/repos/specrails/.claude/commands/sr/test.md
+grep -r '{{[A-Z_]*}}' /Users/javi/repos/specrails/.claude/commands/specrails/test.md
 
 # specrails: verify files are identical
 diff /Users/javi/repos/specrails/templates/commands/test.md \
-     /Users/javi/repos/specrails/.claude/commands/sr/test.md
+     /Users/javi/repos/specrails/.claude/commands/specrails/test.md
 
 # specrails: run all bash tests
 cd /Users/javi/repos/specrails && bash tests/run-all.sh
@@ -211,10 +211,10 @@ cd /Users/javi/repos/specrails-manager && npx vitest run server/test-writer.test
 
 2. **YAML frontmatter indentation**: The `parseFrontmatter` parser is strict about indentation. `phases` items must use exactly `  - key:` (2 spaces + dash + space). Properties of each item must use exactly `    label:` (4 spaces). Test by checking `scanCommands` returns 3 phases in `test-writer.test.ts`.
 
-3. **Identical files**: `templates/commands/test.md` and `.claude/commands/sr/test.md` must be byte-for-byte identical. The test in `D2` diffs them. If you introduce any difference (even a trailing newline), the test fails.
+3. **Identical files**: `templates/commands/test.md` and `.claude/commands/specrails/test.md` must be byte-for-byte identical. The test in `D2` diffs them. If you introduce any difference (even a trailing newline), the test fails.
 
 4. **`getApiBase()` in wizard**: Do not hardcode `/spawn`. Use `${getApiBase()}/spawn` exactly as `ImplementWizard.tsx` does.
 
 5. **`run-all.sh` uses `bash`**: Each test script is run as a subshell via `bash "$SCRIPT_DIR/test-foo.sh" || TOTAL_EXIT=1`. Do NOT use `source`. Each script calls `print_summary` and `exit "$TESTS_FAILED"` at the end, and `run-all.sh` sets `TOTAL_EXIT=1` if any script exits non-zero.
 
-6. **TestRunnerWidget receives `jobs` from DashboardPage**: Do NOT add a separate fetch inside `TestRunnerWidget`. The prop is `jobs: JobSummary[]`, not a loading hook. The filtering (`j.command.includes('/sr:test')`) happens inside the widget.
+6. **TestRunnerWidget receives `jobs` from DashboardPage**: Do NOT add a separate fetch inside `TestRunnerWidget`. The prop is `jobs: JobSummary[]`, not a loading hook. The filtering (`j.command.includes('/specrails:test')`) happens inside the widget.

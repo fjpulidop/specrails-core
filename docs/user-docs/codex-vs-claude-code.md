@@ -12,7 +12,7 @@ SpecRails supports both **OpenAI Codex** and **Anthropic Claude Code** as AI age
 | **CLI** | `claude` | `codex` |
 | **Config directory** | `.claude/` | `.codex/` |
 | **Agent instructions** | `CLAUDE.md` | `AGENTS.md` |
-| **Skills (`/sr:*`, `/opsx:*`)** | ✅ Full support | ✅ Full support |
+| **Skills (`/specrails:*`, `/opsx:*`)** | ✅ Full support | ✅ Full support |
 | **OpenSpec workflow** | ✅ Full support | ✅ Full support |
 | **Parallel worktrees** | ✅ Native | ⚠️ Limited |
 | **Agent definitions** | Markdown frontmatter | TOML |
@@ -27,10 +27,10 @@ SpecRails supports both **OpenAI Codex** and **Anthropic Claude Code** as AI age
 
 ### Skills
 
-SpecRails Skills use `SKILL.md` format, which is shared between Codex and Claude Code. All `/sr:*` and `/opsx:*` skills run identically on both platforms:
+SpecRails Skills use `SKILL.md` format, which is shared between Codex and Claude Code. All `/specrails:*` and `/opsx:*` skills run identically on both platforms:
 
-- `/sr:implement` — full pipeline (design → code → review → PR)
-- `/sr:product-backlog` — VPC-ranked backlog view
+- `/specrails:implement` — full pipeline (design → code → review → PR)
+- `/specrails:product-backlog` — VPC-ranked backlog view
 - `/opsx:ff` — OpenSpec fast-forward
 - All other workflow skills
 
@@ -52,7 +52,7 @@ Both platforms use file-based memory. Claude Code uses `.claude/agent-memory/`. 
 
 ### Parallel execution and worktrees
 
-`/sr:batch-implement` (multiple issues in parallel) uses git worktree isolation. On Claude Code this runs locally with full isolation. On Codex:
+`/specrails:batch-implement` (multiple issues in parallel) uses git worktree isolation. On Claude Code this runs locally with full isolation. On Codex:
 
 - **Codex CLI**: Parallel execution is supported but worktree isolation is limited in the current beta. Multiple issues may share a working directory.
 - **Codex Cloud**: Native async parallelism — each task gets an isolated cloud environment. Well-suited for batch work.
@@ -83,10 +83,10 @@ Claude Code and Codex have different non-interactive modes:
 
 ```bash
 # Claude Code
-claude --print "run /sr:implement #42"
+claude --print "run /specrails:implement #42"
 
 # Codex
-codex exec "run /sr:implement #42"
+codex exec "run /specrails:implement #42"
 ```
 
 Skills themselves are the same — only the CLI invocation differs.

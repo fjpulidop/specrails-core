@@ -12,8 +12,8 @@ References to agents in the confidence scoring system SHALL use sr-prefixed name
 - **THEN** it refers to `sr-developer` and `sr-architect`
 
 ### Requirement: Pipeline gate reference
-The pipeline gate reference SHALL use `/sr:implement` instead of `/implement`.
+The pipeline gate reference SHALL use `/specrails:implement` instead of `/implement`.
 
 #### Scenario: Gate position documentation
 - **WHEN** the spec describes Phase 4b-conf position
-- **THEN** it references `/sr:implement` as the host command
+- **THEN** it references `/specrails:implement` as the host command

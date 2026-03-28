@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tests for /sr:test command template and its installed copy
+# Tests for /specrails:test command template and its installed copy
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,12 +79,12 @@ run_test "command template has no broken placeholders" test_template_no_broken_p
 # ─────────────────────────────────────────────
 
 test_installed_command_exists() {
-    assert_file_exists "$SPECRAILS_DIR/.claude/commands/sr/test.md"
+    assert_file_exists "$SPECRAILS_DIR/.claude/commands/specrails/test.md"
 }
 run_test "installed command file exists" test_installed_command_exists
 
 test_installed_matches_template() {
-    diff "$SPECRAILS_DIR/templates/commands/test.md" "$SPECRAILS_DIR/.claude/commands/sr/test.md"
+    diff "$SPECRAILS_DIR/templates/commands/test.md" "$SPECRAILS_DIR/.claude/commands/specrails/test.md"
 }
 run_test "installed command is identical to template" test_installed_matches_template
 

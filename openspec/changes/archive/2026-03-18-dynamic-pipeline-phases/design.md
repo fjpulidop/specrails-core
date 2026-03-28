@@ -1,6 +1,6 @@
 ## Context
 
-The pipeline commands currently lack a standard way to declare which phases they go through. This change adds frontmatter-based phase declarations to all command `.md` files in `.claude/commands/sr/`.
+The pipeline commands currently lack a standard way to declare which phases they go through. This change adds frontmatter-based phase declarations to all command `.md` files in `.claude/commands/specrails/`.
 
 ## Goals / Non-Goals
 

@@ -24,13 +24,13 @@ Git access level: **{{GIT_ACCESS}}**
 Start with a product backlog to discover what to build first:
 
 ```
-/sr:product-backlog
+/specrails:product-backlog
 ```
 
 Then implement features using the full pipeline:
 
 ```
-/sr:implement #1 #2 #3
+/specrails:implement #1 #2 #3
 ```
 
 ---

@@ -1,6 +1,6 @@
-# Spec: /sr:compat-check Command
+# Spec: /specrails:compat-check Command
 
-The `/sr:compat-check` command snapshots the API surface of a specrails project and diffs it against a prior snapshot to detect breaking changes. Generates a migration guide when breaking changes are found.
+The `/specrails:compat-check` command snapshots the API surface of a specrails project and diffs it against a prior snapshot to detect breaking changes. Generates a migration guide when breaking changes are found.
 
 ---
 
@@ -307,10 +307,10 @@ Unless `DRY_RUN=true`: serialize the current surface to JSON and write to `.clau
 ---
 
 ### Requirement: Command namespace
-The `/compat-check` command SHALL be invoked as `/sr:compat-check`. The command file SHALL be located at `.claude/commands/sr/compat-check.md`.
+The `/compat-check` command SHALL be invoked as `/specrails:compat-check`. The command file SHALL be located at `.claude/commands/specrails/compat-check.md`.
 
 #### Scenario: Command invocation
-- **WHEN** user types `/sr:compat-check`
+- **WHEN** user types `/specrails:compat-check`
 - **THEN** the compatibility check runs identically to the former `/compat-check`
 
 ### Requirement: Agent name surface extraction
@@ -321,8 +321,8 @@ The surface extraction for `agent_names` SHALL read from `templates/agents/sr-*.
 - **THEN** the snapshot contains entries like `{ "name": "sr-architect", "source": "templates/agents/sr-architect.md" }`
 
 ### Requirement: Command name surface extraction
-The surface extraction for `command_names` SHALL read from `templates/commands/sr/*.md` and extract command names.
+The surface extraction for `command_names` SHALL read from `templates/commands/specrails/*.md` and extract command names.
 
 #### Scenario: Command names in snapshot
 - **WHEN** Phase 1 extracts command names
-- **THEN** the snapshot contains entries like `{ "name": "sr:implement", "source": "templates/commands/sr/implement.md" }`
+- **THEN** the snapshot contains entries like `{ "name": "sr:implement", "source": "templates/commands/specrails/implement.md" }`

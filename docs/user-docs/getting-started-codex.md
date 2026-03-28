@@ -64,7 +64,7 @@ The installer detects Codex CLI automatically and generates configuration in `.c
 your-project/
 ├── AGENTS.md                          # SpecRails agent instructions for Codex
 └── .codex/
-    ├── skills/                        # Workflow skills (/sr:*, /opsx:*)
+    ├── skills/                        # Workflow skills (/specrails:*, /opsx:*)
     ├── agents/                        # Agent definitions (TOML)
     ├── rules/                         # Per-layer coding conventions
     ├── agent-memory/                  # Persistent agent memory
@@ -84,13 +84,13 @@ codex
 Then invoke the setup skill:
 
 ```
-/sr:setup
+/specrails:setup
 ```
 
 Or run it non-interactively:
 
 ```bash
-codex exec "run /sr:setup --yes"
+codex exec "run /specrails:setup --yes"
 ```
 
 The wizard runs 5 phases:
@@ -114,13 +114,13 @@ codex
 ```
 
 ```
-/sr:implement "add a health check endpoint"
+/specrails:implement "add a health check endpoint"
 ```
 
 Or with a GitHub issue number:
 
 ```
-/sr:implement #42
+/specrails:implement #42
 ```
 
 This runs the full SpecRails pipeline: Architect → Developer → Reviewer → PR.
@@ -131,7 +131,7 @@ This runs the full SpecRails pipeline: Architect → Developer → Reviewer → 
 
 If you prefer the web interface, SpecRails Skills also work in **Codex Cloud** at [chatgpt.com/codex](https://chatgpt.com/codex). Connect your repository and use Skills from the UI.
 
-Note that Codex Cloud runs asynchronously — long-running skills like `/sr:implement` are well-suited to this environment.
+Note that Codex Cloud runs asynchronously — long-running skills like `/specrails:implement` are well-suited to this environment.
 
 ---
 
@@ -186,7 +186,7 @@ The installer warns if SpecRails artifacts already exist. You can merge or abort
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files, `/sr:setup` did not complete. Re-run `/sr:setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files, `/specrails:setup` did not complete. Re-run `/specrails:setup` or fill the values manually.
 
 ---
 

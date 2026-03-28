@@ -36,7 +36,7 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 
 | Feature | Claude Code | Codex |
 |---------|:-:|:-:|
-| Legacy slash commands `.claude/commands/sr/` | ✅ | ❌ |
+| Legacy slash commands `.claude/commands/specrails/` | ✅ | ❌ |
 | SKILL.md format `.claude/skills/sr-*/` | ✅ | ✅ |
 | `sr:implement` skill | ✅ | ✅ |
 | `sr:product-backlog` skill | ✅ | ✅ |

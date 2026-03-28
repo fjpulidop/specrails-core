@@ -153,17 +153,17 @@ Before starting implementation, the Developer reads matching failure records as 
 
 The Architect, Developer, and Reviewer record **decision rationale** in `.claude/agent-memory/explanations/` as they work. These records capture the "why" behind implementation choices — which library was chosen and why, which trade-off was accepted, which alternative was rejected.
 
-Use `/sr:why` to search this memory in plain language:
+Use `/specrails:why` to search this memory in plain language:
 
 ```
-/sr:why "why did we switch to event sourcing"
+/specrails:why "why did we switch to event sourcing"
 ```
 
 This gives you an audit trail from product decision to implementation choice, without digging through git history or asking the original author.
 
 ## Dependency-Aware Ordering
 
-When `/sr:product-backlog` is run, the Product Analyst parses `Prerequisites:` fields from GitHub Issue bodies and builds a **dependency DAG** (directed acyclic graph). It then:
+When `/specrails:product-backlog` is run, the Product Analyst parses `Prerequisites:` fields from GitHub Issue bodies and builds a **dependency DAG** (directed acyclic graph). It then:
 
 1. Detects cycles and reports them as errors (circular dependencies block ordering)
 2. Computes a safe implementation order via topological sort

@@ -20,7 +20,7 @@ The fastest way to get started. No Node.js required.
 
 ```bash
 claude plugin install sr
-/sr:setup
+/specrails:setup
 ```
 
 **Requirements:** Claude Code, git
@@ -37,9 +37,9 @@ npx specrails-core@latest init --root-dir .
 
 This will:
 1. Scaffold a `.claude/` directory in your project
-2. Install agent templates and the `/sr:setup` wizard
+2. Install agent templates and the `/specrails:setup` wizard
 
-After install, open Claude Code or Codex and run `/sr:setup` to configure.
+After install, open Claude Code or Codex and run `/specrails:setup` to configure.
 
 **Requirements:** Node.js ≥18, Claude Code or Codex CLI
 

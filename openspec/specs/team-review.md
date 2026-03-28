@@ -1,6 +1,6 @@
-# Spec: /sr:team-review Command
+# Spec: /specrails:team-review Command
 
-The `/sr:team-review` command orchestrates a multi-perspective code review using Claude Code Agent Teams (experimental). Three specialized reviewers work as teammates — security, performance, and correctness — debating findings via mailbox before a team lead synthesizes a consolidated report.
+The `/specrails:team-review` command orchestrates a multi-perspective code review using Claude Code Agent Teams (experimental). Three specialized reviewers work as teammates — security, performance, and correctness — debating findings via mailbox before a team lead synthesizes a consolidated report.
 
 ---
 
@@ -218,7 +218,7 @@ The team lead collects all findings and debate outcomes, then produces the conso
 ---
 
 ### Requirement: Command namespace
-The `/team-review` command SHALL be invoked as `/sr:team-review`. The command file SHALL be located at `.claude/commands/sr/team-review.md`.
+The `/team-review` command SHALL be invoked as `/specrails:team-review`. The command file SHALL be located at `.claude/commands/specrails/team-review.md`.
 
 ### Requirement: Agent Teams experimental guard
 The command MUST check `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` before proceeding. If not set, it MUST print setup instructions and exit gracefully.

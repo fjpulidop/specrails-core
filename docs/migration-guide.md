@@ -36,7 +36,7 @@ Then initialize the ticket store if it doesn't exist yet:
 
 ```bash
 # Inside Claude Code or Codex
-/sr:implement --setup-local-tickets
+/specrails:implement --setup-local-tickets
 ```
 
 Or create the file manually:
@@ -63,7 +63,7 @@ Use the `sr:migrate-from-github` command (requires `gh` CLI):
 
 ```bash
 # Inside Claude Code
-/sr:migrate-from-github
+/specrails:migrate-from-github
 ```
 
 This command:
@@ -80,13 +80,13 @@ This command:
 To import all open issues regardless of label:
 
 ```bash
-/sr:migrate-from-github --all
+/specrails:migrate-from-github --all
 ```
 
 To do a dry run (preview without writing):
 
 ```bash
-/sr:migrate-from-github --dry-run
+/specrails:migrate-from-github --dry-run
 ```
 
 **After import:** Your GitHub Issues are unchanged. The migration is additive — it only creates local tickets. You can continue using GitHub Issues in parallel until you're ready to stop.
@@ -97,7 +97,7 @@ Use the `sr:migrate-from-jira` command (requires `jira` CLI or REST API credenti
 
 ```bash
 # Inside Claude Code
-/sr:migrate-from-jira
+/specrails:migrate-from-jira
 ```
 
 This command:
@@ -118,11 +118,11 @@ The original JIRA key is preserved in `metadata.jira_key` so you can cross-refer
 
 ## Step 3: Regenerate commands (optional but recommended)
 
-Command templates are generated at `/sr:setup` time with provider-specific instructions baked in. After switching providers, regenerate them so commands use the local file operations instead of GitHub/JIRA CLI calls:
+Command templates are generated at `/specrails:setup` time with provider-specific instructions baked in. After switching providers, regenerate them so commands use the local file operations instead of GitHub/JIRA CLI calls:
 
 ```bash
 npx specrails-core@latest init --root-dir .
-> /sr:setup --update
+> /specrails:setup --update
 ```
 
 The `--update` flag regenerates only the backlog commands (`product-backlog`, `update-product-driven-backlog`, `implement`) without re-running the full stack analysis.
@@ -134,7 +134,7 @@ The `--update` flag regenerates only the backlog commands (`product-backlog`, `u
 To revert to GitHub Issues:
 
 1. Edit `.specrails/config.yaml` (or `.claude/backlog-config.json` for scaffold installs) and set `provider: github`
-2. Re-run `/sr:setup --update` to regenerate commands
+2. Re-run `/specrails:setup --update` to regenerate commands
 3. Your `local-tickets.json` is preserved — switch back any time
 
 Local tickets and external provider data are independent. Switching providers does not delete tickets from either system.

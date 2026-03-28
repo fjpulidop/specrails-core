@@ -49,5 +49,5 @@ type: project
 ### Command template location
 
 - Source: `templates/commands/propose-spec.md` (flat, no `sr/` subdir in templates)
-- Installed to: `.claude/commands/sr/propose-spec.md` in target repo
-- install.sh maps templates/commands/ → .claude/commands/sr/ during installation
+- Installed to: `.claude/commands/specrails/propose-spec.md` in target repo
+- install.sh maps templates/commands/ → .claude/commands/specrails/ during installation
