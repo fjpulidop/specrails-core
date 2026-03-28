@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.0](https://github.com/fjpulidop/specrails-core/compare/v3.4.2...v3.5.0) (2026-03-28)
+
+
+### Features
+
+* rename product-backlog and update-product-driven-backlog commands ([#209](https://github.com/fjpulidop/specrails-core/issues/209)) ([b2a4968](https://github.com/fjpulidop/specrails-core/commit/b2a4968c0011f631d480f32e7897d2fdeff3e66d))
+* rename product-backlog and update-product-driven-backlog commands (SPEA-719) ([b2a4968](https://github.com/fjpulidop/specrails-core/commit/b2a4968c0011f631d480f32e7897d2fdeff3e66d))
+
 ## [3.4.2](https://github.com/fjpulidop/specrails-core/compare/v3.4.1...v3.4.2) (2026-03-28)
 
 
