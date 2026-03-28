@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.4.1](https://github.com/fjpulidop/specrails-core/compare/v3.4.0...v3.4.1) (2026-03-28)
+
+
+### Bug Fixes
+
+* namespace /setup and /doctor as /specrails:setup and /specrails:doctor ([#205](https://github.com/fjpulidop/specrails-core/issues/205)) ([e30f057](https://github.com/fjpulidop/specrails-core/commit/e30f057b0d135eb2f6f4279d7f93332632a56315))
+
 ## [3.4.0](https://github.com/fjpulidop/specrails-core/compare/v3.3.1...v3.4.0) (2026-03-28)
 
 
