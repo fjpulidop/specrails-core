@@ -246,7 +246,7 @@ The plugin method has no Node.js requirement. The scaffold method checks for pre
 
 ## Supported stacks
 
-Stack-agnostic. The `/setup` wizard detects and adapts to whatever you're running:
+Stack-agnostic. The `/specrails:setup` wizard detects and adapts to whatever you're running:
 
 **Backend:** Python/FastAPI, Node/Express, Go/Gin, Rust/Actix, Java/Spring, Ruby/Rails, .NET
 **Frontend:** React, Vue, Angular, Svelte, Next.js, Nuxt

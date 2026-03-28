@@ -57,7 +57,7 @@ Read CLAUDE.md for any documented CI vs local differences; common gaps: environm
 
 The orchestrator runs specialized layer reviewers in parallel before you launch. Their reports are injected here. A value of `"SKIPPED"` means no files of that layer type were in the changeset.
 
-**These are NOT `/setup` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
+**These are NOT `/specrails:setup` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
 
 FRONTEND_REVIEW_REPORT:
 [injected]

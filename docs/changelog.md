@@ -33,7 +33,7 @@ All notable changes to SpecRails are listed here, newest first.
 
 ### Improvements
 
-- **`/setup --update` template checksums** — The update command now checks command template checksums before overwriting, so manual customizations are detected and preserved rather than silently clobbered.
+- **`/specrails:setup --update` template checksums** — The update command now checks command template checksums before overwriting, so manual customizations are detected and preserved rather than silently clobbered.
 
 ---
 
@@ -84,8 +84,8 @@ All notable changes to SpecRails are listed here, newest first.
 ### Agents
 
 - **Doc Sync agent enhanced** — Added drift detection with severity levels. The agent now classifies documentation drift as `critical`, `major`, or `minor` and prioritizes accordingly.
-- **Test Writer wired into `/setup`** — New installations now include the Test Writer agent by default.
-- **Security Reviewer wired into `/setup`** — New installations now include the Security Reviewer agent by default.
+- **Test Writer wired into `/specrails:setup`** — New installations now include the Test Writer agent by default.
+- **Security Reviewer wired into `/specrails:setup`** — New installations now include the Security Reviewer agent by default.
 
 ### Onboarding
 

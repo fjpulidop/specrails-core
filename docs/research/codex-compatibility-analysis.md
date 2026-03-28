@@ -271,7 +271,7 @@ specrails-hub se comunica con specrails-core vía `integration-contract.json`. E
 | Codex memory system poco maduro | Alta | Bajo | Usar patterns file-based (MEMORY.md) en ambas |
 | API de subagentes distinta | Media | Alto | Abstraer en Skills para no depender de tool-calling nativo |
 | Double mantenimiento de templates | Media | Medio | Approach B minimiza esto |
-| Fragmentación de usuarios | Baja | Medio | UX clara en /setup para elegir provider |
+| Fragmentación de usuarios | Baja | Medio | UX clara en /specrails:setup para elegir provider |
 
 ---
 
@@ -338,7 +338,7 @@ Si el board aprueba proceder:
 | `/specrails:implement` | Slash command | Skill (mismo `SKILL.md`) |
 | `/specrails:product-backlog` | Slash command | Skill |
 | `/opsx:ff` | Slash command | Skill |
-| `/setup` | Slash command | `codex exec "run setup"` |
+| `/specrails:setup` | Slash command | `codex exec "run setup"` |
 | Agent `sr-architect` | `.claude/agents/sr-architect.md` | `.codex/agents/sr-architect.toml` |
 | Permissions | `.claude/settings.json` | `.codex/config.toml` |
 
