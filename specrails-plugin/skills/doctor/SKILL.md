@@ -131,7 +131,7 @@ If `--verbose` flag is set: scan `.specrails/config.yaml` for unreplaced placeho
 ### Warnings
 
 1. **gh CLI not installed**
-   - Required for: `/specrails:product-backlog`, `/specrails:implement` (when BACKLOG_PROVIDER=github), `/specrails:update-product-driven-backlog`
+   - Required for: `/specrails:get-backlog-specs`, `/specrails:implement` (when BACKLOG_PROVIDER=github), `/specrails:auto-propose-backlog-specs`
    - Fix: `brew install gh && gh auth login`
 
 2. **CLAUDE.md missing specrails section**

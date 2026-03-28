@@ -22,7 +22,7 @@ Not every combination of features is safe to run in parallel. A feature is safe 
 
 4. **Wave 1 in the dependency DAG**: the feature has no unimplemented prerequisites. A feature with `Prerequisites: #71` cannot run in the same batch as #71 — it must wait for #71 to ship first.
 
-When in doubt, run `/specrails:product-backlog` to see the dependency ordering before composing your batch.
+When in doubt, run `/specrails:get-backlog-specs` to see the dependency ordering before composing your batch.
 
 ## What's not safe
 
@@ -38,10 +38,10 @@ Some combinations look independent but are not:
 
 ## Reading the dependency DAG
 
-Run `/specrails:product-backlog` before composing any parallel batch. The output includes a prioritized backlog table with dependency metadata. Wave 1 features — those with no unimplemented prerequisites — are your safe parallel batch candidates.
+Run `/specrails:get-backlog-specs` before composing any parallel batch. The output includes a prioritized backlog table with dependency metadata. Wave 1 features — those with no unimplemented prerequisites — are your safe parallel batch candidates.
 
 ```
-/specrails:product-backlog
+/specrails:get-backlog-specs
 
 ┌─ API ──────────────────────────────────────────┐
 │ #  Issue   Score  Effort  Description           │
@@ -103,7 +103,7 @@ After all worktree pipelines complete, specrails attempts to merge each feature 
 
 | Pattern | Why it works |
 |---------|-------------|
-| Run `/specrails:product-backlog` before composing a batch | Surfaces the dependency DAG so you batch only Wave 1 features |
+| Run `/specrails:get-backlog-specs` before composing a batch | Surfaces the dependency DAG so you batch only Wave 1 features |
 | Keep batches to 2–4 features | Smaller batches reduce conflict surface area and keep the merge step fast |
 | Ensure all specs are approved before starting the batch | Prevents mid-batch spec revisions that invalidate a running pipeline |
 | Sequence database migration features before features that consume the schema | Eliminates the most common class of parallel dev failures |
@@ -117,7 +117,7 @@ After all worktree pipelines complete, specrails attempts to merge each feature 
 
 ## What's next?
 
-- [Workflows & Commands](workflows.md) — full reference for `/specrails:batch-implement`, `/specrails:implement`, and `/specrails:product-backlog`
+- [Workflows & Commands](workflows.md) — full reference for `/specrails:batch-implement`, `/specrails:implement`, and `/specrails:get-backlog-specs`
 
 ---
 

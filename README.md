@@ -57,7 +57,7 @@ npx specrails-core@latest init --root-dir .   # copy project files
 > /specrails:implement "add user authentication"
 > /specrails:implement #1, #2                 # from local tickets (default)
 > /specrails:implement #42, #43               # from GitHub Issues (if configured)
-> /specrails:update-product-driven-backlog    # discover new features with AI
+> /specrails:auto-propose-backlog-specs    # discover new features with AI
 ```
 
 That's it. The pipeline takes over.
@@ -85,7 +85,7 @@ The plugin contains the logic (agent prompts, skills, commands). Running `/specr
 | Category | Location | Purpose |
 |----------|----------|---------|
 | **Agents** | Plugin | 14 specialized AI agents |
-| **Commands** | Plugin | 17 workflow commands: `/specrails:implement`, `/specrails:product-backlog`, `/specrails:why`, and more |
+| **Commands** | Plugin | 17 workflow commands: `/specrails:implement`, `/specrails:get-backlog-specs`, `/specrails:why`, and more |
 | **Skills** | Plugin | OpenSpec skills (`/opsx:*`) included |
 | **Hooks & References** | Plugin | Agent hooks, reference docs |
 
@@ -172,20 +172,20 @@ To discard without applying:
 rm -rf .claude/.dry-run/add-dark-mode/
 ```
 
-### `/specrails:product-backlog` — View prioritized backlog
+### `/specrails:get-backlog-specs` — View prioritized backlog
 
 ```bash
-/specrails:product-backlog                  # show all areas
-/specrails:product-backlog UI, Decks        # filter by area
+/specrails:get-backlog-specs                  # show all areas
+/specrails:get-backlog-specs UI, Decks        # filter by area
 ```
 
 Reads your tickets (local or GitHub Issues), scores by VPC persona match, recommends top 3 for next sprint.
 
-### `/specrails:update-product-driven-backlog` — Discover features
+### `/specrails:auto-propose-backlog-specs` — Discover features
 
 ```bash
-/specrails:update-product-driven-backlog             # explore all areas
-/specrails:update-product-driven-backlog Analytics   # focus on one area
+/specrails:auto-propose-backlog-specs             # explore all areas
+/specrails:auto-propose-backlog-specs Analytics   # focus on one area
 ```
 
 AI product discovery using your personas. Evaluates ideas, creates tickets (local or GitHub Issues) for the best ones.
@@ -202,8 +202,8 @@ Tickets live in `.claude/local-tickets.json` alongside your code. They're plain 
 
 ```bash
 /specrails:implement #1, #4           # implement by ticket ID
-/specrails:product-backlog            # view prioritized backlog
-/specrails:update-product-driven-backlog  # discover and create tickets with AI
+/specrails:get-backlog-specs            # view prioritized backlog
+/specrails:auto-propose-backlog-specs  # discover and create tickets with AI
 /specrails:propose-spec               # create a ticket from a spec proposal
 ```
 

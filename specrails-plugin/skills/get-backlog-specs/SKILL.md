@@ -1,6 +1,6 @@
 ---
-name: product-backlog
-description: "sr:product-backlog — View product-driven backlog from GitHub Issues and propose top 3 for implementation."
+name: get-backlog-specs
+description: "sr:get-backlog-specs — View product-driven backlog from GitHub Issues and propose top 3 for implementation."
 license: MIT
 compatibility: "Requires GitHub CLI (gh)."
 metadata:
@@ -9,7 +9,7 @@ metadata:
 ---
 
 
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider (read from .claude/backlog-config.json). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:update-product-driven-backlog` to generate new ideas.
+Display the product-driven backlog by reading issues/tickets from the configured backlog provider (read from .claude/backlog-config.json). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:auto-propose-backlog-specs` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -22,7 +22,7 @@ Verify the backlog provider is accessible:
 Read `.claude/backlog-config.json` to determine `BACKLOG_PROVIDER` (default: `github`).
 
 - If `BACKLOG_PROVIDER=github`: run `gh auth status 2>&1`. If it fails, stop: "GitHub CLI is not authenticated. Run `gh auth login` first."
-- If `BACKLOG_PROVIDER=local`: check for `.specrails/local-tickets.json`. If missing, stop: "No local tickets file found. Run `/specrails:update-product-driven-backlog` to generate ideas."
+- If `BACKLOG_PROVIDER=local`: check for `.specrails/local-tickets.json`. If missing, stop: "No local tickets file found. Run `/specrails:auto-propose-backlog-specs` to generate ideas."
 - If `BACKLOG_PROVIDER=none`: stop: "No backlog provider configured. Run `/specrails:setup` to configure."
 
 Set `GH_AVAILABLE` based on whether gh auth succeeded.
@@ -167,7 +167,7 @@ The product-analyst receives this prompt:
 
 10. If no issues exist:
     ```
-    No product-driven backlog issues found. Run `/specrails:update-product-driven-backlog` to generate feature ideas.
+    No product-driven backlog issues found. Run `/specrails:auto-propose-backlog-specs` to generate feature ideas.
     ```
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
@@ -200,7 +200,7 @@ The product-analyst receives this prompt:
    - `schema_version`: `"1"`
    - `provider`: `"github"`
    - `last_updated`: current ISO 8601 timestamp
-   - `written_by`: `"product-backlog"`
+   - `written_by`: `"get-backlog-specs"`
    - `issues`: the merged map keyed by string issue number
 
    If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.

@@ -1,7 +1,7 @@
 {
   "name": "specrails",
   "version": "1.0.0",
-  "description": "SpecRails Agent Workflow System — product-driven AI development pipeline. Installs 14 specialized agents and 20+ workflow skills: /specrails:implement, /specrails:setup, /specrails:product-backlog, and more.",
+  "description": "SpecRails Agent Workflow System — product-driven AI development pipeline. Installs 14 specialized agents and 20+ workflow skills: /specrails:implement, /specrails:setup, /specrails:get-backlog-specs, and more.",
   "author": {"name": "Javier Pulido"},
   "license": "MIT"
 }

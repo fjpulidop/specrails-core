@@ -32,7 +32,7 @@ The migration function SHALL move all specrails workflow commands from `.claude/
 
 #### Scenario: Commands moved to sr/ subdirectory
 - **WHEN** migration runs with legacy command files present
-- **THEN** commands implement, batch-implement, product-backlog, update-product-driven-backlog, health-check, compat-check, refactor-recommender, and why are moved to `.claude/commands/specrails/`
+- **THEN** commands implement, batch-implement, get-backlog-specs, auto-propose-backlog-specs, health-check, compat-check, refactor-recommender, and why are moved to `.claude/commands/specrails/`
 
 #### Scenario: Non-specrails commands preserved
 - **WHEN** migration runs and `.claude/commands/` contains files not in the specrails command list (e.g., user-created commands)

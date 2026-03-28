@@ -146,26 +146,26 @@ Each feature gets its own worktree, its own agent pipeline, and its own PR. Use 
 
 ## Product and backlog
 
-### `/specrails:product-backlog` ✅ Both
+### `/specrails:get-backlog-specs` ✅ Both
 
 View your prioritized product backlog, ranked by VPC persona fit and estimated effort.
 
 ```
-/specrails:product-backlog
-/specrails:product-backlog UI, API
+/specrails:get-backlog-specs
+/specrails:get-backlog-specs UI, API
 ```
 
 Reads GitHub Issues labeled `product-driven-backlog`. Produces a ranked table per area, top 3 recommendations, and a safe implementation order based on issue dependencies.
 
 ---
 
-### `/specrails:update-product-driven-backlog` ✅ Both
+### `/specrails:auto-propose-backlog-specs` ✅ Both
 
 Generate new feature ideas through product discovery and create GitHub Issues.
 
 ```
-/specrails:update-product-driven-backlog
-/specrails:update-product-driven-backlog UI, API
+/specrails:auto-propose-backlog-specs
+/specrails:auto-propose-backlog-specs UI, API
 ```
 
 The Product Manager researches your competitive landscape, generates 2–4 feature ideas per area, and scores each against your user personas. Creates GitHub Issues with full VPC evaluation if write access is available.

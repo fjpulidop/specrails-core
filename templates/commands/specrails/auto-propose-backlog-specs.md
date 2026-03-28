@@ -4,13 +4,9 @@ description: "Generate new feature ideas through product discovery, create GitHu
 category: Workflow
 tags: [workflow, explore, priorities, backlog, product-discovery]
 model: opus
-phases:
-  - key: analyst
-    label: Analyst
-    description: "Discovers product opportunities and generates feature ideas"
 ---
 
-Analyze the project from a **product perspective** to generate new feature ideas. Syncs results to GitHub Issues labeled `product-driven-backlog`. Use `/specrails:product-backlog` to view current ideas.
+Analyze the project from a **product perspective** to generate new feature ideas. Syncs results to GitHub Issues labeled `product-driven-backlog`. Use `/specrails:get-backlog-specs` to view current ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to focus on. If empty, analyze all areas.)
 
@@ -20,13 +16,7 @@ Analyze the project from a **product perspective** to generate new feature ideas
 
 ## Areas
 
-| Area | Description | Key Paths |
-|------|-------------|-----------|
-| Core | Installer, template engine, distribution | `install.sh`, `templates/` |
-| Agents | Agent prompt design, multi-agent orchestration | `.claude/agents/`, `templates/agents/` |
-| Commands | Workflow commands, pipeline orchestration | `.claude/commands/`, `templates/commands/` |
-| Product | VPC personas, product discovery, backlog | `.claude/agents/personas/`, `templates/personas/` |
-| DX | Developer experience, setup, onboarding | `commands/setup.md`, `prompts/` |
+{{AREA_TABLE}}
 
 ---
 
@@ -36,7 +26,7 @@ Launch a **single** explorer subagent (`subagent_type: Explore`, `run_in_backgro
 
 The Explore agent receives this prompt:
 
-> You are a product strategist analyzing the specrails project to generate new feature ideas using the **Value Proposition Canvas** framework.
+> You are a product strategist analyzing the {{PROJECT_NAME}} project to generate new feature ideas using the **Value Proposition Canvas** framework.
 >
 > **Your goal:** For each area, propose 2-4 new features that would significantly improve the user experience. Every feature MUST be evaluated against the project's personas.
 >
@@ -45,9 +35,7 @@ The Explore agent receives this prompt:
 > ### Step 0: Read Personas
 >
 > **Before anything else**, read all persona files:
-> - Read `.claude/agents/personas/the-lead-dev.md`
-> - Read `.claude/agents/personas/the-product-founder.md`
-> - Read `.claude/agents/personas/the-maintainer.md`
+> {{PERSONA_FILE_READ_LIST}}
 >
 > These contain full Value Proposition Canvas profiles (jobs, pains, gains).
 >
@@ -80,7 +68,7 @@ After the Explore agent completes:
 1. **Display** results to the user.
 
 2. Read `.claude/backlog-config.json` and extract:
-   - `BACKLOG_PROVIDER` (`github`, `jira`, or `none`)
+   - `BACKLOG_PROVIDER` (`local`, `github`, `jira`, or `none`)
    - `BACKLOG_WRITE` (from `write_access`)
 
 ### If `BACKLOG_WRITE=false` — Display only (no sync)
@@ -91,11 +79,11 @@ After the Explore agent completes:
    ## Product Discovery Results (not synced)
 
    Backlog access is set to **read-only**. The following features were discovered
-   but NOT created in the backlog provider. Create them manually if desired.
+   but NOT created in {{BACKLOG_PROVIDER_NAME}}. Create them manually if desired.
 
    ### Feature 1: {name}
    - **Area:** {area}
-   - **Persona Fit:** Alex: X/5, Sara: X/5, Kai: X/5
+   - **Persona Fit:** {{PERSONA_FIT_FORMAT}}
    - **Effort:** {level}
    - **User Story:** As a {user}, I want to {action} so that {benefit}
    - **Description:** {2-3 sentences}
@@ -103,28 +91,68 @@ After the Explore agent completes:
    (repeat for each feature)
 
    ### Summary
-   | # | Feature | Alex | Sara | Kai | Total | Effort |
-   |---|---------|------|------|-----|-------|--------|
-   | 1 | ... | ... | ... | ... | ... | ... |
+   | # | Feature | {{PERSONA_SCORE_HEADERS}} | Total | Effort |
+   |---|---------|{{PERSONA_SCORE_SEPARATORS}}|-------|--------|
+   | 1 | ... | ... | ... | ... |
    ```
 
 4. **Do NOT** create, modify, or comment on any issues/tickets.
+
+### If provider=local — Sync to Local Tickets
+
+Local tickets are always read-write. Sync directly to `$SPECRAILS_DIR/local-tickets.json`.
+
+3. **Fetch existing local tickets** to avoid duplicates:
+   ```
+   {{BACKLOG_FETCH_ALL_CMD}}
+   ```
+   Collect all ticket titles into a duplicate-check set.
+
+4. **Initialize labels** (idempotent):
+   ```
+   {{BACKLOG_INIT_LABELS_CMD}}
+   ```
+
+5. **For each proposed feature, create a local ticket** (skip if title matches an existing ticket):
+   ```
+   {{BACKLOG_CREATE_CMD}}
+   ```
+   Set the following fields on each new ticket:
+   - `title`: Feature name
+   - `description`: Full VPC body markdown (same format as the GitHub/JIRA issue body above)
+   - `status`: `"todo"`
+   - `priority`: Map effort to priority — Low effort → `"high"` priority, Medium → `"medium"`, High → `"low"`
+   - `labels`: `["product-driven-backlog", "area:{area}"]`
+   - `metadata.vpc_scores`: Object with per-persona scores from the VPC evaluation
+   - `metadata.effort_level`: `"High"`, `"Medium"`, or `"Low"`
+   - `metadata.user_story`: The user story text
+   - `metadata.area`: The area name (without `area:` prefix)
+   - `prerequisites`: Array of ticket IDs for any features this depends on (empty if none)
+   - `source`: `"get-backlog-specs"`
+   - `created_by`: `"sr-product-manager"`
+
+6. **Report** sync results:
+   ```
+   Product discovery complete:
+   - Created: {N} new feature ideas as local tickets
+   - Skipped: {N} duplicates (already exist)
+   ```
 
 ### If provider=github and BACKLOG_WRITE=true — Sync to GitHub Issues
 
 3. **Fetch existing product-driven backlog items** to avoid duplicates:
    ```bash
-   gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body
+   {{BACKLOG_FETCH_ALL_CMD}}
    ```
 
-4. **Initialize backlog labels** (idempotent):
+4. **Initialize backlog labels/tags** (idempotent):
    ```bash
-   gh label create "product-driven-backlog" --color "7B68EE" --description "Product feature ideas from VPC discovery" --force 2>/dev/null || true
+   {{BACKLOG_INIT_LABELS_CMD}}
    ```
 
-5. **For each proposed feature, create a GitHub Issue** (skip duplicates):
+5. **For each proposed feature, create a backlog item** (skip duplicates):
    ```bash
-   gh issue create --title "{Feature Name}" --label "product-driven-backlog,area:{area}" --body "$(cat <<'EOF'
+   {{BACKLOG_CREATE_CMD}}
    > **This is a product feature idea.** Generated through VPC-based product discovery.
 
    ## Overview
@@ -132,7 +160,7 @@ After the Explore agent completes:
    | Field | Value |
    |-------|-------|
    | **Area** | {Area} |
-   | **Persona Fit** | Alex: X/5, Sara: X/5, Kai: X/5 |
+   | **Persona Fit** | {{PERSONA_FIT_FORMAT}} |
    | **Effort** | {High/Medium/Low} — {justification} |
    | **Inspiration** | {source or "Original idea"} |
    | **Prerequisites** | {list or "None"} |
@@ -147,27 +175,14 @@ After the Explore agent completes:
 
    ## Value Proposition Canvas
 
-   ### "Alex" — The Lead Dev (X/5)
-   - **Jobs addressed**: {list}
-   - **Pains relieved**: {list with severity}
-   - **Gains created**: {list with impact}
-
-   ### "Sara" — The Product Founder (X/5)
-   - **Jobs addressed**: {list}
-   - **Pains relieved**: {list with severity}
-   - **Gains created**: {list with impact}
-
-   ### "Kai" — The Maintainer (X/5)
-   - **Jobs addressed**: {list}
-   - **Pains relieved**: {list with severity}
-   - **Gains created**: {list with impact}
+   {{PERSONA_VPC_SECTIONS}}
 
    ## Implementation Notes
 
    {Brief notes on existing infrastructure and what needs to be built}
 
    ---
-   _Auto-generated by `/specrails:update-product-driven-backlog` on {DATE}_
+   _Auto-generated by `/specrails:auto-propose-backlog-specs` on {DATE}_
    EOF
    )"
    ```
@@ -204,7 +219,7 @@ Stop and do not proceed with sync.
 curl -s \
   -H "Authorization: Basic $(printf '%s' "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" | base64)" \
   -H "Content-Type: application/json" \
-  "${JIRA_BASE_URL}/rest/api/3/search?jql=project%3D${JIRA_PROJECT_KEY}+AND+labels%3Dproduct-backlog+AND+issuetype%3DStory&fields=summary&maxResults=200"
+  "${JIRA_BASE_URL}/rest/api/3/search?jql=project%3D${JIRA_PROJECT_KEY}+AND+labels%3Dget-backlog-specs+AND+issuetype%3DStory&fields=summary&maxResults=200"
 ```
 
 Store all `summary` values. Skip any feature whose title matches an existing summary.
@@ -240,7 +255,7 @@ For each unique area:
          "project": {"key": "'"${JIRA_PROJECT_KEY}"'"},
          "issuetype": {"name": "Epic"},
          "summary": "'"${AREA_DISPLAY_NAME}"'",
-         "labels": ["product-backlog"]
+         "labels": ["get-backlog-specs"]
        }
      }'
    ```
@@ -271,7 +286,7 @@ curl -s -X POST \
           "content": [{"type": "text", "text": "'"${VPC_BODY_ESCAPED}"'"}]
         }]
       },
-      "labels": ["product-backlog"],
+      "labels": ["get-backlog-specs"],
       "'"${EPIC_LINK_FIELD}"'": {"key": "'"${EPIC_KEY}"'"}
     }
   }'

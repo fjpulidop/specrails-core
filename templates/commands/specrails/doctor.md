@@ -35,7 +35,7 @@ Each check is displayed as ✅ (pass) or ❌ (fail with fix instruction).
 
 On all checks passed:
 ```
-All 6 checks passed. Run /specrails:product-backlog to get started.
+All 6 checks passed. Run /specrails:get-backlog-specs to get started.
 ```
 
 On failure:

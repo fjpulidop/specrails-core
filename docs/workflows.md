@@ -115,13 +115,13 @@ Each feature gets its own worktree, its own agent pipeline, and its own PR. Feat
 
 ---
 
-## `/specrails:product-backlog`
+## `/specrails:get-backlog-specs`
 
 View your prioritized product backlog, ranked by VPC fit and effort.
 
 ```
-/specrails:product-backlog                # Full backlog
-/specrails:product-backlog UI, API        # Filter by area
+/specrails:get-backlog-specs                # Full backlog
+/specrails:get-backlog-specs UI, API        # Filter by area
 ```
 
 ### What it shows
@@ -151,13 +151,13 @@ Safe Implementation Order (Wave 1):
 
 ---
 
-## `/specrails:update-product-driven-backlog`
+## `/specrails:auto-propose-backlog-specs`
 
 Generate new feature ideas through product discovery. The Product Manager (Opus) researches your competitive landscape and generates ideas evaluated against your personas.
 
 ```
-/specrails:update-product-driven-backlog              # All areas
-/specrails:update-product-driven-backlog UI, API      # Focus areas
+/specrails:auto-propose-backlog-specs              # All areas
+/specrails:auto-propose-backlog-specs UI, API      # Focus areas
 ```
 
 ### What it does

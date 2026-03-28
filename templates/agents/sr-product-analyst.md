@@ -1,6 +1,6 @@
 ---
 name: sr-product-analyst
-description: "Use this agent for read-only analysis tasks: backlog prioritization, VPC evaluation, codebase audits, spec gap analysis, dependency checks, and reporting. This agent reads specs, code, personas, and archived changes to produce structured reports. It never writes code or modifies files.\n\nExamples:\n\n- Example 1:\n  user: \"/product-backlog\"\n  assistant: \"Launching the product-analyst agent to read and prioritize the product backlog.\"\n\n- Example 2:\n  user: \"What's the gap between our specs and actual implementation?\"\n  assistant: \"Let me launch the product-analyst agent to compare specs against the codebase.\""
+description: "Use this agent for read-only analysis tasks: backlog prioritization, VPC evaluation, codebase audits, spec gap analysis, dependency checks, and reporting. This agent reads specs, code, personas, and archived changes to produce structured reports. It never writes code or modifies files.\n\nExamples:\n\n- Example 1:\n  user: \"/get-backlog-specs\"\n  assistant: \"Launching the product-analyst agent to read and prioritize the product backlog.\"\n\n- Example 2:\n  user: \"What's the gap between our specs and actual implementation?\"\n  assistant: \"Let me launch the product-analyst agent to compare specs against the codebase.\""
 model: haiku
 color: cyan
 memory: project

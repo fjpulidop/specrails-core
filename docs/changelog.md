@@ -121,8 +121,8 @@ All commands renamed from `/<name>` to `/specrails:<name>`. All agent files rena
 - `/specrails:batch-implement` — parallel multi-feature orchestrator using git worktrees
 - `/specrails:health-check` — codebase quality dashboard with regression detection
 - `/specrails:compat-check` — backwards compatibility analyzer and migration guide generator
-- `/specrails:product-backlog` — VPC-scored backlog view with safe implementation ordering
-- `/specrails:update-product-driven-backlog` — AI-powered product discovery via personas
+- `/specrails:get-backlog-specs` — VPC-scored backlog view with safe implementation ordering
+- `/specrails:auto-propose-backlog-specs` — AI-powered product discovery via personas
 - `/specrails:refactor-recommender` — tech debt scanner ranked by impact/effort
 - `/specrails:why` — semantic search over agent decision records
 - `/specrails:retry` — smart failure recovery (added in 1.3)

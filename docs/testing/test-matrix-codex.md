@@ -39,12 +39,12 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 | Legacy slash commands `.claude/commands/specrails/` | ✅ | ❌ |
 | SKILL.md format `.claude/skills/sr-*/` | ✅ | ✅ |
 | `sr:implement` skill | ✅ | ✅ |
-| `sr:product-backlog` skill | ✅ | ✅ |
+| `sr:get-backlog-specs` skill | ✅ | ✅ |
 | `sr:compat-check` skill | ✅ | ✅ |
 | `sr:why` skill | ✅ | ✅ |
 | `sr:refactor-recommender` skill | ✅ | ✅ |
 | `sr:batch-implement` skill | ✅ | ✅ |
-| `sr:update-product-driven-backlog` skill | ✅ | ✅ |
+| `sr:auto-propose-backlog-specs` skill | ✅ | ✅ |
 | Backward compat: slash commands still invoke correctly | ✅ | — |
 
 ### Permissions Configuration (SPEA-508)

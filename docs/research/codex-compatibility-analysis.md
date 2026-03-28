@@ -336,7 +336,7 @@ Si el board aprueba proceder:
 | specrails (actual) | Claude Code invocation | Codex invocation |
 |-------------------|----------------------|-----------------|
 | `/specrails:implement` | Slash command | Skill (mismo `SKILL.md`) |
-| `/specrails:product-backlog` | Slash command | Skill |
+| `/specrails:get-backlog-specs` | Slash command | Skill |
 | `/opsx:ff` | Slash command | Skill |
 | `/specrails:setup` | Slash command | `codex exec "run setup"` |
 | Agent `sr-architect` | `.claude/agents/sr-architect.md` | `.codex/agents/sr-architect.toml` |

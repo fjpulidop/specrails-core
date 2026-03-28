@@ -2,7 +2,7 @@
   "schema_version": "1",
   "provider": "github",
   "last_updated": "2026-03-17T01:14:15.961419",
-  "written_by": "product-backlog",
+  "written_by": "get-backlog-specs",
   "issues": {
     "57": {
       "number": 57,

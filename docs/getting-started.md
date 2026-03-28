@@ -92,7 +92,7 @@ That's it. One command, full pipeline.
 Once you have a feature running, a few commands help you understand what's happening and why:
 
 - `/specrails:why "question"` — search agent explanation records in plain language. Ask why a design decision was made, why a library was chosen, or why a particular pattern is used. Agents record their reasoning as they work.
-- `/specrails:product-backlog` — see your prioritized backlog with safe implementation ordering. Good first stop before picking what to build next.
+- `/specrails:get-backlog-specs` — see your prioritized backlog with safe implementation ordering. Good first stop before picking what to build next.
 - `/specrails:compat-check #N` — check whether an issue's implementation would break existing API consumers before you commit to it.
 
 ## What's next?

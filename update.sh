@@ -417,8 +417,8 @@ do_migrate_sr_prefix() {
     local workflow_commands=(
         "implement"
         "batch-implement"
-        "product-backlog"
-        "update-product-driven-backlog"
+        "get-backlog-specs"
+        "auto-propose-backlog-specs"
         "compat-check"
         "refactor-recommender"
         "why"

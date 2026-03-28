@@ -56,7 +56,7 @@ Read the following files to understand the current installation state:
    ```bash
    ls $SPECRAILS_DIR/setup-templates/commands/specrails/
    ```
-   Command template files include `implement.md`, `batch-implement.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `product-backlog.md`, `update-product-driven-backlog.md`.
+   Command template files include `implement.md`, `batch-implement.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `get-backlog-specs.md`, `auto-propose-backlog-specs.md`.
    If this directory does not exist, skip command template checking for this update.
 
 6. Read `$SPECRAILS_DIR/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
@@ -420,8 +420,8 @@ Core commands (always install if missing):
 - `propose-spec.md`
 - `compat-check.md`
 - `why.md`
-- `product-backlog.md`
-- `update-product-driven-backlog.md`
+- `get-backlog-specs.md`
+- `auto-propose-backlog-specs.md`
 
 **Initialize local ticket storage** (backlog provider defaults to `local`):
 1. Copy `templates/local-tickets-schema.json` to `$SPECRAILS_DIR/local-tickets.json` and set `last_updated` to the current ISO-8601 timestamp. Skip if the file already exists.
@@ -462,16 +462,16 @@ After generating all files, display the setup complete message.
 
 Then, based on `QS_IS_EXISTING_CODEBASE`:
 - **Existing codebase** (`true`): recommend `/specrails:refactor-recommender`
-- **New project** (`false`): recommend `/specrails:product-backlog`
+- **New project** (`false`): recommend `/specrails:get-backlog-specs`
 
 If `QS_IS_RERUN=false`, display:
 ```
 ✅ Setup complete.
 
 Try your first command:
-  > /specrails:product-backlog
+  > /specrails:get-backlog-specs
 ```
-(Replace `/specrails:product-backlog` with `/specrails:refactor-recommender` for existing codebases.)
+(Replace `/specrails:get-backlog-specs` with `/specrails:refactor-recommender` for existing codebases.)
 
 If `QS_IS_RERUN=true`, display the gap-fill summary and stop:
 ```
@@ -768,7 +768,7 @@ Local tickets are always read-write — there is no "read only" mode since the f
 **Status values:** `todo`, `in_progress`, `done`, `cancelled`
 **Priority values:** `critical`, `high`, `medium`, `low`
 **Labels:** Freeform strings following the `area:*` and `effort:*` convention
-**Source values:** `manual`, `product-backlog`, `propose-spec`
+**Source values:** `manual`, `get-backlog-specs`, `propose-spec`
 
 **Advisory file locking protocol** (CLI agents and hub server must both follow this):
 
@@ -913,7 +913,7 @@ Store the full configuration in `.claude/backlog-config.json`:
 
 #### If None
 
-- Skip `/specrails:product-backlog` and `/specrails:update-product-driven-backlog` commands.
+- Skip `/specrails:get-backlog-specs` and `/specrails:auto-propose-backlog-specs` commands.
 - The `/specrails:implement` command will still work with text descriptions.
 
 ### 3.3 Git & shipping workflow
@@ -946,8 +946,8 @@ If automatic, also check if `gh` is authenticated (for PR creation). If not, war
 | /specrails:implement | Full pipeline: sr-architect → sr-developer → sr-reviewer → ship | sr-architect + sr-developer + sr-reviewer |
 | /specrails:batch-implement | Orchestrate multiple features in dependency-aware waves | sr-architect + sr-developer + sr-reviewer |
 | /specrails:propose-spec | Interactively propose and refine a feature spec, then create a GitHub issue | GitHub CLI |
-| /specrails:product-backlog | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
-| /specrails:update-product-driven-backlog | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
+| /specrails:get-backlog-specs | View prioritized backlog with VPC scores | sr-product-analyst + Backlog provider |
+| /specrails:auto-propose-backlog-specs | Generate new feature ideas via product discovery | sr-product-manager + Backlog provider |
 | /specrails:compat-check | Snapshot API surface and detect breaking changes | None |
 | /specrails:refactor-recommender | Scan for refactoring opportunities ranked by impact/effort | None |
 | /specrails:why | Search past architectural decisions from agent memory | None |
@@ -1081,8 +1081,8 @@ For each selected command, read the template and adapt.
 - `setup-templates/commands/specrails/implement.md` → `.claude/commands/specrails/implement.md`
 - `setup-templates/commands/specrails/batch-implement.md` → `.claude/commands/specrails/batch-implement.md`
 - `setup-templates/commands/specrails/propose-spec.md` → `.claude/commands/specrails/propose-spec.md`
-- `setup-templates/commands/specrails/product-backlog.md` → `.claude/commands/specrails/product-backlog.md` (if `BACKLOG_PROVIDER != none`)
-- `setup-templates/commands/specrails/update-product-driven-backlog.md` → `.claude/commands/specrails/update-product-driven-backlog.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/specrails/get-backlog-specs.md` → `.claude/commands/specrails/get-backlog-specs.md` (if `BACKLOG_PROVIDER != none`)
+- `setup-templates/commands/specrails/auto-propose-backlog-specs.md` → `.claude/commands/specrails/auto-propose-backlog-specs.md` (if `BACKLOG_PROVIDER != none`)
 - `setup-templates/commands/specrails/compat-check.md` → `.claude/commands/specrails/compat-check.md`
 - `setup-templates/commands/specrails/refactor-recommender.md` → `.claude/commands/specrails/refactor-recommender.md`
 - `setup-templates/commands/specrails/why.md` → `.claude/commands/specrails/why.md`
@@ -1091,8 +1091,8 @@ For each selected command, read the template and adapt.
 - `setup-templates/skills/sr-implement/SKILL.md` → `.agents/skills/sr-implement/SKILL.md`
 - `setup-templates/skills/sr-batch-implement/SKILL.md` → `.agents/skills/sr-batch-implement/SKILL.md`
 - `setup-templates/commands/specrails/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
-- `setup-templates/commands/specrails/product-backlog.md` → `.agents/skills/sr-product-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
-- `setup-templates/commands/specrails/update-product-driven-backlog.md` → `.agents/skills/sr-update-product-driven-backlog/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/commands/specrails/get-backlog-specs.md` → `.agents/skills/sr-get-backlog-specs/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
+- `setup-templates/commands/specrails/auto-propose-backlog-specs.md` → `.agents/skills/sr-auto-propose-backlog-specs/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
 - `setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
 - `setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
 - `setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
@@ -1121,7 +1121,7 @@ Adapt:
 
 #### Backlog command persona placeholder substitution
 
-When adapting `update-product-driven-backlog.md` and `product-backlog.md`, substitute the persona placeholders based on the full persona set (user-generated personas + Maintainer if `IS_OSS=true`):
+When adapting `auto-propose-backlog-specs.md` and `get-backlog-specs.md`, substitute the persona placeholders based on the full persona set (user-generated personas + Maintainer if `IS_OSS=true`):
 
 | Placeholder | Substitution rule |
 |-------------|------------------|
@@ -1174,12 +1174,12 @@ All write operations must follow the **advisory file locking protocol** defined 
 - Pre-flight check: `gh auth status`
 
 #### JIRA (`BACKLOG_PROVIDER=jira`)
-- Issue fetch: `jira issue list --project {{JIRA_PROJECT_KEY}} --type Story --label product-backlog --status "To Do" --plain` or equivalent JIRA REST API call via curl:
+- Issue fetch: `jira issue list --project {{JIRA_PROJECT_KEY}} --type Story --label get-backlog-specs --status "To Do" --plain` or equivalent JIRA REST API call via curl:
   ```bash
   curl -s -u "$JIRA_USER_EMAIL:$JIRA_API_TOKEN" \
-    "{{JIRA_BASE_URL}}/rest/api/3/search?jql=project={{JIRA_PROJECT_KEY}} AND labels=product-backlog AND status='To Do'&fields=summary,description,labels,priority"
+    "{{JIRA_BASE_URL}}/rest/api/3/search?jql=project={{JIRA_PROJECT_KEY}} AND labels=get-backlog-specs AND status='To Do'&fields=summary,description,labels,priority"
   ```
-- Issue create: `jira issue create --project {{JIRA_PROJECT_KEY}} --type Story --summary "..." --label product-backlog --description "..."` or equivalent REST API call
+- Issue create: `jira issue create --project {{JIRA_PROJECT_KEY}} --type Story --summary "..." --label get-backlog-specs --description "..."` or equivalent REST API call
 - Issue view: `jira issue view {key}` or REST API
 - VPC scores stored in the issue description body (same markdown format, parsed from description)
 - Pre-flight check: `jira me` or test API connectivity
@@ -1374,8 +1374,8 @@ Display the complete installation summary:
 | /specrails:implement | .claude/commands/specrails/implement.md |
 | /specrails:batch-implement | .claude/commands/specrails/batch-implement.md |
 | /specrails:propose-spec | .claude/commands/specrails/propose-spec.md |
-| /specrails:product-backlog | .claude/commands/specrails/product-backlog.md |
-| /specrails:update-product-driven-backlog | .claude/commands/specrails/update-product-driven-backlog.md |
+| /specrails:get-backlog-specs | .claude/commands/specrails/get-backlog-specs.md |
+| /specrails:auto-propose-backlog-specs | .claude/commands/specrails/auto-propose-backlog-specs.md |
 | /specrails:compat-check | .claude/commands/specrails/compat-check.md |
 | /specrails:refactor-recommender | .claude/commands/specrails/refactor-recommender.md |
 | /specrails:why | .claude/commands/specrails/why.md |
@@ -1385,8 +1385,8 @@ Display the complete installation summary:
 | $sr-implement | .agents/skills/sr-implement/SKILL.md |
 | $sr-batch-implement | .agents/skills/sr-batch-implement/SKILL.md |
 | $sr-propose-spec | .agents/skills/sr-propose-spec/SKILL.md |
-| $sr-product-backlog | .agents/skills/sr-product-backlog/SKILL.md |
-| $sr-update-product-driven-backlog | .agents/skills/sr-update-product-driven-backlog/SKILL.md |
+| $sr-get-backlog-specs | .agents/skills/sr-get-backlog-specs/SKILL.md |
+| $sr-auto-propose-backlog-specs | .agents/skills/sr-auto-propose-backlog-specs/SKILL.md |
 | $sr-compat-check | .agents/skills/sr-compat-check/SKILL.md |
 | $sr-refactor-recommender | .agents/skills/sr-refactor-recommender/SKILL.md |
 | $sr-why | .agents/skills/sr-why/SKILL.md |
@@ -1410,26 +1410,26 @@ Note: Only commands/skills selected during setup are shown. Backlog commands are
 ### Next Steps
 [If cli_provider == "claude":]
 1. Review the generated files in .claude/
-2. Run `/specrails:product-backlog` to see your backlog (if GitHub Issues exist)
-3. Run `/specrails:update-product-driven-backlog` to generate feature ideas
+2. Run `/specrails:get-backlog-specs` to see your backlog (if GitHub Issues exist)
+3. Run `/specrails:auto-propose-backlog-specs` to generate feature ideas
 4. Run `/specrails:implement #issue-number` to implement a feature
 5. Commit the .claude/ directory to version control
 [If cli_provider == "codex":]
 1. Review the generated files in .codex/ and .agents/skills/
-2. Run `$sr-product-backlog` to see your backlog (if GitHub Issues exist)
-3. Run `$sr-update-product-driven-backlog` to generate feature ideas
+2. Run `$sr-get-backlog-specs` to see your backlog (if GitHub Issues exist)
+3. Run `$sr-auto-propose-backlog-specs` to generate feature ideas
 4. Run `$sr-implement #issue-number` to implement a feature
 5. Commit the .codex/ and .agents/ directories to version control
 
 ### Quick Start
 [If cli_provider == "claude":]
 - `/specrails:implement "describe a feature"` — implement something right now
-- `/specrails:product-backlog` — see prioritized feature ideas
-- `/specrails:update-product-driven-backlog` — discover new features using VPC
+- `/specrails:get-backlog-specs` — see prioritized feature ideas
+- `/specrails:auto-propose-backlog-specs` — discover new features using VPC
 [If cli_provider == "codex":]
 - `$sr-implement "describe a feature"` — implement something right now
-- `$sr-product-backlog` — see prioritized feature ideas
-- `$sr-update-product-driven-backlog` — discover new features using VPC
+- `$sr-get-backlog-specs` — see prioritized feature ideas
+- `$sr-auto-propose-backlog-specs` — discover new features using VPC
 ```
 
 ## First Task Prompt (Full Wizard)
@@ -1442,9 +1442,9 @@ After displaying the setup complete summary above, detect the project type and o
 
 Try your first spec:
 [If cli_provider == "claude":]
-  > /specrails:product-backlog
+  > /specrails:get-backlog-specs
 [If cli_provider == "codex":]
-  > $sr-product-backlog
+  > $sr-get-backlog-specs
 ```
 
 **Existing codebase** (one or more of the above files found in root):

@@ -95,7 +95,7 @@ Print to stdout:
 ✅ Setup complete.
 
 Try your first spec:
-  > /specrails:product-backlog
+  > /specrails:get-backlog-specs
 ```
 
 If `CODEBASE_TYPE` is `existing`, replace the last two lines with:

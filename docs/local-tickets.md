@@ -46,7 +46,7 @@ The file is read and written by specrails-core during command execution.
       "created_at": "2026-03-20T09:00:00.000Z",
       "updated_at": "2026-03-20T09:00:00.000Z",
       "created_by": "sr-product-manager",
-      "source": "product-backlog"
+      "source": "get-backlog-specs"
     }
   }
 }
@@ -81,7 +81,7 @@ The file is read and written by specrails-core during command execution.
 | `created_at` | ISO-8601 | — | Creation timestamp |
 | `updated_at` | ISO-8601 | — | Last mutation timestamp |
 | `created_by` | string | — | Agent name or `"user"` |
-| `source` | string | `manual`, `product-backlog`, `propose-spec` | How the ticket was created |
+| `source` | string | `manual`, `get-backlog-specs`, `propose-spec` | How the ticket was created |
 
 ---
 
@@ -156,23 +156,23 @@ Pass local ticket IDs the same way you would GitHub issue numbers:
 
 The command reads each ticket from `local-tickets.json`, extracts metadata (area, effort, description), and tracks the ticket through the pipeline — updating status to `in_progress` on start and `done` on successful completion.
 
-### `/specrails:product-backlog`
+### `/specrails:get-backlog-specs`
 
 ```bash
-/specrails:product-backlog              # all areas
-/specrails:product-backlog UI, Backend  # filter by area
+/specrails:get-backlog-specs              # all areas
+/specrails:get-backlog-specs UI, Backend  # filter by area
 ```
 
 Reads all `todo` and `in_progress` tickets, scores them by VPC match, respects the `prerequisites` dependency graph, and recommends the top 3 for your next sprint.
 
-### `/specrails:update-product-driven-backlog`
+### `/specrails:auto-propose-backlog-specs`
 
 ```bash
-/specrails:update-product-driven-backlog            # explore all areas
-/specrails:update-product-driven-backlog Analytics  # focus on one area
+/specrails:auto-propose-backlog-specs            # explore all areas
+/specrails:auto-propose-backlog-specs Analytics  # focus on one area
 ```
 
-Runs product discovery using your VPC personas. Creates new local tickets for discovered feature ideas, tagged with `source: "product-backlog"` and `labels: ["product-driven-backlog", "area:<area>"]`. Existing tickets are checked for duplicates before creating new ones.
+Runs product discovery using your VPC personas. Creates new local tickets for discovered feature ideas, tagged with `source: "get-backlog-specs"` and `labels: ["product-driven-backlog", "area:<area>"]`. Existing tickets are checked for duplicates before creating new ones.
 
 ### `/specrails:propose-spec`
 
