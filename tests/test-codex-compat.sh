@@ -47,10 +47,27 @@ EOF
 # The caller must set up $MOCK_BIN stubs before calling this.
 run_install_mocked() {
     local extra_args="${1:-}"
-    # Preserve minimal system PATH (bash, git, python3, etc.) but put mock-bin first
-    local system_bin
-    system_bin="$(dirname "$(command -v bash)"):$(dirname "$(command -v git)"):$(dirname "$(command -v python3)" 2>/dev/null || echo "/usr/bin")"
-    local mock_path="$MOCK_BIN:$system_bin"
+    # Build a system PATH that includes all normal tools but NOT real AI CLIs.
+    # Copying whole directories (e.g. /opt/homebrew/bin) can leak claude/codex.
+    # Strategy: symlink every file from each system-PATH dir EXCEPT claude & codex.
+    local sys_bin="$TEST_TMPDIR/sys-bin"
+    rm -rf "$sys_bin"
+    mkdir -p "$sys_bin"
+    local IFS=':'
+    for dir in $(dirname "$(command -v bash)") $(dirname "$(command -v git)") $(dirname "$(command -v python3)" 2>/dev/null || echo "/usr/bin"); do
+        [ -d "$dir" ] || continue
+        for f in "$dir"/*; do
+            local name
+            name="$(basename "$f")"
+            # Skip AI CLIs — only mocked versions in MOCK_BIN should be discoverable
+            [[ "$name" == "claude" || "$name" == "codex" ]] && continue
+            # Don't overwrite already-linked commands (first dir wins)
+            [ -e "$sys_bin/$name" ] && continue
+            ln -sf "$f" "$sys_bin/$name" 2>/dev/null || true
+        done
+    done
+    unset IFS
+    local mock_path="$MOCK_BIN:$sys_bin"
     env PATH="$mock_path" SPECRAILS_SKIP_PREREQS=1 \
         bash "$SPECRAILS_DIR/install.sh" --root-dir "$TEST_TMPDIR/target" --yes $extra_args 2>&1 || true
 }

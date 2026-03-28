@@ -34,7 +34,7 @@ MCP servers run as local processes (stdio) or remote services (HTTP+SSE). Any MC
 ### Distribution & Execution Model
 
 ```
-npx specrails-core@latest init    →   install.sh (bash)    →   /setup (Claude Code command)
+npx specrails-core@latest init    →   install.sh (bash)    →   /specrails:setup (Claude Code command)
                                         │                         │
                                         ├── Copy templates        ├── Detect codebase
                                         ├── Create dirs           ├── Generate agents
@@ -337,7 +337,7 @@ These capabilities require Claude Code's runtime and should NOT be exposed via M
 | `/specrails:batch-implement` | Requires git worktree isolation |
 | Agent invocation (sr-*) | Requires Claude Code's Agent subagent system |
 | OpenSpec artifact creation | Interactive, context-heavy (requires conversation) |
-| `/setup` wizard | Multi-step interactive configuration |
+| `/specrails:setup` wizard | Multi-step interactive configuration |
 | Template substitution (write) | Modifies project files, requires user consent |
 
 **Principle:** MCP = knowledge access. Claude Code = orchestration engine.

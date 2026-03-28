@@ -175,7 +175,7 @@ generate_manifest() {
         artifacts_json="${artifacts_json},"
     fi
     artifacts_json="${artifacts_json}
-    \"commands/setup.md\": \"${setup_checksum}\""
+    \"commands/specrails/setup.md\": \"${setup_checksum}\""
 
     # Include prompts/
     if [[ -d "$SCRIPT_DIR/prompts" ]]; then
@@ -282,7 +282,7 @@ except Exception:
 import json, sys
 try:
     data = json.load(open(sys.argv[1]))
-    print(data['artifacts'].get('commands/setup.md', ''))
+    print(data['artifacts'].get('commands/specrails/setup.md', data['artifacts'].get('commands/setup.md', '')))
 except Exception:
     print('')
 " "$local_manifest" 2>/dev/null || echo "")"
@@ -495,11 +495,11 @@ except Exception:
         return 1  # Unchanged
     }
 
-    # Update /setup command (selective)
-    mkdir -p "$REPO_ROOT/.claude/commands"
-    if _file_changed "$SCRIPT_DIR/commands/setup.md" "commands/setup.md"; then
-        cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/setup.md"
-        ok "Updated /setup command"
+    # Update /specrails:setup command (selective)
+    mkdir -p "$REPO_ROOT/.claude/commands/specrails"
+    if _file_changed "$SCRIPT_DIR/commands/setup.md" "commands/specrails/setup.md"; then
+        cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/specrails/setup.md"
+        ok "Updated /specrails:setup command"
         updated_count=$(( updated_count + 1 ))
     fi
 
@@ -660,9 +660,9 @@ except Exception:
         read -p "    Regenerate agents? (y/N): " answer || answer="n"
         if [[ "$answer" == "y" ]] || [[ "$answer" == "Y" ]]; then
             NEEDS_SETUP_UPDATE=true
-            ok "Will regenerate agents via /setup --update"
+            ok "Will regenerate agents via /specrails:setup --update"
         else
-            warn "Workflow may break with outdated agents. Run '/setup --update' inside Claude Code when ready."
+            warn "Workflow may break with outdated agents. Run '/specrails:setup --update' inside Claude Code when ready."
         fi
     else
         ok "All agent/rule templates unchanged — no regeneration needed"
@@ -675,7 +675,7 @@ except Exception:
         for t in "${new_templates[@]}"; do
             echo "      $t"
         done
-        info "These will be evaluated during /setup --update"
+        info "These will be evaluated during /specrails:setup --update"
         NEEDS_SETUP_UPDATE=true
     fi
 }
@@ -794,10 +794,10 @@ UPDATE_SUCCESS=true
 rm -rf "$BACKUP_DIR"
 ok "Backup removed"
 
-# Clean up setup-templates if no /setup re-run is needed
+# Clean up setup-templates if no /specrails:setup re-run is needed
 if [[ "$NEEDS_SETUP_UPDATE" != true ]] && [[ -d "$REPO_ROOT/.claude/setup-templates" ]]; then
     rm -rf "$REPO_ROOT/.claude/setup-templates"
-    ok "Cleaned up setup-templates (no /setup re-run needed)"
+    ok "Cleaned up setup-templates (no /specrails:setup re-run needed)"
 fi
 
 echo ""
@@ -811,7 +811,7 @@ if [[ "$NEEDS_SETUP_UPDATE" == true ]]; then
     echo ""
     echo "  Open Claude Code in this repo and run:"
     echo ""
-    echo -e "     ${BOLD}/setup --update${NC}"
+    echo -e "     ${BOLD}/specrails:setup --update${NC}"
     echo ""
     echo "  Claude will re-analyze your codebase and regenerate only the"
     echo "  agents and rules whose templates have changed."

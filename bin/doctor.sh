@@ -76,7 +76,7 @@ fi
 if [[ -f "${PROJECT_ROOT}/CLAUDE.md" ]]; then
     pass "CLAUDE.md: present"
 else
-    fail "CLAUDE.md: missing" "Run /setup inside Claude Code to regenerate"
+    fail "CLAUDE.md: missing" "Run /specrails:setup inside Claude Code to regenerate"
 fi
 
 # ─────────────────────────────────────────────

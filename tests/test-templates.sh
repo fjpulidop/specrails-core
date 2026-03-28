@@ -159,7 +159,8 @@ test_command_templates_placeholders_wellformed() {
     # Command templates use {{UPPER_SNAKE_CASE}} placeholders filled during /setup.
     # Verify no malformed placeholders (e.g., {{lowercase}}, {{Mixed_Case}}, unclosed {{).
     local malformed
-    malformed="$(grep -rP '\{\{(?![A-Z_]+\}\})[^}]*\}\}' "$SPECRAILS_DIR/templates/commands/" 2>/dev/null || true)"
+    # Exclude lines containing 'grep' — those are regex patterns passed as arguments, not template placeholders
+    malformed="$(grep -rP '\{\{(?![A-Z_]+\}\})[^}]*\}\}' "$SPECRAILS_DIR/templates/commands/" 2>/dev/null | grep -v 'grep ' || true)"
     if [[ -n "$malformed" ]]; then
         echo "  Malformed placeholders in command templates:"
         echo "$malformed" | head -5

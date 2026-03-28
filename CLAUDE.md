@@ -31,7 +31,7 @@ specrails-core/
 │   ├── config.yaml
 │   ├── specs/
 │   └── changes/
-└── .claude/                # Generated output (after /setup)
+└── .claude/                # Generated output (after /specrails:setup)
     ├── agents/             # Adapted agent prompts + personas (sr-*.md)
     ├── commands/
     │   └── specrails/      # Adapted workflow commands (/specrails:* namespace)
@@ -77,7 +77,7 @@ Layer-specific conventions are in `.claude/rules/` (loaded conditionally per lay
 
 - **Meta-tool**: Changes to templates affect ALL target repos. Test template generation carefully.
 - **Self-referential**: specrails-core uses its own agent workflow to develop itself. Avoid infinite recursion.
-- **Meta-changes**: Template edits affect ALL repos that have already run `/setup`. Changes are not retroactive.
+- **Meta-changes**: Template edits affect ALL repos that have already run `/specrails:setup`. Changes are not retroactive.
 
 ## OpenSpec
 
