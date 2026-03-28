@@ -1,15 +1,15 @@
 ---
-name: sr-product-backlog
-description: "sr:product-backlog — View product-driven backlog from GitHub Issues and propose top 3 for implementation."
-license: MIT
-compatibility: "Requires GitHub CLI (gh)."
-metadata:
-  author: specrails
-  version: "1.0"
+name: "Product Backlog"
+description: "View product-driven backlog from GitHub Issues and propose top 3 for implementation"
+category: Workflow
+tags: [workflow, backlog, viewer, product-driven]
+phases:
+  - key: analyst
+    label: Analyst
+    description: "Reads and prioritizes the product backlog"
 ---
 
-
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:update-product-driven-backlog` to generate new ideas.
+Display the product-driven backlog by reading issues from GitHub Issues. These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:auto-propose-backlog-specs` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -17,13 +17,13 @@ Display the product-driven backlog by reading issues/tickets from the configured
 
 ## Phase 0: Environment Pre-flight
 
-Verify the backlog provider is accessible:
+Verify GitHub CLI is accessible:
 
 ```bash
-{{BACKLOG_PREFLIGHT}}
+gh auth status 2>&1
 ```
 
-If the backlog provider is unavailable, stop and inform the user.
+If GitHub CLI is unavailable, stop and inform the user.
 
 ---
 
@@ -33,14 +33,14 @@ Launch a **single** sr-product-analyst agent (`subagent_type: sr-product-analyst
 
 The product-analyst receives this prompt:
 
-> You are reading the product-driven backlog from {{BACKLOG_PROVIDER_NAME}} and producing a prioritized view.
+> You are reading the product-driven backlog from GitHub Issues and producing a prioritized view.
 
 1. **Fetch all open product-driven backlog items:**
    ```bash
-   {{BACKLOG_FETCH_CMD}}
+   gh issue list --label "product-driven-backlog" --state open --limit 100 --json number,title,labels,body
    ```
 
-2. **Parse each issue/ticket** to extract metadata from the body:
+2. **Parse each issue** to extract metadata from the body:
    - **Area**: from `area:*` label
    - **Persona Fit**: from the body's Overview table — extract per-persona scores and total
    - **Effort**: from the body's Overview table (High/Medium/Low)
@@ -104,14 +104,14 @@ The product-analyst receives this prompt:
    ## Product-Driven Backlog
 
    {N} open issues | Source: VPC-based product discovery
-   Personas: {{PERSONA_NAMES_WITH_ROLES}}
+   Personas: "Alex" (Lead Dev), "Sara" (Product Founder), "Kai" (Maintainer)
 
    ### {Area Name}
 
-   | # | Issue | {{PERSONA_SCORE_HEADERS}} | Total | Effort | Prereqs |
-   |---|-------|{{PERSONA_SCORE_SEPARATORS}}|-------|--------|---------|
-   | 1 | #42 Feature name [blocked] | ... | X/{{MAX_SCORE}} | Low | #12, #17 |
-   | 2 | #43 Other feature | ... | X/{{MAX_SCORE}} | High | — |
+   | # | Issue | Alex | Sara | Kai | Total | Effort | Prereqs |
+   |---|-------|------|------|-----|-------|--------|---------|
+   | 1 | #42 Feature name [blocked] | X/5 | X/5 | X/5 | X/15 | Low | #12, #17 |
+   | 2 | #43 Other feature | X/5 | X/5 | X/5 | X/15 | High | — |
 
    ---
 
@@ -119,8 +119,8 @@ The product-analyst receives this prompt:
 
    Ranked by VPC persona score / effort ratio:
 
-   | Priority | Issue | Area | {{PERSONA_SCORE_HEADERS}} | Total | Effort | Rationale |
-   |----------|-------|------|{{PERSONA_SCORE_SEPARATORS}}|-------|--------|-----------|
+   | Priority | Issue | Area | Alex | Sara | Kai | Total | Effort | Rationale |
+   |----------|-------|------|------|------|-----|-------|--------|-----------|
 
    ### Selection criteria
    - Cross-persona features (both 4+/5) prioritized over single-persona
@@ -142,8 +142,8 @@ The product-analyst receives this prompt:
 
    | Wave | Issue | Title | Prereqs | Score | Effort |
    |------|-------|-------|---------|-------|--------|
-   | 1    | #N    | ...   | —       | X/{{MAX_SCORE}} | Low |
-   | 2    | #M    | ...   | #N      | X/{{MAX_SCORE}} | Medium |
+   | 1    | #N    | ...   | —       | X/15 | Low |
+   | 2    | #M    | ...   | #N      | X/15 | Medium |
 
    To implement in this order:
      /specrails:batch-implement <issue-refs in wave order> --deps "<A> -> <B>, <C> -> <D>, ..."
@@ -160,7 +160,7 @@ The product-analyst receives this prompt:
 
 10. If no issues exist:
     ```
-    No product-driven backlog issues found. Run `/specrails:update-product-driven-backlog` to generate feature ideas.
+    No product-driven backlog issues found. Run `/specrails:auto-propose-backlog-specs` to generate feature ideas.
     ```
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
@@ -193,7 +193,7 @@ The product-analyst receives this prompt:
    - `schema_version`: `"1"`
    - `provider`: `"github"`
    - `last_updated`: current ISO 8601 timestamp
-   - `written_by`: `"product-backlog"`
+   - `written_by`: `"get-backlog-specs"`
    - `issues`: the merged map keyed by string issue number
 
    If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.

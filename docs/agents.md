@@ -21,7 +21,7 @@ The result: better quality at every stage, with clear accountability.
 |-|-|
 | **Color** | Blue |
 | **Model** | Opus (creative reasoning) |
-| **Trigger** | `/opsx:explore`, `/specrails:update-product-driven-backlog` |
+| **Trigger** | `/opsx:explore`, `/specrails:auto-propose-backlog-specs` |
 | **Role** | Feature ideation and product strategy |
 
 The Product Manager is the **starting point** of the pipeline. It researches your competitive landscape (via web search), evaluates ideas against your user personas using the VPC framework, and produces prioritized feature recommendations.
@@ -42,7 +42,7 @@ The Product Manager is the **starting point** of the pipeline. It researches you
 |-|-|
 | **Color** | Cyan |
 | **Model** | Haiku (fast, read-only) |
-| **Trigger** | `/specrails:product-backlog` |
+| **Trigger** | `/specrails:get-backlog-specs` |
 | **Role** | Backlog analysis and reporting |
 
 The Product Analyst is a **read-only** agent. It reads your backlog, specs, and archived changes to produce structured reports. It never writes code or makes decisions — it just gives you the data.

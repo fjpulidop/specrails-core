@@ -16,7 +16,7 @@ Each command `.md` file in `.claude/commands/specrails/` MAY declare a `phases` 
 - **THEN** its phases SHALL be `[architect, developer, reviewer, ship]` as declared in its frontmatter
 
 #### Scenario: Product-backlog command phases
-- **WHEN** the `/specrails:product-backlog` command is loaded
+- **WHEN** the `/specrails:get-backlog-specs` command is loaded
 - **THEN** its phases SHALL be `[analyst]` as declared in its frontmatter
 
 ### Requirement: Server exposes phase definitions in config API

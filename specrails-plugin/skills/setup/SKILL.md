@@ -138,7 +138,7 @@ role: <role based on domain>
 | Gain 2 description | Medium |
 
 ---
-*Edit this file to reflect your actual user persona. Run `/specrails:product-backlog` to see how ideas align with this persona.*
+*Edit this file to reflect your actual user persona. Run `/specrails:get-backlog-specs` to see how ideas align with this persona.*
 ```
 
 **File: `.specrails/personas/maintainer.md`**
@@ -236,7 +236,7 @@ This project uses the SpecRails agent workflow system (sr plugin).
 ### Agents
 The following agents are available via the `sr` plugin:
 - `/specrails:implement` — full pipeline: architect → developer → reviewer
-- `/specrails:product-backlog` — view prioritized backlog
+- `/specrails:get-backlog-specs` — view prioritized backlog
 - `/specrails:health-check` — run full codebase health check
 - `/specrails:opsx:ff` → `/specrails:opsx:apply` → `/specrails:opsx:archive` — OpenSpec workflow
 
@@ -270,7 +270,7 @@ Files created:
 Next steps:
   1. Edit .specrails/config.yaml to refine your project settings
   2. Edit .specrails/personas/*.md to accurately describe your users
-  3. Run /specrails:product-backlog to see backlog ideas for your domain
+  3. Run /specrails:get-backlog-specs to see backlog ideas for your domain
   4. Run /specrails:implement #1 to start implementing a GitHub Issue
   5. Run /specrails:opsx:ff to fast-forward an OpenSpec change
 ```

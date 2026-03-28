@@ -181,8 +181,8 @@ run_test "SPEA-506: codex provider → AGENTS.md instruction file created" test_
 EXPECTED_SKILLS=(
     "sr-implement"
     "sr-batch-implement"
-    "sr-product-backlog"
-    "sr-update-backlog"
+    "sr-get-backlog-specs"
+    "sr-auto-propose-backlog-specs"
     "sr-compat-check"
     "sr-why"
     "sr-refactor-recommender"

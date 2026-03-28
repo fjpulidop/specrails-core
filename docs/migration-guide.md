@@ -125,7 +125,7 @@ npx specrails-core@latest init --root-dir .
 > /specrails:setup --update
 ```
 
-The `--update` flag regenerates only the backlog commands (`product-backlog`, `update-product-driven-backlog`, `implement`) without re-running the full stack analysis.
+The `--update` flag regenerates only the backlog commands (`get-backlog-specs`, `auto-propose-backlog-specs`, `implement`) without re-running the full stack analysis.
 
 ---
 

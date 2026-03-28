@@ -5,7 +5,7 @@ category: Workflow
 tags: [workflow, backlog, viewer, product-driven]
 ---
 
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:update-product-driven-backlog` to generate new ideas.
+Display the product-driven backlog by reading issues/tickets from the configured backlog provider ({{BACKLOG_PROVIDER_NAME}}). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:auto-propose-backlog-specs` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -156,7 +156,7 @@ The product-analyst receives this prompt:
 
 10. If no issues exist:
     ```
-    No product-driven backlog issues found. Run `/specrails:update-product-driven-backlog` to generate feature ideas.
+    No product-driven backlog issues found. Run `/specrails:auto-propose-backlog-specs` to generate feature ideas.
     ```
 
 7. **[Orchestrator]** After the product-analyst completes, write issue snapshots to `.claude/backlog-cache.json`.
@@ -181,7 +181,7 @@ The product-analyst receives this prompt:
    - `schema_version`: `"1"`
    - `provider`: `"local"`
    - `last_updated`: current ISO 8601 timestamp
-   - `written_by`: `"product-backlog"`
+   - `written_by`: `"get-backlog-specs"`
    - `issues`: the map keyed by string ticket ID
 
    If the write fails: print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.
@@ -216,7 +216,7 @@ The product-analyst receives this prompt:
    - `schema_version`: `"1"`
    - `provider`: `"github"`
    - `last_updated`: current ISO 8601 timestamp
-   - `written_by`: `"product-backlog"`
+   - `written_by`: `"get-backlog-specs"`
    - `issues`: the merged map keyed by string issue number
 
    If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Continuing.` Do not abort.

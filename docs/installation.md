@@ -195,7 +195,7 @@ The wizard fills all templates with your project-specific context:
 ├── commands/
 │   └── sr/
 │       ├── implement.md
-│       ├── product-backlog.md
+│       ├── get-backlog-specs.md
 │       ├── batch-implement.md
 │       └── ...                  # 17 commands total
 ├── rules/
@@ -230,7 +230,7 @@ The quick path — three questions, sensible defaults, done in under a minute.
 | Item | Detail |
 |------|--------|
 | Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
-| All workflow commands | `/specrails:implement`, `/specrails:product-backlog`, and 14 more |
+| All workflow commands | `/specrails:implement`, `/specrails:get-backlog-specs`, and 14 more |
 | Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
 | CLAUDE.md | Project-level context for agents |
 

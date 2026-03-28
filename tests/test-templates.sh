@@ -110,11 +110,11 @@ run_test "all agent templates have non-empty body (5+ lines)" test_agent_templat
 
 EXPECTED_COMMANDS=(
     "specrails/implement"
-    "specrails/product-backlog"
+    "specrails/get-backlog-specs"
     "specrails/batch-implement"
     "specrails/compat-check"
     "specrails/refactor-recommender"
-    "specrails/update-product-driven-backlog"
+    "specrails/auto-propose-backlog-specs"
     "specrails/why"
     "specrails/retry"
     "specrails/telemetry"
@@ -176,8 +176,8 @@ run_test "command template placeholders are well-formed UPPER_SNAKE_CASE" test_c
 EXPECTED_SKILLS=(
     "sr-implement"
     "sr-batch-implement"
-    "sr-product-backlog"
-    "sr-update-backlog"
+    "sr-get-backlog-specs"
+    "sr-auto-propose-backlog-specs"
     "sr-compat-check"
     "sr-refactor-recommender"
     "sr-why"

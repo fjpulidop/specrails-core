@@ -163,7 +163,7 @@ This gives you an audit trail from product decision to implementation choice, wi
 
 ## Dependency-Aware Ordering
 
-When `/specrails:product-backlog` is run, the Product Analyst parses `Prerequisites:` fields from GitHub Issue bodies and builds a **dependency DAG** (directed acyclic graph). It then:
+When `/specrails:get-backlog-specs` is run, the Product Analyst parses `Prerequisites:` fields from GitHub Issue bodies and builds a **dependency DAG** (directed acyclic graph). It then:
 
 1. Detects cycles and reports them as errors (circular dependencies block ordering)
 2. Computes a safe implementation order via topological sort

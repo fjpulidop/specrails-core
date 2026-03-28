@@ -34,8 +34,8 @@ The `sr` plugin provides a complete AI agent workflow system for product-driven 
 - `/specrails:setup` — Initialize a project with the specrails workflow
 
 #### Product Discovery
-- `/specrails:product-backlog` — View and prioritize the product-driven backlog
-- `/specrails:update-product-driven-backlog` — Generate new feature ideas via product discovery
+- `/specrails:get-backlog-specs` — View and prioritize the product-driven backlog
+- `/specrails:auto-propose-backlog-specs` — Generate new feature ideas via product discovery
 - `/specrails:propose-spec` — Explore a spec idea and produce a structured proposal
 
 #### Code Quality
@@ -69,5 +69,5 @@ The `sr` plugin provides a complete AI agent workflow system for product-driven 
 
 1. Run `/specrails:setup` to initialize your project
 2. Edit `.specrails/config.yaml` and `.specrails/personas/` to describe your project
-3. Run `/specrails:product-backlog` to see generated feature ideas
+3. Run `/specrails:get-backlog-specs` to see generated feature ideas
 4. Run `/specrails:implement #123` to implement a GitHub Issue

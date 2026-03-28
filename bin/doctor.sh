@@ -108,7 +108,7 @@ echo ""
 
 if [[ "${FAIL}" -eq 0 ]]; then
     TOTAL=$((PASS + FAIL))
-    echo -e "All ${TOTAL} checks passed. Run ${BOLD}/specrails:product-backlog${NC} to get started."
+    echo -e "All ${TOTAL} checks passed. Run ${BOLD}/specrails:get-backlog-specs${NC} to get started."
 else
     echo "${FAIL} check(s) failed."
 fi

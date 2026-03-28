@@ -45,7 +45,7 @@ npx specrails-core@latest init    →   install.sh (bash)    →   /specrails:se
 
 ```
 Claude Code
-├── Commands (/specrails:implement, /specrails:product-backlog, ...)
+├── Commands (/specrails:implement, /specrails:get-backlog-specs, ...)
 ├── Skills (/opsx:new, /opsx:apply, /opsx:ff, ...)
 ├── Agents (sr-architect, sr-developer, sr-reviewer, ...)
 ├── Rules (.claude/rules/ — layer-specific conventions)

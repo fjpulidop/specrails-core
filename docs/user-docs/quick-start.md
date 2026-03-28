@@ -122,7 +122,7 @@ One command. The PR is ready for human review.
 **Explore the backlog:**
 
 ```
-/specrails:product-backlog
+/specrails:get-backlog-specs
 ```
 
 See your tickets ranked by persona fit and effort. The top 3 are safe to implement next. Uses local tickets by default.
@@ -130,7 +130,7 @@ See your tickets ranked by persona fit and effort. The top 3 are safe to impleme
 **Generate new feature ideas:**
 
 ```
-/specrails:update-product-driven-backlog
+/specrails:auto-propose-backlog-specs
 ```
 
 The Product Manager researches your competitive landscape and creates new tickets (local by default, or GitHub Issues if configured).

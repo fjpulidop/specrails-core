@@ -38,13 +38,13 @@ grep -c '{{' .claude/agents/<name>.md     # must be 0
 
 ## Multi-file grep false positive — template vs instance
 
-**Pattern:** When running `grep -n '{{[A-Z_]*}}'` across both template and instance directories in a single search, a hit in a template file (e.g., `templates/commands/update-product-driven-backlog.md`) can be mistakenly attributed to the adjacent instance file (`.claude/commands/update-product-driven-backlog.md`).
+**Pattern:** When running `grep -n '{{[A-Z_]*}}'` across both template and instance directories in a single search, a hit in a template file (e.g., `templates/commands/auto-propose-backlog-specs.md`) can be mistakenly attributed to the adjacent instance file (`.claude/commands/auto-propose-backlog-specs.md`).
 
 **Why:** The grep output shows the matching file path, but when mentally scanning multi-file results, it's easy to misread which file owns a given hit.
 
 **How to apply:** Always run the placeholder check on the instance file in isolation:
 ```bash
-grep -r '{{[A-Z_]*}}' .claude/commands/update-product-driven-backlog.md || echo "OK"
+grep -r '{{[A-Z_]*}}' .claude/commands/auto-propose-backlog-specs.md || echo "OK"
 ```
 Never combine template and instance paths in a single grep for placeholder-clean assertions.
 

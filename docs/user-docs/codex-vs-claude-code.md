@@ -30,7 +30,7 @@ SpecRails supports both **OpenAI Codex** and **Anthropic Claude Code** as AI age
 SpecRails Skills use `SKILL.md` format, which is shared between Codex and Claude Code. All `/specrails:*` and `/opsx:*` skills run identically on both platforms:
 
 - `/specrails:implement` — full pipeline (design → code → review → PR)
-- `/specrails:product-backlog` — VPC-ranked backlog view
+- `/specrails:get-backlog-specs` — VPC-ranked backlog view
 - `/opsx:ff` — OpenSpec fast-forward
 - All other workflow skills
 
