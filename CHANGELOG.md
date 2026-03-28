@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.4.0](https://github.com/fjpulidop/specrails-core/compare/v3.3.1...v3.4.0) (2026-03-28)
+
+
+### Features
+
+* add sr Claude Code plugin package (SPEA-711) ([#202](https://github.com/fjpulidop/specrails-core/issues/202)) ([9ed6eaa](https://github.com/fjpulidop/specrails-core/commit/9ed6eaa37b60ff46689b20f5dd44ad6e1f7735fb))
+
+
+### Documentation
+
+* update for sr plugin + /sr:* namespace (SPEA-713) ([#201](https://github.com/fjpulidop/specrails-core/issues/201)) ([bfaf619](https://github.com/fjpulidop/specrails-core/commit/bfaf6191d423fac99a922bdebc46a25873725a75))
+
 ## [3.3.1](https://github.com/fjpulidop/specrails-core/compare/v3.3.0...v3.3.1) (2026-03-27)
 
 
