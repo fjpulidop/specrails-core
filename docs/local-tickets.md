@@ -6,7 +6,7 @@ specrails-core ships with a built-in, file-based ticket management system. It is
 
 ## Overview
 
-Tickets live in `.claude/local-tickets.json` at your project root. Because it's a plain JSON file, tickets are:
+Tickets live in `.specrails/local-tickets.json` at your project root. Because it's a plain JSON file, tickets are:
 
 - **Version-controlled** — tracked by git, diffable in PRs
 - **Offline-first** — no network calls, no rate limits
@@ -18,7 +18,7 @@ The file is read and written by specrails-core during command execution.
 
 ## Storage format
 
-`.claude/local-tickets.json`:
+`.specrails/local-tickets.json`:
 
 ```json
 {
@@ -99,7 +99,7 @@ Use local ticket management or connect an external provider?
 2. External provider — connect GitHub Issues, JIRA, or disable backlog commands
 ```
 
-Pressing **Enter** or selecting **1** initializes `.claude/local-tickets.json` with an empty ticket store and writes `.claude/backlog-config.json`:
+Pressing **Enter** or selecting **1** initializes `.specrails/local-tickets.json` with an empty ticket store and writes `.specrails/backlog-config.json`:
 
 ```json
 {
@@ -123,7 +123,7 @@ Multiple agents can modify `local-tickets.json` simultaneously. The system uses 
 
 ### Advisory file lock
 
-Before every write, the agent creates `.claude/local-tickets.json.lock`:
+Before every write, the agent creates `.specrails/local-tickets.json.lock`:
 
 ```json
 {

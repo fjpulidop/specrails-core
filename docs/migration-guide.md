@@ -22,7 +22,7 @@ Switching is optional. GitHub Issues and JIRA remain fully supported. Local tick
 
 ## Step 1: Switch the provider
 
-Edit `.claude/backlog-config.json` in your project root:
+Edit `.specrails/backlog-config.json` in your project root:
 
 ```json
 {
@@ -42,7 +42,7 @@ Then initialize the ticket store if it doesn't exist yet:
 Or create the file manually:
 
 ```bash
-cat > .claude/local-tickets.json << 'EOF'
+cat > .specrails/local-tickets.json << 'EOF'
 {
   "schema_version": "1.0",
   "revision": 0,

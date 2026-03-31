@@ -196,7 +196,7 @@ AI product discovery using your personas. Evaluates ideas, creates tickets (loca
 
 specrails-core ships with a built-in ticket system — no GitHub account or external tools required.
 
-Tickets live in `.claude/local-tickets.json` alongside your code. They're plain JSON and git-friendly.
+Tickets live in `.specrails/local-tickets.json` alongside your code. They're plain JSON and git-friendly.
 
 **Local tickets are the default.** The `/specrails:setup` wizard defaults to local tickets and skips GitHub/JIRA credential setup unless you opt in.
 

@@ -699,7 +699,7 @@ Ask the user how they want to manage their product backlog. Default is local —
 Use local ticket management or connect an external provider?
 
 1. **Local tickets** (default, recommended) — lightweight JSON-based ticket management built into the project.
-   No external tools or accounts required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
+   No external tools or accounts required. Tickets stored in `.specrails/local-tickets.json`, version-controlled and diffable.
 2. **External provider** — connect GitHub Issues, JIRA, or disable backlog commands
 ```
 
@@ -713,7 +713,7 @@ If the user selects **2**: display the secondary menu:
 Which external provider?
 
 1. **Local tickets** (recommended) — lightweight JSON-based ticket management built into the project.
-   No external tools required. Tickets stored in `.claude/local-tickets.json`, version-controlled and diffable.
+   No external tools required. Tickets stored in `.specrails/local-tickets.json`, version-controlled and diffable.
 2. **GitHub Issues** — uses `gh` CLI to read/create issues with labels and VPC scores
 3. **JIRA** — uses JIRA CLI or REST API to read/create tickets in a JIRA project
 4. **None** — skip backlog commands (you can still use /implement with text descriptions)
@@ -895,7 +895,7 @@ Ask:
 
 Set `EPIC_LINK_FIELD` to `parent` or `customfield_10014`. Default: `parent`.
 
-Store the full configuration in `.claude/backlog-config.json`:
+Store the full configuration in `.specrails/backlog-config.json`:
 ```json
 {
   "provider": "jira",

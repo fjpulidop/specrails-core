@@ -231,7 +231,7 @@ The quick path — three questions, sensible defaults, done in under a minute.
 |------|--------|
 | Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
 | All workflow commands | `/specrails:implement`, `/specrails:get-backlog-specs`, and 14 more |
-| Backlog storage | Local tickets (`.claude/local-tickets.json`) — no GitHub or JIRA required |
+| Backlog storage | Local tickets (`.specrails/local-tickets.json`) — no GitHub or JIRA required |
 | CLAUDE.md | Project-level context for agents |
 
 You can run the full wizard later to deepen configuration: personas, stack analysis, layer-specific conventions.
