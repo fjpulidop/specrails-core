@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.1](https://github.com/fjpulidop/specrails-core/compare/v3.5.0...v3.5.1) (2026-03-31)
+
+
+### Documentation
+
+* update local-tickets storage path from .claude/ to .specrails/ (SPEA-723) ([cf1560b](https://github.com/fjpulidop/specrails-core/commit/cf1560b5e6e211999536e87159b0211b30bf8629))
+
 ## [3.5.0](https://github.com/fjpulidop/specrails-core/compare/v3.4.2...v3.5.0) (2026-03-28)
 
 
