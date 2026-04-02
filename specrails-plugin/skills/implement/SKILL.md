@@ -67,7 +67,7 @@ Print a setup report:
 ## Environment Setup
 | Tool | Status | Notes |
 |------|--------|-------|
-| Backlog provider | ok/missing | the configured backlog provider (read from .claude/backlog-config.json) |
+| Backlog provider | ok/missing | the configured backlog provider (read from .specrails/backlog-config.json) |
 | OpenSpec | ok | ... |
 | Dependencies | ok | ... |
 | Test runner | ok | ... |

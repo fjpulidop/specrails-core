@@ -163,7 +163,7 @@ The product-analyst receives this prompt:
 
    #### If provider=local — Cache from Local Tickets
 
-   Read `$SPECRAILS_DIR/local-tickets.json` and parse the `tickets` map. For each ticket with `"product-driven-backlog"` in its `labels` array and `status` not `"cancelled"`, build a snapshot object:
+   Read `.specrails/local-tickets.json` and parse the `tickets` map. For each ticket with `"product-driven-backlog"` in its `labels` array and `status` not `"cancelled"`, build a snapshot object:
    - `number`: ticket `id` (integer)
    - `title`: ticket `title` string
    - `state`: map ticket `status` — `"done"` or `"cancelled"` → `"closed"`, otherwise → `"open"`

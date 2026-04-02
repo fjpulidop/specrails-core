@@ -55,7 +55,7 @@ In `--update` mode, `/setup` SHALL check command templates (in `.claude/setup-te
 - **THEN** health-check is listed as unchanged and skipped
 
 ### Requirement: Command template update (overwrite)
-In `--update` mode, `/setup` SHALL overwrite changed command templates in `.claude/commands/specrails/` with the new versions from `.claude/setup-templates/commands/specrails/`, substituting any `{{PLACEHOLDER}}` values using the codebase analysis from Phase U2 and stored config from `.claude/backlog-config.json`.
+In `--update` mode, `/setup` SHALL overwrite changed command templates in `.claude/commands/specrails/` with the new versions from `.claude/setup-templates/commands/specrails/`, substituting any `{{PLACEHOLDER}}` values using the codebase analysis from Phase U2 and stored config from `.specrails/backlog-config.json`.
 
 #### Scenario: Changed command applied
 - **WHEN** `implement.md` is detected as changed

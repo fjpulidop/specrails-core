@@ -9,7 +9,7 @@ metadata:
 ---
 
 
-Scan the codebase for refactoring opportunities, score each by impact/effort ratio and VPC persona value, and optionally create GitHub Issues for the top findings in the configured backlog provider (read from .claude/backlog-config.json).
+Scan the codebase for refactoring opportunities, score each by impact/effort ratio and VPC persona value, and optionally create GitHub Issues for the top findings in the configured backlog provider (read from .specrails/backlog-config.json).
 
 **Input:** `$ARGUMENTS` — optional: comma-separated paths to scope the analysis. Flags: `--dry-run` (print findings without creating issues).
 
@@ -20,7 +20,7 @@ Scan the codebase for refactoring opportunities, score each by impact/effort rat
 Check whether the GitHub CLI is available:
 
 ```bash
-Read `.claude/backlog-config.json` to determine `BACKLOG_PROVIDER` (default: `github`) and `BACKLOG_WRITE` (default: `true`).
+Read `.specrails/backlog-config.json` to determine `BACKLOG_PROVIDER` (default: `github`) and `BACKLOG_WRITE` (default: `true`).
 - If `BACKLOG_PROVIDER=github`: run `gh auth status`. If it fails, set `BACKLOG_WRITE=false` and warn the user that issues cannot be created.
 - If `BACKLOG_PROVIDER=local`: use `.specrails/local-tickets.json` for local issue storage.
 - If `BACKLOG_PROVIDER=none`: set `BACKLOG_WRITE=false`.

@@ -93,7 +93,7 @@ To do a dry run (preview without writing):
 
 ### From JIRA
 
-Use the `sr:migrate-from-jira` command (requires `jira` CLI or REST API credentials in `.claude/backlog-config.json`):
+Use the `sr:migrate-from-jira` command (requires `jira` CLI or REST API credentials in `.specrails/backlog-config.json`):
 
 ```bash
 # Inside Claude Code
@@ -133,7 +133,7 @@ The `--update` flag regenerates only the backlog commands (`get-backlog-specs`, 
 
 To revert to GitHub Issues:
 
-1. Edit `.specrails/config.yaml` (or `.claude/backlog-config.json` for scaffold installs) and set `provider: github`
+1. Edit `.specrails/config.yaml` (or `.specrails/backlog-config.json` for scaffold installs) and set `provider: github`
 2. Re-run `/specrails:setup --update` to regenerate commands
 3. Your `local-tickets.json` is preserved — switch back any time
 

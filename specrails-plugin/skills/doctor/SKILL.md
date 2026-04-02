@@ -55,7 +55,7 @@ Check for `.specrails/config.yaml`:
 - If exists: parse and validate required fields (`project.name`, `stack.description`, `ci.command`)
 - Flag any fields with placeholder values like `"<STACK>"` or `"<CI_COMMAND>"`
 
-Check for `.claude/backlog-config.json`:
+Check for `.specrails/backlog-config.json`:
 - If missing: `WARN` — run `/specrails:setup` to create it
 - If exists: validate `BACKLOG_PROVIDER` is one of `github`, `local`, `none`
 
@@ -118,7 +118,7 @@ If `--verbose` flag is set: scan `.specrails/config.yaml` for unreplaced placeho
 | openspec | ✅ PASS | 1.1.1 |
 | gh CLI | ⚠️ WARN | Not installed — required if BACKLOG_PROVIDER=github |
 | .specrails/config.yaml | ✅ PASS | Valid |
-| .claude/backlog-config.json | ✅ PASS | provider=github |
+| .specrails/backlog-config.json | ✅ PASS | provider=github |
 | Agent memory dirs | ✅ PASS | 16/16 directories present |
 | Personas | ✅ PASS | 2 persona files found |
 | OpenSpec workspace | ✅ PASS | openspec/ found |

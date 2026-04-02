@@ -67,7 +67,7 @@ After the Explore agent completes:
 
 1. **Display** results to the user.
 
-2. Read `.claude/backlog-config.json` and extract:
+2. Read `.specrails/backlog-config.json` and extract:
    - `BACKLOG_PROVIDER` (`local`, `github`, `jira`, or `none`)
    - `BACKLOG_WRITE` (from `write_access`)
 
@@ -100,7 +100,7 @@ After the Explore agent completes:
 
 ### If provider=local — Sync to Local Tickets
 
-Local tickets are always read-write. Sync directly to `$SPECRAILS_DIR/local-tickets.json`.
+Local tickets are always read-write. Sync directly to `.specrails/local-tickets.json`.
 
 3. **Fetch existing local tickets** to avoid duplicates:
    ```
@@ -196,7 +196,7 @@ Local tickets are always read-write. Sync directly to `$SPECRAILS_DIR/local-tick
 
 ### If provider=jira and BACKLOG_WRITE=true — Sync to JIRA
 
-Read from `.claude/backlog-config.json`:
+Read from `.specrails/backlog-config.json`:
 - `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `AUTH_METHOD`
 - `PROJECT_LABEL` (may be empty string)
 - `EPIC_MAPPING` (object mapping area name → JIRA epic key)
@@ -262,7 +262,7 @@ For each unique area:
    If `PROJECT_LABEL` is non-empty, add it to the `labels` array.
    Set `EPIC_MAPPING[area] = <returned key>`.
 
-After all areas are processed: write the updated `EPIC_MAPPING` back to `.claude/backlog-config.json`.
+After all areas are processed: write the updated `EPIC_MAPPING` back to `.specrails/backlog-config.json`.
 
 #### Step E: Create Story tickets
 

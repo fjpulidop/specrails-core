@@ -59,7 +59,7 @@ Read the following files to understand the current installation state:
    Command template files include `implement.md`, `batch-implement.md`, `compat-check.md`, `refactor-recommender.md`, `why.md`, `get-backlog-specs.md`, `auto-propose-backlog-specs.md`.
    If this directory does not exist, skip command template checking for this update.
 
-6. Read `$SPECRAILS_DIR/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
+6. Read `.specrails/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
 
 ### Phase U2: Quick Codebase Re-Analysis
 
@@ -178,7 +178,7 @@ For each command in the "changed commands" list from Phase U3:
 1. Read the NEW template:
    - If `cli_provider == "claude"`: from `$SPECRAILS_DIR/setup-templates/commands/specrails/<name>.md`
    - If `cli_provider == "codex"`: from `$SPECRAILS_DIR/setup-templates/skills/sr-<name>/SKILL.md`
-2. Read stored backlog configuration from `$SPECRAILS_DIR/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
+2. Read stored backlog configuration from `.specrails/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
    - `BACKLOG_PROVIDER` → `provider` field (`github`, `jira`, or `none`)
    - `BACKLOG_WRITE` → `write_access` field
    - `JIRA_BASE_URL` → `jira_base_url` field
@@ -424,8 +424,8 @@ Core commands (always install if missing):
 - `auto-propose-backlog-specs.md`
 
 **Initialize local ticket storage** (backlog provider defaults to `local`):
-1. Copy `templates/local-tickets-schema.json` to `$SPECRAILS_DIR/local-tickets.json` and set `last_updated` to the current ISO-8601 timestamp. Skip if the file already exists.
-2. Write `$SPECRAILS_DIR/backlog-config.json` (skip if already exists):
+1. Copy `templates/local-tickets-schema.json` to `.specrails/local-tickets.json` and set `last_updated` to the current ISO-8601 timestamp. Skip if the file already exists.
+2. Write `.specrails/backlog-config.json` (skip if already exists):
    ```json
    {
      "provider": "local",
@@ -725,10 +725,10 @@ Wait for the user's choice. Set `BACKLOG_PROVIDER` to `local`, `github`, `jira`,
 
 No external tools or credentials required. Initialize the storage file:
 
-1. Copy `templates/local-tickets-schema.json` to `$SPECRAILS_DIR/local-tickets.json`
+1. Copy `templates/local-tickets-schema.json` to `.specrails/local-tickets.json`
 2. Set `last_updated` to the current ISO-8601 timestamp
 
-Store configuration in `$SPECRAILS_DIR/backlog-config.json`:
+Store configuration in `.specrails/backlog-config.json`:
 ```json
 {
   "provider": "local",
@@ -774,13 +774,13 @@ Local tickets are always read-write — there is no "read only" mode since the f
 
 The `revision` counter in the JSON root enables optimistic concurrency — increment it on **every** write. The lock file prevents concurrent corruption:
 
-1. **Acquire lock:** Check for `$SPECRAILS_DIR/local-tickets.json.lock`
+1. **Acquire lock:** Check for `.specrails/local-tickets.json.lock`
    - If the file exists and its `timestamp` is less than 30 seconds old: wait 500ms and retry (max 5 attempts before aborting with an error)
    - If the file exists and its `timestamp` is 30+ seconds old (stale): delete it and proceed
    - If no lock file exists: proceed immediately
-2. **Create lock file:** Write `{"agent": "<agent-name-or-process>", "timestamp": "<ISO-8601>"}` to `$SPECRAILS_DIR/local-tickets.json.lock`
+2. **Create lock file:** Write `{"agent": "<agent-name-or-process>", "timestamp": "<ISO-8601>"}` to `.specrails/local-tickets.json.lock`
 3. **Minimal lock window:** Read the JSON → modify in memory → write back → release
-4. **Release lock:** Delete `$SPECRAILS_DIR/local-tickets.json.lock`
+4. **Release lock:** Delete `.specrails/local-tickets.json.lock`
 5. **Always increment `revision`** by 1 and update `last_updated` on every successful write
 
 The hub server uses `proper-lockfile` (or equivalent) to honor the same protocol via the `.lock` file path.
@@ -1147,22 +1147,22 @@ When adapting `auto-propose-backlog-specs.md` and `get-backlog-specs.md`, substi
 
 #### Local Tickets (`BACKLOG_PROVIDER=local`)
 
-For the local provider, backlog placeholders resolve to **inline file-operation instructions** embedded in the generated command markdown — not shell commands. Agents execute these by reading/writing `$SPECRAILS_DIR/local-tickets.json` directly using their file tools.
+For the local provider, backlog placeholders resolve to **inline file-operation instructions** embedded in the generated command markdown — not shell commands. Agents execute these by reading/writing `.specrails/local-tickets.json` directly using their file tools.
 
 All write operations must follow the **advisory file locking protocol** defined in Phase 3.2. Always increment `revision` and update `last_updated` on every write.
 
 | Placeholder | Substituted value |
 |-------------|-------------------|
 | `{{BACKLOG_PROVIDER_NAME}}` | `Local Tickets` |
-| `{{BACKLOG_PREFLIGHT}}` | `[[ -f "$SPECRAILS_DIR/local-tickets.json" ]] && echo "Local tickets storage: OK" \|\| echo "WARNING: $SPECRAILS_DIR/local-tickets.json not found — run /specrails:setup to initialize"` |
-| `{{BACKLOG_FETCH_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"todo"` or `"in_progress"`. |
-| `{{BACKLOG_FETCH_ALL_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries regardless of status. |
-| `{{BACKLOG_FETCH_CLOSED_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"done"` or `"cancelled"`. |
-| `{{BACKLOG_VIEW_CMD}}` | Read `$SPECRAILS_DIR/local-tickets.json`. Parse JSON and return the full ticket object at `tickets["{id}"]`, or an error if not found. |
-| `{{BACKLOG_CREATE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → set `id = next_id`, increment `next_id`, set all ticket fields, set `created_at` and `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
-| `{{BACKLOG_UPDATE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → update fields in `tickets["{id}"]`, set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
-| `{{BACKLOG_DELETE_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → delete `tickets["{id}"]`, bump `revision`, update `last_updated` → write → release lock. |
-| `{{BACKLOG_COMMENT_CMD}}` | Write to `$SPECRAILS_DIR/local-tickets.json` using the advisory locking protocol: acquire lock → read file → append `{"author": "<agent-name>", "body": "<comment>", "created_at": "<ISO-8601>"}` to `tickets["{id}"].comments` (create the array if absent), set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_PREFLIGHT}}` | `[[ -f ".specrails/local-tickets.json" ]] && echo "Local tickets storage: OK" \|\| echo "WARNING: .specrails/local-tickets.json not found — run /specrails:setup to initialize"` |
+| `{{BACKLOG_FETCH_CMD}}` | Read `.specrails/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"todo"` or `"in_progress"`. |
+| `{{BACKLOG_FETCH_ALL_CMD}}` | Read `.specrails/local-tickets.json`. Parse the `tickets` map and return all entries regardless of status. |
+| `{{BACKLOG_FETCH_CLOSED_CMD}}` | Read `.specrails/local-tickets.json`. Parse the `tickets` map and return all entries where `status` is `"done"` or `"cancelled"`. |
+| `{{BACKLOG_VIEW_CMD}}` | Read `.specrails/local-tickets.json`. Parse JSON and return the full ticket object at `tickets["{id}"]`, or an error if not found. |
+| `{{BACKLOG_CREATE_CMD}}` | Write to `.specrails/local-tickets.json` using the advisory locking protocol: acquire lock → read file → set `id = next_id`, increment `next_id`, set all ticket fields, set `created_at` and `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_UPDATE_CMD}}` | Write to `.specrails/local-tickets.json` using the advisory locking protocol: acquire lock → read file → update fields in `tickets["{id}"]`, set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_DELETE_CMD}}` | Write to `.specrails/local-tickets.json` using the advisory locking protocol: acquire lock → read file → delete `tickets["{id}"]`, bump `revision`, update `last_updated` → write → release lock. |
+| `{{BACKLOG_COMMENT_CMD}}` | Write to `.specrails/local-tickets.json` using the advisory locking protocol: acquire lock → read file → append `{"author": "<agent-name>", "body": "<comment>", "created_at": "<ISO-8601>"}` to `tickets["{id}"].comments` (create the array if absent), set `updated_at` to now, bump `revision`, update `last_updated` → write → release lock. |
 | `{{BACKLOG_PARTIAL_COMMENT_CMD}}` | Same as `{{BACKLOG_COMMENT_CMD}}` but append `{"author": "<agent-name>", "body": "<comment>", "type": "progress", "created_at": "<ISO-8601>"}`. |
 | `{{BACKLOG_INIT_LABELS_CMD}}` | No label initialization required. Local tickets use freeform label strings. Standard label conventions: `area:frontend`, `area:backend`, `area:api`, `effort:low`, `effort:medium`, `effort:high`. |
 
@@ -1183,7 +1183,7 @@ All write operations must follow the **advisory file locking protocol** defined 
 - Issue view: `jira issue view {key}` or REST API
 - VPC scores stored in the issue description body (same markdown format, parsed from description)
 - Pre-flight check: `jira me` or test API connectivity
-- Store JIRA config in `$SPECRAILS_DIR/backlog-config.json`:
+- Store JIRA config in `.specrails/backlog-config.json`:
   ```json
   {
     "provider": "jira",
