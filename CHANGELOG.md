@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.2](https://github.com/fjpulidop/specrails-core/compare/v3.5.1...v3.5.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* store local-tickets.json and backlog-config.json in .specrails/ instead of .claude/ ([#212](https://github.com/fjpulidop/specrails-core/issues/212)) ([f9409c2](https://github.com/fjpulidop/specrails-core/commit/f9409c2bc14da22e8c35be1818d76ade919db1f5))
+
 ## [3.5.1](https://github.com/fjpulidop/specrails-core/compare/v3.5.0...v3.5.1) (2026-03-31)
 
 
