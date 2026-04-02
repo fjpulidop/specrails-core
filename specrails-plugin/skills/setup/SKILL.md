@@ -176,7 +176,7 @@ role: Engineer or team member who builds and maintains the product
 
 ---
 
-## Phase 5: Generate `.claude/backlog-config.json`
+## Phase 5: Generate `.specrails/backlog-config.json`
 
 ```json
 {
@@ -263,7 +263,7 @@ Files created:
   .specrails/personas/primary-user.md
   .specrails/personas/maintainer.md
   .specrails/security-exemptions.yaml
-  .claude/backlog-config.json
+  .specrails/backlog-config.json
   .claude/agent-memory/ (14 agent directories)
   CLAUDE.md (created or updated)
 

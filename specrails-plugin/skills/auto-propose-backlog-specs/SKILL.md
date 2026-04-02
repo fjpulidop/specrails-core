@@ -70,7 +70,7 @@ After the Explore agent completes:
 
 1. **Display** results to the user.
 
-2. Read `.claude/backlog-config.json` and extract:
+2. Read `.specrails/backlog-config.json` and extract:
    - `BACKLOG_PROVIDER` (`github`, `jira`, or `none`)
    - `BACKLOG_WRITE` (from `write_access`)
 
@@ -82,7 +82,7 @@ After the Explore agent completes:
    ## Product Discovery Results (not synced)
 
    Backlog access is set to **read-only**. The following features were discovered
-   but NOT created in the configured backlog provider (read from .claude/backlog-config.json). Create them manually if desired.
+   but NOT created in the configured backlog provider (read from .specrails/backlog-config.json). Create them manually if desired.
 
    ### Feature 1: {name}
    - **Area:** {area}
@@ -171,7 +171,7 @@ If BACKLOG_WRITE=false: display the proposal only.
 
 ### If provider=jira and BACKLOG_WRITE=true — Sync to JIRA
 
-Read from `.claude/backlog-config.json`:
+Read from `.specrails/backlog-config.json`:
 - `JIRA_BASE_URL`, `JIRA_PROJECT_KEY`, `AUTH_METHOD`
 - `PROJECT_LABEL` (may be empty string)
 - `EPIC_MAPPING` (object mapping area name → JIRA epic key)
@@ -237,7 +237,7 @@ For each unique area:
    If `PROJECT_LABEL` is non-empty, add it to the `labels` array.
    Set `EPIC_MAPPING[area] = <returned key>`.
 
-After all areas are processed: write the updated `EPIC_MAPPING` back to `.claude/backlog-config.json`.
+After all areas are processed: write the updated `EPIC_MAPPING` back to `.specrails/backlog-config.json`.
 
 #### Step E: Create Story tickets
 

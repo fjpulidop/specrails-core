@@ -53,7 +53,7 @@ Output ONLY the following structured markdown. Do not add any preamble or explan
 
 ## Backlog Sync
 
-After generating the proposal, read `.claude/backlog-config.json` to determine `BACKLOG_PROVIDER` and `BACKLOG_WRITE`.
+After generating the proposal, read `.specrails/backlog-config.json` to determine `BACKLOG_PROVIDER` and `BACKLOG_WRITE`.
 
 ### If provider=local — Create Local Ticket
 

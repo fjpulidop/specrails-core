@@ -9,7 +9,7 @@ metadata:
 ---
 
 
-Display the product-driven backlog by reading issues/tickets from the configured backlog provider (read from .claude/backlog-config.json). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:auto-propose-backlog-specs` to generate new ideas.
+Display the product-driven backlog by reading issues/tickets from the configured backlog provider (read from .specrails/backlog-config.json). These are feature ideas generated through VPC-based product discovery — evaluated against user personas. Use `/specrails:auto-propose-backlog-specs` to generate new ideas.
 
 **Input:** $ARGUMENTS (optional: comma-separated areas to filter. If empty, show all.)
 
@@ -19,7 +19,7 @@ Display the product-driven backlog by reading issues/tickets from the configured
 
 Verify the backlog provider is accessible:
 
-Read `.claude/backlog-config.json` to determine `BACKLOG_PROVIDER` (default: `github`).
+Read `.specrails/backlog-config.json` to determine `BACKLOG_PROVIDER` (default: `github`).
 
 - If `BACKLOG_PROVIDER=github`: run `gh auth status 2>&1`. If it fails, stop: "GitHub CLI is not authenticated. Run `gh auth login` first."
 - If `BACKLOG_PROVIDER=local`: check for `.specrails/local-tickets.json`. If missing, stop: "No local tickets file found. Run `/specrails:auto-propose-backlog-specs` to generate ideas."
@@ -35,7 +35,7 @@ Launch a **single** sr-product-analyst agent (`subagent_type: sr:product-analyst
 
 The product-analyst receives this prompt:
 
-> You are reading the product-driven backlog from the configured backlog provider (read from .claude/backlog-config.json) and producing a prioritized view.
+> You are reading the product-driven backlog from the configured backlog provider (read from .specrails/backlog-config.json) and producing a prioritized view.
 
 1. **Fetch all open product-driven backlog items:**
 

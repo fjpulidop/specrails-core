@@ -26,11 +26,11 @@ Check the environment variable `CLAUDE_CODE_ENTRYPOINT`. If it contains `remote_
 
 #### 1. Backlog provider availability
 
-Read `.claude/backlog-config.json` and extract `BACKLOG_PROVIDER`.
+Read `.specrails/backlog-config.json` and extract `BACKLOG_PROVIDER`.
 
 **If `BACKLOG_PROVIDER=local`:**
 ```bash
-[[ -f "$SPECRAILS_DIR/local-tickets.json" ]] && echo "Local tickets storage: OK" || echo "WARNING: local-tickets.json not found"
+[[ -f ".specrails/local-tickets.json" ]] && echo "Local tickets storage: OK" || echo "WARNING: local-tickets.json not found"
 ```
 - Set `LOCAL_TICKETS_AVAILABLE=true/false` based on file existence.
 - Set `GH_AVAILABLE=false` (GitHub CLI not needed for local provider).
@@ -132,7 +132,7 @@ After fetching issue refs, capture a baseline snapshot for conflict detection.
 
 ##### If `BACKLOG_PROVIDER=local` and input mode was issue numbers:
 
-For each resolved ticket ID, read `$SPECRAILS_DIR/local-tickets.json` and extract the ticket object at `tickets["{id}"]`.
+For each resolved ticket ID, read `.specrails/local-tickets.json` and extract the ticket object at `tickets["{id}"]`.
 
 Build a snapshot object for each ticket:
 - `number`: ticket `id` (integer)
@@ -314,7 +314,7 @@ Pick the single idea with the best impact/effort ratio from each exploration. Pr
 
 Otherwise, re-fetch each issue in scope and diff against the Phase 0 snapshot:
 
-**If `BACKLOG_PROVIDER=local`:** For each ticket ID in `ISSUE_REFS`, read `$SPECRAILS_DIR/local-tickets.json` and extract the ticket at `tickets["{id}"]`. If the ticket does not exist (deleted): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`. Otherwise, reconstruct a current snapshot using the same mapping as the Phase 0 local snapshot.
+**If `BACKLOG_PROVIDER=local`:** For each ticket ID in `ISSUE_REFS`, read `.specrails/local-tickets.json` and extract the ticket at `tickets["{id}"]`. If the ticket does not exist (deleted): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`. Otherwise, reconstruct a current snapshot using the same mapping as the Phase 0 local snapshot.
 
 **If `BACKLOG_PROVIDER=github`:** For each issue number in `ISSUE_REFS`:
 
@@ -897,7 +897,7 @@ This check is independent of Phase 3a.0. Even if the user chose to continue thro
 
 Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
 
-**If `BACKLOG_PROVIDER=local`:** Read `$SPECRAILS_DIR/local-tickets.json` and extract each ticket by ID.
+**If `BACKLOG_PROVIDER=local`:** Read `.specrails/local-tickets.json` and extract each ticket by ID.
 
 **If `BACKLOG_PROVIDER=github`:**
 ```bash
