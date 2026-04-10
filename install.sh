@@ -143,7 +143,7 @@ generate_manifest() {
     installed_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
     # Write version file
-    printf '%s\n' "$version" > "$REPO_ROOT/.specrails-version"
+    printf '%s\n' "$version" > "$REPO_ROOT/.specrails/specrails-version"
 
     # Build artifact checksums for all files under templates/
     local artifacts_json=""
@@ -177,7 +177,7 @@ generate_manifest() {
     artifacts_json="${artifacts_json},
     \"commands/specrails/doctor.md\": \"${doctor_checksum}\""
 
-    cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
+    cat > "$REPO_ROOT/.specrails/specrails-manifest.json" << EOF
 {
   "version": "${version}",
   "installed_at": "${installed_at}",
@@ -493,14 +493,14 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
 else
     mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails"
 fi
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/agents"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/commands"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/skills"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/rules"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/personas"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/claude-md"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/settings"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/agents"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/commands"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/skills"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/rules"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/personas"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/claude-md"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/prompts"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
 
 # Copy the /specrails:setup and /specrails:doctor commands (or skills for Codex)
@@ -553,11 +553,11 @@ ok "Installed specrails doctor (bin/doctor.sh)"
 # Copy templates (includes commands, skills, agents, rules, personas, settings)
 # Use tar to exclude node_modules and package-lock.json for performance
 tar -C "$SCRIPT_DIR/templates" --exclude='node_modules' --exclude='package-lock.json' -cf - . \
-    | tar -C "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/" -xf -
+    | tar -C "$REPO_ROOT/.specrails/setup-templates/" -xf -
 ok "Installed setup templates (commands + skills)"
 
 # Write OSS detection results for /specrails:setup
-cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.oss-detection.json" << EOF
+cat > "$REPO_ROOT/.specrails/setup-templates/.oss-detection.json" << EOF
 {
   "is_oss": $IS_OSS,
   "signals": {
@@ -570,7 +570,7 @@ EOF
 ok "OSS detection results written"
 
 # Write provider detection results for /setup
-cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.provider-detection.json" << EOF
+cat > "$REPO_ROOT/.specrails/setup-templates/.provider-detection.json" << EOF
 {
   "cli_provider": "$CLI_PROVIDER",
   "specrails_dir": "$SPECRAILS_DIR",
@@ -578,7 +578,7 @@ cat > "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/.provider-detection.json" << EO
   "agent_teams": $AGENT_TEAMS
 }
 EOF
-ok "Provider detection results written ($CLI_PROVIDER → $SPECRAILS_DIR/)"
+ok "Provider detection results written ($CLI_PROVIDER → .specrails/setup-templates/)"
 
 # Copy security exemptions config (skip if already exists — preserve user exemptions)
 if [ ! -f "${REPO_ROOT}/$SPECRAILS_DIR/security-exemptions.yaml" ]; then
@@ -588,7 +588,7 @@ fi
 
 # Copy prompts
 if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then
-    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/$SPECRAILS_DIR/setup-templates/prompts/"
+    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.specrails/setup-templates/prompts/"
     ok "Installed prompts"
 fi
 
@@ -609,8 +609,8 @@ fi
 step "Phase 3b: Writing version and manifest"
 
 generate_manifest
-ok "Written .specrails-version ($(cat "$REPO_ROOT/.specrails-version"))"
-ok "Written .specrails-manifest.json"
+ok "Written .specrails/specrails-version ($(cat "$REPO_ROOT/.specrails/specrails-version"))"
+ok "Written .specrails/specrails-manifest.json"
 
 # ─────────────────────────────────────────────
 # Phase 4: Summary & next steps
@@ -634,9 +634,9 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
 else
     echo "    $SPECRAILS_DIR/commands/specrails/setup.md  ← The /specrails:setup command"
 fi
-echo "    $SPECRAILS_DIR/setup-templates/           ← Templates: commands + skills (temporary, removed after setup)"
-echo "    .specrails-version                       ← Installed specrails version"
-echo "    .specrails-manifest.json                 ← Artifact checksums for update detection"
+echo "    .specrails/setup-templates/              ← Templates: commands + skills (temporary, removed after setup)"
+echo "    .specrails/specrails-version             ← Installed specrails version"
+echo "    .specrails/specrails-manifest.json       ← Artifact checksums for update detection"
 echo ""
 
 echo -e "${BOLD}Prerequisites:${NC}"

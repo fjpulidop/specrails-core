@@ -89,7 +89,7 @@ test_update_detects_changed_template() {
     # Corrupt a checksum in the manifest to simulate a template change
     python3 -c "
 import json
-mf = '$TEST_TMPDIR/target/.specrails-manifest.json'
+mf = '$TEST_TMPDIR/target/.specrails/specrails-manifest.json'
 data = json.load(open(mf))
 for key in data['artifacts']:
     data['artifacts'][key] = 'sha256:0000'
@@ -130,7 +130,7 @@ test_update_core_detects_new_template() {
     # Remove an artifact from the manifest to simulate "new template"
     python3 -c "
 import json
-mf = '$TEST_TMPDIR/target/.specrails-manifest.json'
+mf = '$TEST_TMPDIR/target/.specrails/specrails-manifest.json'
 data = json.load(open(mf))
 keys = [k for k in data['artifacts'] if k.startswith('templates/')]
 if keys:
@@ -148,7 +148,7 @@ test_update_core_detects_changed_template() {
     # Change a checksum in the manifest
     python3 -c "
 import json
-mf = '$TEST_TMPDIR/target/.specrails-manifest.json'
+mf = '$TEST_TMPDIR/target/.specrails/specrails-manifest.json'
 data = json.load(open(mf))
 for key in data['artifacts']:
     if key.startswith('templates/'):
@@ -170,7 +170,7 @@ test_update_stamps_version() {
     install_to_target
     run_update --root-dir "$TEST_TMPDIR/target" --only core --force >/dev/null
     local version
-    version="$(cat "$TEST_TMPDIR/target/.specrails-version" | tr -d '[:space:]')"
+    version="$(cat "$TEST_TMPDIR/target/.specrails/specrails-version" | tr -d '[:space:]')"
     local expected
     expected="$(cat "$SPECRAILS_DIR/VERSION" | tr -d '[:space:]')"
     assert_eq "$expected" "$version" "version should be stamped after update"
@@ -182,7 +182,7 @@ test_update_manifest_refreshed() {
     # Corrupt a checksum, then update
     python3 -c "
 import json
-mf = '$TEST_TMPDIR/target/.specrails-manifest.json'
+mf = '$TEST_TMPDIR/target/.specrails/specrails-manifest.json'
 data = json.load(open(mf))
 for key in data['artifacts']:
     data['artifacts'][key] = 'sha256:old'
@@ -191,7 +191,7 @@ json.dump(data, open(mf, 'w'), indent=2)
 "
     run_update --root-dir "$TEST_TMPDIR/target" --only core >/dev/null
     local after
-    after="$(cat "$TEST_TMPDIR/target/.specrails-manifest.json")"
+    after="$(cat "$TEST_TMPDIR/target/.specrails/specrails-manifest.json")"
     assert_not_contains "$after" "sha256:old" "manifest should not contain corrupted checksum after update"
 }
 run_test "manifest regenerated with fresh checksums" test_update_manifest_refreshed
@@ -269,6 +269,40 @@ test_update_migrate_idempotent() {
     assert_not_contains "$output" "Error"
 }
 run_test "do_migrate_sr_prefix is idempotent when sr- prefix already present" test_update_migrate_idempotent
+
+# ─────────────────────────────────────────────
+# Migration: old metadata paths → new .specrails/ paths
+# ─────────────────────────────────────────────
+
+test_update_migrates_old_metadata_paths() {
+    install_to_target
+    local target="$TEST_TMPDIR/target"
+    # Simulate a legacy installation: place files at the old root paths
+    cp "$target/.specrails/specrails-version" "$target/.specrails-version"
+    cp "$target/.specrails/specrails-manifest.json" "$target/.specrails-manifest.json"
+    # Remove the new-path files so migration is the only source
+    rm "$target/.specrails/specrails-version" "$target/.specrails/specrails-manifest.json"
+    local output
+    output="$(run_update --root-dir "$target" --force)"
+    assert_file_exists "$target/.specrails/specrails-version" &&
+    assert_file_exists "$target/.specrails/specrails-manifest.json" &&
+    assert_not_contains "$output" "Error"
+}
+run_test "update.sh migrates .specrails-version and .specrails-manifest.json to .specrails/" test_update_migrates_old_metadata_paths
+
+test_update_migrates_old_setup_templates() {
+    install_to_target
+    local target="$TEST_TMPDIR/target"
+    # Simulate a legacy installation: setup-templates at a provider-scoped path
+    local old_dir="$target/.claude/setup-templates"
+    cp -r "$target/.specrails/setup-templates" "$old_dir"
+    rm -rf "$target/.specrails/setup-templates"
+    local output
+    output="$(run_update --root-dir "$target" --force)"
+    assert_dir_exists "$target/.specrails/setup-templates" &&
+    assert_not_contains "$output" "Error"
+}
+run_test "update.sh migrates .claude/setup-templates to .specrails/setup-templates" test_update_migrates_old_setup_templates
 
 # ─────────────────────────────────────────────
 

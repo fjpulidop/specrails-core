@@ -6,7 +6,7 @@ SpecRails includes an update system that pulls new templates while preserving yo
 
 The update system uses a **manifest-based approach**:
 
-1. During installation, SpecRails generates `.specrails-manifest.json` — a checksum of every installed file
+1. During installation, SpecRails generates `.specrails/specrails-manifest.json` — a checksum of every installed file
 2. On update, it compares the manifest against current files to detect what you've customized
 3. Customized files are preserved; unchanged files are updated to the latest version
 
@@ -25,7 +25,7 @@ bash /path/to/specrails/update.sh
 ### What happens
 
 1. **Backup** — creates `.claude.specrails.backup/` with your current files
-2. **Version check** — compares installed version (`.specrails-version`) with latest
+2. **Version check** — compares installed version (`.specrails/specrails-version`) with latest
 3. **Update files** — replaces unchanged files, preserves customized ones
 4. **Merge settings** — additively merges `settings.json` (your permissions are kept)
 5. **Update version** — writes new version and manifest
@@ -66,7 +66,7 @@ bash update.sh --only all
 
 If you installed SpecRails before the versioning system (pre-v0.1.0):
 
-- The updater detects missing `.specrails-version` and treats it as a legacy install
+- The updater detects missing `.specrails/specrails-version` and treats it as a legacy install
 - It migrates your installation to the versioned system
 - A manifest is generated from your current files
 - Future updates use the standard manifest comparison
@@ -78,7 +78,7 @@ If something goes wrong, restore from the automatic backup:
 ```bash
 # Backups are at .claude.specrails.backup/
 cp -r .claude.specrails.backup/.claude .claude
-cp .claude.specrails.backup/.specrails-version .specrails-version
+cp .claude.specrails.backup/.specrails/specrails-version .specrails/specrails-version
 ```
 
 ---

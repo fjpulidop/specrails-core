@@ -149,7 +149,7 @@ generate_manifest() {
     updated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
     # Write version file
-    printf '%s\n' "$version" > "$REPO_ROOT/.specrails-version"
+    printf '%s\n' "$version" > "$REPO_ROOT/.specrails/specrails-version"
 
     # Build artifact checksums for all files under templates/
     local artifacts_json=""
@@ -201,7 +201,7 @@ generate_manifest() {
         done < <(find "$SCRIPT_DIR/.claude/skills" -type f -print0 | sort -z)
     fi
 
-    cat > "$REPO_ROOT/.specrails-manifest.json" << EOF
+    cat > "$REPO_ROOT/.specrails/specrails-manifest.json" << EOF
 {
   "version": "${version}",
   "installed_at": "${updated_at}",
@@ -223,8 +223,30 @@ if [[ -z "$REPO_ROOT" ]]; then
     exit 1
 fi
 
-VERSION_FILE="$REPO_ROOT/.specrails-version"
+VERSION_FILE="$REPO_ROOT/.specrails/specrails-version"
 AGENTS_DIR="$REPO_ROOT/.claude/agents"
+
+# Migrate old root-level metadata files to .specrails/ (path change introduced in v3.6.0)
+if [[ ! -f "$VERSION_FILE" ]] && [[ -f "$REPO_ROOT/.specrails-version" ]]; then
+    mkdir -p "$REPO_ROOT/.specrails"
+    mv "$REPO_ROOT/.specrails-version" "$REPO_ROOT/.specrails/specrails-version"
+    ok "Migrated .specrails-version → .specrails/specrails-version"
+fi
+if [[ -f "$REPO_ROOT/.specrails-manifest.json" ]]; then
+    mkdir -p "$REPO_ROOT/.specrails"
+    mv "$REPO_ROOT/.specrails-manifest.json" "$REPO_ROOT/.specrails/specrails-manifest.json"
+    ok "Migrated .specrails-manifest.json → .specrails/specrails-manifest.json"
+fi
+# Migrate old provider-specific setup-templates to .specrails/setup-templates/
+for _old_templates in "$REPO_ROOT/.claude/setup-templates" "$REPO_ROOT/.codex/setup-templates"; do
+    if [[ -d "$_old_templates" ]]; then
+        mkdir -p "$REPO_ROOT/.specrails/setup-templates"
+        cp -r "$_old_templates/." "$REPO_ROOT/.specrails/setup-templates/"
+        rm -rf "$_old_templates"
+        ok "Migrated ${_old_templates#"$REPO_ROOT/"} → .specrails/setup-templates/"
+    fi
+done
+unset _old_templates
 
 # Detect installation state
 INSTALLED_VERSION=""
@@ -253,7 +275,7 @@ fi
 # Content-aware up-to-date check (skip for legacy migrations and agent-only runs)
 if [[ "$INSTALLED_VERSION" == "$AVAILABLE_VERSION" ]] && [[ "$IS_LEGACY" == false ]] && [[ "$UPDATE_COMPONENT" != "agents" ]] && [[ "$FORCE_UPDATE" == false ]]; then
     # Same version — check if any template content has actually changed
-    local_manifest="$REPO_ROOT/.specrails-manifest.json"
+    local_manifest="$REPO_ROOT/.specrails/specrails-manifest.json"
     HAS_CHANGES=false
 
     if [[ -f "$local_manifest" ]]; then
@@ -310,13 +332,13 @@ fi
 
 if [[ "$IS_LEGACY" == true ]]; then
     step "Phase 2: Legacy migration"
-    warn "No .specrails-version found — assuming v0.1.0 (pre-versioning install)"
+    warn "No .specrails/specrails-version found — assuming v0.1.0 (pre-versioning install)"
     info "Generating baseline manifest from current specrails templates..."
     generate_manifest
     # Overwrite with legacy version so the update flow sees "0.1.0 → current"
     printf '0.1.0\n' > "$VERSION_FILE"
-    ok "Written .specrails-version as 0.1.0"
-    ok "Written .specrails-manifest.json"
+    ok "Written .specrails/specrails-version as 0.1.0"
+    ok "Written .specrails/specrails-manifest.json"
 fi
 
 # ─────────────────────────────────────────────
@@ -461,7 +483,7 @@ do_migrate_sr_prefix() {
 do_core() {
     step "Updating core artifacts (commands, skills, setup-templates)"
 
-    local manifest_file="$REPO_ROOT/.specrails-manifest.json"
+    local manifest_file="$REPO_ROOT/.specrails/specrails-manifest.json"
     local updated_count=0
     local added_count=0
 
@@ -509,7 +531,7 @@ except Exception:
         relpath="templates/${filepath#"$SCRIPT_DIR/templates/"}"
 
         if _file_changed "$filepath" "$relpath"; then
-            local dest="$REPO_ROOT/.claude/setup-templates/${filepath#"$SCRIPT_DIR/templates/"}"
+            local dest="$REPO_ROOT/.specrails/setup-templates/${filepath#"$SCRIPT_DIR/templates/"}"
             mkdir -p "$(dirname "$dest")"
             cp "$filepath" "$dest"
 
@@ -540,7 +562,7 @@ except Exception:
             relpath="prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
 
             if _file_changed "$filepath" "$relpath"; then
-                local dest="$REPO_ROOT/.claude/setup-templates/prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
+                local dest="$REPO_ROOT/.specrails/setup-templates/prompts/${filepath#"$SCRIPT_DIR/prompts/"}"
                 mkdir -p "$(dirname "$dest")"
                 cp "$filepath" "$dest"
 
@@ -605,10 +627,10 @@ except Exception:
 do_agents() {
     step "Checking adapted artifacts (agents, rules)"
 
-    local manifest_file="$REPO_ROOT/.specrails-manifest.json"
+    local manifest_file="$REPO_ROOT/.specrails/specrails-manifest.json"
 
     if [[ ! -f "$manifest_file" ]]; then
-        warn "No .specrails-manifest.json found — cannot detect template changes."
+        warn "No .specrails/specrails-manifest.json found — cannot detect template changes."
         warn "Run update.sh without --only to regenerate the manifest."
         return
     fi
@@ -748,8 +770,8 @@ with open(user_path, 'w') as f:
 do_stamp() {
     step "Writing version stamp and manifest"
     generate_manifest
-    ok "Updated .specrails-version to v${AVAILABLE_VERSION}"
-    ok "Updated .specrails-manifest.json"
+    ok "Updated .specrails/specrails-version to v${AVAILABLE_VERSION}"
+    ok "Updated .specrails/specrails-manifest.json"
 }
 
 # ─────────────────────────────────────────────
@@ -795,9 +817,9 @@ rm -rf "$BACKUP_DIR"
 ok "Backup removed"
 
 # Clean up setup-templates if no /specrails:setup re-run is needed
-if [[ "$NEEDS_SETUP_UPDATE" != true ]] && [[ -d "$REPO_ROOT/.claude/setup-templates" ]]; then
-    rm -rf "$REPO_ROOT/.claude/setup-templates"
-    ok "Cleaned up setup-templates (no /specrails:setup re-run needed)"
+if [[ "$NEEDS_SETUP_UPDATE" != true ]] && [[ -d "$REPO_ROOT/.specrails/setup-templates" ]]; then
+    rm -rf "$REPO_ROOT/.specrails/setup-templates"
+    ok "Cleaned up .specrails/setup-templates (no /specrails:setup re-run needed)"
 fi
 
 echo ""
