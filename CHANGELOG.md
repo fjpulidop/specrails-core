@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.5.3](https://github.com/fjpulidop/specrails-core/compare/v3.5.2...v3.5.3) (2026-04-10)
+
+
+### Bug Fixes
+
+* relocate specrails metadata files to .specrails/ (SPEA-733) ([#214](https://github.com/fjpulidop/specrails-core/issues/214)) ([46d5c38](https://github.com/fjpulidop/specrails-core/commit/46d5c38b64cfdb7a50788866a00cd4200f6658a9))
+
 ## [3.5.2](https://github.com/fjpulidop/specrails-core/compare/v3.5.1...v3.5.2) (2026-04-02)
 
 
