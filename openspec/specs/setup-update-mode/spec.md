@@ -5,7 +5,7 @@
 
 #### Scenario: --update mode invoked
 - **WHEN** user runs `/setup --update`
-- **THEN** setup reads `.specrails-manifest.json`, identifies changed templates, and regenerates only affected agents/rules
+- **THEN** setup reads `.specrails/specrails-manifest.json`, identifies changed templates, and regenerates only affected agents/rules
 
 ### Requirement: Quick codebase re-analysis
 In `--update` mode, `/setup` SHALL perform a fast codebase analysis (stack detection, conventions) without prompting the user for personas or product discovery.
@@ -40,14 +40,14 @@ In `--update` mode, `/setup` SHALL update workflow commands to reference any new
 - **THEN** `/specrails:implement` is updated to include sr-frontend-developer in its agent orchestration where relevant
 
 ### Requirement: Command template checksum detection
-In `--update` mode, `/setup` SHALL check command templates (in `.claude/setup-templates/commands/specrails/`) against their manifest checksums and identify changed or new command templates.
+In `--update` mode, `/setup` SHALL check command templates (in `.specrails/setup-templates/commands/specrails/`) against their manifest checksums and identify changed or new command templates.
 
 #### Scenario: Changed command template detected
-- **WHEN** `templates/commands/specrails/implement.md` checksum in manifest differs from the current file in `.claude/setup-templates/commands/specrails/`
+- **WHEN** `templates/commands/specrails/implement.md` checksum in manifest differs from the current file in `.specrails/setup-templates/commands/specrails/`
 - **THEN** `implement.md` is marked as changed and included in the update analysis display
 
 #### Scenario: New command template detected
-- **WHEN** `templates/commands/specrails/why.md` exists in `.claude/setup-templates/commands/specrails/` but has no entry in the manifest
+- **WHEN** `templates/commands/specrails/why.md` exists in `.specrails/setup-templates/commands/specrails/` but has no entry in the manifest
 - **THEN** `why.md` is marked as new and offered to the user for installation
 
 #### Scenario: Unchanged command template
@@ -55,7 +55,7 @@ In `--update` mode, `/setup` SHALL check command templates (in `.claude/setup-te
 - **THEN** health-check is listed as unchanged and skipped
 
 ### Requirement: Command template update (overwrite)
-In `--update` mode, `/setup` SHALL overwrite changed command templates in `.claude/commands/specrails/` with the new versions from `.claude/setup-templates/commands/specrails/`, substituting any `{{PLACEHOLDER}}` values using the codebase analysis from Phase U2 and stored config from `.specrails/backlog-config.json`.
+In `--update` mode, `/setup` SHALL overwrite changed command templates in `.claude/commands/specrails/` with the new versions from `.specrails/setup-templates/commands/specrails/`, substituting any `{{PLACEHOLDER}}` values using the codebase analysis from Phase U2 and stored config from `.specrails/backlog-config.json`.
 
 #### Scenario: Changed command applied
 - **WHEN** `implement.md` is detected as changed

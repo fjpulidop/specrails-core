@@ -154,7 +154,7 @@ test_claude_instruction_file_created() {
     run_install_mocked "--provider claude" >/dev/null
     # install.sh records provider intent in .provider-detection.json;
     # /setup uses this to create CLAUDE.md at repo root.
-    local detection="$TEST_TMPDIR/target/.claude/setup-templates/.provider-detection.json"
+    local detection="$TEST_TMPDIR/target/.specrails/setup-templates/.provider-detection.json"
     assert_file_exists "$detection"
     assert_contains "$(cat "$detection")" '"instructions_file": "CLAUDE.md"' \
         ".provider-detection.json should record CLAUDE.md as instructions file"
@@ -167,7 +167,7 @@ test_codex_instruction_file_created() {
     run_install_mocked "--provider codex" >/dev/null
     # install.sh records provider intent in .provider-detection.json;
     # /setup uses this to create AGENTS.md at repo root.
-    local detection="$TEST_TMPDIR/target/.codex/setup-templates/.provider-detection.json"
+    local detection="$TEST_TMPDIR/target/.specrails/setup-templates/.provider-detection.json"
     assert_file_exists "$detection"
     assert_contains "$(cat "$detection")" '"instructions_file": "AGENTS.md"' \
         ".provider-detection.json should record AGENTS.md as instructions file"
@@ -193,7 +193,7 @@ test_skills_exist_for_claude() {
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
     # install.sh stages SKILL.md files in setup-templates/; /setup deploys them to .claude/skills/
-    local skills_dir="$TEST_TMPDIR/target/.claude/setup-templates/skills"
+    local skills_dir="$TEST_TMPDIR/target/.specrails/setup-templates/skills"
     assert_dir_exists "$skills_dir"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         assert_file_exists "$skills_dir/$skill/SKILL.md" \
@@ -206,8 +206,8 @@ test_skills_exist_for_codex() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    # install.sh stages SKILL.md files in .codex/setup-templates/; /setup deploys them
-    local skills_dir="$TEST_TMPDIR/target/.codex/setup-templates/skills"
+    # install.sh stages SKILL.md files in .specrails/setup-templates/; /setup deploys them
+    local skills_dir="$TEST_TMPDIR/target/.specrails/setup-templates/skills"
     assert_dir_exists "$skills_dir"
     for skill in "${EXPECTED_SKILLS[@]}"; do
         assert_file_exists "$skills_dir/$skill/SKILL.md" \
@@ -221,7 +221,7 @@ test_backward_compat_slash_commands() {
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
     # Legacy slash commands are staged in setup-templates/; /setup deploys them to .claude/commands/specrails/
-    assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates/commands/specrails"
+    assert_dir_exists "$TEST_TMPDIR/target/.specrails/setup-templates/commands/specrails"
 }
 run_test "SPEA-507: backward compat — slash commands still present for claude provider" test_backward_compat_slash_commands
 
@@ -234,7 +234,7 @@ test_claude_settings_json_created() {
     mock_cli "claude"
     run_install_mocked "--provider claude" >/dev/null
     # install.sh stages settings.json in setup-templates/; /setup deploys it to .claude/settings.json
-    local settings="$TEST_TMPDIR/target/.claude/setup-templates/settings/settings.json"
+    local settings="$TEST_TMPDIR/target/.specrails/setup-templates/settings/settings.json"
     assert_file_exists "$settings"
     # Must be valid JSON
     python3 -c "import json; json.load(open('$settings'))" \
@@ -247,7 +247,7 @@ test_codex_config_toml_created() {
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
     # install.sh stages codex-config.toml in setup-templates/; /setup deploys it to .codex/config.toml
-    assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/settings/codex-config.toml"
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/settings/codex-config.toml"
 }
 run_test "SPEA-508: codex provider → .codex/config.toml created" test_codex_config_toml_created
 
@@ -256,7 +256,7 @@ test_codex_starlark_rules_created() {
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
     # install.sh stages codex-rules.star in setup-templates/; /setup deploys it as .codex/rules/default.rules
-    assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/settings/codex-rules.star"
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/settings/codex-rules.star"
 }
 run_test "SPEA-508: codex provider → .codex/rules/default.rules created" test_codex_starlark_rules_created
 
@@ -277,11 +277,11 @@ test_claude_agent_markdown_files() {
     run_install_mocked "--provider claude" >/dev/null
     # install.sh stages agent templates in setup-templates/agents/; /setup generates .claude/agents/sr-*.md
     for agent in "${EXPECTED_AGENTS[@]}"; do
-        assert_file_exists "$TEST_TMPDIR/target/.claude/setup-templates/agents/$agent.md" \
+        assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/agents/$agent.md" \
             "Agent template should exist: $agent.md"
         # Verify YAML frontmatter present in template
         local content
-        content="$(cat "$TEST_TMPDIR/target/.claude/setup-templates/agents/$agent.md")"
+        content="$(cat "$TEST_TMPDIR/target/.specrails/setup-templates/agents/$agent.md")"
         assert_contains "$content" "---" "Agent template $agent.md should have frontmatter"
     done
 }
@@ -291,11 +291,11 @@ test_codex_agent_toml_files() {
     setup_mock_bin
     mock_cli "codex"
     run_install_mocked "--provider codex" >/dev/null
-    # install.sh stages agent templates in .codex/setup-templates/agents/;
+    # install.sh stages agent templates in .specrails/setup-templates/agents/;
     # /setup converts them to sr-*.toml with TOML format (SPEA-509).
     # Verify: (1) agent templates exist, (2) /setup command has TOML conversion logic.
     for agent in "${EXPECTED_AGENTS[@]}"; do
-        assert_file_exists "$TEST_TMPDIR/target/.codex/setup-templates/agents/$agent.md" \
+        assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/agents/$agent.md" \
             "Agent template should exist for codex: $agent.md"
     done
     # Codex: setup is installed as an Agent Skill, not a command
@@ -347,8 +347,8 @@ test_regression_fresh_install_claude() {
     local output
     output="$(run_install_mocked)"
     assert_contains "$output" "Installation complete"
-    assert_file_exists "$TEST_TMPDIR/target/.specrails-version"
-    assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json"
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/specrails-version"
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/specrails-manifest.json"
 }
 run_test "regression: existing install flow still works with claude provider" test_regression_fresh_install_claude
 

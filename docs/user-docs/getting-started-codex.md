@@ -150,7 +150,7 @@ ls .codex/skills/
 grep -r '{{[A-Z_]*}}' .codex/agents/ .codex/skills/ 2>/dev/null
 
 # Check the installed version
-cat .specrails-version
+cat .specrails/specrails-version
 ```
 
 ---

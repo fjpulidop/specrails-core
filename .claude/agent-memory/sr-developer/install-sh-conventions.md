@@ -7,7 +7,7 @@ Per-agent `agent-memory/` directories are created by the `/setup` command (see `
 The mkdir block at line ~332:
 ```bash
 mkdir -p "$REPO_ROOT/.claude/commands"
-mkdir -p "$REPO_ROOT/.claude/setup-templates/..."
+mkdir -p "$REPO_ROOT/.specrails/setup-templates/..."
 mkdir -p "$REPO_ROOT/.claude/agent-memory/explanations"
 ```
 

@@ -44,20 +44,19 @@ test_install_fresh() {
     local output
     output="$(bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" 2>&1)"
     assert_contains "$output" "Installation complete" &&
-    assert_file_exists "$TEST_TMPDIR/target/.specrails-version" &&
-    assert_file_exists "$TEST_TMPDIR/target/.specrails-manifest.json" &&
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/specrails-version" &&
+    assert_file_exists "$TEST_TMPDIR/target/.specrails/specrails-manifest.json" &&
     # Provider-agnostic: check whichever provider dir was created (.claude/commands or .agents/skills)
     { assert_dir_exists "$TEST_TMPDIR/target/.claude/commands" ||
       assert_dir_exists "$TEST_TMPDIR/target/.agents/skills"; } &&
-    { assert_dir_exists "$TEST_TMPDIR/target/.claude/setup-templates" ||
-      assert_dir_exists "$TEST_TMPDIR/target/.codex/setup-templates"; }
+    assert_dir_exists "$TEST_TMPDIR/target/.specrails/setup-templates"
 }
 run_test "fresh install creates expected structure" test_install_fresh
 
 test_install_creates_version_file() {
     bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
     local version
-    version="$(cat "$TEST_TMPDIR/target/.specrails-version" | tr -d '[:space:]')"
+    version="$(cat "$TEST_TMPDIR/target/.specrails/specrails-version" | tr -d '[:space:]')"
     local expected
     expected="$(cat "$SPECRAILS_DIR/VERSION" | tr -d '[:space:]')"
     assert_eq "$expected" "$version" "version file should match VERSION"
@@ -66,7 +65,7 @@ run_test "version file matches VERSION" test_install_creates_version_file
 
 test_install_manifest_valid_json() {
     bash "$SPECRAILS_DIR/install.sh" --yes --root-dir "$TEST_TMPDIR/target" >/dev/null 2>&1
-    python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.specrails-manifest.json'))"
+    python3 -c "import json; json.load(open('$TEST_TMPDIR/target/.specrails/specrails-manifest.json'))"
 }
 run_test "manifest is valid JSON" test_install_manifest_valid_json
 

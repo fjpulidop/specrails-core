@@ -82,9 +82,9 @@ git clone https://github.com/fjpulidop/specrails-core.git
 2. **Detects existing setup** — warns if SpecRails artifacts already exist
 3. **Installs artifacts:**
    - `.claude/commands/specrails/setup.md` — the `/specrails:setup` wizard
-   - `.claude/setup-templates/` — agent and command templates (temporary, removed after `/specrails:setup`)
+   - `.specrails/setup-templates/` — agent and command templates (temporary, removed after `/specrails:setup`)
    - `.claude/security-exemptions.yaml` — security scanner config
-4. **Tracks version** — writes `.specrails-version` and `.specrails-manifest.json`
+4. **Tracks version** — writes `.specrails/specrails-version` and `.specrails/specrails-manifest.json`
 
 The scaffold installer only copies files. It does not modify your existing code, create commits, or push to any remote.
 
@@ -210,7 +210,7 @@ The wizard fills all templates with your project-specific context:
 The wizard removes itself:
 
 - Deletes `.claude/commands/specrails/setup.md`
-- Deletes `.claude/setup-templates/`
+- Deletes `.specrails/setup-templates/`
 - Leaves only the final generated files
 
 After this phase, `/specrails:setup` is no longer available until re-run — your workflow is ready.
@@ -253,7 +253,7 @@ ls .claude/agents/
 grep -r '{{[A-Z_]*}}' .claude/agents/ .claude/commands/ .claude/rules/
 
 # Scaffold method: check version
-cat .specrails-version
+cat .specrails/specrails-version
 ```
 
 ---

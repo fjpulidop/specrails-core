@@ -88,7 +88,7 @@ your-project/
     └── config.toml               # Permissions
 ```
 
-The installer also writes `.specrails-version` and `.specrails-manifest.json` to track the installed version.
+The installer also writes `.specrails/specrails-version` and `.specrails/specrails-manifest.json` to track the installed version.
 
 ## Configure with /specrails:setup
 
@@ -131,7 +131,7 @@ ls .claude/agents/
 grep -r '{{[A-Z_]*}}' .claude/agents/ .claude/commands/ .claude/rules/
 
 # Scaffold method: check the installed version
-cat .specrails-version
+cat .specrails/specrails-version
 ```
 
 ## Troubleshooting

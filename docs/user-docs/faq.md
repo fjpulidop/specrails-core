@@ -118,7 +118,7 @@ Then re-run `/specrails:setup` to regenerate project data with any new templates
 **How do I know which version is installed?**
 
 ```bash
-cat .specrails-version
+cat .specrails/specrails-version
 ```
 
 ---
