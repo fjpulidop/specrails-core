@@ -37,7 +37,7 @@ The agent reads ALL files in `.claude/agents/personas/` dynamically, so presence
 
 ## install.sh → /setup handoff
 
-install.sh writes detection results to `.claude/setup-templates/` (temporary scaffolding directory).
+install.sh writes detection results to `.specrails/setup-templates/` (temporary scaffolding directory).
 /setup reads those files during Phase 1-4.
 Phase 5.1 cleans up all of setup-templates with `rm -rf`.
 
