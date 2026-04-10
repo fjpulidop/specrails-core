@@ -238,12 +238,14 @@ if [[ -f "$REPO_ROOT/.specrails-manifest.json" ]]; then
     ok "Migrated .specrails-manifest.json → .specrails/specrails-manifest.json"
 fi
 # Migrate old provider-specific setup-templates to .specrails/setup-templates/
+_MIGRATED_SETUP_TEMPLATES=false
 for _old_templates in "$REPO_ROOT/.claude/setup-templates" "$REPO_ROOT/.codex/setup-templates"; do
     if [[ -d "$_old_templates" ]]; then
         mkdir -p "$REPO_ROOT/.specrails/setup-templates"
         cp -r "$_old_templates/." "$REPO_ROOT/.specrails/setup-templates/"
         rm -rf "$_old_templates"
         ok "Migrated ${_old_templates#"$REPO_ROOT/"} → .specrails/setup-templates/"
+        _MIGRATED_SETUP_TEMPLATES=true
     fi
 done
 unset _old_templates
@@ -370,6 +372,9 @@ ok "Backed up .claude/ to .claude.specrails.backup/ (excluding node_modules)"
 # ─────────────────────────────────────────────
 
 NEEDS_SETUP_UPDATE=false
+if [[ "$_MIGRATED_SETUP_TEMPLATES" == true ]]; then
+    NEEDS_SETUP_UPDATE=true
+fi
 FORCE_AGENTS=false
 
 do_migrate_sr_prefix() {
