@@ -61,6 +61,8 @@ Read the following files to understand the current installation state:
 
 6. Read `.specrails/backlog-config.json` if it exists — contains stored provider configuration needed for command placeholder substitution.
 
+7. Read `.specrails/agents.yaml` if it exists — contains agent model configuration. Validate all `model:` values (only `opus`, `sonnet`, `haiku` are valid). Store as `AGENTS_CONFIG` for use in Phase U4. If the file does not exist, set `AGENTS_CONFIG = null`.
+
 ### Phase U2: Quick Codebase Re-Analysis
 
 Perform the same analysis as Phase 1 of the full setup wizard, but silently — do not prompt the user and do not show the findings table. Just execute and store results internally.
@@ -158,10 +160,15 @@ For each agent in the "changed" list:
    - `{{KEY_FILE_PATHS}}` → important file paths detected in Phase U2
    - `{{WARNINGS}}` → read from existing `CLAUDE.md` if present
    - `{{MEMORY_PATH}}` → `$SPECRAILS_DIR/agent-memory/sr-<agent-name>/`
-3. Write the adapted agent using the format for the active provider (same dual-format rules as Phase 4.1):
+3. Resolve the agent's model using `AGENTS_CONFIG` (loaded in Phase U1, step 7):
+   - Check `AGENTS_CONFIG.agents.<agent-name>.model` (per-agent override)
+   - If not present, check `AGENTS_CONFIG.defaults.model` (global default)
+   - If `AGENTS_CONFIG` is null, use the model from the template frontmatter
+   - Replace the `model:` field in the YAML frontmatter with the resolved value before writing
+4. Write the adapted agent using the format for the active provider (same dual-format rules as Phase 4.1):
    - `cli_provider == "claude"`: write to `$SPECRAILS_DIR/agents/sr-<name>.md` (Markdown with YAML frontmatter)
    - `cli_provider == "codex"`: write to `$SPECRAILS_DIR/agents/sr-<name>.toml` (TOML format with `name`, `description`, `model`, `prompt` fields)
-4. Show: `✓ Regenerated sr-<name>`
+5. Show: `✓ Regenerated sr-<name>`
 
 After regenerating all changed agents, verify no unresolved placeholders remain:
 ```bash
@@ -399,6 +406,8 @@ Skip if user says no.
 For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `.specrails/setup-templates/agents/<name>.md` and generate the adapted agent file using the dual-format rules from Phase 4.1:
 - `cli_provider == "claude"`: write to `.claude/agents/<name>.md` (Markdown with frontmatter)
 - `cli_provider == "codex"`: write to `.codex/agents/<name>.toml` (TOML format)
+
+If `.specrails/agents.yaml` exists, read it and apply model resolution (per-agent override → defaults → template value) before writing each agent file.
 
 Fill placeholders with best-effort values from the limited context available:
 - `{{PROJECT_NAME}}` → directory name or README first heading
@@ -660,6 +669,62 @@ Display each generated persona to the user:
 ```
 
 Wait for confirmation. If the user wants edits, apply them.
+
+### 2.5 Initialize agent config
+
+Check for `.specrails/agents.yaml`:
+
+1. If the file **exists**:
+   - Read it
+   - Validate all `model:` values — only `opus`, `sonnet`, and `haiku` are valid
+   - If any value is invalid, warn the user and fall back to the template default for that agent
+   - Store as `AGENTS_CONFIG` for use in Phase 4
+
+2. If the file **does not exist**:
+   - Generate it with the default model assignments matching the template hard-coded values:
+
+   ```yaml
+   # specrails agent configuration
+   # Modify model assignments and other agent settings
+   # Valid models: opus, sonnet, haiku
+
+   defaults:
+     model: sonnet
+
+   agents:
+     sr-architect:
+       model: sonnet
+     sr-developer:
+       model: sonnet
+     sr-reviewer:
+       model: sonnet
+     sr-product-manager:
+       model: opus
+     sr-product-analyst:
+       model: haiku
+     sr-test-writer:
+       model: sonnet
+     sr-security-reviewer:
+       model: sonnet
+     sr-backend-developer:
+       model: sonnet
+     sr-frontend-developer:
+       model: sonnet
+     sr-backend-reviewer:
+       model: sonnet
+     sr-frontend-reviewer:
+       model: sonnet
+     sr-doc-sync:
+       model: sonnet
+     sr-merge-resolver:
+       model: sonnet
+     sr-performance-reviewer:
+       model: sonnet
+   ```
+
+   - Write this file to `.specrails/agents.yaml`
+   - Store as `AGENTS_CONFIG` for use in Phase 4
+   - Log: "Generated `.specrails/agents.yaml` with default model assignments"
 
 ---
 
@@ -1037,7 +1102,12 @@ When generating each agent:
    - `{{TECH_EXPERTISE}}` → detected languages, frameworks, and test frameworks from Phase 1
    - `{{LAYER_CLAUDE_MD_PATHS}}` → comma-separated paths to per-layer rules files (e.g., `$SPECRAILS_DIR/rules/backend.md`, `$SPECRAILS_DIR/rules/frontend.md`)
    - `{{SECURITY_EXEMPTIONS_PATH}}` → `$SPECRAILS_DIR/security-exemptions.yaml`
-3. Write the final file in the format for the active provider:
+3. Resolve the agent's model using `AGENTS_CONFIG` (loaded in Phase 2.5):
+   - Check `AGENTS_CONFIG.agents.<agent-name>.model` (per-agent override)
+   - If not present, check `AGENTS_CONFIG.defaults.model` (global default)
+   - If `AGENTS_CONFIG` was not loaded (e.g., re-run without config), use the model from the template frontmatter (current behavior)
+   - Replace the `model:` field in the YAML frontmatter with the resolved value before writing
+4. Write the final file in the format for the active provider:
 
 **If `cli_provider == "claude"`:** Write as Markdown with YAML frontmatter — the template file as-is (frontmatter preserved).
 
@@ -1086,6 +1156,7 @@ For each selected command, read the template and adapt.
 - `.specrails/setup-templates/commands/specrails/compat-check.md` → `.claude/commands/specrails/compat-check.md`
 - `.specrails/setup-templates/commands/specrails/refactor-recommender.md` → `.claude/commands/specrails/refactor-recommender.md`
 - `.specrails/setup-templates/commands/specrails/why.md` → `.claude/commands/specrails/why.md`
+- `.specrails/setup-templates/commands/specrails/reconfig.md` → `.claude/commands/specrails/reconfig.md`
 
 **If `cli_provider == "codex"`:**
 - `.specrails/setup-templates/skills/sr-implement/SKILL.md` → `.agents/skills/sr-implement/SKILL.md`
@@ -1096,6 +1167,7 @@ For each selected command, read the template and adapt.
 - `.specrails/setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
 - `.specrails/setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
 - `.specrails/setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
+- `.specrails/setup-templates/commands/specrails/reconfig.md` → `.agents/skills/sr-reconfig/SKILL.md` (wrap with YAML frontmatter)
 
 **Codex skill frontmatter wrapping:** When a dedicated skill template does not exist in `.specrails/setup-templates/skills/` for a command, generate the `SKILL.md` by prepending YAML frontmatter to the command content:
 ```yaml

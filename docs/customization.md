@@ -54,20 +54,50 @@ Example — adding a constraint to the developer:
 
 ### Agent model selection
 
-Each agent specifies its model in YAML frontmatter:
+Agent models are controlled by `.specrails/agents.yaml`, generated automatically when you first run `/specrails:setup`.
 
 ```yaml
----
-model: sonnet
----
+# specrails agent configuration
+# Valid models: opus, sonnet, haiku
+
+defaults:
+  model: sonnet
+
+agents:
+  sr-architect:
+    model: sonnet
+  sr-product-manager:
+    model: opus
+  sr-product-analyst:
+    model: haiku
+  # ... all 14 agents listed
 ```
 
-Available models:
+**Valid models:**
 - `opus` — best for creative/strategic tasks (Product Manager)
 - `sonnet` — balanced for implementation tasks (most agents)
 - `haiku` — fast and cheap for analysis tasks (Product Analyst)
 
-Change the model by editing the frontmatter.
+**Precedence rules:**
+1. Per-agent entry in `agents:` section overrides everything
+2. `defaults.model` applies to any agent not explicitly listed
+3. Template hard-coded value is the fallback when no config exists
+
+**Applying config changes:** After editing `.specrails/agents.yaml`, run `/specrails:reconfig` to update the generated agent files without re-running the full setup wizard:
+
+```
+/specrails:reconfig
+```
+
+Output example:
+```
+Updated 1 agent(s):
+  sr-developer: sonnet → opus
+
+Unchanged (13): sr-architect, sr-reviewer, ...
+```
+
+**Important:** `/specrails:reconfig` wins over direct edits to `.claude/agents/sr-*.md`. If you edit an agent file directly, that change will be overwritten the next time you run reconfig or setup. For permanent per-agent overrides, edit `.specrails/agents.yaml` instead.
 
 ### Adding a new agent
 
