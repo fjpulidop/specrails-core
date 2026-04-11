@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.0](https://github.com/fjpulidop/specrails-core/compare/v3.7.0...v3.8.0) (2026-04-11)
+
+
+### Features
+
+* Quick tier direct install with VPC exclusions (SPEA-738, SPEA-741) ([#220](https://github.com/fjpulidop/specrails-core/issues/220)) ([4e463e4](https://github.com/fjpulidop/specrails-core/commit/4e463e47a7b560a22095b8dd1e7f485b9c590e8b))
+
 ## [3.7.0](https://github.com/fjpulidop/specrails-core/compare/v3.6.0...v3.7.0) (2026-04-11)
 
 
