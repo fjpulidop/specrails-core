@@ -226,24 +226,36 @@ After this phase, `/specrails:enrich` is no longer available until re-run — yo
 
 ---
 
-### Quick Mode (`/specrails:enrich --quick`)
+### Quick Install (TUI → `tier: quick`)
 
-The quick path — three questions, sensible defaults, done in under a minute.
+The quick path — select agents in the TUI, answer two context questions, done in seconds. No AI interaction required.
 
-1. What is this project? (one sentence)
-2. Who are the target users?
-3. Git access for agents — read-only or read-write?
+1. Select which agents to install (from 14 available)
+2. Choose a model preset (balanced, budget, or max)
+3. Provide a short product description and target users
 
 **What gets installed:**
 
 | Item | Detail |
 |------|--------|
-| Core agents | sr-architect, sr-developer, sr-reviewer, sr-product-manager |
-| All workflow commands | `/specrails:implement`, `/specrails:get-backlog-specs`, and 14 more |
-| Backlog storage | Local tickets (`.specrails/local-tickets.json`) — no GitHub or JIRA required |
-| CLAUDE.md | Project-level context for agents |
+| Selected agents | Placed directly in `.claude/agents/` with template defaults |
+| Workflow commands | `/specrails:implement`, `/specrails:doctor`, and more (18 commands) |
+| Rules & settings | Layer conventions, settings.json, security exemptions |
+| Agent memory | `.claude/agent-memory/<agent>/` directories |
+| Skills | OpenSpec skills in `.claude/skills/` |
 
-You can run the full wizard later to deepen configuration: personas, stack analysis, layer-specific conventions.
+**What is NOT installed (requires full enrichment):**
+
+| Item | Reason |
+|------|--------|
+| VPC personas | Require competitive research and AI analysis |
+| sr-product-manager | Drives VPC persona creation — needs enrichment |
+| sr-product-analyst | Analyzes personas — needs enrichment |
+| `/specrails:auto-propose-backlog-specs` | Depends on personas |
+| `/specrails:vpc-drift` | Depends on personas |
+| `/specrails:get-backlog-specs` | References personas for prioritization |
+
+Agents work immediately with template defaults. Run `/specrails:enrich` later to add personas, competitive analysis, and codebase-specific customization.
 
 ---
 
@@ -256,7 +268,7 @@ Runs a fully automated installation using `.specrails/install-config.yaml`. No i
 ```yaml
 version: 1
 provider: claude        # claude | codex | auto
-tier: full              # full | quick
+tier: full              # full (requires /specrails:enrich) | quick (agents placed directly)
 agents:
   selected:             # list of agent names to install
     - sr-architect
