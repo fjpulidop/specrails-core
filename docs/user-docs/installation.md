@@ -1,6 +1,6 @@
 # Installation
 
-Install SpecRails into any git repository in two steps: install, then run `/specrails:setup` inside your AI CLI.
+Install SpecRails into any git repository in two steps: install, then run `/specrails:enrich` inside your AI CLI.
 
 SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison.
 
@@ -69,7 +69,7 @@ The installer copies templates and commands into `.claude/` (Claude Code) or `.c
 ```
 your-project/
 └── .claude/
-    ├── commands/specrails/setup.md      # The /specrails:setup wizard
+    ├── commands/specrails/enrich.md     # The /specrails:enrich wizard
     ├── skills/                   # Workflow skills (/specrails:*, /opsx:*)
     ├── agents/                   # Agent definitions
     ├── rules/                    # Per-layer coding conventions
@@ -90,7 +90,7 @@ your-project/
 
 The installer also writes `.specrails/specrails-version` and `.specrails/specrails-manifest.json` to track the installed version.
 
-## Configure with /specrails:setup
+## Configure with /specrails:enrich
 
 After either installation method, open your AI CLI in your project and run:
 
@@ -101,10 +101,10 @@ codex     # Codex
 ```
 
 ```
-/specrails:setup
+/specrails:enrich
 ```
 
-By default, `/specrails:setup` runs the full 5-phase wizard:
+By default, `/specrails:enrich` runs the full 5-phase wizard:
 
 | Phase | What happens |
 |-------|-------------|
@@ -114,7 +114,9 @@ By default, `/specrails:setup` runs the full 5-phase wizard:
 | **4. Generate** | Generates project data files (`.specrails/` or `.claude/`) with your context |
 | **5. Cleanup** | Removes setup scaffolding, leaving only your tailored workflow |
 
-**In a hurry?** Run `/specrails:setup --lite` instead — three questions, sensible defaults, done in under a minute.
+**In a hurry?** Run `/specrails:enrich --quick` instead — three questions, sensible defaults, done in under a minute.
+
+**Already ran the TUI installer?** If you used `npx specrails-core@latest init` and completed the TUI agent selection, run `/specrails:enrich --from-config` to apply your saved configuration without re-answering the prompts.
 
 ## Verify
 
@@ -151,7 +153,7 @@ The installer warns if SpecRails artifacts already exist. You can merge (install
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:setup` wizard did not complete. Re-run `/specrails:setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:enrich` wizard did not complete. Re-run `/specrails:enrich` or fill the values manually.
 
 ### "No Claude API key configured"
 

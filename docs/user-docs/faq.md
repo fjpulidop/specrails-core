@@ -8,7 +8,7 @@ Yes. SpecRails runs on top of Claude Code, which requires an Anthropic account. 
 
 **What does the installer actually do to my project?**
 
-The plugin method (`claude plugin install sr`) installs logic into Claude Code's plugin system — nothing is added to your project until you run `/specrails:setup`. The scaffold method (`npx specrails-core@latest init`) copies templates into `.claude/`. Neither method modifies your source code, creates commits, or pushes anything.
+The plugin method (`claude plugin install sr`) installs logic into Claude Code's plugin system — nothing is added to your project until you run `/specrails:enrich`. The scaffold method (`npx specrails-core@latest init`) launches a TUI to select agents and model preset, writes `.specrails/install-config.yaml`, then copies templates into `.claude/`. Neither method modifies your source code, creates commits, or pushes anything.
 
 **Do I need Node.js if my project is not JavaScript?**
 
@@ -23,11 +23,11 @@ No. SpecRails ships with a built-in local ticket system — no GitHub account re
 /specrails:implement "add rate limiting to the API"
 ```
 
-You can switch to GitHub Issues or JIRA during `/specrails:setup` (Phase 3) if you prefer.
+You can switch to GitHub Issues or JIRA during `/specrails:enrich` (Phase 3) if you prefer.
 
-**How long does /specrails:setup take?**
+**How long does /specrails:enrich take?**
 
-The full wizard takes about 5 minutes — most of the time is Phase 2 (persona research via web search). For a faster start, use `/specrails:setup --lite`: three questions, under a minute, no web research.
+The full wizard takes about 5 minutes — most of the time is Phase 2 (persona research via web search). For a faster start, use `/specrails:enrich --quick`: three questions, under a minute, no web research.
 
 ---
 
@@ -35,7 +35,7 @@ The full wizard takes about 5 minutes — most of the time is Phase 2 (persona r
 
 **Can I run SpecRails on an existing project with existing code?**
 
-Yes, that's the intended use case. The `/specrails:setup` wizard analyzes your existing codebase — your tech stack, layers, CI commands, and conventions — and generates agents configured specifically for it.
+Yes, that's the intended use case. The `/specrails:enrich` wizard analyzes your existing codebase — your tech stack, layers, CI commands, and conventions — and generates agents configured specifically for it.
 
 **Does /specrails:implement always create a PR?**
 
@@ -77,7 +77,7 @@ For layer-specific coding conventions, edit `.specrails/rules/*.md` (plugin) or 
 
 **What is a VPC persona?**
 
-VPC stands for Value Proposition Canvas. Personas are structured profiles of your target users with their Jobs (what they're trying to accomplish), Pains (what frustrates them), and Gains (what they want). The Product Manager and Architect use these to make better design decisions. They're generated during `/specrails:setup` and stored in `.specrails/personas/` (plugin) or `.claude/agents/personas/` (scaffold).
+VPC stands for Value Proposition Canvas. Personas are structured profiles of your target users with their Jobs (what they're trying to accomplish), Pains (what frustrates them), and Gains (what they want). The Product Manager and Architect use these to make better design decisions. They're generated during `/specrails:enrich` and stored in `.specrails/personas/` (plugin) or `.claude/agents/personas/` (scaffold).
 
 ---
 
@@ -85,11 +85,11 @@ VPC stands for Value Proposition Canvas. Personas are structured profiles of you
 
 **Does SpecRails work with monorepos?**
 
-Yes. During `/specrails:setup`, the architect detects your monorepo structure and generates separate layer configurations for each package or service.
+Yes. During `/specrails:enrich`, the architect detects your monorepo structure and generates separate layer configurations for each package or service.
 
 **Which languages and frameworks are supported?**
 
-SpecRails works with any stack. The agents are general-purpose and adapt based on what `/specrails:setup` detects in your codebase. It's been used with Node.js, Python, Go, Ruby, Rust, and mixed-stack projects.
+SpecRails works with any stack. The agents are general-purpose and adapt based on what `/specrails:enrich` detects in your codebase. It's been used with Node.js, Python, Go, Ruby, Rust, and mixed-stack projects.
 
 **Does it work with private repositories?**
 
@@ -113,7 +113,7 @@ Scaffold method:
 npx specrails-core@latest init --root-dir .
 ```
 
-Then re-run `/specrails:setup` to regenerate project data with any new templates. See the [updating guide](../updating.md) for details.
+Then re-run `/specrails:enrich` to regenerate project data with any new templates. See the [updating guide](../updating.md) for details.
 
 **How do I know which version is installed?**
 
@@ -125,13 +125,13 @@ cat .specrails/specrails-version
 
 ## Troubleshooting
 
-**The /specrails:setup command isn't available after installing.**
+**The /specrails:enrich command isn't available after installing.**
 
 For the plugin method: make sure the plugin is installed (`claude plugin list` should show `sr`). For the scaffold method: Claude Code loads commands from `.claude/commands/` — make sure you opened Claude Code from inside your project directory.
 
 **Generated files contain `{{PLACEHOLDER}}` text.**
 
-The `/specrails:setup` wizard did not complete all phases. Re-run `/specrails:setup` — it will pick up where it left off.
+The `/specrails:enrich` wizard did not complete all phases. Re-run `/specrails:enrich` — it will pick up where it left off.
 
 **The pipeline created a PR but the CI checks failed.**
 

@@ -12,7 +12,7 @@ SpecRails separates **logic** (the plugin) from **project data** (your repo).
 │  agents · skills · hooks · refs     │
 │  updated via: claude plugin update  │
 └────────────────┬────────────────────┘
-                 │  /specrails:setup generates
+                 │  /specrails:enrich generates
                  ▼
 ┌─────────────────────────────────────┐
 │       .specrails/ (project data)    │
@@ -36,7 +36,7 @@ You never edit these directly. To update them, run `claude plugin update sr`.
 
 ### What lives in your project (`.specrails/`)
 
-`/specrails:setup` generates ~8–10 files adapted to your specific codebase:
+`/specrails:enrich` generates ~8–10 files adapted to your specific codebase:
 
 | File | Description |
 |------|-------------|
@@ -57,7 +57,7 @@ SpecRails supports three installation paths:
 
 ```bash
 claude plugin install sr   # install
-/specrails:setup                  # configure for your project
+/specrails:enrich                 # configure for your project
 claude plugin update sr    # update logic anytime
 ```
 
@@ -66,11 +66,11 @@ claude plugin update sr    # update logic anytime
 ### 2. Claude Code scaffold
 
 ```bash
-npx specrails-core@latest init --root-dir .   # copy templates
-/specrails:setup                                      # configure
+npx specrails-core@latest init --root-dir .   # TUI agent selection + copy templates
+/specrails:enrich --from-config               # AI analysis using your saved config
 ```
 
-The scaffold copies the full agent+command set into `.claude/` — you own and version those files. Updates require re-running `npx` and re-running `/specrails:setup`.
+The scaffold copies the full agent+command set into `.claude/` — you own and version those files. The `init` command now includes a TUI installer that lets you select agents and model preset. Updates require re-running `npx` and re-running `/specrails:enrich`.
 
 **Best for:** Teams that want to version the agent prompts themselves, or projects that need full offline control.
 
@@ -79,16 +79,16 @@ The scaffold copies the full agent+command set into `.claude/` — you own and v
 ```bash
 npx specrails-core@latest init --root-dir .   # same as scaffold
 codex                                          # open Codex
-/specrails:setup                                      # configure
+/specrails:enrich                             # configure
 ```
 
 Codex does not support the Claude Code plugin system. Use the scaffold method.
 
 **Best for:** OpenAI Codex CLI users.
 
-## The `/specrails:setup` wizard
+## The `/specrails:enrich` wizard
 
-`/specrails:setup` is a 5-phase setup wizard that generates your project data. It runs once (or re-runs to regenerate).
+`/specrails:enrich` is a 5-phase wizard that generates your project data. It runs once (or re-runs to regenerate).
 
 | Phase | Output |
 |-------|--------|
@@ -98,7 +98,9 @@ Codex does not support the Claude Code plugin system. Use the scaffold method.
 | **4. Generate** | Writes `.specrails/config.yaml`, personas, rules, CLAUDE.md |
 | **5. Cleanup** | Removes wizard scaffolding |
 
-Quick mode: `/specrails:setup --lite` — three questions, done in under a minute.
+Quick mode: `/specrails:enrich --quick` — three questions, done in under a minute.
+
+From-config mode: `/specrails:enrich --from-config` — reads `.specrails/install-config.yaml` (written by the TUI installer) and runs non-interactively.
 
 ## OpenSpec skills
 
@@ -127,7 +129,7 @@ Updates agents, skills, hooks, and references. Does not touch `.specrails/` proj
 ### Regenerate project data
 
 ```bash
-/specrails:setup
+/specrails:enrich
 ```
 
 Re-runs the wizard and regenerates `.specrails/`. Useful when your stack changes significantly or you want to refresh personas.

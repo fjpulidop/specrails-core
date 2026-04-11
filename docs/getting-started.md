@@ -37,15 +37,15 @@ npx specrails-core@latest init --root-dir <your-project>
 
 See [installation.md](installation.md) for full details on both methods and when to use each.
 
-## Run the Setup Wizard
+## Run the Enrich Wizard
 
 Open Claude Code in your project and run:
 
 ```
-/specrails:setup
+/specrails:enrich
 ```
 
-By default, `/specrails:setup` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
+By default, `/specrails:enrich` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
 
 | Phase | What happens |
 |-------|-------------|
@@ -55,7 +55,7 @@ By default, `/specrails:setup` runs the **full 5-phase wizard** — deep stack a
 | **4. Generate** | Generates your project data files (`.specrails/`) with project-specific context |
 | **5. Cleanup** | Removes the wizard scaffolding, leaving only your tailored workflow files |
 
-**In a hurry?** Run `/specrails:setup --lite` for the quick version: three questions, sensible defaults, done in under a minute.
+**In a hurry?** Run `/specrails:enrich --quick` for the quick version: three questions, sensible defaults, done in under a minute.
 
 | Question | What it configures |
 |----------|-------------------|
@@ -63,7 +63,7 @@ By default, `/specrails:setup` runs the **full 5-phase wizard** — deep stack a
 | Who are the target users? | Persona stubs for product discovery |
 | Git access — read-only or read-write? | Whether agents can commit |
 
-Lite mode installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. You can run the full wizard later to deepen the configuration.
+Quick mode installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. You can run the full wizard later to deepen the configuration.
 
 After either mode, your project data files are ready to use and your `/specrails:*` commands are live.
 

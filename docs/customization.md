@@ -4,7 +4,7 @@ Everything SpecRails generates is editable markdown. Here's how to adapt it to y
 
 ## What gets generated
 
-After running `/specrails:setup`, your project data lives in `.specrails/` (plugin method) or `.claude/` (scaffold method):
+After running `/specrails:enrich`, your project data lives in `.specrails/` (plugin method) or `.claude/` (scaffold method):
 
 **Plugin method — `.specrails/`**
 
@@ -54,7 +54,7 @@ Example — adding a constraint to the developer:
 
 ### Agent model selection
 
-Agent models are controlled by `.specrails/agents.yaml`, generated automatically when you first run `/specrails:setup`.
+Agent models are controlled by `.specrails/agents.yaml`, generated automatically when you first run `/specrails:enrich`. The model preset can also be set ahead of time in `.specrails/install-config.yaml` (written by the TUI installer).
 
 ```yaml
 # specrails agent configuration
