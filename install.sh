@@ -48,7 +48,10 @@ AGENT_TEAMS=false
 
 # Direct-mode flags (set by bin/specrails-core.js after TUI completes)
 FROM_CONFIG=false   # read provider/agent_teams from .specrails/install-config.yaml
+CONFIG_PATH=""      # explicit config file path (passed after --from-config)
 HAS_GUM=false       # set to true if gum CLI is available (optional UI enhancement)
+TIER="full"         # install tier: full (default) or quick (template-only, no enrich)
+HUB_JSON=false      # emit JSON checkpoint lines for programmatic consumption (specrails-hub)
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -78,18 +81,34 @@ while [[ $# -gt 0 ]]; do
             ;;
         --from-config)
             # Config was written by the TUI; skip interactive prompts and read
-            # provider + agent_teams from .specrails/install-config.yaml.
+            # provider + agent_teams from install-config.yaml.
+            # Optional: --from-config <path>  (defaults to .specrails/install-config.yaml)
             FROM_CONFIG=true
-            shift
+            if [[ -n "${2:-}" && "${2:-}" != -* ]]; then
+                CONFIG_PATH="${2}"
+                shift 2
+            else
+                shift
+            fi
             ;;
         --agent-teams)
             # Explicitly enable agent teams commands (alternative to config file).
             AGENT_TEAMS=true
             shift
             ;;
+        --quick)
+            # Template-only install; sets tier=quick in the generated config.
+            TIER="quick"
+            shift
+            ;;
+        --hub-json)
+            # Emit JSON checkpoint lines for programmatic consumption by specrails-hub.
+            HUB_JSON=true
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>] [--from-config] [--agent-teams]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>] [--from-config [<path>]] [--agent-teams] [--quick] [--hub-json]" >&2
             exit 1
             ;;
     esac
@@ -252,10 +271,14 @@ fi
 
 if [[ "$FROM_CONFIG" == true ]]; then
     # Config was written by the TUI — read provider and agent_teams from it.
-    local_config="${REPO_ROOT}/.specrails/install-config.yaml"
-    if [[ -f "$local_config" ]]; then
-        _cfg_provider=$(grep '^provider:' "$local_config" | awk '{print $2}' | tr -d '[:space:]')
-        _cfg_agent_teams=$(grep '^agent_teams:' "$local_config" | awk '{print $2}' | tr -d '[:space:]')
+    # Resolve config path: explicit path > default location.
+    if [[ -z "$CONFIG_PATH" ]]; then
+        CONFIG_PATH="${REPO_ROOT}/.specrails/install-config.yaml"
+    fi
+    if [[ -f "$CONFIG_PATH" ]]; then
+        _cfg_provider=$(grep '^provider:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
+        _cfg_agent_teams=$(grep '^agent_teams:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
+        _cfg_tier=$(grep '^tier:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
         if [[ -n "$_cfg_provider" ]]; then
             CLI_PROVIDER="$_cfg_provider"
             ok "Provider: $CLI_PROVIDER (from install-config.yaml)"
@@ -263,8 +286,11 @@ if [[ "$FROM_CONFIG" == true ]]; then
         if [[ "$_cfg_agent_teams" == "true" ]]; then
             AGENT_TEAMS=true
         fi
+        if [[ -n "$_cfg_tier" ]]; then
+            TIER="$_cfg_tier"
+        fi
     else
-        warn "install-config.yaml not found at $local_config — falling back to auto-detection"
+        warn "install-config.yaml not found at $CONFIG_PATH — falling back to auto-detection"
         FROM_CONFIG=false
     fi
 fi
@@ -618,11 +644,109 @@ cp "$SCRIPT_DIR/bin/doctor.sh" "$REPO_ROOT/.specrails/bin/doctor.sh"
 chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
 ok "Installed specrails doctor (bin/doctor.sh)"
 
+# Write default install-config.yaml if not already present.
+# This ensures a config file always exists after any install path, so that
+# /specrails:enrich --from-config works regardless of how the installer was invoked.
+_install_config="${REPO_ROOT}/.specrails/install-config.yaml"
+if [[ ! -f "$_install_config" ]]; then
+    _ic_provider="${CLI_PROVIDER:-claude}"
+    _ic_tier="${TIER:-full}"
+    _ic_agent_teams="${AGENT_TEAMS:-false}"
+    cat > "$_install_config" << YAML
+# specrails install config — generated during install (defaults)
+# Re-run: npx specrails-core@latest init  to regenerate with TUI
+version: 1
+provider: ${_ic_provider}
+tier: ${_ic_tier}
+agents:
+  selected: [sr-architect, sr-developer, sr-reviewer, sr-test-writer, sr-product-manager]
+  excluded: [sr-frontend-developer, sr-backend-developer, sr-frontend-reviewer, sr-backend-reviewer, sr-security-reviewer, sr-performance-reviewer, sr-product-analyst, sr-doc-sync, sr-merge-resolver]
+models:
+  preset: balanced
+  defaults: { model: sonnet }
+  overrides: {}
+quick_context:
+  product_description: ""
+  target_users: ""
+agent_teams: ${_ic_agent_teams}
+YAML
+    ok "Written .specrails/install-config.yaml (defaults)"
+fi
+
 # Copy templates (includes commands, skills, agents, rules, personas, settings)
 # Use tar to exclude node_modules and package-lock.json for performance
 tar -C "$SCRIPT_DIR/templates" --exclude='node_modules' --exclude='package-lock.json' -cf - . \
     | tar -C "$REPO_ROOT/.specrails/setup-templates/" -xf -
 ok "Installed setup templates (commands + skills)"
+
+# Filter agent templates to only those listed in agents.selected (when --from-config is active).
+# This allows hub or the TUI to pre-select a subset of agents before enrichment.
+if [[ "$FROM_CONFIG" == true ]]; then
+    _cfg_to_read="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
+    if [[ -f "$_cfg_to_read" ]]; then
+        # Parse selected agents from inline YAML list: selected: [sr-architect, sr-developer, ...]
+        _selected_raw=$(grep '^  selected:' "$_cfg_to_read" | sed 's/.*\[//;s/\].*//;s/,/ /g' || true)
+        if [[ -n "$_selected_raw" ]]; then
+            _agents_dir="${REPO_ROOT}/.specrails/setup-templates/agents"
+            _removed=0
+            for _agent_file in "$_agents_dir/"*.md; do
+                [[ -f "$_agent_file" ]] || continue
+                _agent_name="$(basename "$_agent_file" .md)"
+                _in_selected=false
+                for _sel in $_selected_raw; do
+                    # Strip whitespace/commas from parsed token
+                    _sel="${_sel//,/}"
+                    _sel="${_sel// /}"
+                    if [[ "$_sel" == "$_agent_name" ]]; then
+                        _in_selected=true
+                        break
+                    fi
+                done
+                if [[ "$_in_selected" == false ]]; then
+                    rm -f "$_agent_file"
+                    (( _removed++ )) || true
+                fi
+            done
+            if (( _removed > 0 )); then
+                ok "Agent templates filtered: removed ${_removed} excluded agent(s)"
+            fi
+        fi
+
+        # Apply model overrides to agent frontmatter when present.
+        # Overrides YAML format: "  overrides:\n    sr-architect: opus"
+        _in_overrides=false
+        while IFS= read -r _line; do
+            if [[ "$_line" =~ ^[[:space:]]*overrides: ]]; then
+                # Check if overrides are on same line: overrides: { sr-architect: opus }
+                if [[ "$_line" =~ \{.*\} ]]; then
+                    _inline=$(echo "$_line" | sed 's/.*{//;s/}.*//;s/,/ /g')
+                    for _pair in $_inline; do
+                        _key="${_pair%%:*}"
+                        _val="${_pair##*:}"
+                        _agent_file="${REPO_ROOT}/.specrails/setup-templates/agents/${_key}.md"
+                        if [[ -f "$_agent_file" ]]; then
+                            sed -i.bak "s/^model: .*/model: ${_val}/" "$_agent_file" && rm -f "${_agent_file}.bak"
+                        fi
+                    done
+                    _in_overrides=false
+                else
+                    _in_overrides=true
+                fi
+            elif [[ "$_in_overrides" == true ]]; then
+                if [[ "$_line" =~ ^[[:space:]]{4}([a-z0-9_-]+):[[:space:]]*([a-z]+) ]]; then
+                    _key="${BASH_REMATCH[1]}"
+                    _val="${BASH_REMATCH[2]}"
+                    _agent_file="${REPO_ROOT}/.specrails/setup-templates/agents/${_key}.md"
+                    if [[ -f "$_agent_file" ]]; then
+                        sed -i.bak "s/^model: .*/model: ${_val}/" "$_agent_file" && rm -f "${_agent_file}.bak"
+                    fi
+                elif [[ ! "$_line" =~ ^[[:space:]]{4} ]]; then
+                    _in_overrides=false
+                fi
+            fi
+        done < "$_cfg_to_read"
+    fi
+fi
 
 # Write OSS detection results for /specrails:enrich
 cat > "$REPO_ROOT/.specrails/setup-templates/.oss-detection.json" << EOF

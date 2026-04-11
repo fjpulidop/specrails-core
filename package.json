@@ -54,6 +54,9 @@
     "test": "bash tests/run-all.sh",
     "test:coverage": "bash tests/run-coverage.sh"
   },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0"
+  },
   "license": "MIT",
   "author": "fjpulidop"
 }
