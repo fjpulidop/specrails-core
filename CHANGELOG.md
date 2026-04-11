@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.1](https://github.com/fjpulidop/specrails-core/compare/v3.8.0...v3.8.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* Quick install creates backlog config + fix propose-spec fallback (SPEA-750) ([#222](https://github.com/fjpulidop/specrails-core/issues/222)) ([aa5f7a1](https://github.com/fjpulidop/specrails-core/commit/aa5f7a12864f74252b82aaf7bde59fc8992addf7))
+
 ## [3.8.0](https://github.com/fjpulidop/specrails-core/compare/v3.7.0...v3.8.0) (2026-04-11)
 
 
