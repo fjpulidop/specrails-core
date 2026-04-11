@@ -979,6 +979,36 @@ if [[ "$TIER" == "quick" ]]; then
         ok "Installed integration-contract.json"
     fi
 
+    # --- Backlog config (default: local provider) ---
+    _backlog_cfg="${REPO_ROOT}/.specrails/backlog-config.json"
+    if [[ ! -f "$_backlog_cfg" ]]; then
+        mkdir -p "${REPO_ROOT}/.specrails"
+        cat > "$_backlog_cfg" <<'BCEOF'
+{
+  "provider": "local",
+  "write_access": true,
+  "git_auto": true
+}
+BCEOF
+        ok "Created .specrails/backlog-config.json (provider: local, git_auto: true)"
+    fi
+
+    # --- Local tickets store ---
+    _tickets_file="${REPO_ROOT}/.specrails/local-tickets.json"
+    if [[ ! -f "$_tickets_file" ]]; then
+        _now="$(date -u +"%Y-%m-%dT%H:%M:%S.000Z")"
+        cat > "$_tickets_file" <<LTEOF
+{
+  "schema_version": "1.0",
+  "revision": 0,
+  "last_updated": "${_now}",
+  "next_id": 1,
+  "tickets": {}
+}
+LTEOF
+        ok "Created .specrails/local-tickets.json"
+    fi
+
     # --- Skills (OpenSpec) ---
     if [[ -d "$_templates/skills" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/skills"
@@ -1033,6 +1063,8 @@ if [[ "$TIER" == "quick" ]]; then
     echo "  Installed:"
     echo "    ${_installed_agents} agent(s)    → ${SPECRAILS_DIR}/agents/"
     echo "    ${_installed_commands} command(s)  → ${SPECRAILS_DIR}/commands/specrails/"
+    echo "    .specrails/backlog-config.json   (provider: local)"
+    echo "    .specrails/local-tickets.json"
     echo "    .specrails/specrails-version"
     echo "    .specrails/specrails-manifest.json"
     echo ""
