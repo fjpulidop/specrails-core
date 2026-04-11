@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.7.0](https://github.com/fjpulidop/specrails-core/compare/v3.6.0...v3.7.0) (2026-04-11)
+
+
+### Features
+
+* TUI installer + /specrails:enrich command (SPEA-742, SPEA-743) ([#218](https://github.com/fjpulidop/specrails-core/issues/218)) ([9576c51](https://github.com/fjpulidop/specrails-core/commit/9576c5161831d3e381b230d22982e8108f277892))
+
 ## [3.6.0](https://github.com/fjpulidop/specrails-core/compare/v3.5.3...v3.6.0) (2026-04-11)
 
 
