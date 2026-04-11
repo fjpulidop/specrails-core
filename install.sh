@@ -3,7 +3,7 @@ set -euo pipefail
 
 # specrails installer
 # Installs the agent workflow system into any repository.
-# Step 1 of 2: Prerequisites + scaffold. Step 2: Run /specrails:setup inside Claude Code.
+# Step 1 of 2: Prerequisites + scaffold. Step 2: Run /specrails:enrich inside Claude Code.
 
 # Detect pipe mode (curl | bash) vs local execution
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then
@@ -46,6 +46,10 @@ HAS_CLAUDE=false
 HAS_CODEX=false
 AGENT_TEAMS=false
 
+# Direct-mode flags (set by bin/specrails-core.js after TUI completes)
+FROM_CONFIG=false   # read provider/agent_teams from .specrails/install-config.yaml
+HAS_GUM=false       # set to true if gum CLI is available (optional UI enhancement)
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --root-dir)
@@ -72,9 +76,20 @@ while [[ $# -gt 0 ]]; do
             CLI_PROVIDER="$2"
             shift 2
             ;;
+        --from-config)
+            # Config was written by the TUI; skip interactive prompts and read
+            # provider + agent_teams from .specrails/install-config.yaml.
+            FROM_CONFIG=true
+            shift
+            ;;
+        --agent-teams)
+            # Explicitly enable agent teams commands (alternative to config file).
+            AGENT_TEAMS=true
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>] [--from-config] [--agent-teams]" >&2
             exit 1
             ;;
     esac
@@ -162,14 +177,14 @@ generate_manifest() {
     \"${relpath}\": \"${checksum}\""
     done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
 
-    # Include commands/setup.md
-    local setup_checksum
-    setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
+    # Include commands/enrich.md
+    local enrich_checksum
+    enrich_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/enrich.md" | awk '{print $1}')"
     if [ -n "$artifacts_json" ]; then
         artifacts_json="${artifacts_json},"
     fi
     artifacts_json="${artifacts_json}
-    \"commands/specrails/setup.md\": \"${setup_checksum}\""
+    \"commands/specrails/enrich.md\": \"${enrich_checksum}\""
 
     # Include commands/doctor.md
     local doctor_checksum
@@ -215,47 +230,88 @@ if command -v codex &> /dev/null; then
     HAS_CODEX=true
 fi
 
-if [[ -n "$CLI_PROVIDER" ]]; then
-    # --provider flag was set explicitly — skip interactive detection
-    ok "Provider: $CLI_PROVIDER (--provider flag)"
-elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
-    echo ""
-    echo -e "  ${BOLD}Both Claude Code and Codex detected.${NC}"
-    if [ "$AUTO_YES" = true ]; then
-        CLI_PROVIDER="claude"
-        info "Auto-selected Claude Code (--yes flag active)"
-    else
-        echo ""
-        echo "    Which provider would you like to use?"
-        echo "      1) Claude Code (claude)  → output to .claude/"
-        echo "      2) Codex (codex)         → output to .codex/"
-        echo ""
-        read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE || PROVIDER_CHOICE="1"
-        PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
-        if [[ "$PROVIDER_CHOICE" == "2" ]]; then
-            CLI_PROVIDER="codex"
-        else
-            CLI_PROVIDER="claude"
+# 1.2a Gum detection (optional UI enhancement — used in non-TUI bash paths)
+if command -v gum &> /dev/null; then
+    HAS_GUM=true
+    ok "gum CLI: found (enhanced UI available)"
+else
+    # Attempt a lightweight auto-install on supported platforms (best-effort)
+    _GUM_INSTALLED=false
+    if command -v brew &> /dev/null; then
+        info "Installing gum CLI via Homebrew (optional — adds nicer prompts)..."
+        if brew install gum &>/dev/null; then
+            HAS_GUM=true
+            _GUM_INSTALLED=true
+            ok "gum installed via Homebrew"
         fi
     fi
-    ok "Provider: $CLI_PROVIDER"
-elif [ "$HAS_CLAUDE" = true ]; then
-    CLI_PROVIDER="claude"
-    CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
-    ok "Claude Code CLI: $CLAUDE_VERSION"
-elif [ "$HAS_CODEX" = true ]; then
-    CLI_PROVIDER="codex"
-    CODEX_VERSION=$(codex --version 2>/dev/null || echo "unknown")
-    ok "Codex CLI: $CODEX_VERSION"
-elif [[ "$SKIP_PREREQS" == "1" ]]; then
-    CLI_PROVIDER="claude"
-    warn "No AI CLI found (skipped — SPECRAILS_SKIP_PREREQS=1)"
-else
-    fail "No AI CLI found (claude or codex)."
-    echo ""
-    echo "    Install Claude Code: https://claude.ai/download"
-    echo "    Install Codex:       https://github.com/openai/codex"
-    exit 1
+    if [[ "$_GUM_INSTALLED" == false ]]; then
+        info "gum CLI not found — install via 'brew install gum' for enhanced prompts (optional)"
+    fi
+fi
+
+if [[ "$FROM_CONFIG" == true ]]; then
+    # Config was written by the TUI — read provider and agent_teams from it.
+    local_config="${REPO_ROOT}/.specrails/install-config.yaml"
+    if [[ -f "$local_config" ]]; then
+        _cfg_provider=$(grep '^provider:' "$local_config" | awk '{print $2}' | tr -d '[:space:]')
+        _cfg_agent_teams=$(grep '^agent_teams:' "$local_config" | awk '{print $2}' | tr -d '[:space:]')
+        if [[ -n "$_cfg_provider" ]]; then
+            CLI_PROVIDER="$_cfg_provider"
+            ok "Provider: $CLI_PROVIDER (from install-config.yaml)"
+        fi
+        if [[ "$_cfg_agent_teams" == "true" ]]; then
+            AGENT_TEAMS=true
+        fi
+    else
+        warn "install-config.yaml not found at $local_config — falling back to auto-detection"
+        FROM_CONFIG=false
+    fi
+fi
+
+if [[ "$FROM_CONFIG" != true ]]; then
+    if [[ -n "$CLI_PROVIDER" ]]; then
+        # --provider flag was set explicitly — skip interactive detection
+        ok "Provider: $CLI_PROVIDER (--provider flag)"
+    elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
+        echo ""
+        echo -e "  ${BOLD}Both Claude Code and Codex detected.${NC}"
+        if [ "$AUTO_YES" = true ]; then
+            CLI_PROVIDER="claude"
+            info "Auto-selected Claude Code (--yes flag active)"
+        else
+            echo ""
+            echo "    Which provider would you like to use?"
+            echo "      1) Claude Code (claude)  → output to .claude/"
+            echo "      2) Codex (codex)         → output to .codex/"
+            echo ""
+            read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE || PROVIDER_CHOICE="1"
+            PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
+            if [[ "$PROVIDER_CHOICE" == "2" ]]; then
+                CLI_PROVIDER="codex"
+            else
+                CLI_PROVIDER="claude"
+            fi
+        fi
+        ok "Provider: $CLI_PROVIDER"
+    elif [ "$HAS_CLAUDE" = true ]; then
+        CLI_PROVIDER="claude"
+        CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
+        ok "Claude Code CLI: $CLAUDE_VERSION"
+    elif [ "$HAS_CODEX" = true ]; then
+        CLI_PROVIDER="codex"
+        CODEX_VERSION=$(codex --version 2>/dev/null || echo "unknown")
+        ok "Codex CLI: $CODEX_VERSION"
+    elif [[ "$SKIP_PREREQS" == "1" ]]; then
+        CLI_PROVIDER="claude"
+        warn "No AI CLI found (skipped — SPECRAILS_SKIP_PREREQS=1)"
+    else
+        fail "No AI CLI found (claude or codex)."
+        echo ""
+        echo "    Install Claude Code: https://claude.ai/download"
+        echo "    Install Codex:       https://github.com/openai/codex"
+        exit 1
+    fi
 fi
 
 # Derive output directory and instruction file from provider
@@ -269,12 +325,24 @@ fi
 
 # 1.2b Agent Teams opt-in (Claude Code only)
 if [[ "$CLI_PROVIDER" == "claude" ]]; then
-    echo ""
-    if [ "$AUTO_YES" = true ]; then
+    if [[ "$FROM_CONFIG" == true || "$AGENT_TEAMS" == true ]]; then
+        # Already resolved from config or --agent-teams flag
+        if [[ "$AGENT_TEAMS" == true ]]; then
+            ok "Agent Teams commands: enabled (from install-config.yaml)"
+            echo ""
+            info "Remember to set the feature flag before using these commands:"
+            echo ""
+            echo "    export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"
+            echo ""
+        else
+            info "Agent Teams commands: skipped (from install-config.yaml)"
+        fi
+    elif [ "$AUTO_YES" = true ]; then
         # --yes flag: default to NOT installing (opt-in, not opt-out)
         AGENT_TEAMS=false
         info "Agent Teams commands: skipped (opt-in, use interactive mode to enable)"
     else
+        echo ""
         echo -e "  ${BOLD}Agent Teams commands are available (experimental):${NC}"
         echo "    /specrails:team-review — Multi-perspective code review with AI reviewers"
         echo "    /specrails:team-debug  — Collaborative debugging with competing hypotheses"
@@ -433,8 +501,8 @@ if command -v jira &> /dev/null; then
     HAS_JIRA=true
 else
     HAS_JIRA=false
-    # Don't warn here — JIRA is only relevant if chosen during /specrails:setup.
-    # If the user selects JIRA in /specrails:setup and it's not installed, the setup
+    # Don't warn here — JIRA is only relevant if chosen during /specrails:enrich.
+    # If the user selects JIRA in /specrails:enrich and it's not installed, the enrich
     # wizard will offer to install it (go-jira via brew/go, or Atlassian CLI).
 fi
 
@@ -488,7 +556,7 @@ step "Phase 3: Installing specrails artifacts"
 mkdir -p "$REPO_ROOT/specrails"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     # Codex: install as Agent Skills (Codex doesn't support .codex/commands/)
-    mkdir -p "$REPO_ROOT/.agents/skills/setup"
+    mkdir -p "$REPO_ROOT/.agents/skills/enrich"
     mkdir -p "$REPO_ROOT/.agents/skills/doctor"
 else
     mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails"
@@ -503,13 +571,13 @@ mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/prompts"
 mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
 
-# Copy the /specrails:setup and /specrails:doctor commands (or skills for Codex)
+# Copy the /specrails:enrich and /specrails:doctor commands (or skills for Codex)
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     # Codex uses Agent Skills in .agents/skills/<name>/SKILL.md
     {
         echo '---'
-        echo 'name: setup'
-        echo 'description: "Interactive wizard to configure the full specrails agent workflow system for this repository."'
+        echo 'name: enrich'
+        echo 'description: "Interactive wizard to configure the full specrails agent workflow system for this repository. Supports config-driven mode for direct installation from a pre-built config file."'
         echo 'license: MIT'
         echo 'compatibility: "Requires npm, git."'
         echo 'metadata:'
@@ -517,9 +585,9 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
         echo '  version: "1.0"'
         echo '---'
         echo ''
-        cat "$SCRIPT_DIR/commands/setup.md"
-    } > "$REPO_ROOT/.agents/skills/setup/SKILL.md"
-    ok "Installed \$setup skill"
+        cat "$SCRIPT_DIR/commands/enrich.md"
+    } > "$REPO_ROOT/.agents/skills/enrich/SKILL.md"
+    ok "Installed \$enrich skill"
 
     {
         echo '---'
@@ -537,8 +605,8 @@ if [[ "$CLI_PROVIDER" == "codex" ]]; then
     ok "Installed \$doctor skill"
 else
     # Claude Code uses commands in .claude/commands/specrails/ (namespaced as /specrails:*)
-    cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails/setup.md"
-    ok "Installed /specrails:setup command"
+    cp "$SCRIPT_DIR/commands/enrich.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails/enrich.md"
+    ok "Installed /specrails:enrich command"
 
     cp "$SCRIPT_DIR/commands/doctor.md" "$REPO_ROOT/$SPECRAILS_DIR/commands/specrails/doctor.md"
     ok "Installed /specrails:doctor command"
@@ -556,7 +624,7 @@ tar -C "$SCRIPT_DIR/templates" --exclude='node_modules' --exclude='package-lock.
     | tar -C "$REPO_ROOT/.specrails/setup-templates/" -xf -
 ok "Installed setup templates (commands + skills)"
 
-# Write OSS detection results for /specrails:setup
+# Write OSS detection results for /specrails:enrich
 cat > "$REPO_ROOT/.specrails/setup-templates/.oss-detection.json" << EOF
 {
   "is_oss": $IS_OSS,
@@ -569,7 +637,7 @@ cat > "$REPO_ROOT/.specrails/setup-templates/.oss-detection.json" << EOF
 EOF
 ok "OSS detection results written"
 
-# Write provider detection results for /setup
+# Write provider detection results for /specrails:enrich
 cat > "$REPO_ROOT/.specrails/setup-templates/.provider-detection.json" << EOF
 {
   "cli_provider": "$CLI_PROVIDER",
@@ -629,12 +697,12 @@ fi
 echo ""
 echo "  Files installed:"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
-    echo "    .agents/skills/setup/SKILL.md        ← The \$setup skill"
+    echo "    .agents/skills/enrich/SKILL.md       ← The \$enrich skill"
     echo "    .agents/skills/doctor/SKILL.md       ← The \$doctor skill"
 else
-    echo "    $SPECRAILS_DIR/commands/specrails/setup.md  ← The /specrails:setup command"
+    echo "    $SPECRAILS_DIR/commands/specrails/enrich.md  ← The /specrails:enrich command"
 fi
-echo "    .specrails/setup-templates/              ← Templates: commands + skills (temporary, removed after setup)"
+echo "    .specrails/setup-templates/              ← Templates: commands + skills (temporary, removed after enrich)"
 echo "    .specrails/specrails-version             ← Installed specrails version"
 echo "    .specrails/specrails-manifest.json       ← Artifact checksums for update detection"
 echo ""
@@ -653,12 +721,12 @@ echo "  1. Open $CLI_PROVIDER in this repo:"
 echo ""
 echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
 echo ""
-echo "  2. Run the setup wizard:"
+echo "  2. Run the enrich wizard:"
 echo ""
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
-    echo -e "     ${BOLD}\$setup${NC}"
+    echo -e "     ${BOLD}\$enrich${NC}"
 else
-    echo -e "     ${BOLD}/specrails:setup${NC}"
+    echo -e "     ${BOLD}/specrails:enrich${NC}"
 fi
 echo ""
 if [[ "$CLI_PROVIDER" == "codex" ]]; then

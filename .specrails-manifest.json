@@ -2,7 +2,7 @@
   "version": "0.3.1",
   "installed_at": "2026-03-15T15:52:54Z",
   "artifacts": {
-    "commands/setup.md": "sha256:a57ed6dda2f741784f3c99c00377ae3a0fc5ae39add9c349b4f1a8137ea9fac9",
+    "commands/enrich.md": "sha256:a57ed6dda2f741784f3c99c00377ae3a0fc5ae39add9c349b4f1a8137ea9fac9",
     "templates/commands/specrails/get-backlog-specs.md": "sha256:4b1731187ce5e28445ec6f681c38fc6e2bebcdc6af447b8250ee28d005377763",
     "templates/commands/specrails/auto-propose-backlog-specs.md": "sha256:362951db375afd8b6122258cdf51fd06f25b363d6fc46a0940a69990b625a479",
     "templates/agents/sr-architect.md": "sha256:29af3f8d5ba361d32ea9073f34a2f887597e2fe476587bdeee207118bb8956ba",

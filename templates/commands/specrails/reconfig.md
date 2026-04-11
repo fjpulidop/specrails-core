@@ -21,7 +21,7 @@ If the file does not exist, stop and display:
 ```
 No .specrails/agents.yaml found.
 
-Run /specrails:setup to generate the config file, then edit it before running /specrails:reconfig.
+Run /specrails:enrich to generate the config file, then edit it before running /specrails:reconfig.
 ```
 
 If the file exists, parse it. Validate all `model:` values — only `opus`, `sonnet`, and `haiku` are accepted. If an invalid value is found, display a warning and skip that agent:
