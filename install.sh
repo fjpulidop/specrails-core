@@ -276,9 +276,63 @@ if [[ "$FROM_CONFIG" == true ]]; then
         CONFIG_PATH="${REPO_ROOT}/.specrails/install-config.yaml"
     fi
     if [[ -f "$CONFIG_PATH" ]]; then
-        _cfg_provider=$(grep '^provider:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
-        _cfg_agent_teams=$(grep '^agent_teams:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
-        _cfg_tier=$(grep '^tier:' "$CONFIG_PATH" | awk '{print $2}' | tr -d '[:space:]')
+        _cfg_version=$(grep '^version:' "$CONFIG_PATH" 2>/dev/null | awk '{print $2}' | tr -d '[:space:]' || true)
+        _cfg_provider=$(grep '^provider:' "$CONFIG_PATH" 2>/dev/null | awk '{print $2}' | tr -d '[:space:]' || true)
+        _cfg_agent_teams=$(grep '^agent_teams:' "$CONFIG_PATH" 2>/dev/null | awk '{print $2}' | tr -d '[:space:]' || true)
+        _cfg_tier=$(grep '^tier:' "$CONFIG_PATH" 2>/dev/null | awk '{print $2}' | tr -d '[:space:]' || true)
+        _cfg_preset=$(grep '^\s*preset:' "$CONFIG_PATH" 2>/dev/null | head -1 | awk '{print $2}' | tr -d '[:space:]' || true)
+        _cfg_has_agents=$(grep -c '^\s*selected:' "$CONFIG_PATH" 2>/dev/null || true)
+
+        _config_errors=0
+        if [[ -z "$_cfg_version" ]]; then
+            fail "Invalid config: missing required 'version' field"
+            _config_errors=$(( _config_errors + 1 ))
+        elif [[ "$_cfg_version" != "1" ]]; then
+            fail "Invalid config: unsupported version '$_cfg_version' (expected: 1)"
+            _config_errors=$(( _config_errors + 1 ))
+        fi
+        if [[ -z "$_cfg_provider" ]]; then
+            fail "Invalid config: missing required 'provider' field"
+            _config_errors=$(( _config_errors + 1 ))
+        elif [[ "$_cfg_provider" != "claude" && "$_cfg_provider" != "codex" ]]; then
+            fail "Invalid config: unsupported provider '$_cfg_provider' (expected: claude or codex)"
+            _config_errors=$(( _config_errors + 1 ))
+        fi
+        if [[ "$_cfg_has_agents" -eq 0 ]]; then
+            fail "Invalid config: missing required 'agents' section with 'selected' list"
+            _config_errors=$(( _config_errors + 1 ))
+        fi
+        if [[ -n "$_cfg_tier" && "$_cfg_tier" != "full" && "$_cfg_tier" != "quick" ]]; then
+            fail "Invalid config: unsupported tier '$_cfg_tier' (expected: full or quick)"
+            _config_errors=$(( _config_errors + 1 ))
+        fi
+        if [[ -n "$_cfg_preset" && "$_cfg_preset" != "balanced" && "$_cfg_preset" != "budget" && "$_cfg_preset" != "max" ]]; then
+            fail "Invalid config: unsupported preset '$_cfg_preset' (expected: balanced, budget, or max)"
+            _config_errors=$(( _config_errors + 1 ))
+        fi
+
+        # Warn about unknown agents in selected list
+        if [[ "$_cfg_has_agents" -gt 0 ]]; then
+            _selected_line=$(grep '^\s*selected:' "$CONFIG_PATH" 2>/dev/null | head -1 || true)
+            if echo "$_selected_line" | grep -q '\[' 2>/dev/null; then
+                _selected_agents=$(echo "$_selected_line" | sed 's/.*\[//;s/\].*//;s/,/\n/g' | tr -d ' ')
+            else
+                _selected_agents=$(grep -A100 '^\s*selected:' "$CONFIG_PATH" 2>/dev/null \
+                    | tail -n +2 | grep '^\s*-\s*' | sed 's/^\s*-\s*//' | tr -d ' ' || true)
+            fi
+            while IFS= read -r _agent_name; do
+                [[ -z "$_agent_name" ]] && continue
+                if [[ ! -f "$SCRIPT_DIR/templates/agents/${_agent_name}.md" ]]; then
+                    warn "Unknown agent in selected list: ${_agent_name}"
+                fi
+            done <<< "$_selected_agents"
+        fi
+
+        if [[ "$_config_errors" -gt 0 ]]; then
+            fail "Config validation failed with ${_config_errors} error(s) — aborting"
+            exit 1
+        fi
+
         if [[ -n "$_cfg_provider" ]]; then
             CLI_PROVIDER="$_cfg_provider"
             ok "Provider: $CLI_PROVIDER (from install-config.yaml)"
@@ -713,6 +767,22 @@ if [[ "$FROM_CONFIG" == true ]]; then
             if (( _removed > 0 )); then
                 ok "Agent templates filtered: removed ${_removed} excluded agent(s)"
             fi
+        fi
+
+        # Apply defaults.model to all agent templates when present.
+        # Handles both inline "defaults: { model: haiku }" and block "defaults:\n  model: haiku"
+        _cfg_default_model=""
+        _defaults_line=$(grep '^\s*defaults:' "$_cfg_to_read" 2>/dev/null | head -1 || true)
+        if echo "$_defaults_line" | grep -q 'model:' 2>/dev/null; then
+            _cfg_default_model=$(echo "$_defaults_line" | sed 's/.*model:[[:space:]]*//' | awk '{print $1}' | tr -d '}[:space:]')
+        else
+            _cfg_default_model=$(sed -n '/^\s*defaults:/,/^\s*[a-z]/{ /^\s*model:/p; }' "$_cfg_to_read" 2>/dev/null | awk '{print $2}' | tr -d '[:space:]' || true)
+        fi
+        if [[ -n "$_cfg_default_model" ]]; then
+            for _agent_file in "$_agents_dir/"*.md; do
+                [[ -f "$_agent_file" ]] || continue
+                sed -i.bak "s/^model: .*/model: ${_cfg_default_model}/" "$_agent_file" && rm -f "${_agent_file}.bak"
+            done
         fi
 
         # Apply model overrides to agent frontmatter when present.

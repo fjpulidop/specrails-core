@@ -299,9 +299,9 @@ test_codex_agent_toml_files() {
             "Agent template should exist for codex: $agent.md"
     done
     # Codex: setup is installed as an Agent Skill, not a command
-    local setup_skill="$TEST_TMPDIR/target/.agents/skills/setup/SKILL.md"
-    assert_file_exists "$setup_skill"
-    assert_contains "$(cat "$setup_skill")" "toml" \
+    local enrich_skill="$TEST_TMPDIR/target/.agents/skills/enrich/SKILL.md"
+    assert_file_exists "$enrich_skill"
+    assert_contains "$(cat "$enrich_skill")" "toml" \
         "\$setup skill should contain TOML generation logic for codex"
 }
 run_test "SPEA-509: codex provider → sr-*.toml agents with TOML format" test_codex_agent_toml_files
@@ -366,7 +366,7 @@ test_regression_no_broken_placeholders_claude() {
         2>/dev/null || true)"
     broken+="$(grep -r '{{[A-Z_]*}}' \
         "$TEST_TMPDIR/target/.claude/commands/" \
-        --exclude="setup.md" \
+        --exclude="enrich.md" \
         2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
         echo "  FAIL: broken placeholders found in generated .claude/ files:"
@@ -388,7 +388,7 @@ test_regression_no_broken_placeholders_codex() {
     local broken
     broken="$(grep -r '{{[A-Z_]*}}' \
         "$TEST_TMPDIR/target/.agents/skills/" \
-        --exclude-dir="setup" \
+        --exclude-dir="enrich" \
         --exclude-dir="doctor" \
         2>/dev/null || true)"
     if [[ -n "$broken" ]]; then
