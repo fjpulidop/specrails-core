@@ -14,8 +14,7 @@
     ".claude/skills/",
     "commands/",
     "docs/",
-    "VERSION",
-    "integration-contract.json"
+    "VERSION"
   ],
   "engines": {
     "node": ">=18.0.0"

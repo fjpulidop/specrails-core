@@ -644,11 +644,14 @@ cp "$SCRIPT_DIR/bin/doctor.sh" "$REPO_ROOT/.specrails/bin/doctor.sh"
 chmod +x "$REPO_ROOT/.specrails/bin/doctor.sh"
 ok "Installed specrails doctor (bin/doctor.sh)"
 
-# Write default install-config.yaml if not already present.
-# This ensures a config file always exists after any install path, so that
-# /specrails:enrich --from-config works regardless of how the installer was invoked.
+# Write install-config.yaml: copy from --from-config source if provided,
+# otherwise write defaults. Ensures a config file always exists after install
+# so /specrails:enrich --from-config works regardless of how the installer was invoked.
 _install_config="${REPO_ROOT}/.specrails/install-config.yaml"
-if [[ ! -f "$_install_config" ]]; then
+if [[ "$FROM_CONFIG" == true && -n "$CONFIG_PATH" && -f "$CONFIG_PATH" && "$CONFIG_PATH" != "$_install_config" ]]; then
+    cp "$CONFIG_PATH" "$_install_config"
+    ok "Copied install-config.yaml from ${CONFIG_PATH}"
+elif [[ ! -f "$_install_config" ]]; then
     _ic_provider="${CLI_PROVIDER:-claude}"
     _ic_tier="${TIER:-full}"
     _ic_agent_teams="${AGENT_TEAMS:-false}"

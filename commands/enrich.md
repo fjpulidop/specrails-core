@@ -4,6 +4,20 @@ Interactive wizard to configure the full agent workflow system for this reposito
 
 **Prerequisites:** Run `specrails/install.sh` first to install templates.
 
+### Hub Checkpoint Protocol
+
+When running inside specrails-hub, emit checkpoint markers at key transitions so the hub `CheckpointTracker` can display progress. Each checkpoint is a single line printed to stdout:
+
+```
+[checkpoint:phase_1_analysis] Codebase analysis complete
+[checkpoint:phase_2_personas] VPC personas generated
+[checkpoint:phase_3_commands] Commands and rules generated
+[checkpoint:phase_4_agents] Agent files generated
+[checkpoint:phase_5_cleanup] Cleanup and summary complete
+```
+
+The hub parses these via `detectCheckpointFromText()` regex patterns. Always emit checkpoints at the end of each phase, even in `--from-config` and `--quick` modes.
+
 ---
 
 ## Mode Detection

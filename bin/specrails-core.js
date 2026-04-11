@@ -9,6 +9,7 @@ const COMMANDS = {
   update: "update.sh",
   doctor: "bin/doctor.sh",
   "perf-check": "bin/perf-check.sh",
+  enrich: null,
 };
 
 const args = process.argv.slice(2);
@@ -22,6 +23,7 @@ Usage:
   specrails-core update     [--only <component>]             Update an existing installation
   specrails-core doctor                                      Run health checks
   specrails-core perf-check [--files <list>]                 Performance regression check (CI)
+  specrails-core enrich     [--from-config <path>]           Run /specrails:enrich via Claude CLI
 
 Flags for init:
   --root-dir <path>   Target repository path (default: current directory)
@@ -34,13 +36,13 @@ More info: https://github.com/fjpulidop/specrails-core`);
   process.exit(0);
 }
 
-const script = COMMANDS[subcommand];
-
-if (!script) {
+if (!(subcommand in COMMANDS)) {
   console.error(`Unknown command: ${subcommand}\n`);
-  console.error("Available commands: init, update, doctor, perf-check");
+  console.error("Available commands: init, update, doctor, perf-check, enrich");
   process.exit(1);
 }
+
+const script = COMMANDS[subcommand];
 
 // Allowlisted flags per subcommand
 const ALLOWED_FLAGS = {
@@ -48,6 +50,7 @@ const ALLOWED_FLAGS = {
   update: ["--only"],
   doctor: [],
   "perf-check": ["--files", "--context"],
+  enrich: ["--from-config", "--quick"],
 };
 
 const subargs = args.slice(1);
@@ -58,6 +61,30 @@ for (const arg of subargs) {
     console.error(`Unknown flag: ${arg}`);
     process.exit(1);
   }
+}
+
+// ─── enrich subcommand ───────────────────────────────────────────────────────
+// Launches `claude --command "/specrails:enrich [flags]"` so the AI-powered
+// enrichment runs inside Claude Code with full model access.
+
+if (subcommand === "enrich") {
+  const enrichFlags = subargs.join(" ");
+  const claudeCmd = `/specrails:enrich${enrichFlags ? " " + enrichFlags : ""}`;
+  const claudeResult = spawnSync("claude", ["--command", claudeCmd, "--dangerously-skip-permissions"], {
+    stdio: "inherit",
+    cwd: process.cwd(),
+  });
+
+  if (claudeResult.error) {
+    console.error(
+      "\nFailed to launch Claude CLI for enrich:",
+      claudeResult.error.message,
+      "\nEnsure Claude Code is installed: npm install -g @anthropic-ai/claude-code\n"
+    );
+    process.exit(1);
+  }
+
+  process.exit(claudeResult.status ?? (claudeResult.error ? 1 : 0));
 }
 
 // ─── Direct mode (TUI) for `init` ─────────────────────────────────────────────
