@@ -18,6 +18,12 @@ bash "$SCRIPT_DIR/test-test-writer-template.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-test-command.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-doctor.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-templates.sh" || TOTAL_EXIT=1
+# Phase 5 (SPEA-744): TUI installer + /enrich acceptance criteria.
+# These suites define spec-driven acceptance tests for Phases 1-2 (SPEA-742, SPEA-743).
+# They will FAIL until the corresponding implementation lands.
+bash "$SCRIPT_DIR/test-tui-installer.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-install-config.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-enrich-command.sh" || TOTAL_EXIT=1
 
 if [[ "$TOTAL_EXIT" -eq 0 ]]; then
     echo -e "\033[0;32m✓ All test suites passed\033[0m"

@@ -73,24 +73,24 @@ your-project/
 
 ---
 
-## Configure with setup
+## Configure with enrich
 
-After installation, open Codex and run the setup skill:
+After installation, open Codex and run the enrich skill:
 
 ```bash
 codex
 ```
 
-Then invoke the setup skill:
+Then invoke the enrich skill:
 
 ```
-/specrails:setup
+/specrails:enrich
 ```
 
 Or run it non-interactively:
 
 ```bash
-codex exec "run /specrails:setup --yes"
+codex exec "run /specrails:enrich --yes"
 ```
 
 The wizard runs 5 phases:
@@ -186,7 +186,7 @@ The installer warns if SpecRails artifacts already exist. You can merge or abort
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files, `/specrails:setup` did not complete. Re-run `/specrails:setup` or fill the values manually.
+If you see `{{PLACEHOLDER}}` in generated files, `/specrails:enrich` did not complete. Re-run `/specrails:enrich` or fill the values manually.
 
 ---
 

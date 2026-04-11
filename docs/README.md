@@ -13,7 +13,7 @@ Welcome to the SpecRails docs. This guide will take you from zero to a fully aut
 
 | Guide | What it covers |
 |-------|----------------|
-| [Installation & Setup](installation.md) | Detailed setup, prerequisites, the `/specrails:setup` wizard |
+| [Installation & Setup](installation.md) | Detailed setup, prerequisites, the `/specrails:enrich` wizard, TUI installer |
 | [Plugin Architecture](plugin-architecture.md) | Plugin vs scaffold, what lives where, how updates work |
 | [Agents](agents.md) | Every agent explained — role, when it runs, why it exists |
 | [Workflows & Commands](workflows.md) | How to use `/specrails:implement`, `/specrails:get-backlog-specs`, and more |

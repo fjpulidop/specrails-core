@@ -78,38 +78,47 @@ git clone https://github.com/fjpulidop/specrails-core.git
 
 ### What the scaffold installer does
 
-1. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm and gh
-2. **Detects existing setup** — warns if SpecRails artifacts already exist
-3. **Installs artifacts:**
-   - `.claude/commands/specrails/setup.md` — the `/specrails:setup` wizard
-   - `.specrails/setup-templates/` — agent and command templates (temporary, removed after `/specrails:setup`)
+The `npx specrails-core@latest init` command now includes a **TUI installer** that runs before copying files:
+
+1. **TUI agent selection** — Interactive terminal UI lets you select which agents to install and choose a model preset (balanced/budget/max). Writes `.specrails/install-config.yaml`.
+2. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm and gh
+3. **Detects existing setup** — warns if SpecRails artifacts already exist
+4. **Installs artifacts:**
+   - `.claude/commands/specrails/enrich.md` — the `/specrails:enrich` wizard
+   - `.specrails/setup-templates/` — agent and command templates (temporary, removed after `/specrails:enrich`)
    - `.claude/security-exemptions.yaml` — security scanner config
-4. **Tracks version** — writes `.specrails/specrails-version` and `.specrails/specrails-manifest.json`
+5. **Tracks version** — writes `.specrails/specrails-version` and `.specrails/specrails-manifest.json`
+
+To skip the TUI and use an existing config: `npx specrails-core@latest init --from-config`
+To skip the TUI and use all defaults: `npx specrails-core@latest init --yes`
 
 The scaffold installer only copies files. It does not modify your existing code, create commits, or push to any remote.
 
 ---
 
-## The Setup Wizard
+## The Enrich Wizard
 
 After either installation method, open Claude Code (or Codex) in your project and run:
 
 ```
-/specrails:setup
+/specrails:enrich
 ```
 
-There are two modes:
+There are three modes:
 
 | Mode | Command | When to use |
 |------|---------|-------------|
-| **Full wizard** (default) | `/specrails:setup` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
-| **Lite** | `/specrails:setup --lite` | Fastest path — 3 questions, sensible defaults, done in under a minute |
+| **Full wizard** (default) | `/specrails:enrich` | Deep stack analysis, researched personas, fully adapted agents — takes 5–10 min |
+| **Quick** | `/specrails:enrich --quick` | Fastest path — 3 questions, sensible defaults, done in under a minute |
+| **From-config** | `/specrails:enrich --from-config` | Non-interactive — reads `.specrails/install-config.yaml` from TUI installer |
 
 ---
 
 ### Full Wizard (default)
 
 The full 5-phase wizard — takes 5–10 minutes and produces deeply adapted agents.
+
+> **Note:** If the TUI installer already captured agent and model preferences, use `/specrails:enrich --from-config` to apply them non-interactively.
 
 ### Phase 1: Codebase Analysis
 
@@ -209,15 +218,15 @@ The wizard fills all templates with your project-specific context:
 
 The wizard removes itself:
 
-- Deletes `.claude/commands/specrails/setup.md`
+- Deletes `.claude/commands/specrails/enrich.md`
 - Deletes `.specrails/setup-templates/`
 - Leaves only the final generated files
 
-After this phase, `/specrails:setup` is no longer available until re-run — your workflow is ready.
+After this phase, `/specrails:enrich` is no longer available until re-run — your workflow is ready.
 
 ---
 
-### Lite Mode (`/specrails:setup --lite`)
+### Quick Mode (`/specrails:enrich --quick`)
 
 The quick path — three questions, sensible defaults, done in under a minute.
 
@@ -235,6 +244,43 @@ The quick path — three questions, sensible defaults, done in under a minute.
 | CLAUDE.md | Project-level context for agents |
 
 You can run the full wizard later to deepen configuration: personas, stack analysis, layer-specific conventions.
+
+---
+
+### From-Config Mode (`/specrails:enrich --from-config`)
+
+Runs a fully automated installation using `.specrails/install-config.yaml`. No interactive prompts — all decisions come from the config file written by the TUI installer.
+
+**Config schema** (`.specrails/install-config.yaml`):
+
+```yaml
+version: 1
+provider: claude        # claude | codex | auto
+tier: full              # full | quick
+agents:
+  selected:             # list of agent names to install
+    - sr-architect
+    - sr-developer
+    - sr-reviewer
+    - sr-test-writer
+    - sr-product-manager
+  excluded: []          # agent names to skip
+models:
+  preset: balanced      # balanced | budget | max
+  overrides: {}         # per-agent overrides: { sr-architect: opus }
+quick_context:
+  product_description: ""   # product description seed
+  target_users: ""          # target users seed
+agent_teams: false      # install team-review/team-debug commands
+```
+
+**Model presets:**
+
+| Preset | Description |
+|--------|-------------|
+| `balanced` (default) | Opus for architect + PM, Sonnet for all others |
+| `budget` | Haiku for all agents |
+| `max` | Opus for all agents |
 
 ---
 
@@ -302,7 +348,7 @@ The installer warns if SpecRails artifacts already exist. You can:
 
 ### Placeholders not resolved
 
-If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:setup` wizard didn't complete. Re-run `/specrails:setup` or manually fill the values.
+If you see `{{PLACEHOLDER}}` in generated files (scaffold method), the `/specrails:enrich` wizard didn't complete. Re-run `/specrails:enrich` or manually fill the values.
 
 ---
 

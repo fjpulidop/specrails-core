@@ -168,14 +168,20 @@ generate_manifest() {
     \"${relpath}\": \"${checksum}\""
     done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
 
-    # Include commands/setup.md
-    local setup_checksum
-    setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
+    # Include commands/enrich.md
+    local enrich_checksum
+    enrich_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/enrich.md" | awk '{print $1}')"
     if [ -n "$artifacts_json" ]; then
         artifacts_json="${artifacts_json},"
     fi
     artifacts_json="${artifacts_json}
-    \"commands/specrails/setup.md\": \"${setup_checksum}\""
+    \"commands/specrails/enrich.md\": \"${enrich_checksum}\""
+
+    # Include commands/doctor.md
+    local doctor_checksum
+    doctor_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/doctor.md" | awk '{print $1}')"
+    artifacts_json="${artifacts_json},
+    \"commands/specrails/doctor.md\": \"${doctor_checksum}\""
 
     # Include prompts/
     if [[ -d "$SCRIPT_DIR/prompts" ]]; then
@@ -299,18 +305,18 @@ except Exception:
             fi
         done < <(find "$SCRIPT_DIR/templates" -type f -not -path '*/node_modules/*' -not -name 'package-lock.json' -print0 | sort -z)
 
-        # Also check commands/setup.md
-        if [[ "$HAS_CHANGES" == false ]] && [[ -f "$SCRIPT_DIR/commands/setup.md" ]]; then
-            setup_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/setup.md" | awk '{print $1}')"
-            manifest_setup="$(python3 -c "
+        # Also check commands/enrich.md
+        if [[ "$HAS_CHANGES" == false ]] && [[ -f "$SCRIPT_DIR/commands/enrich.md" ]]; then
+            enrich_checksum="sha256:$(shasum -a 256 "$SCRIPT_DIR/commands/enrich.md" | awk '{print $1}')"
+            manifest_enrich="$(python3 -c "
 import json, sys
 try:
     data = json.load(open(sys.argv[1]))
-    print(data['artifacts'].get('commands/specrails/setup.md', data['artifacts'].get('commands/setup.md', '')))
+    print(data['artifacts'].get('commands/specrails/enrich.md', data['artifacts'].get('commands/enrich.md', '')))
 except Exception:
     print('')
 " "$local_manifest" 2>/dev/null || echo "")"
-            if [[ "$setup_checksum" != "$manifest_setup" ]]; then
+            if [[ "$enrich_checksum" != "$manifest_enrich" ]]; then
                 HAS_CHANGES=true
             fi
         fi
@@ -522,11 +528,11 @@ except Exception:
         return 1  # Unchanged
     }
 
-    # Update /specrails:setup command (selective)
+    # Update /specrails:enrich command (selective)
     mkdir -p "$REPO_ROOT/.claude/commands/specrails"
-    if _file_changed "$SCRIPT_DIR/commands/setup.md" "commands/specrails/setup.md"; then
-        cp "$SCRIPT_DIR/commands/setup.md" "$REPO_ROOT/.claude/commands/specrails/setup.md"
-        ok "Updated /specrails:setup command"
+    if _file_changed "$SCRIPT_DIR/commands/enrich.md" "commands/specrails/enrich.md"; then
+        cp "$SCRIPT_DIR/commands/enrich.md" "$REPO_ROOT/.claude/commands/specrails/enrich.md"
+        ok "Updated /specrails:enrich command"
         updated_count=$(( updated_count + 1 ))
     fi
 

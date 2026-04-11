@@ -29,7 +29,7 @@ npx specrails-core@latest init --root-dir .
 
 Your existing code is not touched by either method.
 
-## Step 2: Run the setup wizard
+## Step 2: Run the enrich wizard
 
 Open Claude Code in your project:
 
@@ -40,7 +40,7 @@ claude
 Then run:
 
 ```
-/specrails:setup
+/specrails:enrich
 ```
 
 The wizard runs the full 5-phase setup (about 5 minutes). It analyzes your codebase and configures SpecRails for your specific project:
@@ -69,7 +69,9 @@ Phase 5/5  Cleanup complete.
 ✓ SpecRails is ready. Run /specrails:implement to start building.
 ```
 
-**In a hurry?** Use `/specrails:setup --lite` for a 3-question quick setup (under a minute). You can always run the full wizard later.
+**In a hurry?** Use `/specrails:enrich --quick` for a 3-question quick setup (under a minute). You can always run the full wizard later.
+
+**Used the TUI installer?** If the `npx specrails-core@latest init` TUI already collected your agent and model choices, run `/specrails:enrich --from-config` to apply them automatically.
 
 ## Step 3: Implement your first feature
 

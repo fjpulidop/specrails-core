@@ -4,6 +4,23 @@ All notable changes to SpecRails are listed here, newest first.
 
 ---
 
+## [Unreleased]
+
+### Breaking changes
+
+- **`/specrails:setup` renamed to `/specrails:enrich`** — The setup wizard is now invoked as `/specrails:enrich`. The `--lite` flag is now `--quick` (both are accepted during the transition period). Update any scripts or documentation that reference `/specrails:setup`.
+
+### New features
+
+- **TUI installer** — `npx specrails-core@latest init` now launches an interactive terminal UI before copying files. Select which agents to install and choose a model preset (balanced/budget/max). Results are saved to `.specrails/install-config.yaml`.
+- **`/specrails:enrich --from-config`** — Non-interactive enrichment mode. Reads `.specrails/install-config.yaml` (written by the TUI installer) and runs the full AI analysis without prompts.
+- **`/specrails:enrich --quick`** — Quick setup mode: three questions, sensible defaults, done in under a minute.
+- **`npx specrails-core enrich`** — New CLI subcommand that runs `/specrails:enrich` via Claude CLI directly from the terminal.
+- **`install-config.yaml` schema** — Declarative configuration file for reproducible installations. Supports agent selection, model presets, and per-agent model overrides.
+- **`integration-contract.json`** — Hub integration contract describing provider commands, tier configurations, checkpoint names, and model presets for hub integrations.
+
+---
+
 ## [1.7.0](https://github.com/fjpulidop/specrails-core/compare/v1.6.1...v1.7.0) — 2026-03-20
 
 ### New commands

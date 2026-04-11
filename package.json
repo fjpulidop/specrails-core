@@ -14,8 +14,7 @@
     ".claude/skills/",
     "commands/",
     "docs/",
-    "VERSION",
-    "integration-contract.json"
+    "VERSION"
   ],
   "engines": {
     "node": ">=18.0.0"
@@ -53,6 +52,9 @@
   "scripts": {
     "test": "bash tests/run-all.sh",
     "test:coverage": "bash tests/run-coverage.sh"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0"
   },
   "license": "MIT",
   "author": "fjpulidop"
