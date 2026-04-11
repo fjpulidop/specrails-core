@@ -55,18 +55,11 @@ Output ONLY the following structured markdown. Do not add any preamble or explan
 
 After generating the proposal, read `.specrails/backlog-config.json` to determine `BACKLOG_PROVIDER` and `BACKLOG_WRITE`.
 
+If `.specrails/backlog-config.json` does not exist, default to `provider=local` and `write_access=true`. Initialize `.specrails/local-tickets.json` if it does not exist (empty store with `schema_version: "1.0"`, `revision: 0`, `next_id: 1`, `tickets: {}`).
+
 ### If provider=local — Create Local Ticket
 
-Create a local ticket from the proposal output:
-
-```
-If `BACKLOG_PROVIDER=github` and `BACKLOG_WRITE=true`:
-  ```bash
-  gh issue create --title "<TITLE>" --body "<BODY>" --label "product-driven-backlog"
-  ```
-If `BACKLOG_PROVIDER=local` and `BACKLOG_WRITE=true`: add entry to `.specrails/local-tickets.json`.
-If `BACKLOG_WRITE=false`: display the proposal only, do not create an issue.
-```
+Create a local ticket by adding an entry to `.specrails/local-tickets.json`. Use the advisory locking protocol: read file → set `id = next_id`, increment `next_id`, set all ticket fields, set `created_at` and `updated_at` to now, bump `revision`, update `last_updated` → write file.
 
 Set the following fields:
 - `title`: The Spec Title from the proposal
@@ -82,12 +75,7 @@ Print: `Created local ticket #{id}: {title}`
 ### If provider=github and BACKLOG_WRITE=true — Create GitHub Issue
 
 ```bash
-If `BACKLOG_PROVIDER=github` and `BACKLOG_WRITE=true`:
-  ```bash
-  gh issue create --title "<TITLE>" --body "<BODY>" --label "product-driven-backlog"
-  ```
-If `BACKLOG_PROVIDER=local` and `BACKLOG_WRITE=true`: add entry to `.specrails/local-tickets.json`.
-If `BACKLOG_WRITE=false`: display the proposal only, do not create an issue.
+gh issue create --title "<TITLE>" --body "<BODY>" --label "spec-proposal"
 ```
 
 Create a GitHub Issue with:

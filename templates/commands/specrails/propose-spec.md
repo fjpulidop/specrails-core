@@ -49,6 +49,8 @@ Output ONLY the following structured markdown. Do not add any preamble or explan
 
 After generating the proposal, read `.specrails/backlog-config.json` to determine `BACKLOG_PROVIDER` and `BACKLOG_WRITE`.
 
+If `.specrails/backlog-config.json` does not exist, default to `provider=local` and `write_access=true`. Initialize `.specrails/local-tickets.json` if it does not exist (empty store with `schema_version: "1.0"`, `revision: 0`, `next_id: 1`, `tickets: {}`).
+
 ### If provider=local — Create Local Ticket
 
 Create a local ticket from the proposal output:
