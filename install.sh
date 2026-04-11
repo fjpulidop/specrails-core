@@ -857,6 +857,128 @@ if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)
     ok "Installed prompts"
 fi
 
+# ─────────────────────────────────────────────
+# Phase 3c: Quick-tier direct placement
+# ─────────────────────────────────────────────
+# For Quick tier, copy agents/commands/rules/personas/settings from
+# setup-templates directly to their final locations under $SPECRAILS_DIR.
+# Placeholders are stripped (enrich not required).
+
+if [[ "$TIER" == "quick" ]]; then
+    step "Phase 3c: Placing agents and commands (quick install)"
+
+    _templates="${REPO_ROOT}/.specrails/setup-templates"
+    _project_name="$(basename "$REPO_ROOT")"
+    _quick_product_desc=""
+    _quick_target_users=""
+
+    # Read quick_context from install-config.yaml if available
+    _qc_file="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
+    if [[ -f "$_qc_file" ]]; then
+        _quick_product_desc=$(sed -n '/^quick_context:/,/^[a-z]/{ /product_description:/{ s/.*product_description:[[:space:]]*//; s/^"//; s/"$//; p; } }' "$_qc_file" || true)
+        _quick_target_users=$(sed -n '/^quick_context:/,/^[a-z]/{ /target_users:/{ s/.*target_users:[[:space:]]*//; s/^"//; s/"$//; p; } }' "$_qc_file" || true)
+    fi
+
+    # --- Agents ---
+    if [[ -d "$_templates/agents" ]] && ls "$_templates/agents/"*.md &>/dev/null; then
+        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agents"
+        _agent_count=0
+        for _src in "$_templates/agents/"*.md; do
+            [[ -f "$_src" ]] || continue
+            _name="$(basename "$_src" .md)"
+            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/agents/${_name}.md"
+            cp "$_src" "$_dest"
+
+            # Substitute known placeholders
+            sed -i.bak \
+                -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
+                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
+                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
+                -e "s|{{MEMORY_PATH}}|.claude/agent-memory/${_name}/|g" \
+                -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
+                -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
+                "$_dest" && rm -f "${_dest}.bak"
+
+            # Strip remaining {{PLACEHOLDER}} lines (leave blank line)
+            sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
+
+            # Create agent memory directory
+            mkdir -p "${REPO_ROOT}/.claude/agent-memory/${_name}"
+
+            (( _agent_count++ )) || true
+        done
+        ok "Installed ${_agent_count} agent(s) to ${SPECRAILS_DIR}/agents/"
+    fi
+
+    # --- Commands ---
+    if [[ -d "$_templates/commands/specrails" ]]; then
+        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails"
+        for _src in "$_templates/commands/specrails/"*.md; do
+            [[ -f "$_src" ]] || continue
+            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails/$(basename "$_src")"
+            cp "$_src" "$_dest"
+            sed -i.bak \
+                -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
+                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
+                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
+                -e "s|{{MEMORY_PATH}}|.claude/agent-memory/|g" \
+                -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
+                -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
+                "$_dest" && rm -f "${_dest}.bak"
+            sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
+        done
+        ok "Installed commands to ${SPECRAILS_DIR}/commands/specrails/"
+    fi
+
+    # --- Rules ---
+    if [[ -d "$_templates/rules" ]]; then
+        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/rules"
+        for _src in "$_templates/rules/"*.md; do
+            [[ -f "$_src" ]] || continue
+            cp "$_src" "${REPO_ROOT}/${SPECRAILS_DIR}/rules/$(basename "$_src")"
+        done
+        ok "Installed rules to ${SPECRAILS_DIR}/rules/"
+    fi
+
+    # --- Personas ---
+    if [[ -d "$_templates/personas" ]]; then
+        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas"
+        for _src in "$_templates/personas/"*.md; do
+            [[ -f "$_src" ]] || continue
+            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas/$(basename "$_src")"
+            cp "$_src" "$_dest"
+            sed -i.bak \
+                -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
+                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
+                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
+                "$_dest" && rm -f "${_dest}.bak"
+            sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
+        done
+        ok "Installed personas to ${SPECRAILS_DIR}/agents/personas/"
+    fi
+
+    # --- Settings ---
+    if [[ -f "$_templates/settings/settings.json" && ! -f "${REPO_ROOT}/${SPECRAILS_DIR}/settings.json" ]]; then
+        cp "$_templates/settings/settings.json" "${REPO_ROOT}/${SPECRAILS_DIR}/settings.json"
+        ok "Installed settings.json"
+    fi
+    if [[ -f "$_templates/settings/integration-contract.json" ]]; then
+        cp "$_templates/settings/integration-contract.json" "${REPO_ROOT}/.specrails/integration-contract.json"
+        ok "Installed integration-contract.json"
+    fi
+
+    # --- Skills (OpenSpec) ---
+    if [[ -d "$_templates/skills" ]]; then
+        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/skills"
+        cp -r "$_templates/skills/"* "${REPO_ROOT}/${SPECRAILS_DIR}/skills/" 2>/dev/null || true
+        ok "Installed skills to ${SPECRAILS_DIR}/skills/"
+    fi
+
+    if [[ "$HUB_JSON" == true ]]; then
+        echo "CHECKPOINT:quick_placement:done:Agents and commands placed"
+    fi
+fi
+
 # Initialize OpenSpec if available and not already initialized
 if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
     info "Initializing OpenSpec..."
@@ -891,46 +1013,87 @@ if [[ "$AGENT_TEAMS" == "true" ]]; then
     echo "  Agent Teams: installed (/specrails:team-review, /specrails:team-debug)"
     echo "  Feature flag: CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 (required)"
 fi
-echo ""
-echo "  Files installed:"
-if [[ "$CLI_PROVIDER" == "codex" ]]; then
-    echo "    .agents/skills/enrich/SKILL.md       ← The \$enrich skill"
-    echo "    .agents/skills/doctor/SKILL.md       ← The \$doctor skill"
-else
-    echo "    $SPECRAILS_DIR/commands/specrails/enrich.md  ← The /specrails:enrich command"
-fi
-echo "    .specrails/setup-templates/              ← Templates: commands + skills (temporary, removed after enrich)"
-echo "    .specrails/specrails-version             ← Installed specrails version"
-echo "    .specrails/specrails-manifest.json       ← Artifact checksums for update detection"
-echo ""
+if [[ "$TIER" == "quick" ]]; then
+    # Quick tier: agents placed directly
+    _installed_agents=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
+    _installed_personas=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas/"*.md 2>/dev/null | wc -l | tr -d ' ')
+    _installed_commands=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails/"*.md 2>/dev/null | wc -l | tr -d ' ')
+    echo ""
+    echo "  Installed:"
+    echo "    ${_installed_agents} agent(s)    → ${SPECRAILS_DIR}/agents/"
+    echo "    ${_installed_personas} persona(s)  → ${SPECRAILS_DIR}/agents/personas/"
+    echo "    ${_installed_commands} command(s)  → ${SPECRAILS_DIR}/commands/specrails/"
+    echo "    .specrails/specrails-version"
+    echo "    .specrails/specrails-manifest.json"
+    echo ""
 
-echo -e "${BOLD}Prerequisites:${NC}"
-echo ""
-[ "$HAS_NPM" = true ]      && ok "npm"        || warn "npm (optional)"
-[ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
-[ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
-[ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
-echo ""
+    echo -e "${BOLD}Prerequisites:${NC}"
+    echo ""
+    [ "$HAS_NPM" = true ]      && ok "npm"        || warn "npm (optional)"
+    [ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
+    [ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
+    [ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
+    echo ""
 
-echo -e "${BOLD}${CYAN}Next steps:${NC}"
-echo ""
-echo "  1. Open $CLI_PROVIDER in this repo:"
-echo ""
-echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
-echo ""
-echo "  2. Run the enrich wizard:"
-echo ""
-if [[ "$CLI_PROVIDER" == "codex" ]]; then
-    echo -e "     ${BOLD}\$enrich${NC}"
+    echo -e "${BOLD}${CYAN}Next steps:${NC}"
+    echo ""
+    echo "  1. Open $CLI_PROVIDER in this repo:"
+    echo ""
+    echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
+    echo ""
+    echo "  2. Your agents are ready to use! Try:"
+    echo ""
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        echo -e "     ${BOLD}\$enrich${NC}  ← Optional: let AI further personalize agents for your codebase"
+    else
+        echo -e "     ${BOLD}/specrails:enrich${NC}  ← Optional: let AI further personalize agents for your codebase"
+    fi
+    echo ""
+    echo "  Agents work with template defaults. Run enrich later to"
+    echo "  adapt them with codebase analysis and competitive research."
+    echo ""
 else
-    echo -e "     ${BOLD}/specrails:enrich${NC}"
+    echo ""
+    echo "  Files installed:"
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        echo "    .agents/skills/enrich/SKILL.md       ← The \$enrich skill"
+        echo "    .agents/skills/doctor/SKILL.md       ← The \$doctor skill"
+    else
+        echo "    $SPECRAILS_DIR/commands/specrails/enrich.md  ← The /specrails:enrich command"
+    fi
+    echo "    .specrails/setup-templates/              ← Templates: commands + skills (temporary, removed after enrich)"
+    echo "    .specrails/specrails-version             ← Installed specrails version"
+    echo "    .specrails/specrails-manifest.json       ← Artifact checksums for update detection"
+    echo ""
+
+    echo -e "${BOLD}Prerequisites:${NC}"
+    echo ""
+    [ "$HAS_NPM" = true ]      && ok "npm"        || warn "npm (optional)"
+    [ "$HAS_OPENSPEC" = true ]  && ok "OpenSpec"    || warn "OpenSpec (optional)"
+    [ "$HAS_GH" = true ]        && ok "GitHub CLI"  || warn "GitHub CLI (optional, for GitHub Issues backlog)"
+    [ "$HAS_JIRA" = true ]      && ok "JIRA CLI"    || info "JIRA CLI not found (optional, for JIRA backlog)"
+    echo ""
+
+    echo -e "${BOLD}${CYAN}Next steps:${NC}"
+    echo ""
+    echo "  1. Open $CLI_PROVIDER in this repo:"
+    echo ""
+    echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
+    echo ""
+    echo "  2. Run the enrich wizard:"
+    echo ""
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        echo -e "     ${BOLD}\$enrich${NC}"
+    else
+        echo -e "     ${BOLD}/specrails:enrich${NC}"
+    fi
+    echo ""
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        echo "  Codex will analyze your codebase, ask about your users,"
+    else
+        echo "  Claude will analyze your codebase, ask about your users,"
+    fi
+    echo "  research the competitive landscape, and generate all agents,"
+    echo "  commands, rules, and personas adapted to your project."
+    echo ""
 fi
-echo ""
-if [[ "$CLI_PROVIDER" == "codex" ]]; then
-    echo "  Codex will analyze your codebase, ask about your users,"
-else
-    echo "  Claude will analyze your codebase, ask about your users,"
-fi
-echo "  research the competitive landscape, and generate all agents,"
-echo "  commands, rules, and personas adapted to your project."
-echo ""
