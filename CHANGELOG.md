@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.0](https://github.com/fjpulidop/specrails-core/compare/v3.5.3...v3.6.0) (2026-04-11)
+
+
+### Features
+
+* add .specrails/agents.yaml config and specrails:reconfig command (SPEA-738) ([#216](https://github.com/fjpulidop/specrails-core/issues/216)) ([d96c3aa](https://github.com/fjpulidop/specrails-core/commit/d96c3aa07e2a656f04cb656487b52028d07f097d))
+
 ## [3.5.3](https://github.com/fjpulidop/specrails-core/compare/v3.5.2...v3.5.3) (2026-04-10)
 
 
