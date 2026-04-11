@@ -875,17 +875,28 @@ if [[ "$TIER" == "quick" ]]; then
     # Read quick_context from install-config.yaml if available
     _qc_file="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
     if [[ -f "$_qc_file" ]]; then
-        _quick_product_desc=$(sed -n '/^quick_context:/,/^[a-z]/{ /product_description:/{ s/.*product_description:[[:space:]]*//; s/^"//; s/"$//; p; } }' "$_qc_file" || true)
-        _quick_target_users=$(sed -n '/^quick_context:/,/^[a-z]/{ /target_users:/{ s/.*target_users:[[:space:]]*//; s/^"//; s/"$//; p; } }' "$_qc_file" || true)
+        _quick_product_desc=$(grep '^\s*product_description:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*product_description:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
+        _quick_target_users=$(grep '^\s*target_users:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*target_users:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
     fi
+
+    # VPC/persona-dependent agents are excluded from Quick tier (require enrichment)
+    _quick_excluded_agents="sr-product-manager sr-product-analyst"
 
     # --- Agents ---
     if [[ -d "$_templates/agents" ]] && ls "$_templates/agents/"*.md &>/dev/null; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agents"
         _agent_count=0
+        _agent_skipped=0
         for _src in "$_templates/agents/"*.md; do
             [[ -f "$_src" ]] || continue
             _name="$(basename "$_src" .md)"
+
+            # Skip VPC-dependent agents in Quick tier
+            if echo " $_quick_excluded_agents " | grep -q " ${_name} "; then
+                (( _agent_skipped++ )) || true
+                continue
+            fi
+
             _dest="${REPO_ROOT}/${SPECRAILS_DIR}/agents/${_name}.md"
             cp "$_src" "$_dest"
 
@@ -907,15 +918,30 @@ if [[ "$TIER" == "quick" ]]; then
 
             (( _agent_count++ )) || true
         done
-        ok "Installed ${_agent_count} agent(s) to ${SPECRAILS_DIR}/agents/"
+        if (( _agent_skipped > 0 )); then
+            ok "Installed ${_agent_count} agent(s) to ${SPECRAILS_DIR}/agents/ (skipped ${_agent_skipped} VPC-dependent)"
+        else
+            ok "Installed ${_agent_count} agent(s) to ${SPECRAILS_DIR}/agents/"
+        fi
     fi
+
+    # Persona-dependent commands excluded from Quick tier
+    _quick_excluded_cmds="auto-propose-backlog-specs vpc-drift get-backlog-specs"
 
     # --- Commands ---
     if [[ -d "$_templates/commands/specrails" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails"
+        _cmd_count=0
         for _src in "$_templates/commands/specrails/"*.md; do
             [[ -f "$_src" ]] || continue
-            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails/$(basename "$_src")"
+            _cmd_name="$(basename "$_src" .md)"
+
+            # Skip persona-dependent commands in Quick tier
+            if echo " $_quick_excluded_cmds " | grep -q " ${_cmd_name} "; then
+                continue
+            fi
+
+            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails/${_cmd_name}.md"
             cp "$_src" "$_dest"
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
@@ -926,8 +952,9 @@ if [[ "$TIER" == "quick" ]]; then
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
                 "$_dest" && rm -f "${_dest}.bak"
             sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
+            (( _cmd_count++ )) || true
         done
-        ok "Installed commands to ${SPECRAILS_DIR}/commands/specrails/"
+        ok "Installed ${_cmd_count} command(s) to ${SPECRAILS_DIR}/commands/specrails/"
     fi
 
     # --- Rules ---
@@ -940,22 +967,7 @@ if [[ "$TIER" == "quick" ]]; then
         ok "Installed rules to ${SPECRAILS_DIR}/rules/"
     fi
 
-    # --- Personas ---
-    if [[ -d "$_templates/personas" ]]; then
-        mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas"
-        for _src in "$_templates/personas/"*.md; do
-            [[ -f "$_src" ]] || continue
-            _dest="${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas/$(basename "$_src")"
-            cp "$_src" "$_dest"
-            sed -i.bak \
-                -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
-                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
-                "$_dest" && rm -f "${_dest}.bak"
-            sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
-        done
-        ok "Installed personas to ${SPECRAILS_DIR}/agents/personas/"
-    fi
+    # Personas are NOT installed in Quick tier (require VPC enrichment)
 
     # --- Settings ---
     if [[ -f "$_templates/settings/settings.json" && ! -f "${REPO_ROOT}/${SPECRAILS_DIR}/settings.json" ]]; then
@@ -1016,12 +1028,10 @@ fi
 if [[ "$TIER" == "quick" ]]; then
     # Quick tier: agents placed directly
     _installed_agents=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/"*.md 2>/dev/null | wc -l | tr -d ' ')
-    _installed_personas=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/personas/"*.md 2>/dev/null | wc -l | tr -d ' ')
     _installed_commands=$(ls "${REPO_ROOT}/${SPECRAILS_DIR}/commands/specrails/"*.md 2>/dev/null | wc -l | tr -d ' ')
     echo ""
     echo "  Installed:"
     echo "    ${_installed_agents} agent(s)    → ${SPECRAILS_DIR}/agents/"
-    echo "    ${_installed_personas} persona(s)  → ${SPECRAILS_DIR}/agents/personas/"
     echo "    ${_installed_commands} command(s)  → ${SPECRAILS_DIR}/commands/specrails/"
     echo "    .specrails/specrails-version"
     echo "    .specrails/specrails-manifest.json"
@@ -1041,16 +1051,10 @@ if [[ "$TIER" == "quick" ]]; then
     echo ""
     echo -e "     ${BOLD}cd $REPO_ROOT && $CLI_PROVIDER${NC}"
     echo ""
-    echo "  2. Your agents are ready to use! Try:"
+    echo "  2. Your agents are ready to use! Start working:"
     echo ""
-    if [[ "$CLI_PROVIDER" == "codex" ]]; then
-        echo -e "     ${BOLD}\$enrich${NC}  ← Optional: let AI further personalize agents for your codebase"
-    else
-        echo -e "     ${BOLD}/specrails:enrich${NC}  ← Optional: let AI further personalize agents for your codebase"
-    fi
-    echo ""
-    echo "  Agents work with template defaults. Run enrich later to"
-    echo "  adapt them with codebase analysis and competitive research."
+    echo "     Agents, commands, and rules are pre-configured."
+    echo "     No additional setup required."
     echo ""
 else
     echo ""

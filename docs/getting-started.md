@@ -37,15 +37,29 @@ npx specrails-core@latest init --root-dir <your-project>
 
 See [installation.md](installation.md) for full details on both methods and when to use each.
 
-## Run the Enrich Wizard
+## Installation Tiers
 
-Open Claude Code in your project and run:
+### Quick Install (default via TUI)
+
+When you run `npx specrails-core@latest init`, the TUI installer lets you choose **Quick** tier. This places agents, commands, rules, and settings directly — no AI interaction required:
+
+1. Select agents to install
+2. Choose a model preset
+3. Provide a brief product description
+
+Agents are ready to use immediately after install. Open Claude Code and start working.
+
+> Quick install excludes VPC personas and persona-dependent agents/commands (sr-product-manager, sr-product-analyst). These require the full enrichment process.
+
+### Full Install (via `/specrails:enrich`)
+
+For deeper customization, choose **Full** tier or run `/specrails:enrich` after a Quick install:
 
 ```
 /specrails:enrich
 ```
 
-By default, `/specrails:enrich` runs the **full 5-phase wizard** — deep stack analysis, researched user personas, and fully adapted agents.
+The full 5-phase wizard provides deep stack analysis, researched user personas, and fully adapted agents:
 
 | Phase | What happens |
 |-------|-------------|
@@ -55,17 +69,9 @@ By default, `/specrails:enrich` runs the **full 5-phase wizard** — deep stack 
 | **4. Generate** | Generates your project data files (`.specrails/`) with project-specific context |
 | **5. Cleanup** | Removes the wizard scaffolding, leaving only your tailored workflow files |
 
-**In a hurry?** Run `/specrails:enrich --quick` for the quick version: three questions, sensible defaults, done in under a minute.
+Full install adds VPC personas, sr-product-manager, sr-product-analyst, and persona-dependent commands.
 
-| Question | What it configures |
-|----------|-------------------|
-| What is this project? | Agent context and CLAUDE.md |
-| Who are the target users? | Persona stubs for product discovery |
-| Git access — read-only or read-write? | Whether agents can commit |
-
-Quick mode installs the four core agents (architect, developer, reviewer, product manager), all workflow commands, and local ticket storage. You can run the full wizard later to deepen the configuration.
-
-After either mode, your project data files are ready to use and your `/specrails:*` commands are live.
+After either tier, your `/specrails:*` commands are live.
 
 ## Your first feature
 

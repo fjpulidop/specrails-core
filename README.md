@@ -47,9 +47,11 @@ Updates automatically: `claude plugin update sr`
 ### Scaffold method (alternative)
 
 ```bash
-npx specrails-core@latest init --root-dir .   # TUI agent selection + install files
-/specrails:enrich --from-config               # run AI analysis using your config
+npx specrails-core@latest init --root-dir .   # TUI: select agents, choose tier
 ```
+
+**Quick tier** (default) — agents installed directly, ready to use immediately. No AI interaction.
+**Full tier** — run `/specrails:enrich` after install for deep codebase analysis, VPC personas, and competitive research.
 
 ### Start building
 
@@ -57,7 +59,6 @@ npx specrails-core@latest init --root-dir .   # TUI agent selection + install fi
 > /specrails:implement "add user authentication"
 > /specrails:implement #1, #2                 # from local tickets (default)
 > /specrails:implement #42, #43               # from GitHub Issues (if configured)
-> /specrails:auto-propose-backlog-specs    # discover new features with AI
 ```
 
 That's it. The pipeline takes over.
