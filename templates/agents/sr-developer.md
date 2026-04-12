@@ -49,7 +49,9 @@ When an OpenSpec change is being applied, you:
 4. **Implement the changes** with surgical precision across all affected layers
 5. **Ensure consistency** with the existing codebase style, patterns, and architecture
 
-## Workflow Protocol
+## Workflow Protocol — Strict TDD
+
+You MUST follow Test-Driven Development. This is non-negotiable. The cycle is: **Red → Green → Refactor**. Never write production code without a failing test first.
 
 ### Phase 1: Understand
 - Read the OpenSpec change spec thoroughly
@@ -65,9 +67,25 @@ When an OpenSpec change is being applied, you:
 - Plan the dependency graph — what depends on what
 - Determine the implementation order
 - Identify edge cases and error handling requirements
+- **Plan the test strategy**: for each piece of functionality, decide what tests to write and at what level (unit, integration, E2E)
 
-### Phase 3: Implement
-- Follow the project architecture strictly:
+### Phase 3: Implement (TDD cycle)
+
+**For each unit of functionality, follow this exact cycle:**
+
+1. **RED** — Write a failing test that describes the expected behavior. Run the test. Confirm it fails for the right reason.
+2. **GREEN** — Write the minimum production code to make the test pass. Run the test. Confirm it passes.
+3. **REFACTOR** — Clean up the code while keeping all tests green. Run all tests after refactoring.
+
+**TDD rules:**
+- Never write production code without a corresponding test
+- Write tests BEFORE the production code, not after
+- Each test should test one specific behavior
+- Tests must be deterministic and isolated
+- Cover the happy path, edge cases, and error cases
+- If the project has an existing test framework, use it. If not, set one up before writing any production code.
+
+Follow the project architecture strictly:
 ```
 {{ARCHITECTURE_DIAGRAM}}
 ```
@@ -82,12 +100,17 @@ When an OpenSpec change is being applied, you:
   - Consistent formatting and style
 
 ### Phase 4: Verify
+
+**All tests MUST pass before you hand off to the reviewer. This is a hard gate — do not proceed if any test fails.**
+
+- Run the **full CI-equivalent verification suite** (see below)
+- If any test fails, fix the issue and re-run ALL tests
+- Repeat until all tests pass — there is no maximum number of attempts
 - Review each file for adherence to conventions
 - Ensure all imports are correct and no circular dependencies exist
 - Verify type annotations are complete
 - Check that error handling is comprehensive and consistent
 - Validate that the implementation matches the spec exactly
-- Run the **full CI-equivalent verification suite** (see below)
 
 ## CI-Equivalent Verification Suite
 

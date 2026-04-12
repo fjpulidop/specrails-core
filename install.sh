@@ -940,16 +940,37 @@ if [[ "$TIER" == "quick" ]]; then
         fi
     fi
 
-    # Commands excluded from Quick tier:
-    # - VPC/persona-dependent: auto-propose-backlog-specs, vpc-drift, get-backlog-specs
-    # - Agent Teams (when not enabled): team-debug, team-review
-    # - Agent-specific (when agent not selected): merge-resolve → sr-merge-resolver
-    _quick_excluded_cmds="auto-propose-backlog-specs vpc-drift get-backlog-specs"
+    # Dynamic command exclusion based on installed agents.
+    # Each command maps to the agent(s) it depends on — if the agent
+    # wasn't installed, the command is excluded automatically.
+    #
+    # Dependency map (command → required agent):
+    #   auto-propose-backlog-specs → sr-product-manager
+    #   get-backlog-specs          → sr-product-analyst
+    #   vpc-drift                  → sr-product-manager, sr-product-analyst
+    #   merge-resolve              → sr-merge-resolver
+    #   team-debug, team-review    → AGENT_TEAMS flag
+    _quick_excluded_cmds=""
+    _installed_agents_dir="${REPO_ROOT}/${SPECRAILS_DIR}/agents"
+
+    # Agent-dependent commands
+    if ! ls "$_installed_agents_dir/sr-product-manager.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds auto-propose-backlog-specs vpc-drift"
+    fi
+    if ! ls "$_installed_agents_dir/sr-product-analyst.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds get-backlog-specs"
+        # vpc-drift needs both product agents
+        if ! echo " $_quick_excluded_cmds " | grep -q " vpc-drift "; then
+            _quick_excluded_cmds="$_quick_excluded_cmds vpc-drift"
+        fi
+    fi
+    if ! ls "$_installed_agents_dir/sr-merge-resolver.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds merge-resolve"
+    fi
+
+    # Agent Teams commands (flag-dependent, not agent-dependent)
     if [[ "$AGENT_TEAMS" != "true" ]]; then
         _quick_excluded_cmds="$_quick_excluded_cmds team-debug team-review"
-    fi
-    if ! ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/sr-merge-resolver.md" &>/dev/null; then
-        _quick_excluded_cmds="$_quick_excluded_cmds merge-resolve"
     fi
 
     # --- Commands ---
@@ -960,7 +981,7 @@ if [[ "$TIER" == "quick" ]]; then
             [[ -f "$_src" ]] || continue
             _cmd_name="$(basename "$_src" .md)"
 
-            # Skip persona-dependent commands in Quick tier
+            # Skip commands whose required agents are not installed
             if echo " $_quick_excluded_cmds " | grep -q " ${_cmd_name} "; then
                 continue
             fi
@@ -1032,8 +1053,17 @@ LTEOF
     fi
 
     # --- Skills (OpenSpec) ---
-    # Skills that depend on VPC-excluded agents are skipped in Quick tier
-    _quick_excluded_skills="sr-auto-propose-backlog-specs sr-get-backlog-specs"
+    # Dynamic skill exclusion based on installed agents (mirrors command logic).
+    # Dependency map (skill → required agent):
+    #   sr-auto-propose-backlog-specs → sr-product-manager
+    #   sr-get-backlog-specs          → sr-product-analyst
+    _quick_excluded_skills=""
+    if ! ls "$_installed_agents_dir/sr-product-manager.md" &>/dev/null; then
+        _quick_excluded_skills="$_quick_excluded_skills sr-auto-propose-backlog-specs"
+    fi
+    if ! ls "$_installed_agents_dir/sr-product-analyst.md" &>/dev/null; then
+        _quick_excluded_skills="$_quick_excluded_skills sr-get-backlog-specs"
+    fi
     if [[ -d "$_templates/skills" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/skills"
         _skill_count=0
