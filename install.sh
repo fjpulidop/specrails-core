@@ -127,7 +127,8 @@ if [[ -n "$CUSTOM_ROOT_DIR" ]]; then
 fi
 
 # Detect if running from within the specrails source repo itself
-if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/templates" && "$SCRIPT_DIR" == "$REPO_ROOT"* ]]; then
+# Note: REPO_ROOT must be non-empty for the glob match — when empty, * matches everything.
+if [[ -z "$CUSTOM_ROOT_DIR" && -n "$REPO_ROOT" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/templates" && "$SCRIPT_DIR" == "$REPO_ROOT"* ]]; then
     # We're inside the specrails source — ask for target repo
     echo ""
     echo -e "${YELLOW}⚠${NC}  You're running the installer from inside the specrails source repo."
@@ -144,11 +145,24 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
         echo "Error: path does not exist or is not accessible: $TARGET_PATH" >&2
         exit 1
     }
-    if [[ ! -d "$REPO_ROOT/.git" ]]; then
-        echo -e "${YELLOW}⚠${NC}  Warning: $REPO_ROOT does not appear to be a git repository."
-        if [ "$AUTO_YES" = true ]; then CONTINUE_NOGIT="y"; else read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT; fi
-        if [[ "$CONTINUE_NOGIT" != "y" && "$CONTINUE_NOGIT" != "Y" ]]; then
-            echo "   Aborted. No changes made."
+fi
+
+# Auto-init git if the target directory is not a git repository
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
+    # Resolve REPO_ROOT to cwd if still empty (no git found anywhere)
+    if [[ -z "$REPO_ROOT" ]]; then
+        REPO_ROOT="$(pwd)"
+    fi
+    if [[ "$AUTO_YES" == true ]]; then
+        git -C "$REPO_ROOT" init -q 2>/dev/null
+    else
+        echo ""
+        echo -e "${YELLOW}⚠${NC}  ${REPO_ROOT} is not a git repository."
+        read -p "   Initialize git? (y/n): " INIT_GIT || INIT_GIT="n"
+        if [[ "$INIT_GIT" == "y" || "$INIT_GIT" == "Y" ]]; then
+            git -C "$REPO_ROOT" init -q 2>/dev/null
+        else
+            echo "   Aborted. specrails requires a git repository."
             exit 0
         fi
     fi
@@ -229,9 +243,9 @@ print_header
 
 step "Phase 1: Checking prerequisites"
 
-# 1.1 Git repository
+# 1.1 Git repository (should be resolved by now — early init or --root-dir)
 if [[ -z "$REPO_ROOT" ]]; then
-    fail "Not inside a git repository and no --root-dir provided."
+    fail "Could not determine target directory."
     echo "  Usage: install.sh [--root-dir <path>]"
     exit 1
 fi
