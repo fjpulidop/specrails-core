@@ -11,6 +11,7 @@
 
 * add --provider CLI flag to install.sh arg parser (SPEA-517) ([44dac30](https://github.com/fjpulidop/specrails-core/commit/44dac30b6bd5de7a3bfa94da3625f2246c659c1a))
 * add --root-dir parameter to install.sh for monorepo support ([77cd24b](https://github.com/fjpulidop/specrails-core/commit/77cd24bdc805c884532c8e25b028ee0ed210a031))
+* add --version / -V global flag to CLI ([#227](https://github.com/fjpulidop/specrails-core/issues/227)) ([7ccb201](https://github.com/fjpulidop/specrails-core/commit/7ccb201925f5160046b543769f1c1b3daf368e4c))
 * add --yes flag to install.sh for non-interactive mode ([29173cd](https://github.com/fjpulidop/specrails-core/commit/29173cdca11c9b02f0a91eb59efd7dd64ae4ff79))
 * add .specrails/agents.yaml config and specrails:reconfig command (SPEA-738) ([#216](https://github.com/fjpulidop/specrails-core/issues/216)) ([d96c3aa](https://github.com/fjpulidop/specrails-core/commit/d96c3aa07e2a656f04cb656487b52028d07f097d))
 * add /sr:propose-feature command template for Feature Proposal Modal ([756ed30](https://github.com/fjpulidop/specrails-core/commit/756ed3061091bd532f8e7c6558cfa52fa5297ae9))
