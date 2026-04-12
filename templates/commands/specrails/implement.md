@@ -503,18 +503,59 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 
 #### Choosing the right developer agent
 
-For each feature, analyze the tasks' layer tags:
+For each feature, read `openspec/changes/<name>/tasks.md` and classify every task by its layer tags and file references.
 
-{{DEVELOPER_ROUTING_RULES}}
+**Step 1 — Classify tasks into layers:**
+
+For each task, determine its layer from:
+1. **Explicit layer tags** in tasks.md (e.g., `[frontend]`, `[backend]`, `[core]`, `[infra]`, `[docs]`, etc.)
+2. **File references** under `**Files:**` entries — apply the same extension/path rules used in Phase 4b:
+   - Frontend: `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html`, or paths under `components/`, `pages/`, `views/`, `ui/`, `client/`, `frontend/`, `app/`, `public/`, `static/`, `assets/`
+   - Backend: `.py`, `.go`, `.java`, `.rb`, `.php`, `.rs`, `.cs`, `.sql`, or paths under `server/`, `api/`, `routes/`, `controllers/`, `services/`, `models/`, `db/`, `backend/`, `migrations/`
+   - Mixed/other: everything else (shell scripts, config files, markdown, YAML, etc.)
+
+Produce three sets: `FRONTEND_TASKS`, `BACKEND_TASKS`, `OTHER_TASKS`.
+
+**Step 2 — Route tasks to developer agents:**
+
+Evaluate available developer agents in `AVAILABLE_AGENTS` and apply these rules in priority order:
+
+| Condition | Agent(s) selected | Mode |
+|-----------|-------------------|------|
+| ALL tasks are frontend-only AND `sr-frontend-developer` ∈ `AVAILABLE_AGENTS` | **sr-frontend-developer** | Single agent for all tasks |
+| ALL tasks are backend-only AND `sr-backend-developer` ∈ `AVAILABLE_AGENTS` | **sr-backend-developer** | Single agent for all tasks |
+| Mix of frontend + backend tasks AND both layer-specific developers available | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for `OTHER_TASKS` | Parallel agents per layer |
+| Frontend tasks exist AND `sr-frontend-developer` available, but no backend-specific developer | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-developer** for remaining | Parallel agents |
+| Backend tasks exist AND `sr-backend-developer` available, but no frontend-specific developer | **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for remaining | Parallel agents |
+| No layer-specific developers available (fallback) | **sr-developer** | Single agent for all tasks |
+
+Store the result as `DEVELOPER_ROUTING`: a map of `{agent_id: [task_list]}`.
+
+**Step 3 — Print routing decision:**
+
+```
+## Developer Routing
+
+| Agent | Tasks | Reason |
+|-------|-------|--------|
+| sr-frontend-developer | Task 1, Task 3 | Frontend-only tasks (React components) |
+| sr-backend-developer  | Task 2, Task 4 | Backend-only tasks (API endpoints) |
+| sr-developer          | Task 5         | Mixed layer (config + infra) |
+```
+
+Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually launched) — Phase 4b will use this for reviewer selection.
 
 #### Launch modes
 
-**If `SINGLE_MODE`**: Launch in the main repo, foreground.
+For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent with its task subset.
+
+**If `SINGLE_MODE` and only one agent in routing**: Launch in the main repo, foreground.
+**If `SINGLE_MODE` but multiple agents in routing**: Launch agents sequentially in the main repo (one at a time, foreground), passing only their assigned tasks.
 **If multiple features**: Launch in isolated worktrees (`isolation: worktree`, `run_in_background: true`).
 
 Wait for all developers to complete.
 
-**Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"sr-developer failed: <exit code or error description>"`.
+**Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"<agent-id> failed: <exit code or error description>"`.
 
 ## Phase 3c: Write Tests
 
@@ -767,35 +808,43 @@ Set `BACKEND_FILES` = files matching backend rules.
 
 **Overlap rule:** a file may appear in both `FRONTEND_FILES` and `BACKEND_FILES` (e.g., a Next.js API route at `pages/api/`). Both reviewers will scan it independently.
 
-If `FRONTEND_FILES` is empty: set `FRONTEND_REVIEW_REPORT = "SKIPPED"` and skip frontend-reviewer launch. Note: "No frontend files detected."
-If `BACKEND_FILES` is empty: set `BACKEND_REVIEW_REPORT = "SKIPPED"` and skip backend-reviewer launch. Note: "No backend files detected."
+#### Step 2: Determine which reviewers to launch
 
-#### Step 2: Launch Layer Reviewers in Parallel
+A layer reviewer is launched when **both** conditions are met:
+1. There are files to review for that layer (file classification) **OR** the corresponding layer developer was used in Phase 3b (`DEVELOPER_AGENTS_USED`)
+2. The reviewer agent is installed (`∈ AVAILABLE_AGENTS`)
 
-Launch all applicable layer reviewers in parallel (`run_in_background: true`). **Only launch a reviewer if it exists in `AVAILABLE_AGENTS`** — skip with a note if not installed.
+| Reviewer | Launch condition | Skip reason |
+|----------|-----------------|-------------|
+| sr-frontend-reviewer | (`FRONTEND_FILES` non-empty OR `sr-frontend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No frontend files + no frontend developer used, or not installed |
+| sr-backend-reviewer | (`BACKEND_FILES` non-empty OR `sr-backend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No backend files + no backend developer used, or not installed |
+| sr-security-reviewer | Installed | Not installed |
+| sr-performance-reviewer | Installed | Not installed |
 
-**sr-frontend-reviewer** (if `FRONTEND_FILES` is non-empty AND `sr-frontend-reviewer` ∈ `AVAILABLE_AGENTS`):
+If a reviewer is skipped, set its report variable to `"SKIPPED"` and note the reason.
+
+#### Step 3: Launch Layer Reviewers in Parallel
+
+Launch all applicable layer reviewers in parallel (`run_in_background: true`).
+
+**sr-frontend-reviewer** (if applicable per Step 2):
 - Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-- If not installed: set `FRONTEND_REVIEW_REPORT = "SKIPPED"`. Note: "sr-frontend-reviewer not installed."
 
-**sr-backend-reviewer** (if `BACKEND_FILES` is non-empty AND `sr-backend-reviewer` ∈ `AVAILABLE_AGENTS`):
+**sr-backend-reviewer** (if applicable per Step 2):
 - Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-- If not installed: set `BACKEND_REVIEW_REPORT = "SKIPPED"`. Note: "sr-backend-reviewer not installed."
 
-**sr-security-reviewer** (if `sr-security-reviewer` ∈ `AVAILABLE_AGENTS`):
+**sr-security-reviewer** (if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 - Pass the exemptions config path: `.claude/security-exemptions.yaml`
-- If not installed: set `SECURITY_REVIEW_REPORT = "SKIPPED"`, `SECURITY_BLOCKED = false`. Note: "sr-security-reviewer not installed."
 
-**sr-performance-reviewer** (if `sr-performance-reviewer` ∈ `AVAILABLE_AGENTS`):
+**sr-performance-reviewer** (if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-- If not installed: skip silently.
 
-Wait for all launched layer reviewers to complete before proceeding to Step 3.
+Wait for all launched layer reviewers to complete before proceeding to Step 4.
 
 Parse status lines from each completed reviewer:
 - `FRONTEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `FRONTEND_STATUS`
@@ -804,7 +853,7 @@ Parse status lines from each completed reviewer:
 
 If a layer reviewer fails or times out: set the relevant report variable to `"ERROR: reviewer did not complete"` and continue.
 
-#### Step 3: Launch Generalist Reviewer
+#### Step 4: Launch Generalist Reviewer
 
 Construct the generalist reviewer's invocation prompt with layer reports injected. Set each variable to the full output of the corresponding reviewer, or to the string `"SKIPPED"` if that reviewer was not launched:
 
