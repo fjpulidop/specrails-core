@@ -59,6 +59,36 @@ which openspec && openspec --version
 
 {{TEST_RUNNER_CHECK}}
 
+#### 5. Agent discovery
+
+Scan the agents directory to determine which agents are installed:
+
+```bash
+ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort
+```
+
+Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapts dynamically to the installed agents:
+
+| Agent | Role | Required? | Phase(s) affected |
+|-------|------|-----------|-------------------|
+| sr-architect | Architecture & design | **Core** (always present) | 3a |
+| sr-developer | Full-stack implementation | **Core** (always present) | 3b |
+| sr-reviewer | Generalist quality gate | **Core** (always present) | 4b |
+| sr-merge-resolver | Merge conflict resolution | **Core** (always present) | 4a |
+| sr-product-manager | Product exploration | Optional | 1 |
+| sr-test-writer | Test generation | Optional | 3c |
+| sr-doc-sync | Documentation sync | Optional | 3d |
+| sr-frontend-developer | Frontend implementation | Optional | 3b (routing) |
+| sr-backend-developer | Backend implementation | Optional | 3b (routing) |
+| sr-frontend-reviewer | Frontend review | Optional | 4b |
+| sr-backend-reviewer | Backend review | Optional | 4b |
+| sr-security-reviewer | Security analysis | Optional | 4b |
+| sr-performance-reviewer | Performance analysis | Optional | 4b |
+
+**Gate rules** (applied throughout the pipeline):
+- If an optional agent is NOT in `AVAILABLE_AGENTS`, **skip** that phase/sub-step silently and note `"<agent> not installed — skipping"`.
+- Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run /specrails:enrich or reinstall.`
+
 ### Summary
 
 Print a setup report:
@@ -71,9 +101,10 @@ Print a setup report:
 | OpenSpec | ok | ... |
 | Dependencies | ok | ... |
 | Test runner | ok | ... |
+| Agents | N installed | core: 4/4, optional: M |
 ```
 
-**Pass `TEST_CMD` (or equivalent) and `BACKLOG_AVAILABLE` forward** — all later phases must use these.
+**Pass `TEST_CMD`, `BACKLOG_AVAILABLE`, and `AVAILABLE_AGENTS` forward** — all later phases must use these.
 
 ---
 
@@ -213,8 +244,8 @@ Write the initial state file:
   "phases": {
     "architect": "pending",
     "developer": "pending",
-    "test-writer": "pending",
-    "doc-sync": "pending",
+    "test-writer": "<'pending' if sr-test-writer ∈ AVAILABLE_AGENTS, else 'skipped'>",
+    "doc-sync": "<'pending' if sr-doc-sync ∈ AVAILABLE_AGENTS, else 'skipped'>",
     "reviewer": "pending",
     "ship": "pending",
     "ci": "pending"
@@ -259,7 +290,9 @@ If `PIPELINE_STATE_AVAILABLE=false`: skip all state updates silently.
 
 ## Phase 1: Explore (parallel)
 
-**Only runs if Phase 0 found no backlog issues AND user passed area names.**
+**Only runs if Phase 0 found no backlog issues AND user passed area names AND `sr-product-manager` ∈ `AVAILABLE_AGENTS`.**
+
+If `sr-product-manager` is not installed, skip Phase 1 and Phase 2 entirely. Print: `[phase-1] sr-product-manager not installed — skipping exploration. Proceeding with provided input.`
 
 For each area, launch a **sr-product-manager** agent (`subagent_type: sr-product-manager`, `run_in_background: true`).
 
@@ -446,6 +479,8 @@ Wait for all developers to complete.
 
 ## Phase 3c: Write Tests
 
+**Guard:** If `sr-test-writer` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3c] sr-test-writer not installed — skipping test generation.` Update pipeline state: `test-writer` → `skipped`. Proceed to Phase 3d.
+
 Launch a **sr-test-writer** agent for each feature immediately after its developer completes.
 
 Construct the agent invocation prompt to include:
@@ -479,6 +514,8 @@ If a test-writer agent fails or times out:
 **Pipeline state:** update `test-writer` → `done` (or `failed` with error context `"sr-test-writer timed out or errored"`). Failure does not block the pipeline.
 
 ## Phase 3d: Doc Sync
+
+**Guard:** If `sr-doc-sync` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3d] sr-doc-sync not installed — skipping doc sync.` Update pipeline state: `doc-sync` → `skipped`. Proceed to Phase 4.
 
 Launch a **sr-doc-sync** agent for each feature after its tests are written.
 
@@ -604,7 +641,9 @@ After all features are processed, print the preliminary report:
 - <file> (features: <a>, <b> — conflicting section: "<heading>")
 ```
 
-**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true`)
+**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true` or `sr-merge-resolver` ∉ `AVAILABLE_AGENTS`)
+
+If `sr-merge-resolver` is not installed, print: `[smart-merge] sr-merge-resolver not installed — skipping automatic resolution. Fix conflicts manually.` and skip to Step 5b.
 
 If `MERGE_REPORT.requires_resolution` is non-empty:
 
@@ -694,20 +733,28 @@ If `BACKEND_FILES` is empty: set `BACKEND_REVIEW_REPORT = "SKIPPED"` and skip ba
 
 #### Step 2: Launch Layer Reviewers in Parallel
 
-Launch all applicable layer reviewers in parallel (`run_in_background: true`):
+Launch all applicable layer reviewers in parallel (`run_in_background: true`). **Only launch a reviewer if it exists in `AVAILABLE_AGENTS`** — skip with a note if not installed.
 
-**sr-frontend-reviewer** (if `FRONTEND_FILES` is non-empty):
+**sr-frontend-reviewer** (if `FRONTEND_FILES` is non-empty AND `sr-frontend-reviewer` ∈ `AVAILABLE_AGENTS`):
 - Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+- If not installed: set `FRONTEND_REVIEW_REPORT = "SKIPPED"`. Note: "sr-frontend-reviewer not installed."
 
-**sr-backend-reviewer** (if `BACKEND_FILES` is non-empty):
+**sr-backend-reviewer** (if `BACKEND_FILES` is non-empty AND `sr-backend-reviewer` ∈ `AVAILABLE_AGENTS`):
 - Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+- If not installed: set `BACKEND_REVIEW_REPORT = "SKIPPED"`. Note: "sr-backend-reviewer not installed."
 
-**sr-security-reviewer** (always):
+**sr-security-reviewer** (if `sr-security-reviewer` ∈ `AVAILABLE_AGENTS`):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 - Pass the exemptions config path: `.claude/security-exemptions.yaml`
+- If not installed: set `SECURITY_REVIEW_REPORT = "SKIPPED"`, `SECURITY_BLOCKED = false`. Note: "sr-security-reviewer not installed."
+
+**sr-performance-reviewer** (if `sr-performance-reviewer` ∈ `AVAILABLE_AGENTS`):
+- Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
+- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+- If not installed: skip silently.
 
 Wait for all launched layer reviewers to complete before proceeding to Step 3.
 

@@ -752,11 +752,19 @@ if [[ "$FROM_CONFIG" == true ]]; then
         # Parse selected agents from inline YAML list: selected: [sr-architect, sr-developer, ...]
         _selected_raw=$(grep '^  selected:' "$_cfg_to_read" | sed 's/.*\[//;s/\].*//;s/,/ /g' || true)
         if [[ -n "$_selected_raw" ]]; then
+            # Core agents are always kept — the pipeline depends on them
+            _core_agents="sr-architect sr-developer sr-reviewer sr-merge-resolver"
             _agents_dir="${REPO_ROOT}/.specrails/setup-templates/agents"
             _removed=0
             for _agent_file in "$_agents_dir/"*.md; do
                 [[ -f "$_agent_file" ]] || continue
                 _agent_name="$(basename "$_agent_file" .md)"
+
+                # Never remove core agents
+                if echo " $_core_agents " | grep -q " ${_agent_name} "; then
+                    continue
+                fi
+
                 _in_selected=false
                 for _sel in $_selected_raw; do
                     # Strip whitespace/commas from parsed token

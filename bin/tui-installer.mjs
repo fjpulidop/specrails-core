@@ -40,10 +40,17 @@ const AGENTS = [
 
 const ALL_AGENT_IDS = AGENTS.map(a => a.id);
 
-const DEFAULT_SELECTED = new Set([
+// Core agents are always installed and cannot be deselected.
+// The implementation pipeline (implement / batch-implement) depends on them.
+const CORE_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
   'sr-reviewer',
+  'sr-merge-resolver',
+]);
+
+const DEFAULT_SELECTED = new Set([
+  ...CORE_AGENTS,
   'sr-test-writer',
   'sr-product-manager',
 ]);
@@ -97,10 +104,12 @@ function buildCheckboxChoices() {
       choices.push(new Separator(`── ${agent.category} ${'─'.repeat(Math.max(0, 46 - agent.category.length))}`));
       currentCategory = agent.category;
     }
+    const isCore = CORE_AGENTS.has(agent.id);
     choices.push({
       value:   agent.id,
-      name:    `${agent.id.padEnd(28)} ${agent.description}`,
+      name:    `${agent.id.padEnd(28)} ${agent.description}${isCore ? ' (core)' : ''}`,
       checked: DEFAULT_SELECTED.has(agent.id),
+      disabled: isCore ? 'core — always installed' : false,
     });
   }
   return choices;
@@ -227,12 +236,14 @@ async function run() {
 
   console.log('\n  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
 
-  const selectedAgents = await checkbox({
+  const userSelected = await checkbox({
     message: 'Agents to install:',
     choices: buildCheckboxChoices(),
     validate: (selected) => selected.length > 0 || 'Select at least one agent.',
   });
 
+  // Core agents are always included regardless of checkbox state
+  const selectedAgents = [...new Set([...CORE_AGENTS, ...userSelected])];
   const excludedAgents = ALL_AGENT_IDS.filter(id => !selectedAgents.includes(id));
 
   // ── Step 4: Model preset ────────────────────────────────────────────────────
