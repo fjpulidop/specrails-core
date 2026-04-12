@@ -253,16 +253,17 @@ async function run() {
 
   const tier = await select({
     message: 'Installation tier:',
+    default: 'quick',
     choices: [
       {
-        value:       'full',
-        name:        'Full — AI-powered setup (recommended)',
-        description: 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
+        value:       'quick',
+        name:        'Quick — Ready to use immediately (recommended)',
+        description: 'Agents installed with sensible defaults. No AI step required.',
       },
       {
-        value:       'quick',
-        name:        'Quick — Template-only install',
-        description: 'Agents installed with sensible defaults. No AI step required.',
+        value:       'full',
+        name:        'Full — AI-powered setup',
+        description: 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
       },
     ],
   });
