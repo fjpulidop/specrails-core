@@ -649,7 +649,15 @@ mkdir -p "$REPO_ROOT/.specrails/setup-templates/personas"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/claude-md"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/prompts"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
+
+# Ensure .gitignore excludes local runtime artifacts
+_gitignore="${REPO_ROOT}/.gitignore"
+_gitignore_entries=(".claude/agent-memory/" ".specrails/")
+for _entry in "${_gitignore_entries[@]}"; do
+    if ! grep -qF "$_entry" "$_gitignore" 2>/dev/null; then
+        echo "$_entry" >> "$_gitignore"
+    fi
+done
 
 # Copy the /specrails:enrich and /specrails:doctor commands (or skills for Codex)
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
@@ -916,6 +924,11 @@ if [[ "$TIER" == "quick" ]]; then
             # Create agent memory directory
             mkdir -p "${REPO_ROOT}/.claude/agent-memory/${_name}"
 
+            # Agents that write explanation records need the shared explanations dir
+            if [[ "$_name" == "sr-architect" || "$_name" == "sr-reviewer" ]]; then
+                mkdir -p "${REPO_ROOT}/.claude/agent-memory/explanations"
+            fi
+
             (( _agent_count++ )) || true
         done
         if (( _agent_skipped > 0 )); then
@@ -925,8 +938,17 @@ if [[ "$TIER" == "quick" ]]; then
         fi
     fi
 
-    # Persona-dependent commands excluded from Quick tier
+    # Commands excluded from Quick tier:
+    # - VPC/persona-dependent: auto-propose-backlog-specs, vpc-drift, get-backlog-specs
+    # - Agent Teams (when not enabled): team-debug, team-review
+    # - Agent-specific (when agent not selected): merge-resolve → sr-merge-resolver
     _quick_excluded_cmds="auto-propose-backlog-specs vpc-drift get-backlog-specs"
+    if [[ "$AGENT_TEAMS" != "true" ]]; then
+        _quick_excluded_cmds="$_quick_excluded_cmds team-debug team-review"
+    fi
+    if ! ls "${REPO_ROOT}/${SPECRAILS_DIR}/agents/sr-merge-resolver.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds merge-resolve"
+    fi
 
     # --- Commands ---
     if [[ -d "$_templates/commands/specrails" ]]; then
@@ -1010,10 +1032,21 @@ LTEOF
     fi
 
     # --- Skills (OpenSpec) ---
+    # Skills that depend on VPC-excluded agents are skipped in Quick tier
+    _quick_excluded_skills="sr-auto-propose-backlog-specs sr-get-backlog-specs"
     if [[ -d "$_templates/skills" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/skills"
-        cp -r "$_templates/skills/"* "${REPO_ROOT}/${SPECRAILS_DIR}/skills/" 2>/dev/null || true
-        ok "Installed skills to ${SPECRAILS_DIR}/skills/"
+        _skill_count=0
+        for _skill_dir in "$_templates/skills/"*/; do
+            [[ -d "$_skill_dir" ]] || continue
+            _skill_name="$(basename "$_skill_dir")"
+            if echo " $_quick_excluded_skills " | grep -q " ${_skill_name} "; then
+                continue
+            fi
+            cp -r "$_skill_dir" "${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            (( _skill_count++ )) || true
+        done
+        ok "Installed ${_skill_count} skill(s) to ${SPECRAILS_DIR}/skills/"
     fi
 
     if [[ "$HUB_JSON" == true ]]; then
