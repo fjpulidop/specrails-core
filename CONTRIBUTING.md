@@ -44,7 +44,6 @@ node bin/specrails-core.js init --root-dir /path/to/your/test-project
 specrails-core/
 ├── specrails/         # installer scripts (install.sh, update.sh)
 ├── bin/               # CLI entry point
-├── prompts/           # agent and command templates
 ├── templates/         # CLAUDE.md, settings, rules templates
 ├── openspec/          # OpenSpec specs for this project
 ├── tests/             # test suite

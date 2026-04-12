@@ -648,7 +648,6 @@ mkdir -p "$REPO_ROOT/.specrails/setup-templates/rules"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/personas"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/claude-md"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
-mkdir -p "$REPO_ROOT/.specrails/setup-templates/prompts"
 
 # Ensure .gitignore excludes local runtime artifacts
 _gitignore="${REPO_ROOT}/.gitignore"
@@ -867,11 +866,6 @@ if [ ! -f "${REPO_ROOT}/$SPECRAILS_DIR/security-exemptions.yaml" ]; then
     ok "Created $SPECRAILS_DIR/security-exemptions.yaml"
 fi
 
-# Copy prompts
-if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then
-    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.specrails/setup-templates/prompts/"
-    ok "Installed prompts"
-fi
 
 # ─────────────────────────────────────────────
 # Phase 3c: Quick-tier direct placement

@@ -51,7 +51,6 @@ specrails/
 ├── install.sh              # Shell installer
 ├── templates/              # Source templates (agents, commands, rules, personas)
 ├── commands/               # Claude Code command definitions
-├── prompts/                # Guide prompts
 ├── openspec/               # Specs and changes
 └── .claude/                # Generated output
     ├── agents/             # Adapted agent prompts

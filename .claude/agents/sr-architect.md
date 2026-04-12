@@ -53,7 +53,6 @@ specrails/
 │   ├── claude-md/          # Root CLAUDE.md template
 │   └── settings/           # Settings template
 ├── commands/               # Claude Code command definitions (setup.md)
-├── prompts/                # Guide prompts for codebase analysis, conventions, personas
 ├── openspec/               # OpenSpec configuration and specs
 │   ├── config.yaml
 │   ├── specs/

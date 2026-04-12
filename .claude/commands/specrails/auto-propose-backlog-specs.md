@@ -26,7 +26,7 @@ Analyze the project from a **product perspective** to generate new feature ideas
 | Agents | Agent prompt design, multi-agent orchestration | `.claude/agents/`, `templates/agents/` |
 | Commands | Workflow commands, pipeline orchestration | `.claude/commands/`, `templates/commands/` |
 | Product | VPC personas, product discovery, backlog | `.claude/agents/personas/`, `templates/personas/` |
-| DX | Developer experience, setup, onboarding | `commands/setup.md`, `prompts/` |
+| DX | Developer experience, setup, onboarding | `commands/setup.md`, `templates/commands/` |
 
 ---
 
