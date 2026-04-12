@@ -59,6 +59,36 @@ which openspec && openspec --version
 
 {{TEST_RUNNER_CHECK}}
 
+#### 5. Agent discovery
+
+Scan the agents directory to determine which agents are installed:
+
+```bash
+ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort
+```
+
+Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapts dynamically to the installed agents:
+
+| Agent | Role | Required? | Phase(s) affected |
+|-------|------|-----------|-------------------|
+| sr-architect | Architecture & design | **Core** (always present) | 3a |
+| sr-developer | Full-stack implementation | **Core** (always present) | 3b |
+| sr-reviewer | Generalist quality gate | **Core** (always present) | 4b |
+| sr-merge-resolver | Merge conflict resolution | **Core** (always present) | 4a |
+| sr-product-manager | Product exploration | Optional | 1 |
+| sr-test-writer | Test generation | Optional | 3c |
+| sr-doc-sync | Documentation sync | Optional | 3d |
+| sr-frontend-developer | Frontend implementation | Optional | 3b (routing) |
+| sr-backend-developer | Backend implementation | Optional | 3b (routing) |
+| sr-frontend-reviewer | Frontend review | Optional | 4b |
+| sr-backend-reviewer | Backend review | Optional | 4b |
+| sr-security-reviewer | Security analysis | Optional | 4b |
+| sr-performance-reviewer | Performance analysis | Optional | 4b |
+
+**Gate rules** (applied throughout the pipeline):
+- If an optional agent is NOT in `AVAILABLE_AGENTS`, **skip** that phase/sub-step silently and note `"<agent> not installed — skipping"`.
+- Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run /specrails:enrich or reinstall.`
+
 ### Summary
 
 Print a setup report:
@@ -71,9 +101,10 @@ Print a setup report:
 | OpenSpec | ok | ... |
 | Dependencies | ok | ... |
 | Test runner | ok | ... |
+| Agents | N installed | core: 4/4, optional: M |
 ```
 
-**Pass `TEST_CMD` (or equivalent) and `BACKLOG_AVAILABLE` forward** — all later phases must use these.
+**Pass `TEST_CMD`, `BACKLOG_AVAILABLE`, and `AVAILABLE_AGENTS` forward** — all later phases must use these.
 
 ---
 
@@ -213,8 +244,8 @@ Write the initial state file:
   "phases": {
     "architect": "pending",
     "developer": "pending",
-    "test-writer": "pending",
-    "doc-sync": "pending",
+    "test-writer": "<'pending' if sr-test-writer ∈ AVAILABLE_AGENTS, else 'skipped'>",
+    "doc-sync": "<'pending' if sr-doc-sync ∈ AVAILABLE_AGENTS, else 'skipped'>",
     "reviewer": "pending",
     "ship": "pending",
     "ci": "pending"
@@ -259,7 +290,9 @@ If `PIPELINE_STATE_AVAILABLE=false`: skip all state updates silently.
 
 ## Phase 1: Explore (parallel)
 
-**Only runs if Phase 0 found no backlog issues AND user passed area names.**
+**Only runs if Phase 0 found no backlog issues AND user passed area names AND `sr-product-manager` ∈ `AVAILABLE_AGENTS`.**
+
+If `sr-product-manager` is not installed, skip Phase 1 and Phase 2 entirely. Print: `[phase-1] sr-product-manager not installed — skipping exploration. Proceeding with provided input.`
 
 For each area, launch a **sr-product-manager** agent (`subagent_type: sr-product-manager`, `run_in_background: true`).
 
@@ -431,20 +464,63 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 
 #### Choosing the right developer agent
 
-For each feature, analyze the tasks' layer tags:
+For each feature, read `openspec/changes/<name>/tasks.md` and classify every task by its layer tags and file references.
 
-{{DEVELOPER_ROUTING_RULES}}
+**Step 1 — Classify tasks into layers:**
+
+For each task, determine its layer from:
+1. **Explicit layer tags** in tasks.md (e.g., `[frontend]`, `[backend]`, `[core]`, `[infra]`, `[docs]`, etc.)
+2. **File references** under `**Files:**` entries — apply the same extension/path rules used in Phase 4b:
+   - Frontend: `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.html`, or paths under `components/`, `pages/`, `views/`, `ui/`, `client/`, `frontend/`, `app/`, `public/`, `static/`, `assets/`
+   - Backend: `.py`, `.go`, `.java`, `.rb`, `.php`, `.rs`, `.cs`, `.sql`, or paths under `server/`, `api/`, `routes/`, `controllers/`, `services/`, `models/`, `db/`, `backend/`, `migrations/`
+   - Mixed/other: everything else (shell scripts, config files, markdown, YAML, etc.)
+
+Produce three sets: `FRONTEND_TASKS`, `BACKEND_TASKS`, `OTHER_TASKS`.
+
+**Step 2 — Route tasks to developer agents:**
+
+Evaluate available developer agents in `AVAILABLE_AGENTS` and apply these rules in priority order:
+
+| Condition | Agent(s) selected | Mode |
+|-----------|-------------------|------|
+| ALL tasks are frontend-only AND `sr-frontend-developer` ∈ `AVAILABLE_AGENTS` | **sr-frontend-developer** | Single agent for all tasks |
+| ALL tasks are backend-only AND `sr-backend-developer` ∈ `AVAILABLE_AGENTS` | **sr-backend-developer** | Single agent for all tasks |
+| Mix of frontend + backend tasks AND both layer-specific developers available | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for `OTHER_TASKS` | Parallel agents per layer |
+| Frontend tasks exist AND `sr-frontend-developer` available, but no backend-specific developer | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-developer** for remaining | Parallel agents |
+| Backend tasks exist AND `sr-backend-developer` available, but no frontend-specific developer | **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for remaining | Parallel agents |
+| No layer-specific developers available (fallback) | **sr-developer** | Single agent for all tasks |
+
+Store the result as `DEVELOPER_ROUTING`: a map of `{agent_id: [task_list]}`.
+
+**Step 3 — Print routing decision:**
+
+```
+## Developer Routing
+
+| Agent | Tasks | Reason |
+|-------|-------|--------|
+| sr-frontend-developer | Task 1, Task 3 | Frontend-only tasks (React components) |
+| sr-backend-developer  | Task 2, Task 4 | Backend-only tasks (API endpoints) |
+| sr-developer          | Task 5         | Mixed layer (config + infra) |
+```
+
+Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually launched) — Phase 4b will use this for reviewer selection.
 
 #### Launch modes
 
-**If `SINGLE_MODE`**: Launch in the main repo, foreground.
+For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent with its task subset.
+
+**If `SINGLE_MODE` and only one agent in routing**: Launch in the main repo, foreground.
+**If `SINGLE_MODE` but multiple agents in routing**: Launch agents sequentially in the main repo (one at a time, foreground), passing only their assigned tasks.
 **If multiple features**: Launch in isolated worktrees (`isolation: worktree`, `run_in_background: true`).
 
 Wait for all developers to complete.
 
-**Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"sr-developer failed: <exit code or error description>"`.
+**Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"<agent-id> failed: <exit code or error description>"`.
 
 ## Phase 3c: Write Tests
+
+**Guard:** If `sr-test-writer` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3c] sr-test-writer not installed — skipping test generation.` Update pipeline state: `test-writer` → `skipped`. Proceed to Phase 3d.
 
 Launch a **sr-test-writer** agent for each feature immediately after its developer completes.
 
@@ -479,6 +555,8 @@ If a test-writer agent fails or times out:
 **Pipeline state:** update `test-writer` → `done` (or `failed` with error context `"sr-test-writer timed out or errored"`). Failure does not block the pipeline.
 
 ## Phase 3d: Doc Sync
+
+**Guard:** If `sr-doc-sync` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3d] sr-doc-sync not installed — skipping doc sync.` Update pipeline state: `doc-sync` → `skipped`. Proceed to Phase 4.
 
 Launch a **sr-doc-sync** agent for each feature after its tests are written.
 
@@ -604,7 +682,9 @@ After all features are processed, print the preliminary report:
 - <file> (features: <a>, <b> — conflicting section: "<heading>")
 ```
 
-**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true`)
+**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true` or `sr-merge-resolver` ∉ `AVAILABLE_AGENTS`)
+
+If `sr-merge-resolver` is not installed, print: `[smart-merge] sr-merge-resolver not installed — skipping automatic resolution. Fix conflicts manually.` and skip to Step 5b.
 
 If `MERGE_REPORT.requires_resolution` is non-empty:
 
@@ -689,27 +769,43 @@ Set `BACKEND_FILES` = files matching backend rules.
 
 **Overlap rule:** a file may appear in both `FRONTEND_FILES` and `BACKEND_FILES` (e.g., a Next.js API route at `pages/api/`). Both reviewers will scan it independently.
 
-If `FRONTEND_FILES` is empty: set `FRONTEND_REVIEW_REPORT = "SKIPPED"` and skip frontend-reviewer launch. Note: "No frontend files detected."
-If `BACKEND_FILES` is empty: set `BACKEND_REVIEW_REPORT = "SKIPPED"` and skip backend-reviewer launch. Note: "No backend files detected."
+#### Step 2: Determine which reviewers to launch
 
-#### Step 2: Launch Layer Reviewers in Parallel
+A layer reviewer is launched when **both** conditions are met:
+1. There are files to review for that layer (file classification) **OR** the corresponding layer developer was used in Phase 3b (`DEVELOPER_AGENTS_USED`)
+2. The reviewer agent is installed (`∈ AVAILABLE_AGENTS`)
 
-Launch all applicable layer reviewers in parallel (`run_in_background: true`):
+| Reviewer | Launch condition | Skip reason |
+|----------|-----------------|-------------|
+| sr-frontend-reviewer | (`FRONTEND_FILES` non-empty OR `sr-frontend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No frontend files + no frontend developer used, or not installed |
+| sr-backend-reviewer | (`BACKEND_FILES` non-empty OR `sr-backend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No backend files + no backend developer used, or not installed |
+| sr-security-reviewer | Installed | Not installed |
+| sr-performance-reviewer | Installed | Not installed |
 
-**sr-frontend-reviewer** (if `FRONTEND_FILES` is non-empty):
+If a reviewer is skipped, set its report variable to `"SKIPPED"` and note the reason.
+
+#### Step 3: Launch Layer Reviewers in Parallel
+
+Launch all applicable layer reviewers in parallel (`run_in_background: true`).
+
+**sr-frontend-reviewer** (if applicable per Step 2):
 - Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-backend-reviewer** (if `BACKEND_FILES` is non-empty):
+**sr-backend-reviewer** (if applicable per Step 2):
 - Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-security-reviewer** (always):
+**sr-security-reviewer** (if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 - Pass the exemptions config path: `.claude/security-exemptions.yaml`
 
-Wait for all launched layer reviewers to complete before proceeding to Step 3.
+**sr-performance-reviewer** (if applicable per Step 2):
+- Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
+- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
+
+Wait for all launched layer reviewers to complete before proceeding to Step 4.
 
 Parse status lines from each completed reviewer:
 - `FRONTEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `FRONTEND_STATUS`
@@ -718,7 +814,7 @@ Parse status lines from each completed reviewer:
 
 If a layer reviewer fails or times out: set the relevant report variable to `"ERROR: reviewer did not complete"` and continue.
 
-#### Step 3: Launch Generalist Reviewer
+#### Step 4: Launch Generalist Reviewer
 
 Construct the generalist reviewer's invocation prompt with layer reports injected. Set each variable to the full output of the corresponding reviewer, or to the string `"SKIPPED"` if that reviewer was not launched:
 

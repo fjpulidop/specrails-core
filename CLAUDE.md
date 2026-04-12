@@ -26,7 +26,6 @@ specrails-core/
 │   ├── claude-md/          # Root CLAUDE.md template
 │   └── settings/           # Settings template
 ├── commands/               # Claude Code commands (setup.md)
-├── prompts/                # Guide prompts for analysis
 ├── openspec/               # OpenSpec config, specs, and changes
 │   ├── config.yaml
 │   ├── specs/

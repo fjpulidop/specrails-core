@@ -127,7 +127,8 @@ if [[ -n "$CUSTOM_ROOT_DIR" ]]; then
 fi
 
 # Detect if running from within the specrails source repo itself
-if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/templates" && "$SCRIPT_DIR" == "$REPO_ROOT"* ]]; then
+# Note: REPO_ROOT must be non-empty for the glob match — when empty, * matches everything.
+if [[ -z "$CUSTOM_ROOT_DIR" && -n "$REPO_ROOT" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/templates" && "$SCRIPT_DIR" == "$REPO_ROOT"* ]]; then
     # We're inside the specrails source — ask for target repo
     echo ""
     echo -e "${YELLOW}⚠${NC}  You're running the installer from inside the specrails source repo."
@@ -144,11 +145,24 @@ if [[ -z "$CUSTOM_ROOT_DIR" && -f "$SCRIPT_DIR/install.sh" && -d "$SCRIPT_DIR/te
         echo "Error: path does not exist or is not accessible: $TARGET_PATH" >&2
         exit 1
     }
-    if [[ ! -d "$REPO_ROOT/.git" ]]; then
-        echo -e "${YELLOW}⚠${NC}  Warning: $REPO_ROOT does not appear to be a git repository."
-        if [ "$AUTO_YES" = true ]; then CONTINUE_NOGIT="y"; else read -p "   Continue anyway? (y/n): " CONTINUE_NOGIT; fi
-        if [[ "$CONTINUE_NOGIT" != "y" && "$CONTINUE_NOGIT" != "Y" ]]; then
-            echo "   Aborted. No changes made."
+fi
+
+# Auto-init git if the target directory is not a git repository
+if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
+    # Resolve REPO_ROOT to cwd if still empty (no git found anywhere)
+    if [[ -z "$REPO_ROOT" ]]; then
+        REPO_ROOT="$(pwd)"
+    fi
+    if [[ "$AUTO_YES" == true ]]; then
+        git -C "$REPO_ROOT" init -q 2>/dev/null
+    else
+        echo ""
+        echo -e "${YELLOW}⚠${NC}  ${REPO_ROOT} is not a git repository."
+        read -p "   Initialize git? (y/n): " INIT_GIT || INIT_GIT="n"
+        if [[ "$INIT_GIT" == "y" || "$INIT_GIT" == "Y" ]]; then
+            git -C "$REPO_ROOT" init -q 2>/dev/null
+        else
+            echo "   Aborted. specrails requires a git repository."
             exit 0
         fi
     fi
@@ -229,9 +243,9 @@ print_header
 
 step "Phase 1: Checking prerequisites"
 
-# 1.1 Git repository
+# 1.1 Git repository (should be resolved by now — early init or --root-dir)
 if [[ -z "$REPO_ROOT" ]]; then
-    fail "Not inside a git repository and no --root-dir provided."
+    fail "Could not determine target directory."
     echo "  Usage: install.sh [--root-dir <path>]"
     exit 1
 fi
@@ -502,6 +516,16 @@ else
 fi
 
 # 1.5 OpenSpec CLI
+# Read pinned version from package.json (specrails.openspecVersion field)
+_openspec_pkg_version=""
+if [[ -f "$SCRIPT_DIR/package.json" ]]; then
+    _openspec_pkg_version=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/package.json')); print(d.get('specrails',{}).get('openspecVersion',''))" 2>/dev/null || true)
+fi
+_openspec_install_spec="@openspec/cli"
+if [[ -n "$_openspec_pkg_version" ]]; then
+    _openspec_install_spec="@openspec/cli@${_openspec_pkg_version}"
+fi
+
 if command -v openspec &> /dev/null; then
     OPENSPEC_VERSION=$(openspec --version 2>/dev/null || echo "unknown")
     ok "OpenSpec CLI: $OPENSPEC_VERSION"
@@ -510,17 +534,21 @@ elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
     ok "OpenSpec CLI: found in node_modules"
     HAS_OPENSPEC=true
 else
-    warn "OpenSpec CLI not found."
     if [ "$HAS_NPM" = true ]; then
-        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"; fi
+        # Auto-install in --yes mode; ask otherwise
+        if [ "$AUTO_YES" = true ]; then
+            INSTALL_OPENSPEC="y"
+        else
+            read -p "    OpenSpec CLI not found. Install ${_openspec_install_spec}? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"
+        fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
-            info "Installing OpenSpec CLI..."
-            npm install -g @openspec/cli 2>/dev/null && {
-                ok "OpenSpec CLI installed"
+            info "Installing ${_openspec_install_spec}..."
+            npm install -g "${_openspec_install_spec}" 2>/dev/null && {
+                ok "OpenSpec CLI installed ($(openspec --version 2>/dev/null || echo "${_openspec_pkg_version}"))"
                 HAS_OPENSPEC=true
             } || {
                 warn "Global install failed. Trying local..."
-                cd "$REPO_ROOT" && npm install @openspec/cli 2>/dev/null && {
+                cd "$REPO_ROOT" && npm install "${_openspec_install_spec}" 2>/dev/null && {
                     ok "OpenSpec CLI installed locally"
                     HAS_OPENSPEC=true
                 } || {
@@ -633,7 +661,7 @@ fi
 step "Phase 3: Installing specrails artifacts"
 
 # Create directory structure
-mkdir -p "$REPO_ROOT/specrails"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     # Codex: install as Agent Skills (Codex doesn't support .codex/commands/)
     mkdir -p "$REPO_ROOT/.agents/skills/enrich"
@@ -648,8 +676,15 @@ mkdir -p "$REPO_ROOT/.specrails/setup-templates/rules"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/personas"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/claude-md"
 mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
-mkdir -p "$REPO_ROOT/.specrails/setup-templates/prompts"
-mkdir -p "$REPO_ROOT/$SPECRAILS_DIR/agent-memory/explanations"
+
+# Ensure .gitignore excludes local runtime artifacts
+_gitignore="${REPO_ROOT}/.gitignore"
+_gitignore_entries=(".claude/agent-memory/" ".specrails/")
+for _entry in "${_gitignore_entries[@]}"; do
+    if ! grep -qF "$_entry" "$_gitignore" 2>/dev/null; then
+        echo "$_entry" >> "$_gitignore"
+    fi
+done
 
 # Copy the /specrails:enrich and /specrails:doctor commands (or skills for Codex)
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
@@ -722,9 +757,6 @@ models:
   preset: balanced
   defaults: { model: sonnet }
   overrides: {}
-quick_context:
-  product_description: ""
-  target_users: ""
 agent_teams: ${_ic_agent_teams}
 YAML
     ok "Written .specrails/install-config.yaml (defaults)"
@@ -744,11 +776,19 @@ if [[ "$FROM_CONFIG" == true ]]; then
         # Parse selected agents from inline YAML list: selected: [sr-architect, sr-developer, ...]
         _selected_raw=$(grep '^  selected:' "$_cfg_to_read" | sed 's/.*\[//;s/\].*//;s/,/ /g' || true)
         if [[ -n "$_selected_raw" ]]; then
+            # Core agents are always kept — the pipeline depends on them
+            _core_agents="sr-architect sr-developer sr-reviewer sr-merge-resolver"
             _agents_dir="${REPO_ROOT}/.specrails/setup-templates/agents"
             _removed=0
             for _agent_file in "$_agents_dir/"*.md; do
                 [[ -f "$_agent_file" ]] || continue
                 _agent_name="$(basename "$_agent_file" .md)"
+
+                # Never remove core agents
+                if echo " $_core_agents " | grep -q " ${_agent_name} "; then
+                    continue
+                fi
+
                 _in_selected=false
                 for _sel in $_selected_raw; do
                     # Strip whitespace/commas from parsed token
@@ -851,11 +891,6 @@ if [ ! -f "${REPO_ROOT}/$SPECRAILS_DIR/security-exemptions.yaml" ]; then
     ok "Created $SPECRAILS_DIR/security-exemptions.yaml"
 fi
 
-# Copy prompts
-if [ -d "$SCRIPT_DIR/prompts" ] && [ "$(ls -A "$SCRIPT_DIR/prompts" 2>/dev/null)" ]; then
-    cp -r "$SCRIPT_DIR/prompts/"* "$REPO_ROOT/.specrails/setup-templates/prompts/"
-    ok "Installed prompts"
-fi
 
 # ─────────────────────────────────────────────
 # Phase 3c: Quick-tier direct placement
@@ -869,15 +904,6 @@ if [[ "$TIER" == "quick" ]]; then
 
     _templates="${REPO_ROOT}/.specrails/setup-templates"
     _project_name="$(basename "$REPO_ROOT")"
-    _quick_product_desc=""
-    _quick_target_users=""
-
-    # Read quick_context from install-config.yaml if available
-    _qc_file="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
-    if [[ -f "$_qc_file" ]]; then
-        _quick_product_desc=$(grep '^\s*product_description:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*product_description:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
-        _quick_target_users=$(grep '^\s*target_users:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*target_users:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
-    fi
 
     # VPC/persona-dependent agents are excluded from Quick tier (require enrichment)
     _quick_excluded_agents="sr-product-manager sr-product-analyst"
@@ -903,8 +929,6 @@ if [[ "$TIER" == "quick" ]]; then
             # Substitute known placeholders
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
-                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
                 -e "s|{{MEMORY_PATH}}|.claude/agent-memory/${_name}/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
@@ -916,6 +940,11 @@ if [[ "$TIER" == "quick" ]]; then
             # Create agent memory directory
             mkdir -p "${REPO_ROOT}/.claude/agent-memory/${_name}"
 
+            # Agents that write explanation records need the shared explanations dir
+            if [[ "$_name" == "sr-architect" || "$_name" == "sr-reviewer" ]]; then
+                mkdir -p "${REPO_ROOT}/.claude/agent-memory/explanations"
+            fi
+
             (( _agent_count++ )) || true
         done
         if (( _agent_skipped > 0 )); then
@@ -925,8 +954,38 @@ if [[ "$TIER" == "quick" ]]; then
         fi
     fi
 
-    # Persona-dependent commands excluded from Quick tier
-    _quick_excluded_cmds="auto-propose-backlog-specs vpc-drift get-backlog-specs"
+    # Dynamic command exclusion based on installed agents.
+    # Each command maps to the agent(s) it depends on — if the agent
+    # wasn't installed, the command is excluded automatically.
+    #
+    # Dependency map (command → required agent):
+    #   auto-propose-backlog-specs → sr-product-manager
+    #   get-backlog-specs          → sr-product-analyst
+    #   vpc-drift                  → sr-product-manager, sr-product-analyst
+    #   merge-resolve              → sr-merge-resolver
+    #   team-debug, team-review    → AGENT_TEAMS flag
+    _quick_excluded_cmds=""
+    _installed_agents_dir="${REPO_ROOT}/${SPECRAILS_DIR}/agents"
+
+    # Agent-dependent commands
+    if ! ls "$_installed_agents_dir/sr-product-manager.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds auto-propose-backlog-specs vpc-drift"
+    fi
+    if ! ls "$_installed_agents_dir/sr-product-analyst.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds get-backlog-specs"
+        # vpc-drift needs both product agents
+        if ! echo " $_quick_excluded_cmds " | grep -q " vpc-drift "; then
+            _quick_excluded_cmds="$_quick_excluded_cmds vpc-drift"
+        fi
+    fi
+    if ! ls "$_installed_agents_dir/sr-merge-resolver.md" &>/dev/null; then
+        _quick_excluded_cmds="$_quick_excluded_cmds merge-resolve"
+    fi
+
+    # Agent Teams commands (flag-dependent, not agent-dependent)
+    if [[ "$AGENT_TEAMS" != "true" ]]; then
+        _quick_excluded_cmds="$_quick_excluded_cmds team-debug team-review"
+    fi
 
     # --- Commands ---
     if [[ -d "$_templates/commands/specrails" ]]; then
@@ -936,7 +995,7 @@ if [[ "$TIER" == "quick" ]]; then
             [[ -f "$_src" ]] || continue
             _cmd_name="$(basename "$_src" .md)"
 
-            # Skip persona-dependent commands in Quick tier
+            # Skip commands whose required agents are not installed
             if echo " $_quick_excluded_cmds " | grep -q " ${_cmd_name} "; then
                 continue
             fi
@@ -945,8 +1004,6 @@ if [[ "$TIER" == "quick" ]]; then
             cp "$_src" "$_dest"
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
-                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
                 -e "s|{{MEMORY_PATH}}|.claude/agent-memory/|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
@@ -1010,10 +1067,30 @@ LTEOF
     fi
 
     # --- Skills (OpenSpec) ---
+    # Dynamic skill exclusion based on installed agents (mirrors command logic).
+    # Dependency map (skill → required agent):
+    #   sr-auto-propose-backlog-specs → sr-product-manager
+    #   sr-get-backlog-specs          → sr-product-analyst
+    _quick_excluded_skills=""
+    if ! ls "$_installed_agents_dir/sr-product-manager.md" &>/dev/null; then
+        _quick_excluded_skills="$_quick_excluded_skills sr-auto-propose-backlog-specs"
+    fi
+    if ! ls "$_installed_agents_dir/sr-product-analyst.md" &>/dev/null; then
+        _quick_excluded_skills="$_quick_excluded_skills sr-get-backlog-specs"
+    fi
     if [[ -d "$_templates/skills" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/skills"
-        cp -r "$_templates/skills/"* "${REPO_ROOT}/${SPECRAILS_DIR}/skills/" 2>/dev/null || true
-        ok "Installed skills to ${SPECRAILS_DIR}/skills/"
+        _skill_count=0
+        for _skill_dir in "$_templates/skills/"*/; do
+            [[ -d "$_skill_dir" ]] || continue
+            _skill_name="$(basename "$_skill_dir")"
+            if echo " $_quick_excluded_skills " | grep -q " ${_skill_name} "; then
+                continue
+            fi
+            cp -r "$_skill_dir" "${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            (( _skill_count++ )) || true
+        done
+        ok "Installed ${_skill_count} skill(s) to ${SPECRAILS_DIR}/skills/"
     fi
 
     if [[ "$HUB_JSON" == true ]]; then
@@ -1023,8 +1100,12 @@ fi
 
 # Initialize OpenSpec if available and not already initialized
 if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
-    info "Initializing OpenSpec..."
-    cd "$REPO_ROOT" && openspec init 2>/dev/null && {
+    # Map specrails provider to openspec tool name
+    _openspec_tool="claude"
+    [[ "$CLI_PROVIDER" == "codex" ]] && _openspec_tool="codex"
+
+    info "Initializing OpenSpec (--tools ${_openspec_tool} --force)..."
+    cd "$REPO_ROOT" && openspec init --tools "${_openspec_tool}" --force 2>/dev/null && {
         ok "OpenSpec initialized"
     } || {
         warn "OpenSpec init failed — you can run 'openspec init' manually later"

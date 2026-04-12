@@ -9,10 +9,25 @@
  *   --yes    - skip TUI, write defaults immediately
  */
 
-import { checkbox, select, input, Separator } from '@inquirer/prompts';
+import { checkbox, select, Separator } from '@inquirer/prompts';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
+
+// ─── Alternate screen buffer (fullscreen mode) ──────────────────────────────
+
+function enterFullscreen() {
+  process.stdout.write('\x1b[?1049h'); // switch to alternate screen buffer
+  process.stdout.write('\x1b[H');      // move cursor to top-left
+}
+
+function exitFullscreen() {
+  process.stdout.write('\x1b[?1049l'); // restore original screen buffer
+}
+
+function clearScreen() {
+  process.stdout.write('\x1b[2J\x1b[H'); // clear screen + cursor to top
+}
 
 // ─── Agent registry ───────────────────────────────────────────────────────────
 
@@ -40,10 +55,17 @@ const AGENTS = [
 
 const ALL_AGENT_IDS = AGENTS.map(a => a.id);
 
-const DEFAULT_SELECTED = new Set([
+// Core agents are always installed and cannot be deselected.
+// The implementation pipeline (implement / batch-implement) depends on them.
+const CORE_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
   'sr-reviewer',
+  'sr-merge-resolver',
+]);
+
+const DEFAULT_SELECTED = new Set([
+  ...CORE_AGENTS,
   'sr-test-writer',
   'sr-product-manager',
 ]);
@@ -97,10 +119,12 @@ function buildCheckboxChoices() {
       choices.push(new Separator(`── ${agent.category} ${'─'.repeat(Math.max(0, 46 - agent.category.length))}`));
       currentCategory = agent.category;
     }
+    const isCore = CORE_AGENTS.has(agent.id);
     choices.push({
       value:   agent.id,
-      name:    `${agent.id.padEnd(28)} ${agent.description}`,
+      name:    `${agent.id.padEnd(28)} ${agent.description}${isCore ? ' (core)' : ''}`,
       checked: DEFAULT_SELECTED.has(agent.id),
+      disabled: isCore ? 'core — always installed' : false,
     });
   }
   return choices;
@@ -127,9 +151,6 @@ function writeInstallConfig(specrailsDir, cfg) {
     `  preset: ${cfg.modelPreset}`,
     `  defaults: { model: ${cfg.modelDefaults} }`,
     `  overrides:${overridesYaml}`,
-    `quick_context:`,
-    `  product_description: "${cfg.productDescription.replace(/"/g, '\\"')}"`,
-    `  target_users: "${cfg.targetUsers.replace(/"/g, '\\"')}"`,
     `agent_teams: ${cfg.agentTeams}`,
     '',
   ].join('\n');
@@ -148,8 +169,6 @@ function writeDefaultConfig(specrailsDir, provider) {
     modelPreset:    'balanced',
     modelDefaults:  'sonnet',
     modelOverrides: {},
-    productDescription: '',
-    targetUsers:    '',
     agentTeams:     false,
   });
 }
@@ -165,12 +184,7 @@ async function run() {
 
   const specrailsDir = resolve(rootDir, '.specrails');
 
-  console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║      specrails — Direct Install (v1)         ║');
-  console.log('║  Configure your AI agent workflow system     ║');
-  console.log('╚══════════════════════════════════════════════╝\n');
-
-  // Auto-yes: write defaults and exit
+  // Auto-yes: write defaults and exit (no TUI needed)
   if (autoYes) {
     const { hasClaude, hasCodex } = detectProvider();
     const provider = hasCodex && !hasClaude ? 'codex' : 'claude';
@@ -179,6 +193,28 @@ async function run() {
     console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
     return;
   }
+
+  // ── Enter fullscreen ────────────────────────────────────────────────────────
+
+  enterFullscreen();
+
+  // Ensure we exit fullscreen on any exit path
+  const _exitFs = () => exitFullscreen();
+  process.on('exit', _exitFs);
+
+  const cols = process.stdout.columns || 80;
+  const banner = [
+    '',
+    '╔══════════════════════════════════════════════════════════════╗',
+    '║           specrails — Agent Workflow Installer              ║',
+    '║       Configure your AI agent workflow system               ║',
+    '╚══════════════════════════════════════════════════════════════╝',
+    '',
+    `  Target: ${rootDir}`,
+    `  ${'─'.repeat(Math.min(cols - 4, 60))}`,
+    '',
+  ];
+  console.log(banner.join('\n'));
 
   // ── Step 1: Provider ────────────────────────────────────────────────────────
 
@@ -207,35 +243,51 @@ async function run() {
 
   // ── Step 2: Installation tier ───────────────────────────────────────────────
 
+  clearScreen();
+  console.log(`  Provider: ${provider}\n`);
+
   const tier = await select({
     message: 'Installation tier:',
+    default: 'quick',
     choices: [
       {
-        value:       'full',
-        name:        'Full — AI-powered setup (recommended)',
-        description: 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
+        value:       'quick',
+        name:        'Quick — Ready to use immediately (recommended)',
+        description: 'Agents installed with sensible defaults. No AI step required.',
       },
       {
-        value:       'quick',
-        name:        'Quick — Template-only install',
-        description: 'Agents installed with sensible defaults. No AI step required.',
+        value:       'full',
+        name:        'Full — AI-powered setup',
+        description: 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
       },
     ],
   });
 
   // ── Step 3: Agent selection ─────────────────────────────────────────────────
 
-  console.log('\n  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}\n`);
+  console.log('  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
 
-  const selectedAgents = await checkbox({
+  // Use most of the terminal height for agent list (reserve 6 lines for header/footer)
+  const termRows = process.stdout.rows || 24;
+  const agentPageSize = Math.max(10, termRows - 6);
+
+  const userSelected = await checkbox({
     message: 'Agents to install:',
     choices: buildCheckboxChoices(),
+    pageSize: agentPageSize,
     validate: (selected) => selected.length > 0 || 'Select at least one agent.',
   });
 
+  // Core agents are always included regardless of checkbox state
+  const selectedAgents = [...new Set([...CORE_AGENTS, ...userSelected])];
   const excludedAgents = ALL_AGENT_IDS.filter(id => !selectedAgents.includes(id));
 
   // ── Step 4: Model preset ────────────────────────────────────────────────────
+
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length}\n`);
 
   const modelPreset = await select({
     message: 'Model configuration:',
@@ -249,6 +301,9 @@ async function run() {
 
   // ── Step 5: Agent Teams (Claude only) ──────────────────────────────────────
 
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}  |  Preset: ${modelPreset}\n`);
+
   let agentTeams = false;
   if (provider === 'claude') {
     agentTeams = await select({
@@ -260,21 +315,9 @@ async function run() {
     });
   }
 
-  // ── Step 6: Quick context ───────────────────────────────────────────────────
+  // ── Write config & exit fullscreen ──────────────────────────────────────────
 
-  console.log('\n  Quick context helps specrails personalize agents for your project.\n');
-
-  const productDescription = await input({
-    message: 'Product description (2–3 sentences):',
-    validate: (v) => v.trim().length > 0 || 'Please enter a brief product description.',
-  });
-
-  const targetUsers = await input({
-    message: 'Target users (who will use this product?):',
-    validate: (v) => v.trim().length > 0 || 'Please describe your target users.',
-  });
-
-  // ── Write config ────────────────────────────────────────────────────────────
+  exitFullscreen();
 
   writeInstallConfig(specrailsDir, {
     provider,
@@ -284,8 +327,6 @@ async function run() {
     modelPreset,
     modelDefaults,
     modelOverrides,
-    productDescription: productDescription.trim(),
-    targetUsers:        targetUsers.trim(),
     agentTeams,
   });
 
@@ -299,6 +340,7 @@ async function run() {
 }
 
 run().catch(err => {
+  exitFullscreen();
   // Graceful Ctrl+C handling
   if (err.name === 'ExitPromptError' || (err.message && err.message.includes('User force closed'))) {
     console.error('\n  Installation cancelled by user.\n');

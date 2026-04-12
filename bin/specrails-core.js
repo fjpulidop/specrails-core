@@ -10,6 +10,7 @@ const COMMANDS = {
   doctor: "bin/doctor.sh",
   "perf-check": "bin/perf-check.sh",
   enrich: null,
+  version: null,
 };
 
 const args = process.argv.slice(2);
@@ -24,6 +25,7 @@ Usage:
   specrails-core doctor                                      Run health checks
   specrails-core perf-check [--files <list>]                 Performance regression check (CI)
   specrails-core enrich     [--from-config <path>]           Run /specrails:enrich via Claude CLI
+  specrails-core version                                     Show installed version
 
 Flags for init:
   --root-dir <path>   Target repository path (default: current directory)
@@ -38,7 +40,7 @@ More info: https://github.com/fjpulidop/specrails-core`);
 
 if (!(subcommand in COMMANDS)) {
   console.error(`Unknown command: ${subcommand}\n`);
-  console.error("Available commands: init, update, doctor, perf-check, enrich");
+  console.error("Available commands: init, update, doctor, perf-check, enrich, version");
   process.exit(1);
 }
 
@@ -51,6 +53,7 @@ const ALLOWED_FLAGS = {
   doctor: [],
   "perf-check": ["--files", "--context"],
   enrich: ["--from-config", "--quick"],
+  version: [],
 };
 
 const subargs = args.slice(1);
@@ -61,6 +64,14 @@ for (const arg of subargs) {
     console.error(`Unknown flag: ${arg}`);
     process.exit(1);
   }
+}
+
+// ─── version subcommand ──────────────────────────────────────────────────────
+
+if (subcommand === "version") {
+  const pkg = require(resolve(ROOT, "package.json"));
+  console.log(`specrails-core v${pkg.version}`);
+  process.exit(0);
 }
 
 // ─── enrich subcommand ───────────────────────────────────────────────────────

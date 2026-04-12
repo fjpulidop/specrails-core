@@ -24,6 +24,10 @@ bash "$SCRIPT_DIR/test-templates.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-tui-installer.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-install-config.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-enrich-command.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-agent-selection.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-quick-tier.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-gitignore.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-hub-json.sh" || TOTAL_EXIT=1
 
 if [[ "$TOTAL_EXIT" -eq 0 ]]; then
     echo -e "\033[0;32m✓ All test suites passed\033[0m"

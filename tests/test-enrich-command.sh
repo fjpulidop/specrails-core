@@ -250,17 +250,17 @@ run_test "SPEA-743: integration-contract.json staged in setup-templates on insta
 # from SPEA-738 is intact and compatible with the install-config schema.
 # ─────────────────────────────────────────────
 
-test_agents_yaml_template_in_setup_command() {
-    # /specrails:setup should generate .specrails/agents.yaml (SPEA-738)
-    local setup_cmd="$SPECRAILS_DIR/templates/commands/specrails/setup.md"
-    assert_file_exists "$setup_cmd" \
-        "templates/commands/specrails/setup.md should exist"
+test_agents_yaml_template_in_enrich_command() {
+    # /specrails:enrich should reference .specrails/agents.yaml (SPEA-738)
+    local enrich_cmd="$SPECRAILS_DIR/templates/commands/specrails/enrich.md"
+    assert_file_exists "$enrich_cmd" \
+        "templates/commands/specrails/enrich.md should exist"
     local content
-    content="$(cat "$setup_cmd")"
+    content="$(cat "$enrich_cmd")"
     assert_contains "$content" "agents.yaml" \
-        "setup.md should reference agents.yaml generation"
+        "enrich.md should reference agents.yaml generation"
 }
-run_test "SPEA-738: setup.md references agents.yaml generation" test_agents_yaml_template_in_setup_command
+run_test "SPEA-738: enrich.md references agents.yaml generation" test_agents_yaml_template_in_enrich_command
 
 test_reconfig_command_exists() {
     assert_file_exists \

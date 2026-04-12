@@ -55,9 +55,6 @@ models:
   overrides:
     sr-architect: opus
     sr-product-manager: opus
-quick_context:
-  product_description: "A test platform"
-  target_users: "Engineering teams"
 agent_teams: false
 YAML
 }
