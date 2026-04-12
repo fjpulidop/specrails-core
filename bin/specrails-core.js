@@ -16,6 +16,14 @@ const COMMANDS = {
 const args = process.argv.slice(2);
 const subcommand = args[0];
 
+// ─── Global --version / -V flag ──────────────────────────────────────────────
+
+if (args.includes("--version") || args.includes("-V")) {
+  const pkg = require(resolve(ROOT, "package.json"));
+  console.log(`specrails-core v${pkg.version}`);
+  process.exit(0);
+}
+
 if (!subcommand) {
   console.log(`specrails-core — Agent Workflow System for Claude Code
 
@@ -33,6 +41,9 @@ Flags for init:
   --provider <value>  Force provider: claude or codex
   --no-direct         Skip TUI; use the legacy interactive bash installer
   --from-config       Skip TUI; use existing .specrails/install-config.yaml
+
+Global flags:
+  --version | -V    Show installed version
 
 More info: https://github.com/fjpulidop/specrails-core`);
   process.exit(0);
