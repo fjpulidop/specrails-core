@@ -743,9 +743,6 @@ models:
   preset: balanced
   defaults: { model: sonnet }
   overrides: {}
-quick_context:
-  product_description: ""
-  target_users: ""
 agent_teams: ${_ic_agent_teams}
 YAML
     ok "Written .specrails/install-config.yaml (defaults)"
@@ -893,15 +890,6 @@ if [[ "$TIER" == "quick" ]]; then
 
     _templates="${REPO_ROOT}/.specrails/setup-templates"
     _project_name="$(basename "$REPO_ROOT")"
-    _quick_product_desc=""
-    _quick_target_users=""
-
-    # Read quick_context from install-config.yaml if available
-    _qc_file="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
-    if [[ -f "$_qc_file" ]]; then
-        _quick_product_desc=$(grep '^\s*product_description:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*product_description:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
-        _quick_target_users=$(grep '^\s*target_users:' "$_qc_file" 2>/dev/null | head -1 | sed 's/.*target_users:[[:space:]]*//' | sed 's/^"//;s/"$//' || true)
-    fi
 
     # VPC/persona-dependent agents are excluded from Quick tier (require enrichment)
     _quick_excluded_agents="sr-product-manager sr-product-analyst"
@@ -927,8 +915,6 @@ if [[ "$TIER" == "quick" ]]; then
             # Substitute known placeholders
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
-                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
                 -e "s|{{MEMORY_PATH}}|.claude/agent-memory/${_name}/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
@@ -983,8 +969,6 @@ if [[ "$TIER" == "quick" ]]; then
             cp "$_src" "$_dest"
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{PROJECT_DESCRIPTION}}|${_quick_product_desc}|g" \
-                -e "s|{{TARGET_USERS}}|${_quick_target_users}|g" \
                 -e "s|{{MEMORY_PATH}}|.claude/agent-memory/|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \

@@ -9,7 +9,7 @@
  *   --yes    - skip TUI, write defaults immediately
  */
 
-import { checkbox, select, input, Separator } from '@inquirer/prompts';
+import { checkbox, select, Separator } from '@inquirer/prompts';
 import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -151,9 +151,6 @@ function writeInstallConfig(specrailsDir, cfg) {
     `  preset: ${cfg.modelPreset}`,
     `  defaults: { model: ${cfg.modelDefaults} }`,
     `  overrides:${overridesYaml}`,
-    `quick_context:`,
-    `  product_description: "${cfg.productDescription.replace(/"/g, '\\"')}"`,
-    `  target_users: "${cfg.targetUsers.replace(/"/g, '\\"')}"`,
     `agent_teams: ${cfg.agentTeams}`,
     '',
   ].join('\n');
@@ -172,8 +169,6 @@ function writeDefaultConfig(specrailsDir, provider) {
     modelPreset:    'balanced',
     modelDefaults:  'sonnet',
     modelOverrides: {},
-    productDescription: '',
-    targetUsers:    '',
     agentTeams:     false,
   });
 }
@@ -320,22 +315,6 @@ async function run() {
     });
   }
 
-  // ── Step 6: Quick context ───────────────────────────────────────────────────
-
-  clearScreen();
-  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}  |  Preset: ${modelPreset}\n`);
-  console.log('  Quick context helps specrails personalize agents for your project.\n');
-
-  const productDescription = await input({
-    message: 'Product description (2–3 sentences):',
-    validate: (v) => v.trim().length > 0 || 'Please enter a brief product description.',
-  });
-
-  const targetUsers = await input({
-    message: 'Target users (who will use this product?):',
-    validate: (v) => v.trim().length > 0 || 'Please describe your target users.',
-  });
-
   // ── Write config & exit fullscreen ──────────────────────────────────────────
 
   exitFullscreen();
@@ -348,8 +327,6 @@ async function run() {
     modelPreset,
     modelDefaults,
     modelOverrides,
-    productDescription: productDescription.trim(),
-    targetUsers:        targetUsers.trim(),
     agentTeams,
   });
 

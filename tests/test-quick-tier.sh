@@ -438,10 +438,10 @@ test_quick_creates_integration_contract() {
 run_test "quick tier installs integration-contract.json" test_quick_creates_integration_contract
 
 # ─────────────────────────────────────────────
-# Quick context (product_description, target_users)
+# Placeholder stripping (no leftover {{...}})
 # ─────────────────────────────────────────────
 
-test_quick_context_substitution() {
+test_quick_placeholders_stripped() {
     local cfg="$TEST_TMPDIR/cfg.yaml"
     cat > "$cfg" <<'YAML'
 version: 1
@@ -453,23 +453,20 @@ models:
   preset: balanced
   defaults: { model: sonnet }
   overrides: {}
-quick_context:
-  product_description: "Test product for CI"
-  target_users: "QA engineers"
 YAML
     local target
     target="$(_quick_install "$cfg")"
     local architect="$target/.claude/agents/sr-architect.md"
     if [[ -f "$architect" ]]; then
-        if grep -q '{{PROJECT_DESCRIPTION}}' "$architect"; then
-            echo "  FAIL: {{PROJECT_DESCRIPTION}} should have been substituted"
+        if grep -q '{{[A-Z_]*}}' "$architect"; then
+            echo "  FAIL: leftover {{PLACEHOLDER}} found in agent file"
             return 1
         fi
     else
         echo "  SKIP: sr-architect.md not found"
     fi
 }
-run_test "quick context product_description substituted into agents" test_quick_context_substitution
+run_test "quick tier strips all remaining placeholders from agents" test_quick_placeholders_stripped
 
 # ─────────────────────────────────────────────
 # Rules installed in quick tier

@@ -50,8 +50,6 @@
       "models.preset": "string — balanced | budget | max",
       "models.defaults.model": "string — sonnet | opus | haiku (overrides preset)",
       "models.overrides": "Record<string, string> — per-agent model (highest priority)",
-      "quick_context.product_description": "string — product description seed for VPC discovery",
-      "quick_context.target_users": "string — target users seed for VPC discovery",
       "agent_teams": "boolean — install team-review and team-debug commands"
     }
   },

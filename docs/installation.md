@@ -280,9 +280,6 @@ agents:
 models:
   preset: balanced      # balanced | budget | max
   overrides: {}         # per-agent overrides: { sr-architect: opus }
-quick_context:
-  product_description: ""   # product description seed
-  target_users: ""          # target users seed
 agent_teams: false      # install team-review/team-debug commands
 ```
 

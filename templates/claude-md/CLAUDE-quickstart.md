@@ -1,9 +1,5 @@
 # {{PROJECT_NAME}}
 
-> {{PROJECT_DESCRIPTION}}
-
-**Target users:** {{TARGET_USERS}}
-
 ---
 
 ## Agent Team

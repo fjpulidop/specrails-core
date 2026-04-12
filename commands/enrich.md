@@ -52,8 +52,6 @@ Parse the YAML and extract:
 - `config.models.preset` — `balanced`, `budget`, or `max` (see Model Presets below)
 - `config.models.defaults.model` — default model override (overrides preset)
 - `config.models.overrides` — per-agent model overrides (highest priority)
-- `config.quick_context.product_description` — product description seed
-- `config.quick_context.target_users` — target users seed
 - `config.agent_teams` — boolean; whether to install team-review/team-debug commands
 
 Store all values in variables prefixed `FC_`.
@@ -78,21 +76,19 @@ Set `SPECRAILS_DIR` and `CLI_PROVIDER` from resolved provider.
 ### FC3: If tier is `quick` — run Quick Mode with config context
 
 If `FC_tier == "quick"`:
-- Set `QS_PROJECT_DESCRIPTION = FC_quick_context.product_description`
-- Set `QS_TARGET_USERS = FC_quick_context.target_users`  
 - Set `FC_AGENTS_SELECTED` as the list of agents to generate (instead of defaults)
-- Execute Quick Mode (QS1–QS4) with these values injected, generating all `FC_AGENTS_SELECTED` agents (not just defaults)
+- Execute Quick Mode (QS1–QS4), generating all `FC_AGENTS_SELECTED` agents (not just defaults)
 - Then stop.
 
 ### FC4: If tier is `full` — run automated full wizard
 
 **Phase 1 (Silent):** Run the full Phase 1 analysis (1.1–1.4) without any user prompts. Store all detected values internally.
 
-**Phase 2 (Seeded VPC Discovery):** Run VPC persona generation using `FC_quick_context` as seeds:
-- Treat `FC_quick_context.product_description` as the answer to "Describe your product"
-- Treat `FC_quick_context.target_users` as the answer to "Who are your users"
-- Use AI to expand these seeds into full VPC personas (3 primary, 3 secondary)
-- Do not ask the user any questions — infer all answers from seeds + codebase analysis
+**Phase 2 (AI-Inferred VPC Discovery):** Run VPC persona generation from codebase analysis:
+- Analyze the codebase (README, package.json, source code, configs) to infer what the product does and who it serves
+- Generate `PROJECT_DESCRIPTION` (2–3 sentence summary) and `TARGET_USERS` from analysis
+- Use these inferred values to generate full VPC personas (3 primary, 3 secondary)
+- Do not ask the user any questions — infer everything from codebase analysis
 
 **Phase 3 (Silent):** Run Phase 3 normally without user prompts.
 
@@ -415,20 +411,26 @@ Update `.specrails/specrails-manifest.json` to reflect the new checksums for all
 
 When `--quick` or `--lite` is passed, run this streamlined 3-question setup. Do NOT run Phase 1–5. When QS4 is complete, stop.
 
-### QS1: Ask the 3 questions
+### QS1: Infer context and ask git access
 
-Display the following prompt EXACTLY ONCE and then wait for the user's responses. Do NOT repeat the questions — output them a single time only.
+**Step 1 — AI inference (silent):** Analyze the codebase to infer:
+- `QS_PROJECT_DESCRIPTION` — a 2–3 sentence summary of what this project does (from README, package.json, source code, configs)
+- `QS_TARGET_USERS` — who the target users are (from docs, UI copy, API design, domain language)
 
-Welcome to specrails! Let's get your AI agent team set up in 3 quick questions.
+**Step 2 — Ask one question:**
 
-1. What is this project? (one sentence)
-2. Who are the target users?
-3. Git access for agents — read-only or read-write?
+Display the following prompt EXACTLY ONCE:
+
+Welcome to specrails! Let's get your AI agent team set up.
+
+I've analyzed your codebase:
+- **Project:** {QS_PROJECT_DESCRIPTION}
+- **Target users:** {QS_TARGET_USERS}
+
+1. Git access for agents — read-only or read-write?
    (read-only = agents can read and suggest; read-write = agents can commit)
 
-Store the answers as:
-- `QS_PROJECT_DESCRIPTION` — answer to question 1
-- `QS_TARGET_USERS` — answer to question 2
+Store the answer as:
 - `QS_GIT_ACCESS` — "read-only" or "read-write" (normalize if user types "ro", "rw", "readonly", etc.)
 
 ### QS2: Apply opinionated defaults
@@ -490,8 +492,6 @@ Read `.specrails/setup-templates/claude-md/CLAUDE-quickstart.md` (or fall back t
 
 Replace placeholders:
 - `{{PROJECT_NAME}}` → derive from directory name or README.md first heading
-- `{{PROJECT_DESCRIPTION}}` → `QS_PROJECT_DESCRIPTION`
-- `{{TARGET_USERS}}` → `QS_TARGET_USERS`
 - `{{GIT_ACCESS}}` → `QS_GIT_ACCESS`
 
 Write to `CLAUDE.md` in the repo root. If `CLAUDE.md` already exists, ask:
@@ -506,8 +506,6 @@ For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-mana
 
 Fill placeholders with best-effort values from the limited context available:
 - `{{PROJECT_NAME}}` → directory name or README first heading
-- `{{PROJECT_DESCRIPTION}}` → `QS_PROJECT_DESCRIPTION`
-- `{{TARGET_USERS}}` → `QS_TARGET_USERS`
 - `{{GIT_ACCESS}}` → `QS_GIT_ACCESS`
 - `{{ARCHITECTURE_DIAGRAM}}` → "(Quick Mode — run `/specrails:enrich` for full architecture analysis)"
 - `{{TECH_EXPERTISE}}` → "(Quick Mode — run `/specrails:enrich` for codebase-specific expertise)"
