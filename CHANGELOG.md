@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.8.2](https://github.com/fjpulidop/specrails-core/compare/v3.8.1...v3.8.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* Quick tier .gitignore, conditional filtering, and explanations dir (SPEA-741) ([#224](https://github.com/fjpulidop/specrails-core/issues/224)) ([ad3bddf](https://github.com/fjpulidop/specrails-core/commit/ad3bddf361f56bcd75f8aad853090fbd8f8c8108))
+
 ## [3.8.1](https://github.com/fjpulidop/specrails-core/compare/v3.8.0...v3.8.1) (2026-04-11)
 
 
