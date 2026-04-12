@@ -14,6 +14,21 @@ import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
+// ─── Alternate screen buffer (fullscreen mode) ──────────────────────────────
+
+function enterFullscreen() {
+  process.stdout.write('\x1b[?1049h'); // switch to alternate screen buffer
+  process.stdout.write('\x1b[H');      // move cursor to top-left
+}
+
+function exitFullscreen() {
+  process.stdout.write('\x1b[?1049l'); // restore original screen buffer
+}
+
+function clearScreen() {
+  process.stdout.write('\x1b[2J\x1b[H'); // clear screen + cursor to top
+}
+
 // ─── Agent registry ───────────────────────────────────────────────────────────
 
 const AGENTS = [
@@ -174,12 +189,7 @@ async function run() {
 
   const specrailsDir = resolve(rootDir, '.specrails');
 
-  console.log('\n╔══════════════════════════════════════════════╗');
-  console.log('║      specrails — Direct Install (v1)         ║');
-  console.log('║  Configure your AI agent workflow system     ║');
-  console.log('╚══════════════════════════════════════════════╝\n');
-
-  // Auto-yes: write defaults and exit
+  // Auto-yes: write defaults and exit (no TUI needed)
   if (autoYes) {
     const { hasClaude, hasCodex } = detectProvider();
     const provider = hasCodex && !hasClaude ? 'codex' : 'claude';
@@ -188,6 +198,28 @@ async function run() {
     console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
     return;
   }
+
+  // ── Enter fullscreen ────────────────────────────────────────────────────────
+
+  enterFullscreen();
+
+  // Ensure we exit fullscreen on any exit path
+  const _exitFs = () => exitFullscreen();
+  process.on('exit', _exitFs);
+
+  const cols = process.stdout.columns || 80;
+  const banner = [
+    '',
+    '╔══════════════════════════════════════════════════════════════╗',
+    '║           specrails — Agent Workflow Installer              ║',
+    '║       Configure your AI agent workflow system               ║',
+    '╚══════════════════════════════════════════════════════════════╝',
+    '',
+    `  Target: ${rootDir}`,
+    `  ${'─'.repeat(Math.min(cols - 4, 60))}`,
+    '',
+  ];
+  console.log(banner.join('\n'));
 
   // ── Step 1: Provider ────────────────────────────────────────────────────────
 
@@ -216,6 +248,9 @@ async function run() {
 
   // ── Step 2: Installation tier ───────────────────────────────────────────────
 
+  clearScreen();
+  console.log(`  Provider: ${provider}\n`);
+
   const tier = await select({
     message: 'Installation tier:',
     choices: [
@@ -234,11 +269,18 @@ async function run() {
 
   // ── Step 3: Agent selection ─────────────────────────────────────────────────
 
-  console.log('\n  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}\n`);
+  console.log('  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
+
+  // Use most of the terminal height for agent list (reserve 6 lines for header/footer)
+  const termRows = process.stdout.rows || 24;
+  const agentPageSize = Math.max(10, termRows - 6);
 
   const userSelected = await checkbox({
     message: 'Agents to install:',
     choices: buildCheckboxChoices(),
+    pageSize: agentPageSize,
     validate: (selected) => selected.length > 0 || 'Select at least one agent.',
   });
 
@@ -247,6 +289,9 @@ async function run() {
   const excludedAgents = ALL_AGENT_IDS.filter(id => !selectedAgents.includes(id));
 
   // ── Step 4: Model preset ────────────────────────────────────────────────────
+
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length}\n`);
 
   const modelPreset = await select({
     message: 'Model configuration:',
@@ -259,6 +304,9 @@ async function run() {
   const { defaults: modelDefaults, overrides: modelOverrides } = MODEL_PRESETS[modelPreset];
 
   // ── Step 5: Agent Teams (Claude only) ──────────────────────────────────────
+
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}  |  Preset: ${modelPreset}\n`);
 
   let agentTeams = false;
   if (provider === 'claude') {
@@ -273,7 +321,9 @@ async function run() {
 
   // ── Step 6: Quick context ───────────────────────────────────────────────────
 
-  console.log('\n  Quick context helps specrails personalize agents for your project.\n');
+  clearScreen();
+  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}  |  Preset: ${modelPreset}\n`);
+  console.log('  Quick context helps specrails personalize agents for your project.\n');
 
   const productDescription = await input({
     message: 'Product description (2–3 sentences):',
@@ -285,7 +335,9 @@ async function run() {
     validate: (v) => v.trim().length > 0 || 'Please describe your target users.',
   });
 
-  // ── Write config ────────────────────────────────────────────────────────────
+  // ── Write config & exit fullscreen ──────────────────────────────────────────
+
+  exitFullscreen();
 
   writeInstallConfig(specrailsDir, {
     provider,
@@ -310,6 +362,7 @@ async function run() {
 }
 
 run().catch(err => {
+  exitFullscreen();
   // Graceful Ctrl+C handling
   if (err.name === 'ExitPromptError' || (err.message && err.message.includes('User force closed'))) {
     console.error('\n  Installation cancelled by user.\n');

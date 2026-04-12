@@ -502,6 +502,16 @@ else
 fi
 
 # 1.5 OpenSpec CLI
+# Read pinned version from package.json (specrails.openspecVersion field)
+_openspec_pkg_version=""
+if [[ -f "$SCRIPT_DIR/package.json" ]]; then
+    _openspec_pkg_version=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/package.json')); print(d.get('specrails',{}).get('openspecVersion',''))" 2>/dev/null || true)
+fi
+_openspec_install_spec="@openspec/cli"
+if [[ -n "$_openspec_pkg_version" ]]; then
+    _openspec_install_spec="@openspec/cli@${_openspec_pkg_version}"
+fi
+
 if command -v openspec &> /dev/null; then
     OPENSPEC_VERSION=$(openspec --version 2>/dev/null || echo "unknown")
     ok "OpenSpec CLI: $OPENSPEC_VERSION"
@@ -510,17 +520,21 @@ elif [ -f "$REPO_ROOT/node_modules/.bin/openspec" ]; then
     ok "OpenSpec CLI: found in node_modules"
     HAS_OPENSPEC=true
 else
-    warn "OpenSpec CLI not found."
     if [ "$HAS_NPM" = true ]; then
-        if [ "$AUTO_YES" = true ]; then INSTALL_OPENSPEC="y"; else read -p "    Install OpenSpec CLI globally? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"; fi
+        # Auto-install in --yes mode; ask otherwise
+        if [ "$AUTO_YES" = true ]; then
+            INSTALL_OPENSPEC="y"
+        else
+            read -p "    OpenSpec CLI not found. Install ${_openspec_install_spec}? (y/n): " INSTALL_OPENSPEC || INSTALL_OPENSPEC="n"
+        fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
-            info "Installing OpenSpec CLI..."
-            npm install -g @openspec/cli 2>/dev/null && {
-                ok "OpenSpec CLI installed"
+            info "Installing ${_openspec_install_spec}..."
+            npm install -g "${_openspec_install_spec}" 2>/dev/null && {
+                ok "OpenSpec CLI installed ($(openspec --version 2>/dev/null || echo "${_openspec_pkg_version}"))"
                 HAS_OPENSPEC=true
             } || {
                 warn "Global install failed. Trying local..."
-                cd "$REPO_ROOT" && npm install @openspec/cli 2>/dev/null && {
+                cd "$REPO_ROOT" && npm install "${_openspec_install_spec}" 2>/dev/null && {
                     ok "OpenSpec CLI installed locally"
                     HAS_OPENSPEC=true
                 } || {

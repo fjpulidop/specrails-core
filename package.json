@@ -52,6 +52,9 @@
     "test": "bash tests/run-all.sh",
     "test:coverage": "bash tests/run-coverage.sh"
   },
+  "specrails": {
+    "openspecVersion": "1.2.0"
+  },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0"
   },
