@@ -634,6 +634,7 @@ step "Phase 3: Installing specrails artifacts"
 
 # Create directory structure
 mkdir -p "$REPO_ROOT/specrails"
+mkdir -p "$REPO_ROOT/$SPECRAILS_DIR"
 if [[ "$CLI_PROVIDER" == "codex" ]]; then
     # Codex: install as Agent Skills (Codex doesn't support .codex/commands/)
     mkdir -p "$REPO_ROOT/.agents/skills/enrich"
