@@ -1072,8 +1072,12 @@ fi
 
 # Initialize OpenSpec if available and not already initialized
 if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
-    info "Initializing OpenSpec..."
-    cd "$REPO_ROOT" && openspec init 2>/dev/null && {
+    # Map specrails provider to openspec tool name
+    _openspec_tool="claude"
+    [[ "$CLI_PROVIDER" == "codex" ]] && _openspec_tool="codex"
+
+    info "Initializing OpenSpec (--tools ${_openspec_tool} --force)..."
+    cd "$REPO_ROOT" && openspec init --tools "${_openspec_tool}" --force 2>/dev/null && {
         ok "OpenSpec initialized"
     } || {
         warn "OpenSpec init failed — you can run 'openspec init' manually later"
