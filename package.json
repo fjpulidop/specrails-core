@@ -56,7 +56,7 @@
     "openspecVersion": "1.2.0"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.0.0"
+    "@inquirer/prompts": "^8.4.1"
   },
   "license": "MIT",
   "author": "fjpulidop"
