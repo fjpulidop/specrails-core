@@ -547,7 +547,7 @@ Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually laun
 
 #### Launch modes
 
-For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent with its task subset.
+For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using its `subagent_type` (`sr:developer`, `sr:frontend-developer`, or `sr:backend-developer`) with its task subset.
 
 **If `SINGLE_MODE` and only one agent in routing**: Launch in the main repo, foreground.
 **If `SINGLE_MODE` but multiple agents in routing**: Launch agents sequentially in the main repo (one at a time, foreground), passing only their assigned tasks.
@@ -561,7 +561,7 @@ Wait for all developers to complete.
 
 **Guard:** If `sr-test-writer` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3c] sr-test-writer not installed — skipping test generation.` Update pipeline state: `test-writer` → `skipped`. Proceed to Phase 3d.
 
-Launch a **sr-test-writer** agent for each feature immediately after its developer completes.
+Launch a **sr-test-writer** agent (`subagent_type: sr:test-writer`) for each feature immediately after its developer completes.
 
 Construct the agent invocation prompt to include:
 - **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
@@ -597,7 +597,7 @@ If a test-writer agent fails or times out:
 
 **Guard:** If `sr-doc-sync` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3d] sr-doc-sync not installed — skipping doc sync.` Update pipeline state: `doc-sync` → `skipped`. Proceed to Phase 4.
 
-Launch a **sr-doc-sync** agent for each feature after its tests are written.
+Launch a **sr-doc-sync** agent (`subagent_type: sr:doc-sync`) for each feature after its tests are written.
 
 Construct the agent invocation prompt to include:
 - **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
@@ -825,22 +825,22 @@ If a reviewer is skipped, set its report variable to `"SKIPPED"` and note the re
 
 #### Step 3: Launch Layer Reviewers in Parallel
 
-Launch all applicable layer reviewers in parallel (`run_in_background: true`).
+Launch all applicable layer reviewers in parallel (`run_in_background: true`), using the corresponding `subagent_type` for each (`sr:frontend-reviewer`, `sr:backend-reviewer`, `sr:security-reviewer`, `sr:performance-reviewer`):
 
-**sr-frontend-reviewer** (if applicable per Step 2):
+**sr-frontend-reviewer** (`subagent_type: sr:frontend-reviewer`, if applicable per Step 2):
 - Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-backend-reviewer** (if applicable per Step 2):
+**sr-backend-reviewer** (`subagent_type: sr:backend-reviewer`, if applicable per Step 2):
 - Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-security-reviewer** (if applicable per Step 2):
+**sr-security-reviewer** (`subagent_type: sr:security-reviewer`, if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 - Pass the exemptions config path: `.claude/security-exemptions.yaml`
 
-**sr-performance-reviewer** (if applicable per Step 2):
+**sr-performance-reviewer** (`subagent_type: sr:performance-reviewer`, if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
@@ -872,7 +872,7 @@ Note: if total layer report length is very large, truncate each layer report to 
 
 **The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
 
-Launch the **sr-reviewer** agent (foreground, `run_in_background: false`). Wait for it to complete.
+Launch the **sr-reviewer** agent (`subagent_type: sr:reviewer`, foreground, `run_in_background: false`). Wait for it to complete.
 
 **Pipeline state:** update `reviewer` → `done` (or `failed` with error context `"sr-reviewer timed out or did not complete"` if the agent errored out).
 
