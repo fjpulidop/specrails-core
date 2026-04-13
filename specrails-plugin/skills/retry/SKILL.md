@@ -276,10 +276,18 @@ Wait for all to complete. Parse `SECURITY_BLOCKED`, `FRONTEND_STATUS`, `BACKEND_
 Agents in subagent_type use the following format:
 - `sr:architect`
 - `sr:developer`
+- `sr:frontend-developer`
+- `sr:backend-developer`
+- `sr:test-writer`
+- `sr:doc-sync`
 - `sr:reviewer`
-- `sr:security-reviewer`
-- `sr:backend-reviewer`
 - `sr:frontend-reviewer`
+- `sr:backend-reviewer`
+- `sr:security-reviewer`
+- `sr:performance-reviewer`
+- `sr:merge-resolver`
+- `sr:product-manager`
+- `sr:product-analyst`
 
 **Pipeline state update:** `reviewer` → `done` or `failed`.
 

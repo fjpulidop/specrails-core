@@ -437,6 +437,8 @@ Route tasks based on file extensions and patterns: frontend files (*.tsx, *.css,
 
 #### Launch modes
 
+For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using its `subagent_type` (`sr:developer`, `sr:frontend-developer`, or `sr:backend-developer`).
+
 **If `SINGLE_MODE`**: Launch in the main repo, foreground.
 **If multiple features**: Launch in isolated worktrees (`isolation: worktree`, `run_in_background: true`).
 
@@ -446,7 +448,7 @@ Wait for all developers to complete.
 
 ## Phase 3c: Write Tests
 
-Launch a **sr-test-writer** agent for each feature immediately after its developer completes.
+Launch a **sr-test-writer** agent (`subagent_type: sr:test-writer`) for each feature immediately after its developer completes.
 
 Construct the agent invocation prompt to include:
 - **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
@@ -480,7 +482,7 @@ If a test-writer agent fails or times out:
 
 ## Phase 3d: Doc Sync
 
-Launch a **sr-doc-sync** agent for each feature after its tests are written.
+Launch a **sr-doc-sync** agent (`subagent_type: sr:doc-sync`) for each feature after its tests are written.
 
 Construct the agent invocation prompt to include:
 - **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
@@ -694,17 +696,17 @@ If `BACKEND_FILES` is empty: set `BACKEND_REVIEW_REPORT = "SKIPPED"` and skip ba
 
 #### Step 2: Launch Layer Reviewers in Parallel
 
-Launch all applicable layer reviewers in parallel (`run_in_background: true`):
+Launch all applicable layer reviewers in parallel (`run_in_background: true`), using the corresponding `subagent_type` for each (`sr:frontend-reviewer`, `sr:backend-reviewer`, `sr:security-reviewer`, `sr:performance-reviewer`):
 
-**sr-frontend-reviewer** (if `FRONTEND_FILES` is non-empty):
+**sr-frontend-reviewer** (`subagent_type: sr:frontend-reviewer`, if `FRONTEND_FILES` is non-empty):
 - Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-backend-reviewer** (if `BACKEND_FILES` is non-empty):
+**sr-backend-reviewer** (`subagent_type: sr:backend-reviewer`, if `BACKEND_FILES` is non-empty):
 - Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 
-**sr-security-reviewer** (always):
+**sr-security-reviewer** (`subagent_type: sr:security-reviewer`, always):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
 - Pass the exemptions config path: `.claude/security-exemptions.yaml`
@@ -737,7 +739,7 @@ Note: if total layer report length is very large, truncate each layer report to 
 
 **The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
 
-Launch the **sr-reviewer** agent (foreground, `run_in_background: false`). Wait for it to complete.
+Launch the **sr-reviewer** agent (`subagent_type: sr:reviewer`, foreground, `run_in_background: false`). Wait for it to complete.
 
 **Pipeline state:** update `reviewer` → `done` (or `failed` with error context `"sr-reviewer timed out or did not complete"` if the agent errored out).
 
