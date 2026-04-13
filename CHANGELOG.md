@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.0.1](https://github.com/fjpulidop/specrails-core/compare/v4.0.0...v4.0.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* add explicit subagent_type to all agent launches in implement pipeline ([#232](https://github.com/fjpulidop/specrails-core/issues/232)) ([9df4841](https://github.com/fjpulidop/specrails-core/commit/9df4841e169c79ff4609aaf54363700f52bfa544))
+
+
+### Miscellaneous
+
+* **main:** release 4.0.0 ([#228](https://github.com/fjpulidop/specrails-core/issues/228)) ([624562e](https://github.com/fjpulidop/specrails-core/commit/624562ea22f8a94f8bfc45298fe8808af87015f6))
+
 ## [4.0.0](https://github.com/fjpulidop/specrails-core/compare/v3.8.2...v4.0.0) (2026-04-12)
 
 
