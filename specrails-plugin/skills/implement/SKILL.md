@@ -444,6 +444,8 @@ For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using
 
 Wait for all developers to complete.
 
+> **COMPLETION GUARD — MANDATORY:** Once all developer agents finish (success or failure), you MUST proceed through the remaining phases in order: Phase 3c (test writer) → Phase 3d (doc sync) → Phase 4a (merge worktrees) → Phase 4b (reviewer). NEVER exit after Phase 3b. The merge phase (4a) is non-negotiable — if a developer agent timed out or errored, still proceed to merge whatever files were written to the worktree. If context is running low, deprioritize Phase 3c and 3d but ALWAYS run Phase 4a before exiting.
+
 **Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"sr-developer failed: <exit code or error description>"`.
 
 ## Phase 3c: Write Tests
