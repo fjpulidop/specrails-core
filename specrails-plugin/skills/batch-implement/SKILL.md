@@ -158,7 +158,9 @@ Dependency graph:
 Proceed? (yes / no / edit-deps)
 ```
 
-Wait for user confirmation.
+**If `--yes` flag is present in `$ARGUMENTS`**: auto-proceed without asking. Skip this confirmation and continue to Phase 2 immediately.
+
+Otherwise, wait for user confirmation:
 
 - **`yes`**: proceed to Phase 2.
 - **`no`**: stop. Print `[batch-implement] Aborted by user.`
@@ -205,6 +207,7 @@ For each wave `W`:
      ```
    - Run invocations in the batch in parallel (`run_in_background: true`).
    - Wait for all in the batch to complete before starting the next batch.
+   - **COMPLETION GUARD**: Do not exit the wave loop early. Even if invocations take a long time or return errors, record outcomes and continue to the next batch/wave. Always reach Phase 3 (Batch Report).
 3. For each completed invocation, record outcome in `WAVE_RESULTS`:
    - `{ref, wave, status: "done" | "failed", error_summary: "..." | null}`
 
