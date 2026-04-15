@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.2](https://github.com/fjpulidop/specrails-core/compare/v4.0.1...v4.0.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* add completion guards to prevent early exit after developer phase ([#234](https://github.com/fjpulidop/specrails-core/issues/234)) ([31b367c](https://github.com/fjpulidop/specrails-core/commit/31b367c60aeea0417d417ebeb443e01585d0a48d))
+
 ## [4.0.1](https://github.com/fjpulidop/specrails-core/compare/v4.0.0...v4.0.1) (2026-04-13)
 
 
