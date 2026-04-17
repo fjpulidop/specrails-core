@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.3](https://github.com/fjpulidop/specrails-core/compare/v4.0.2...v4.0.3) (2026-04-17)
+
+
+### Documentation
+
+* **readme:** add Ko-fi donate link above License ([#236](https://github.com/fjpulidop/specrails-core/issues/236)) ([10c5f5b](https://github.com/fjpulidop/specrails-core/commit/10c5f5becf440eac4dc9faa1d5ae8bfb4b3537c6))
+
 ## [4.0.2](https://github.com/fjpulidop/specrails-core/compare/v4.0.1...v4.0.2) (2026-04-15)
 
 
