@@ -48,7 +48,7 @@ gh auth status 2>&1
 which openspec && openspec --version
 ```
 
-- If missing: try `npm install -g @openspec/cli`
+- If missing: try `npm install -g @fission-ai/openspec`
 - If install fails: **STOP** — openspec is required.
 
 #### 3. Project dependencies
