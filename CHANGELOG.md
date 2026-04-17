@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.4](https://github.com/fjpulidop/specrails-core/compare/v4.0.3...v4.0.4) (2026-04-17)
+
+
+### Documentation
+
+* **readme:** refresh README and drop Claude Code plugin path ([#238](https://github.com/fjpulidop/specrails-core/issues/238)) ([39cb1fa](https://github.com/fjpulidop/specrails-core/commit/39cb1fa7e42fedcb371638272e4b9cc4fed273ff))
+
 ## [4.0.3](https://github.com/fjpulidop/specrails-core/compare/v4.0.2...v4.0.3) (2026-04-17)
 
 
