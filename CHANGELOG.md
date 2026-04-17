@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.5](https://github.com/fjpulidop/specrails-core/compare/v4.0.4...v4.0.5) (2026-04-17)
+
+
+### Bug Fixes
+
+* **install:** use correct OpenSpec npm package name ([#240](https://github.com/fjpulidop/specrails-core/issues/240)) ([ab5aef7](https://github.com/fjpulidop/specrails-core/commit/ab5aef74c6d7e073a9565bdcb00de39764791f55))
+
 ## [4.0.4](https://github.com/fjpulidop/specrails-core/compare/v4.0.3...v4.0.4) (2026-04-17)
 
 
