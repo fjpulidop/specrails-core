@@ -521,9 +521,9 @@ _openspec_pkg_version=""
 if [[ -f "$SCRIPT_DIR/package.json" ]]; then
     _openspec_pkg_version=$(python3 -c "import json; d=json.load(open('$SCRIPT_DIR/package.json')); print(d.get('specrails',{}).get('openspecVersion',''))" 2>/dev/null || true)
 fi
-_openspec_install_spec="@openspec/cli"
+_openspec_install_spec="@fission-ai/openspec"
 if [[ -n "$_openspec_pkg_version" ]]; then
-    _openspec_install_spec="@openspec/cli@${_openspec_pkg_version}"
+    _openspec_install_spec="@fission-ai/openspec@${_openspec_pkg_version}"
 fi
 
 if command -v openspec &> /dev/null; then
@@ -543,19 +543,26 @@ else
         fi
         if [ "$INSTALL_OPENSPEC" = "y" ] || [ "$INSTALL_OPENSPEC" = "Y" ]; then
             info "Installing ${_openspec_install_spec}..."
-            npm install -g "${_openspec_install_spec}" 2>/dev/null && {
+            _npm_log="$(mktemp)"
+            if npm install -g "${_openspec_install_spec}" >"$_npm_log" 2>&1; then
                 ok "OpenSpec CLI installed ($(openspec --version 2>/dev/null || echo "${_openspec_pkg_version}"))"
                 HAS_OPENSPEC=true
-            } || {
-                warn "Global install failed. Trying local..."
-                cd "$REPO_ROOT" && npm install "${_openspec_install_spec}" 2>/dev/null && {
-                    ok "OpenSpec CLI installed locally"
+                rm -f "$_npm_log"
+            else
+                warn "Global install failed (often EACCES on fresh macOS). Trying local install in ${REPO_ROOT}..."
+                # Show last few lines of npm error for context
+                tail -n 5 "$_npm_log" | sed 's/^/      /' >&2 || true
+                if ( cd "$REPO_ROOT" && npm install "${_openspec_install_spec}" >"$_npm_log" 2>&1 ); then
+                    ok "OpenSpec CLI installed locally (${REPO_ROOT}/node_modules/.bin/openspec)"
                     HAS_OPENSPEC=true
-                } || {
-                    fail "Could not install OpenSpec CLI."
+                else
+                    fail "Could not install OpenSpec CLI. npm output:"
+                    tail -n 10 "$_npm_log" | sed 's/^/      /' >&2 || true
+                    echo "      Manual fix: npm install -g ${_openspec_install_spec}" >&2
                     HAS_OPENSPEC=false
-                }
-            }
+                fi
+                rm -f "$_npm_log"
+            fi
         else
             warn "Skipping OpenSpec install. Spec-driven workflow will be limited."
             HAS_OPENSPEC=false
