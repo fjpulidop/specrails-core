@@ -302,6 +302,14 @@ Codex uses the scaffold method: `npx specrails-core@latest init --root-dir .`. S
 
 ---
 
+## Support
+
+If specrails-core is useful to you, you can donate on [Ko-fi](https://ko-fi.com/D1D81Y002C) ☕ to support ongoing development.
+
+[![Donate on Ko-fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B?logo=kofi&logoColor=white&style=flat-square)](https://ko-fi.com/D1D81Y002C)
+
+---
+
 ## License
 
 MIT — [fjpulidop](https://github.com/fjpulidop)
