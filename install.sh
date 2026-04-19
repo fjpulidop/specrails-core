@@ -69,11 +69,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --provider)
             if [[ -z "${2:-}" ]]; then
-                echo "Error: --provider requires a value (claude or codex)." >&2
+                echo "Error: --provider requires a value (claude)." >&2
                 exit 1
             fi
-            if [[ "$2" != "claude" && "$2" != "codex" ]]; then
-                echo "Error: --provider value must be 'claude' or 'codex', got: $2" >&2
+            if [[ "$2" == "codex" ]]; then
+                echo "" >&2
+                echo "  ⚠  Codex (OpenAI) support: Coming Soon" >&2
+                echo "     Currently being tested in our lab. Please use --provider claude for now." >&2
+                echo "" >&2
+                exit 1
+            fi
+            if [[ "$2" != "claude" ]]; then
+                echo "Error: --provider value must be 'claude', got: $2" >&2
                 exit 1
             fi
             CLI_PROVIDER="$2"
@@ -108,7 +115,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude|codex>] [--from-config [<path>]] [--agent-teams] [--quick] [--hub-json]" >&2
+            echo "Usage: install.sh [--root-dir <path>] [--yes|-y] [--provider <claude>] [--from-config [<path>]] [--agent-teams] [--quick] [--hub-json]" >&2
             exit 1
             ;;
     esac
@@ -308,8 +315,12 @@ if [[ "$FROM_CONFIG" == true ]]; then
         if [[ -z "$_cfg_provider" ]]; then
             fail "Invalid config: missing required 'provider' field"
             _config_errors=$(( _config_errors + 1 ))
-        elif [[ "$_cfg_provider" != "claude" && "$_cfg_provider" != "codex" ]]; then
-            fail "Invalid config: unsupported provider '$_cfg_provider' (expected: claude or codex)"
+        elif [[ "$_cfg_provider" == "codex" ]]; then
+            fail "Codex (OpenAI) support is coming soon — currently being tested in our lab."
+            fail "Please edit install-config.yaml and set: provider: claude"
+            _config_errors=$(( _config_errors + 1 ))
+        elif [[ "$_cfg_provider" != "claude" ]]; then
+            fail "Invalid config: unsupported provider '$_cfg_provider' (expected: claude)"
             _config_errors=$(( _config_errors + 1 ))
         fi
         if [[ "$_cfg_has_agents" -eq 0 ]]; then
@@ -368,42 +379,26 @@ if [[ "$FROM_CONFIG" != true ]]; then
         # --provider flag was set explicitly — skip interactive detection
         ok "Provider: $CLI_PROVIDER (--provider flag)"
     elif [ "$HAS_CLAUDE" = true ] && [ "$HAS_CODEX" = true ]; then
-        echo ""
-        echo -e "  ${BOLD}Both Claude Code and Codex detected.${NC}"
-        if [ "$AUTO_YES" = true ]; then
-            CLI_PROVIDER="claude"
-            info "Auto-selected Claude Code (--yes flag active)"
-        else
-            echo ""
-            echo "    Which provider would you like to use?"
-            echo "      1) Claude Code (claude)  → output to .claude/"
-            echo "      2) Codex (codex)         → output to .codex/"
-            echo ""
-            read -p "    Select provider (1 or 2, default: 1): " PROVIDER_CHOICE || PROVIDER_CHOICE="1"
-            PROVIDER_CHOICE="${PROVIDER_CHOICE:-1}"
-            if [[ "$PROVIDER_CHOICE" == "2" ]]; then
-                CLI_PROVIDER="codex"
-            else
-                CLI_PROVIDER="claude"
-            fi
-        fi
+        CLI_PROVIDER="claude"
+        info "Claude Code and Codex both detected — Codex support coming soon (in lab), using Claude Code."
         ok "Provider: $CLI_PROVIDER"
     elif [ "$HAS_CLAUDE" = true ]; then
         CLI_PROVIDER="claude"
         CLAUDE_VERSION=$(claude --version 2>/dev/null || echo "unknown")
         ok "Claude Code CLI: $CLAUDE_VERSION"
     elif [ "$HAS_CODEX" = true ]; then
-        CLI_PROVIDER="codex"
-        CODEX_VERSION=$(codex --version 2>/dev/null || echo "unknown")
-        ok "Codex CLI: $CODEX_VERSION"
+        fail "Only Codex detected — Codex (OpenAI) support is coming soon (currently in our lab)."
+        echo ""
+        echo "    Please install Claude Code to continue: https://claude.ai/download"
+        exit 1
     elif [[ "$SKIP_PREREQS" == "1" ]]; then
         CLI_PROVIDER="claude"
         warn "No AI CLI found (skipped — SPECRAILS_SKIP_PREREQS=1)"
     else
-        fail "No AI CLI found (claude or codex)."
+        fail "No AI CLI found (claude)."
         echo ""
         echo "    Install Claude Code: https://claude.ai/download"
-        echo "    Install Codex:       https://github.com/openai/codex"
+        echo "    Codex (OpenAI) support: coming soon — currently in our lab."
         exit 1
     fi
 fi

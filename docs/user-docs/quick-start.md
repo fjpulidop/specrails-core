@@ -2,7 +2,7 @@
 
 Get SpecRails running in your project in under 10 minutes.
 
-> **Using OpenAI Codex?** See the [Codex getting started guide](getting-started-codex.md) — setup is slightly different.
+> **🧪 Using OpenAI Codex? — Coming Soon (in Lab).** Codex support is currently being tested in our lab and is not yet available for installation. The installer will refuse Codex installs and guide you to Claude Code. See the [Codex getting started guide](getting-started-codex.md) for a preview of the planned setup.
 
 ## Before you begin
 

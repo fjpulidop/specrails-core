@@ -15,6 +15,8 @@ You need:
 - **Git** — your project must be a git repository
 - **[Claude Code](https://claude.ai/claude-code)** — Anthropic's CLI tool
 
+> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** OpenAI Codex integration is currently being tested in our lab. The installer will only install with Claude Code for now — Codex support will ship shortly.
+
 Optional (recommended):
 
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — for automatic PR creation and issue tracking

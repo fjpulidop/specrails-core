@@ -1,6 +1,10 @@
 # Codex vs Claude Code
 
-SpecRails supports both **OpenAI Codex** and **Anthropic Claude Code** as AI agent runtimes. This page explains the differences so you can choose the right setup for your team.
+> # 🧪 Codex Support — Coming Soon (in Lab)
+>
+> OpenAI Codex integration is currently being **tested in our lab** and is not available for installation. The installer only accepts Claude Code at this time. This document describes the planned behaviour and will be activated when the feature ships.
+
+SpecRails supports **Anthropic Claude Code** as an AI agent runtime, with **OpenAI Codex** support coming soon. This page explains the differences so you can choose the right setup for your team when Codex ships.
 
 ---
 
