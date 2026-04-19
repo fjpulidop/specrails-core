@@ -185,9 +185,20 @@ async function run() {
   const specrailsDir = resolve(rootDir, '.specrails');
 
   // Auto-yes: write defaults and exit (no TUI needed)
+  //
+  // Codex (OpenAI) support is currently being tested in our lab ("Coming Soon").
+  // If only Codex is detected, bail out instead of silently picking it — Claude
+  // Code is the only runtime we can install for today.
   if (autoYes) {
     const { hasClaude, hasCodex } = detectProvider();
-    const provider = hasCodex && !hasClaude ? 'codex' : 'claude';
+    if (!hasClaude && hasCodex) {
+      console.error('');
+      console.error('  ⚠  Only Codex detected — Codex (OpenAI) support is coming soon (in lab).');
+      console.error('     Please install Claude Code to continue: https://claude.ai/download');
+      console.error('');
+      process.exit(1);
+    }
+    const provider = 'claude';
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
     console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
@@ -217,6 +228,10 @@ async function run() {
   console.log(banner.join('\n'));
 
   // ── Step 1: Provider ────────────────────────────────────────────────────────
+  //
+  // Codex (OpenAI) is still being tested in our lab ("Coming Soon"). Until the
+  // feature ships, the TUI exposes only Claude Code as a runtime — Codex shows
+  // as a disabled "Coming Soon" option so users can see it's on the roadmap.
 
   const { hasClaude, hasCodex } = detectProvider();
   let provider;
@@ -226,12 +241,16 @@ async function run() {
       message: 'Which AI provider will you use?',
       choices: [
         { value: 'claude', name: 'Claude Code (recommended)' },
-        { value: 'codex',  name: 'Codex' },
+        { value: 'codex',  name: 'Codex — Coming Soon (in lab)', disabled: '🧪 coming soon' },
       ],
     });
   } else if (hasCodex) {
-    provider = 'codex';
-    console.log('  → Provider: codex (auto-detected)\n');
+    exitFullscreen();
+    console.error('');
+    console.error('  ⚠  Only Codex detected — Codex (OpenAI) support is coming soon (in lab).');
+    console.error('     Please install Claude Code to continue: https://claude.ai/download');
+    console.error('');
+    process.exit(1);
   } else {
     provider = 'claude';
     if (hasClaude) {
