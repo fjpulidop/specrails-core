@@ -56,15 +56,28 @@ Parse the YAML and extract:
 
 Store all values in variables prefixed `FC_`.
 
-**Model Presets** (applied when `config.models.defaults` is not set):
-- `balanced` (default): sr-architect=opus, sr-product-manager=opus, all others=sonnet
-- `budget`: all agents=haiku
-- `max`: all agents=opus
+**Model Presets** (provider-aware — resolved at install time by `bin/tui-installer.mjs`
+and written to `install-config.yaml` as CONCRETE model ids, never short aliases):
+
+| Preset | Claude (default/override) | Codex (default/override) |
+|---|---|---|
+| `balanced` | `claude-sonnet-4-6` / — | `gpt-5.4` / — |
+| `budget`   | `claude-haiku-4-5-20251001` / — | `gpt-5.4-mini` / — |
+| `max`      | `claude-sonnet-4-6` / `sr-architect`+`sr-product-manager`=`claude-opus-4-7` | `gpt-5.4` / `sr-architect`+`sr-product-manager`=`gpt-5.3-codex` |
+
+**Short-alias fallback map** (used only when `install-config.yaml` still contains a
+legacy short name like `sonnet`/`opus`/`haiku` — normally the TUI writes concrete ids):
+
+| Alias | Claude provider | Codex provider |
+|---|---|---|
+| `sonnet` | `claude-sonnet-4-6`          | `gpt-5.4` |
+| `opus`   | `claude-opus-4-7`            | `gpt-5.3-codex` |
+| `haiku`  | `claude-haiku-4-5-20251001`  | `gpt-5.4-mini` |
 
 To resolve the model for any given agent:
-1. Check `config.models.overrides.<agent-name>` — if present, use it
-2. Check `config.models.defaults.model` — if present, use it
-3. Apply preset defaults based on `config.models.preset`
+1. Check `config.models.overrides.<agent-name>` — if present, use it (expand alias if short)
+2. Check `config.models.defaults.model` — if present, use it (expand alias if short)
+3. Apply preset defaults for the active provider (see table above)
 4. Fallback to model in template frontmatter
 
 ### FC2: Provider Setup
@@ -1144,14 +1157,18 @@ When generating each agent:
 **If `cli_provider == "claude"`:** Write as Markdown with YAML frontmatter — the template file as-is (frontmatter preserved).
 
 **If `cli_provider == "codex"`:** Convert to TOML format:
-- Extract YAML frontmatter fields: `name`, `description`, `model`
+- Extract YAML frontmatter fields, preserving ALL keys (e.g. `name`, `description`,
+  `model`, `version`, `author`, `tags`, ...). Unknown scalar fields should be
+  written verbatim as TOML; arrays/objects must be serialised as valid TOML.
 - Extract the body content (everything after the closing `---` of the frontmatter)
-- Map the `model` field: `sonnet` → `codex-mini-latest`, `opus` → `o3`, `haiku` → `codex-mini-latest`
+- Map the `model` field using the short-alias fallback map defined in FC1. If the
+  model is already a concrete id (e.g. `gpt-5.4`, `gpt-5.3-codex`), keep it as-is.
 - Write a `.toml` file with this structure:
   ```toml
   name = "<name from frontmatter>"
   description = "<description from frontmatter, escaped for TOML>"
-  model = "codex-mini-latest"
+  model = "<resolved concrete model id>"
+  # Any additional preserved frontmatter fields go here as TOML scalars/tables
   prompt = """
   <body content after placeholder substitution>
   """
@@ -1454,12 +1471,12 @@ Display the complete installation summary:
 | sr-security-reviewer | .claude/agents/sr-security-reviewer.md | Sonnet |
 | sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
 [If cli_provider == "codex":]
-| sr-architect | .codex/agents/sr-architect.toml | codex-mini-latest |
-| sr-developer | .codex/agents/sr-developer.toml | codex-mini-latest |
-| sr-reviewer | .codex/agents/sr-reviewer.toml | codex-mini-latest |
-| sr-test-writer | .codex/agents/sr-test-writer.toml | codex-mini-latest |
-| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | codex-mini-latest |
-| sr-product-manager | .codex/agents/sr-product-manager.toml | o3 |
+| sr-architect | .codex/agents/sr-architect.toml | gpt-5.3-codex |
+| sr-developer | .codex/agents/sr-developer.toml | gpt-5.4 |
+| sr-reviewer | .codex/agents/sr-reviewer.toml | gpt-5.4 |
+| sr-test-writer | .codex/agents/sr-test-writer.toml | gpt-5.4 |
+| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | gpt-5.4 |
+| sr-product-manager | .codex/agents/sr-product-manager.toml | gpt-5.3-codex |
 
 ### Personas Created
 | Persona | File | Source |

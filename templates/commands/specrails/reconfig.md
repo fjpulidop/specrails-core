@@ -54,9 +54,9 @@ For each agent with a recorded change:
 The `model:` line is always in the frontmatter block (between the first `---` and second `---`). Replace only that specific line — do not modify any other content.
 
 **Codex format:** If `cli_provider == "codex"`, apply the same logic to `.codex/agents/sr-*.toml` files. Replace the `model = "..."` line with the mapped Codex model:
-- `sonnet` → `codex-mini-latest`
-- `opus` → `o3`
-- `haiku` → `codex-mini-latest`
+- `sonnet` → `gpt-5.4`
+- `opus` → `gpt-5.3-codex`
+- `haiku` → `gpt-5.4-mini`
 
 ## Step 5: Report results
 

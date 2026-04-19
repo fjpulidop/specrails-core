@@ -56,7 +56,7 @@ codex mcp-server
 
 ### Modelo subyacente
 
-Basado en `codex-1` (variante de `o3` fine-tuned para ingeniería de software). API disponible como `codex-mini-latest` a $1.50/1M input tokens.
+Basado en la lineup GPT-5.x de OpenAI ([referencia](https://developers.openai.com/codex/models)). Modelos disponibles: `gpt-5.4-mini` (budget), `gpt-5.4` (balanced), `gpt-5.3-codex` (premium, optimizado para ingeniería de software).
 
 ---
 
@@ -156,7 +156,7 @@ fi
 # .codex/agents/sr-architect.toml
 name = "sr-architect"
 description = "Software architect agent for designing implementation plans."
-model = "codex-mini-latest"
+model = "gpt-5.3-codex"
 ```
 
 **Solución**: Generar ambos formatos o detectar CLI y generar el correcto.
