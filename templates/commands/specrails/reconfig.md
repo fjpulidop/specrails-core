@@ -1,6 +1,6 @@
 # Reconfig: Apply Agent Config to Generated Files
 
-Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all generated `.claude/agents/sr-*.md` files to match. No full re-setup needed — only model frontmatter is changed.
+Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all generated `{{SPECRAILS_DIR}}/agents/sr-*.md` files to match. No full re-setup needed — only model frontmatter is changed.
 
 ---
 
@@ -21,7 +21,7 @@ If the file does not exist, stop and display:
 ```
 No .specrails/agents.yaml found.
 
-Run /specrails:enrich to generate the config file, then edit it before running /specrails:reconfig.
+Run {{COMMAND_PREFIX}}enrich to generate the config file, then edit it before running {{COMMAND_PREFIX}}reconfig.
 ```
 
 If the file exists, parse it. Validate all `model:` values — only `opus`, `sonnet`, and `haiku` are accepted. If an invalid value is found, display a warning and skip that agent:
@@ -54,9 +54,9 @@ For each agent with a recorded change:
 The `model:` line is always in the frontmatter block (between the first `---` and second `---`). Replace only that specific line — do not modify any other content.
 
 **Codex format:** If `cli_provider == "codex"`, apply the same logic to `.codex/agents/sr-*.toml` files. Replace the `model = "..."` line with the mapped Codex model:
-- `sonnet` → `codex-mini-latest`
-- `opus` → `o3`
-- `haiku` → `codex-mini-latest`
+- `sonnet` → `gpt-5.4`
+- `opus` → `gpt-5.3-codex`
+- `haiku` → `gpt-5.4-mini`
 
 ## Step 5: Report results
 

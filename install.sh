@@ -417,6 +417,13 @@ else
     INSTRUCTIONS_FILE="CLAUDE.md"
 fi
 
+# Command invocation prefix — Claude uses "/specrails:", Codex uses "$"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    COMMAND_PREFIX='$'
+else
+    COMMAND_PREFIX='/specrails:'
+fi
+
 # 1.2b Agent Teams opt-in (Claude Code only)
 if [[ "$CLI_PROVIDER" == "claude" ]]; then
     if [[ "$FROM_CONFIG" == true || "$AGENT_TEAMS" == true ]]; then
@@ -686,7 +693,7 @@ mkdir -p "$REPO_ROOT/.specrails/setup-templates/settings"
 
 # Ensure .gitignore excludes local runtime artifacts
 _gitignore="${REPO_ROOT}/.gitignore"
-_gitignore_entries=(".claude/agent-memory/" ".specrails/")
+_gitignore_entries=("${SPECRAILS_DIR}/agent-memory/" ".specrails/")
 for _entry in "${_gitignore_entries[@]}"; do
     if ! grep -qF "$_entry" "$_gitignore" 2>/dev/null; then
         echo "$_entry" >> "$_gitignore"
@@ -751,6 +758,13 @@ elif [[ ! -f "$_install_config" ]]; then
     _ic_provider="${CLI_PROVIDER:-claude}"
     _ic_tier="${TIER:-full}"
     _ic_agent_teams="${AGENT_TEAMS:-false}"
+    # Provider-aware `balanced` preset default model — MUST stay in sync with
+    # bin/tui-installer.mjs MODEL_PRESETS.balanced.
+    if [[ "$_ic_provider" == "codex" ]]; then
+        _ic_default_model="gpt-5.4"
+    else
+        _ic_default_model="claude-sonnet-4-6"
+    fi
     cat > "$_install_config" << YAML
 # specrails install config — generated during install (defaults)
 # Re-run: npx specrails-core@latest init  to regenerate with TUI
@@ -762,11 +776,11 @@ agents:
   excluded: [sr-frontend-developer, sr-backend-developer, sr-frontend-reviewer, sr-backend-reviewer, sr-security-reviewer, sr-performance-reviewer, sr-product-analyst, sr-doc-sync, sr-merge-resolver]
 models:
   preset: balanced
-  defaults: { model: sonnet }
+  defaults: { model: ${_ic_default_model} }
   overrides: {}
 agent_teams: ${_ic_agent_teams}
 YAML
-    ok "Written .specrails/install-config.yaml (defaults)"
+    ok "Written .specrails/install-config.yaml (defaults, model=${_ic_default_model})"
 fi
 
 # Copy templates (includes commands, skills, agents, rules, personas, settings)
@@ -936,20 +950,23 @@ if [[ "$TIER" == "quick" ]]; then
             # Substitute known placeholders
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{MEMORY_PATH}}|.claude/agent-memory/${_name}/|g" \
+                -e "s|{{MEMORY_PATH}}|${SPECRAILS_DIR}/agent-memory/${_name}/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
                 "$_dest" && rm -f "${_dest}.bak"
 
             # Strip remaining {{PLACEHOLDER}} lines (leave blank line)
             sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
 
-            # Create agent memory directory
-            mkdir -p "${REPO_ROOT}/.claude/agent-memory/${_name}"
+            # Create agent memory directory under the active provider dir
+            mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agent-memory/${_name}"
 
             # Agents that write explanation records need the shared explanations dir
             if [[ "$_name" == "sr-architect" || "$_name" == "sr-reviewer" ]]; then
-                mkdir -p "${REPO_ROOT}/.claude/agent-memory/explanations"
+                mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/agent-memory/explanations"
             fi
 
             (( _agent_count++ )) || true
@@ -1011,9 +1028,12 @@ if [[ "$TIER" == "quick" ]]; then
             cp "$_src" "$_dest"
             sed -i.bak \
                 -e "s|{{PROJECT_NAME}}|${_project_name}|g" \
-                -e "s|{{MEMORY_PATH}}|.claude/agent-memory/|g" \
+                -e "s|{{MEMORY_PATH}}|${SPECRAILS_DIR}/agent-memory/|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
                 "$_dest" && rm -f "${_dest}.bak"
             sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
             (( _cmd_count++ )) || true
@@ -1026,7 +1046,13 @@ if [[ "$TIER" == "quick" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/rules"
         for _src in "$_templates/rules/"*.md; do
             [[ -f "$_src" ]] || continue
-            cp "$_src" "${REPO_ROOT}/${SPECRAILS_DIR}/rules/$(basename "$_src")"
+            _rule_dest="${REPO_ROOT}/${SPECRAILS_DIR}/rules/$(basename "$_src")"
+            cp "$_src" "$_rule_dest"
+            sed -i.bak \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
+                "$_rule_dest" && rm -f "${_rule_dest}.bak"
         done
         ok "Installed rules to ${SPECRAILS_DIR}/rules/"
     fi
@@ -1041,6 +1067,36 @@ if [[ "$TIER" == "quick" ]]; then
     if [[ -f "$_templates/settings/integration-contract.json" ]]; then
         cp "$_templates/settings/integration-contract.json" "${REPO_ROOT}/.specrails/integration-contract.json"
         ok "Installed integration-contract.json"
+    fi
+
+    # --- Codex-specific settings (config.toml + rules.star) ---
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        # Resolve the default model from install-config.yaml (preset was already
+        # written provider-aware by TUI or by the default-config block above).
+        _cfg_to_read="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
+        _default_model="gpt-5.4"
+        if [[ -f "$_cfg_to_read" ]]; then
+            _model_from_cfg="$(grep -E '^\s*defaults:\s*\{' "$_cfg_to_read" | sed -E 's/.*model:[[:space:]]*([^ }]+).*/\1/' | tr -d '"' | head -n1 || true)"
+            if [[ -n "$_model_from_cfg" ]]; then
+                _default_model="$_model_from_cfg"
+            fi
+        fi
+
+        if [[ -f "$_templates/settings/codex-config.toml" ]]; then
+            cp "$_templates/settings/codex-config.toml" "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml"
+            sed -i.bak -e "s|{{DEFAULT_MODEL}}|${_default_model}|g" \
+                "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml" \
+                && rm -f "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml.bak"
+            ok "Installed ${SPECRAILS_DIR}/config.toml (model=${_default_model})"
+        fi
+        if [[ -f "$_templates/settings/codex-rules.star" && ! -f "${REPO_ROOT}/${SPECRAILS_DIR}/rules.star" ]]; then
+            cp "$_templates/settings/codex-rules.star" "${REPO_ROOT}/${SPECRAILS_DIR}/rules.star"
+            # No detected shell rules yet — leave the placeholder empty
+            sed -i.bak -e 's|{{CODEX_SHELL_RULES}}||g' \
+                "${REPO_ROOT}/${SPECRAILS_DIR}/rules.star" \
+                && rm -f "${REPO_ROOT}/${SPECRAILS_DIR}/rules.star.bak"
+            ok "Installed ${SPECRAILS_DIR}/rules.star"
+        fi
     fi
 
     # --- Backlog config (default: local provider) ---
@@ -1094,7 +1150,16 @@ LTEOF
             if echo " $_quick_excluded_skills " | grep -q " ${_skill_name} "; then
                 continue
             fi
-            cp -r "$_skill_dir" "${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            _skill_dest="${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            cp -r "$_skill_dir" "$_skill_dest"
+            # Substitute {{SPECRAILS_DIR}} in any markdown files inside the skill
+            while IFS= read -r -d '' _skill_file; do
+                sed -i.bak \
+                    -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                    -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                    -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
+                    "$_skill_file" && rm -f "${_skill_file}.bak"
+            done < <(find "$_skill_dest" -type f -name '*.md' -print0)
             (( _skill_count++ )) || true
         done
         ok "Installed ${_skill_count} skill(s) to ${SPECRAILS_DIR}/skills/"
@@ -1107,9 +1172,25 @@ fi
 
 # Initialize OpenSpec if available and not already initialized
 if [ "$HAS_OPENSPEC" = true ] && [ ! -d "$REPO_ROOT/openspec" ]; then
-    # Map specrails provider to openspec tool name
+    # Map specrails provider to openspec tool name.
+    # `--tools codex` requires openspec >= 1.2.0 — earlier versions will reject
+    # the flag and abort the whole init. We check first and fall back gracefully
+    # so a missing flag is non-fatal.
     _openspec_tool="claude"
-    [[ "$CLI_PROVIDER" == "codex" ]] && _openspec_tool="codex"
+    _openspec_ver_raw="$(openspec --version 2>/dev/null | head -n1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true)"
+    if [[ "$CLI_PROVIDER" == "codex" ]]; then
+        if [[ -n "$_openspec_ver_raw" ]]; then
+            IFS='.' read -r _osmaj _osmin _ospatch <<< "$_openspec_ver_raw"
+            if (( _osmaj > 1 )) || { (( _osmaj == 1 )) && (( _osmin >= 2 )); }; then
+                _openspec_tool="codex"
+            else
+                warn "openspec ${_openspec_ver_raw} does not support '--tools codex' (requires >= 1.2.0). Falling back to --tools claude."
+            fi
+        else
+            warn "Could not determine openspec version — assuming --tools codex is supported."
+            _openspec_tool="codex"
+        fi
+    fi
 
     info "Initializing OpenSpec (--tools ${_openspec_tool} --force)..."
     cd "$REPO_ROOT" && openspec init --tools "${_openspec_tool}" --force 2>/dev/null && {

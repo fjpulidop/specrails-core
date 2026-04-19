@@ -1,5 +1,5 @@
 {
-  "_docs": "specrails confidence gate configuration. Installed to .claude/confidence-config.json by /setup.",
+  "_docs": "specrails confidence gate configuration. Installed to {{SPECRAILS_DIR}}/confidence-config.json by /setup.",
   "schema_version": "1",
   "enabled": true,
   "thresholds": {

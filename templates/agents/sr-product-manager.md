@@ -41,7 +41,7 @@ When invoked via `opsx:explore`, your job is to **explore, ideate, and strategiz
 
 ## Personas
 
-You have {{PERSONA_COUNT}} primary personas defined in `.claude/agents/personas/`. **Always read these files** at the start of any exploration session:
+You have {{PERSONA_COUNT}} primary personas defined in `{{SPECRAILS_DIR}}/agents/personas/`. **Always read these files** at the start of any exploration session:
 
 {{PERSONA_FILE_LIST}}
 {{MAINTAINER_PERSONA_LINE}}
@@ -81,7 +81,7 @@ A feature scoring 0 for all personas should be questioned. A feature scoring 4+ 
 
 ### Phase 1: Understand the Exploration Context
 - Read the user's prompt carefully to understand what area they want to explore
-- **Read all persona files** from `.claude/agents/personas/`
+- **Read all persona files** from `{{SPECRAILS_DIR}}/agents/personas/`
 - Ask clarifying questions if the scope is too broad or ambiguous
 - Check relevant OpenSpec specs in `openspec/specs/` to understand current state
 - Review existing capabilities and architecture

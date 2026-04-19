@@ -1,6 +1,6 @@
 ---
 name: "Smart Failure Recovery"
-description: "Resume a failed /specrails:implement pipeline from the last successful phase without restarting from scratch."
+description: "Resume a failed {{COMMAND_PREFIX}}implement pipeline from the last successful phase without restarting from scratch."
 category: Workflow
 tags: [workflow, recovery, retry, resilience]
 phases:
@@ -15,13 +15,13 @@ phases:
     description: "Print a final status report with outcomes and next steps"
 ---
 
-Resume a failed `/specrails:implement` run for **{{PROJECT_NAME}}**. Reads pipeline state written by the implement pipeline to identify which phases completed and which failed, then re-executes only the remaining phases.
+Resume a failed `{{COMMAND_PREFIX}}implement` run for **{{PROJECT_NAME}}**. Reads pipeline state written by the implement pipeline to identify which phases completed and which failed, then re-executes only the remaining phases.
 
-**MANDATORY: Follow this pipeline exactly. Do NOT skip phases or re-run phases that already succeeded. Read all context from the pipeline state file — do not rely on memory. Do not re-implement anything yourself; delegate to the same agents used by `/specrails:implement`.**
+**MANDATORY: Follow this pipeline exactly. Do NOT skip phases or re-run phases that already succeeded. Read all context from the pipeline state file — do not rely on memory. Do not re-implement anything yourself; delegate to the same agents used by `{{COMMAND_PREFIX}}implement`.**
 
 **Input:** $ARGUMENTS — accepted forms:
 
-1. `<feature-name>` — kebab-case feature name matching a `.claude/pipeline-state/<feature-name>.json` file
+1. `<feature-name>` — kebab-case feature name matching a `{{SPECRAILS_DIR}}/pipeline-state/<feature-name>.json` file
 2. `--list` — list all available pipeline state files and their current status, then exit
 3. `<feature-name> --from <phase>` — force resume from a specific phase (overrides auto-detection)
 4. `<feature-name> --dry-run` — override to resume in dry-run mode (no git/PR operations)
@@ -38,7 +38,7 @@ Scan `$ARGUMENTS` for flags:
 
 Extract the first positional argument (not starting with `--`) as `FEATURE_NAME`.
 
-**If `--list`:** scan `.claude/pipeline-state/*.json`. For each file found, parse and print:
+**If `--list`:** scan `{{SPECRAILS_DIR}}/pipeline-state/*.json`. For each file found, parse and print:
 
 ```
 ## Available Pipeline States
@@ -48,15 +48,15 @@ Extract the first positional argument (not starting with `--`) as `FEATURE_NAME`
 | <name>  | <phase or —>         | <phase or —> | <ISO time> |
 ```
 
-If no files found: print `No pipeline state files found. Run /specrails:implement first.`
+If no files found: print `No pipeline state files found. Run {{COMMAND_PREFIX}}implement first.`
 
 Exit after printing — do not proceed.
 
 **If no positional argument and no `--list`:** print the following usage and exit:
 
 ```
-Usage: /specrails:retry <feature-name> [--from <phase>] [--dry-run]
-       /specrails:retry --list
+Usage: {{COMMAND_PREFIX}}retry <feature-name> [--from <phase>] [--dry-run]
+       {{COMMAND_PREFIX}}retry --list
 
 Phases: architect | developer | test-writer | doc-sync | reviewer | ship | ci
 ```
@@ -65,15 +65,15 @@ Phases: architect | developer | test-writer | doc-sync | reviewer | ship | ci
 
 ## Phase 1: Load Pipeline State
 
-Read: `.claude/pipeline-state/<FEATURE_NAME>.json`
+Read: `{{SPECRAILS_DIR}}/pipeline-state/<FEATURE_NAME>.json`
 
 If the file does not exist:
 
 ```
 [retry] Error: no pipeline state found for "<FEATURE_NAME>".
 
-Run /specrails:retry --list to see available states, or start a new run:
-  /specrails:implement <your input>
+Run {{COMMAND_PREFIX}}retry --list to see available states, or start a new run:
+  {{COMMAND_PREFIX}}implement <your input>
 ```
 
 Exit.
@@ -96,7 +96,7 @@ Parse the state file and set the following variables:
 - If all phases are `"pending"`: the pipeline never reached any execution. Print:
   ```
   [retry] Warning: all phases are pending — the pipeline may not have started.
-  Recommend running /specrails:implement instead.
+  Recommend running {{COMMAND_PREFIX}}implement instead.
   ```
   Prompt: `Proceed anyway? [y/N]`. If `n` or no response: exit.
 
@@ -180,7 +180,7 @@ Execute phases in canonical order starting from `RESUME_PHASE`. For each phase:
 - If its status in `PHASE_STATUSES` is `"done"` AND it precedes `RESUME_PHASE` in canonical order: **skip** — do not re-run.
 - If it equals `RESUME_PHASE` or comes after: **run** it.
 
-After each phase completes (or fails), update `.claude/pipeline-state/<FEATURE_NAME>.json`:
+After each phase completes (or fails), update `{{SPECRAILS_DIR}}/pipeline-state/<FEATURE_NAME>.json`:
 1. Read the current file.
 2. Set `phases.<phase-key>` to `"done"` or `"failed"`.
 3. If `"done"`: update `last_successful_phase`.
@@ -220,7 +220,7 @@ If missing and `RESUME_PHASE=developer`: print:
 
 ```
 [retry] Error: architect artifacts not found at <OPENSPEC_ARTIFACTS>.
-Retry from the architect phase: /specrails:retry <FEATURE_NAME> --from architect
+Retry from the architect phase: {{COMMAND_PREFIX}}retry <FEATURE_NAME> --from architect
 ```
 
 Stop.
@@ -343,9 +343,9 @@ Include PR URL if ship ran successfully.
 | <phase>     | <error_context>        |
 
 Next steps:
-- To retry from the failed phase: /specrails:retry <FEATURE_NAME> --from <failed-phase>
-- To see all pipeline states: /specrails:retry --list
-- To restart from scratch: /specrails:implement <original-input>
+- To retry from the failed phase: {{COMMAND_PREFIX}}retry <FEATURE_NAME> --from <failed-phase>
+- To see all pipeline states: {{COMMAND_PREFIX}}retry --list
+- To restart from scratch: {{COMMAND_PREFIX}}implement <original-input>
 ```
 
 ---

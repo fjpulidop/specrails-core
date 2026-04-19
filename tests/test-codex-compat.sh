@@ -430,5 +430,116 @@ test_idempotent_reinstall_codex() {
 run_test "edge case: idempotent re-install with codex provider" test_idempotent_reinstall_codex
 
 # ─────────────────────────────────────────────
+# Provider-aware model presets (fix/codex-model-presets)
+# ─────────────────────────────────────────────
+
+# Helper: write an install-config.yaml with a specific preset and run install
+# with --from-config so install.sh honors it. Mocks require the claude/codex CLIs.
+_write_codex_config() {
+    local preset="$1"
+    local default_model="$2"
+    local architect_override="${3:-}"
+
+    mkdir -p "$TEST_TMPDIR/target/.specrails"
+    local overrides_yaml=" {}"
+    if [[ -n "$architect_override" ]]; then
+        overrides_yaml=$'\n    sr-architect: '"$architect_override"$'\n    sr-product-manager: '"$architect_override"
+    fi
+
+    cat > "$TEST_TMPDIR/target/.specrails/install-config.yaml" <<YAML
+version: 1
+provider: codex
+tier: quick
+agents:
+  selected: [sr-architect, sr-developer, sr-reviewer, sr-test-writer, sr-product-manager]
+  excluded: [sr-frontend-developer, sr-backend-developer, sr-frontend-reviewer, sr-backend-reviewer, sr-security-reviewer, sr-performance-reviewer, sr-product-analyst, sr-doc-sync, sr-merge-resolver]
+models:
+  preset: ${preset}
+  defaults: { model: ${default_model} }
+  overrides:${overrides_yaml}
+agent_teams: false
+YAML
+}
+
+test_codex_preset_balanced_writes_concrete_model() {
+    setup_mock_bin
+    mock_cli "codex"
+    _write_codex_config balanced gpt-5.4
+    run_install_mocked "--provider codex --quick --from-config .specrails/install-config.yaml" >/dev/null
+    local cfg="$TEST_TMPDIR/target/.specrails/install-config.yaml"
+    assert_file_exists "$cfg"
+    assert_contains "$(cat "$cfg")" "gpt-5.4" \
+        "install-config.yaml should contain concrete codex model id"
+    # Must NOT contain the anthropic short alias `sonnet` in the defaults line
+    if grep -qE '^\s*defaults:\s*\{\s*model:\s*sonnet' "$cfg"; then
+        echo "  FAIL: defaults.model is the anthropic short alias 'sonnet' — must be a codex-specific id"
+        return 1
+    fi
+}
+run_test "codex preset balanced → defaults.model = gpt-5.4 (not 'sonnet')" test_codex_preset_balanced_writes_concrete_model
+
+test_codex_preset_max_overrides_architect_with_gpt53codex() {
+    setup_mock_bin
+    mock_cli "codex"
+    _write_codex_config max gpt-5.4 gpt-5.3-codex
+    run_install_mocked "--provider codex --quick --from-config .specrails/install-config.yaml" >/dev/null
+    local cfg="$TEST_TMPDIR/target/.specrails/install-config.yaml"
+    assert_contains "$(cat "$cfg")" "sr-architect: gpt-5.3-codex" \
+        "max preset under codex must override sr-architect with gpt-5.3-codex"
+    assert_contains "$(cat "$cfg")" "sr-product-manager: gpt-5.3-codex" \
+        "max preset under codex must override sr-product-manager with gpt-5.3-codex"
+}
+run_test "codex preset max → sr-architect and sr-product-manager override = gpt-5.3-codex" test_codex_preset_max_overrides_architect_with_gpt53codex
+
+test_codex_config_toml_included_in_codex_dir() {
+    setup_mock_bin
+    mock_cli "codex"
+    _write_codex_config balanced gpt-5.4
+    run_install_mocked "--provider codex --quick --from-config .specrails/install-config.yaml" >/dev/null
+    assert_file_exists "$TEST_TMPDIR/target/.codex/config.toml" \
+        "codex provider quick-tier should install .codex/config.toml"
+    assert_file_exists "$TEST_TMPDIR/target/.codex/rules.star" \
+        "codex provider quick-tier should install .codex/rules.star"
+    # The resolved default model should be substituted into config.toml
+    assert_contains "$(cat "$TEST_TMPDIR/target/.codex/config.toml")" "gpt-5.4" \
+        ".codex/config.toml should contain the resolved default model id"
+    # The {{DEFAULT_MODEL}} placeholder must NOT remain
+    if grep -q '{{DEFAULT_MODEL}}' "$TEST_TMPDIR/target/.codex/config.toml"; then
+        echo "  FAIL: {{DEFAULT_MODEL}} placeholder left un-substituted in .codex/config.toml"
+        return 1
+    fi
+}
+run_test "codex provider → .codex/config.toml + rules.star installed with resolved model" test_codex_config_toml_included_in_codex_dir
+
+test_codex_agent_memory_under_codex_dir() {
+    setup_mock_bin
+    mock_cli "codex"
+    _write_codex_config balanced gpt-5.4
+    run_install_mocked "--provider codex --quick --from-config .specrails/install-config.yaml" >/dev/null
+    # Quick tier creates agent-memory alongside installed agents; with codex provider
+    # it MUST live under .codex/ (not .claude/).
+    assert_dir_exists "$TEST_TMPDIR/target/.codex/agent-memory" \
+        "codex provider → .codex/agent-memory/ should be created"
+    # And .claude/agent-memory should NOT be created by a codex-only install
+    if [[ -d "$TEST_TMPDIR/target/.claude/agent-memory" ]]; then
+        echo "  FAIL: .claude/agent-memory/ was created by a codex-only install"
+        return 1
+    fi
+}
+run_test "codex provider → agent-memory/ lives under .codex/ (not .claude/)" test_codex_agent_memory_under_codex_dir
+
+test_codex_files_shipped_in_npm_package() {
+    # Verify the templates that install.sh depends on are part of the published npm tarball.
+    # Run from the repo root (not the test tmpdir).
+    local output
+    output="$(cd "$SPECRAILS_DIR" && npm pack --dry-run 2>&1)"
+    assert_contains "$output" "templates/settings/codex-config.toml" \
+        "npm package must include templates/settings/codex-config.toml"
+    assert_contains "$output" "templates/settings/codex-rules.star" \
+        "npm package must include templates/settings/codex-rules.star"
+}
+run_test "npm package ships codex-config.toml + codex-rules.star" test_codex_files_shipped_in_npm_package
+
+# ─────────────────────────────────────────────
 
 print_summary "cross-platform compatibility"

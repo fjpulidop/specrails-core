@@ -64,7 +64,7 @@ which openspec && openspec --version
 Scan the agents directory to determine which agents are installed:
 
 ```bash
-ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort
+ls {{SPECRAILS_DIR}}/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort
 ```
 
 Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapts dynamically to the installed agents:
@@ -87,7 +87,7 @@ Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapt
 
 **Gate rules** (applied throughout the pipeline):
 - If an optional agent is NOT in `AVAILABLE_AGENTS`, **skip** that phase/sub-step silently and note `"<agent> not installed — skipping"`.
-- Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run /specrails:enrich or reinstall.`
+- Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run {{COMMAND_PREFIX}}enrich or reinstall.`
 
 ### Summary
 
@@ -118,13 +118,13 @@ Before parsing input, scan `$ARGUMENTS` for control flags:
   - Set `DRY_RUN=true`
   - Strip the flag from the arguments before further parsing
   - Print: `[dry-run] Preview mode active — no git, PR, or backlog operations will run.`
-  - Set `CACHE_DIR=.claude/.dry-run/<kebab-case-feature-name>` (derive after parsing the remaining input)
+  - Set `CACHE_DIR={{SPECRAILS_DIR}}/.dry-run/<kebab-case-feature-name>` (derive after parsing the remaining input)
   - Note: if a cache already exists at `CACHE_DIR`, print `[dry-run] Overwriting existing cache at CACHE_DIR` before overwriting.
 
 - If `--apply <feature-name>` is present in `$ARGUMENTS`:
   - Set `APPLY_MODE=true`
   - Set `APPLY_TARGET=<feature-name>` (the argument immediately following `--apply`)
-  - Set `CACHE_DIR=.claude/.dry-run/<feature-name>`
+  - Set `CACHE_DIR={{SPECRAILS_DIR}}/.dry-run/<feature-name>`
   - Verify `CACHE_DIR` exists. If it does not: print `[apply] Error: no cached dry-run found at CACHE_DIR` and stop.
   - Skip Phases 1–4b. Go directly to Phase 4c (the apply path handles the rest).
   - Strip `--apply` and the feature name before further parsing.
@@ -179,7 +179,7 @@ Build a snapshot object for each ticket:
 - `updated_at`: ticket `updated_at` value
 - `captured_at`: current local time in ISO 8601 format
 
-Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
+Write the following JSON to `{{SPECRAILS_DIR}}/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
 
 ```json
 {
@@ -220,7 +220,7 @@ Build a snapshot object for each issue:
 - `updated_at`: the `updatedAt` value from the GitHub API response
 - `captured_at`: current local time in ISO 8601 format
 
-Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
+Write the following JSON to `{{SPECRAILS_DIR}}/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
 
 ```json
 {
@@ -237,7 +237,7 @@ Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — th
 
 If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
 
-If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
+If the write fails (e.g., `{{SPECRAILS_DIR}}/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
 
 ##### Otherwise (no backlog available or non-issue input):
 
@@ -249,25 +249,25 @@ If `SNAPSHOTS_CAPTURED=true`, check whether `.gitignore` already covers the cach
 
 ```bash
 grep -q "backlog-cache" .gitignore 2>/dev/null || \
-grep -q "\.claude/" .gitignore 2>/dev/null
+grep -q "\{{SPECRAILS_DIR}}/" .gitignore 2>/dev/null
 ```
 
 If neither pattern is found, print:
 
 ```
-[backlog-cache] Suggestion: add '.claude/backlog-cache.json' to .gitignore to avoid committing ephemeral cache state.
+[backlog-cache] Suggestion: add '{{SPECRAILS_DIR}}/backlog-cache.json' to .gitignore to avoid committing ephemeral cache state.
 ```
 
 This advisory is non-blocking and suppressed when `.gitignore` already covers the file.
 
 #### Pipeline state initialization
 
-Set `PIPELINE_STATE_PATH=.claude/pipeline-state/<feature-name>.json` (use the same kebab-case feature name derived above).
+Set `PIPELINE_STATE_PATH={{SPECRAILS_DIR}}/pipeline-state/<feature-name>.json` (use the same kebab-case feature name derived above).
 
 Create the directory if it does not exist:
 
 ```bash
-mkdir -p .claude/pipeline-state
+mkdir -p {{SPECRAILS_DIR}}/pipeline-state
 ```
 
 Write the initial state file:
@@ -303,7 +303,7 @@ Write the initial state file:
 }
 ```
 
-If the write fails: print `[pipeline-state] Warning: could not write state file. Smart retry (/specrails:retry) will not be available for this run.` Set `PIPELINE_STATE_AVAILABLE=false`. Do NOT abort the pipeline.
+If the write fails: print `[pipeline-state] Warning: could not write state file. Smart retry ({{COMMAND_PREFIX}}retry) will not be available for this run.` Set `PIPELINE_STATE_AVAILABLE=false`. Do NOT abort the pipeline.
 
 If the write succeeds: set `PIPELINE_STATE_AVAILABLE=true`.
 
@@ -400,7 +400,7 @@ For `body_sha` rows in the table, display only the first 8 characters of each SH
 - Re-prompt on any other input, up to 3 times total.
 - After 3 invalid inputs: print `[conflict-abort] Defaulting to abort after 3 invalid inputs.` and abort.
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /specrails:implement after resolving the issues.` and exit. No git state is left behind.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run {{COMMAND_PREFIX}}implement after resolving the issues.` and exit. No git state is left behind.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "3a.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 3a.
 
@@ -482,21 +482,21 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 
 ### Launch developers
 
-**Read reviewer learnings:** Check `.claude/agent-memory/sr-reviewer/common-fixes.md` and include in developer prompts.
+**Read reviewer learnings:** Check `{{SPECRAILS_DIR}}/agent-memory/sr-reviewer/common-fixes.md` and include in developer prompts.
 
 #### Dry-Run: Redirect developer writes
 
 **If `DRY_RUN=true`**, include the following in every developer agent prompt:
 
 > IMPORTANT: This is a dry-run. Write all new or modified files under:
->   .claude/.dry-run/\<feature-name\>/
+>   {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/
 >
 > Mirror the real destination path within this directory. For example:
 >   Real path:   src/utils/parser.ts
->   Write to:    .claude/.dry-run/\<feature-name\>/src/utils/parser.ts
+>   Write to:    {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/src/utils/parser.ts
 >
 > Do NOT write to real file paths. After writing each file, append an entry
-> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using this JSON format:
+> to {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/.cache-manifest.json using this JSON format:
 >   {"cached_path": "...", "real_path": "...", "operation": "create|modify"}
 
 **If `DRY_RUN=false`**: developer agent instructions are unchanged.
@@ -578,10 +578,10 @@ Construct the agent invocation prompt to include:
 **If `DRY_RUN=true`**, include in every test-writer agent prompt:
 
 > IMPORTANT: This is a dry-run. Write all new or modified test files under:
->   .claude/.dry-run/\<feature-name\>/
+>   {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/
 >
 > Mirror the real destination path within this directory. After writing each file, append an entry
-> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using:
+> to {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/.cache-manifest.json using:
 >   {"cached_path": "...", "real_path": "...", "operation": "create"}
 
 ### Failure handling
@@ -614,10 +614,10 @@ Construct the agent invocation prompt to include:
 **If `DRY_RUN=true`**, include in every doc-sync agent prompt:
 
 > IMPORTANT: This is a dry-run. Write all new or modified doc files under:
->   .claude/.dry-run/\<feature-name\>/
+>   {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/
 >
 > Mirror the real destination path within this directory. After writing each file, append an entry
-> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using:
+> to {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/.cache-manifest.json using:
 >   {"cached_path": "...", "real_path": "...", "operation": "create|modify"}
 
 ### Failure handling
@@ -736,7 +736,7 @@ Build `CONTEXT_BUNDLES` from the features in `MERGE_ORDER`:
 { "<feature-a>": "openspec/changes/<feature-a>/context-bundle.md", "<feature-b>": "openspec/changes/<feature-b>/context-bundle.md" }
 ```
 
-Load merge resolver config from `.claude/merge-resolver-config.json` if it exists. Extract `confidence_threshold` (default: 70) and `mode` (default: `auto`).
+Load merge resolver config from `{{SPECRAILS_DIR}}/merge-resolver-config.json` if it exists. Extract `confidence_threshold` (default: 70) and `mode` (default: `auto`).
 
 Construct the `sr-merge-resolver` agent prompt with:
 - `CONFLICTED_FILES`: all file paths in `MERGE_REPORT.requires_resolution`
@@ -838,7 +838,7 @@ Launch all applicable layer reviewers in parallel (`run_in_background: true`), u
 **sr-security-reviewer** (`subagent_type: sr:security-reviewer`, if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
 - Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-- Pass the exemptions config path: `.claude/security-exemptions.yaml`
+- Pass the exemptions config path: `{{SPECRAILS_DIR}}/security-exemptions.yaml`
 
 **sr-performance-reviewer** (`subagent_type: sr:performance-reviewer`, if applicable per Step 2):
 - Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
@@ -878,7 +878,7 @@ Launch the **sr-reviewer** agent (`subagent_type: sr:reviewer`, foreground, `run
 
 **If `DRY_RUN=true`**, add the following to the reviewer agent prompt:
 
-> Note: This is a dry-run review. Developer files are under .claude/.dry-run/\<feature-name\>/.
+> Note: This is a dry-run review. Developer files are under {{SPECRAILS_DIR}}/.dry-run/\<feature-name\>/.
 > Read modified files from there. Write any reviewer fixes back to CACHE_DIR (not real paths).
 > CI commands may be run — they read the real repo, but be aware developer changes are not
 > yet applied to real paths.
@@ -900,14 +900,14 @@ Path: `openspec/changes/<name>/confidence-score.json`
 
 #### Step 2 — Read config
 
-Path: `.claude/confidence-config.json`
+Path: `{{SPECRAILS_DIR}}/confidence-config.json`
 
 - If the file does not exist:
   - Use built-in defaults (overall: 70; type_correctness: 60; pattern_adherence: 60; test_coverage: 60; security: 75; architectural_alignment: 60).
   - Print:
     ```
     [confidence] No confidence-config.json found. Using built-in defaults.
-    [confidence] To customize thresholds, create .claude/confidence-config.json.
+    [confidence] To customize thresholds, create {{SPECRAILS_DIR}}/confidence-config.json.
     ```
 - If `enabled: false` in the config:
   - Print: `[confidence] Gate disabled. Skipping.`
@@ -971,9 +971,9 @@ The reviewer's confidence scores do not meet configured thresholds.
 
 ### Next Steps
 
-1. Address the concerns above and re-run `/specrails:implement`.
+1. Address the concerns above and re-run `{{COMMAND_PREFIX}}implement`.
 2. Or, if you have reviewed the concerns and accept the risk, re-run with an override:
-   `/specrails:implement #N --confidence-override "reason"`
+   `{{COMMAND_PREFIX}}implement #N --confidence-override "reason"`
 
 Pipeline halted. No git operations have been performed.
 ```
@@ -991,7 +991,7 @@ When `DRY_RUN=true`, the reviewer still writes `confidence-score.json` (it is an
 
 This check is independent of Phase 3a.0. Even if the user chose to continue through a conflict at Phase 3a.0, this gate re-checks all in-scope issues against the Phase 0 snapshot. It is the final gate before any code reaches git.
 
-Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
+Re-fetch each issue in `ISSUE_REFS` and diff against `{{SPECRAILS_DIR}}/backlog-cache.json` using the same algorithm as Phase 3a.0:
 
 **If `BACKLOG_PROVIDER=local`:** Read `.specrails/local-tickets.json` and extract each ticket by ID.
 
@@ -1008,7 +1008,7 @@ If all issues are clean: print `[conflict-check] All issues clean (Phase 4c.0). 
 
 If conflicts exist: print the same conflict report format as Phase 3a.0 (with `Phase 4c.0` context) and await `A`/`C` input (same re-prompt and default-abort logic).
 
-**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run /specrails:implement after resolving the issues.` and exit. No git operations have been performed at this point.
+**On abort:** Print `[conflict-abort] Pipeline aborted. Re-run {{COMMAND_PREFIX}}implement after resolving the issues.` and exit. No git operations have been performed at this point.
 
 **On continue:** Print `[conflict-override] Continuing. N conflict(s) logged.` Append each conflict to `CONFLICT_OVERRIDES` as `{phase: "4c.0", issue: "#N", field: "<field>", severity: "<severity>", was: "<was>", now: "<now>"}`. Proceed to Phase 4c.
 
@@ -1017,7 +1017,7 @@ If conflicts exist: print the same conflict report format as Phase 3a.0 (with `P
 **Security gate:** If `SECURITY_BLOCKED=true`:
 1. Print all Critical findings from the security-reviewer output
 2. Do NOT create a branch, commit, push, or PR
-3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run /specrails:implement."
+3. Print: "Pipeline blocked by security findings. Fix the Critical issues listed above and re-run {{COMMAND_PREFIX}}implement."
 4. Skip to Phase 4e.
 
 ### Dry-Run Gate
@@ -1041,7 +1041,7 @@ Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 **If `APPLY_MODE=true`:**
 1. Read `.cache-manifest.json` from `CACHE_DIR`.
 2. For each entry in `files`: copy `cached_path` to `real_path`, creating directories as needed.
-3. Print: `[apply] Copied N files from .claude/.dry-run/<feature-name>/ to real locations.`
+3. Print: `[apply] Copied N files from {{SPECRAILS_DIR}}/.dry-run/<feature-name>/ to real locations.`
 4. Then proceed with Phase 4c normally (GIT_AUTO logic, backlog updates) using the real files.
 5. On successful completion of Phase 4c: delete `CACHE_DIR` and print `[apply] Cache cleaned up.`
    If Phase 4c fails: preserve `CACHE_DIR` for re-run.
@@ -1141,7 +1141,7 @@ If `GIT_AUTO=false`: skip — the user will push and monitor CI themselves.
 | OpenSpec design | openspec/changes/\<name\>/design.md |
 | OpenSpec tasks | openspec/changes/\<name\>/tasks.md |
 | OpenSpec context-bundle | openspec/changes/\<name\>/context-bundle.md |
-| Developer files | .claude/.dry-run/\<name\>/ (N files) |
+| Developer files | {{SPECRAILS_DIR}}/.dry-run/\<name\>/ (N files) |
 
 ### What Would Change
 
@@ -1164,12 +1164,12 @@ If `GIT_AUTO=false`: skip — the user will push and monitor CI themselves.
 
 To apply these changes and ship:
 ```
-/specrails:implement --apply <feature-name>
+{{COMMAND_PREFIX}}implement --apply <feature-name>
 ```
 
 To discard this dry run:
 ```
-rm -rf .claude/.dry-run/<feature-name>/
+rm -rf {{SPECRAILS_DIR}}/.dry-run/<feature-name>/
 ```
 
 ---
@@ -1220,7 +1220,7 @@ If `MERGE_REPORT.requires_resolution` is non-empty, print an additional section:
 | <file> | <feature-a>, <feature-b> | <section heading or hunk description> | LOW_CONFIDENCE / SKIPPED |
 
 Fix these conflicts (search for `<<<<<<<` in each file), then commit the resolved files.
-To retry smart resolution after addressing context: `/specrails:merge-resolve --files <file>`
+To retry smart resolution after addressing context: `{{COMMAND_PREFIX}}merge-resolve --files <file>`
 ```
 
 If `CONFLICT_OVERRIDES` is non-empty, print:

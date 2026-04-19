@@ -70,25 +70,67 @@ const DEFAULT_SELECTED = new Set([
   'sr-product-manager',
 ]);
 
-// ─── Model presets ────────────────────────────────────────────────────────────
+// ─── Model presets (provider-aware) ───────────────────────────────────────────
+//
+// Each preset resolves to a DIFFERENT concrete model per provider. The UI label
+// is provider-agnostic so Codex users don't see "Sonnet"/"Opus" in the menu.
+// The resolved preset is written to install-config.yaml with the concrete model
+// id for the active provider — never a short alias like `sonnet`.
+//
+// Taxonomy (must stay in sync with specrails-hub):
+//
+//   CLAUDE:
+//     balanced: claude-sonnet-4-6            (default)
+//     budget:   claude-haiku-4-5-20251001
+//     max:      claude-sonnet-4-6            (non-special agents)
+//     max architect/pm: claude-opus-4-7
+//
+//   CODEX (GPT-5.x lineup — https://developers.openai.com/codex/models):
+//     balanced: gpt-5.4
+//     budget:   gpt-5.4-mini
+//     max:      gpt-5.4                      (non-special agents)
+//     max architect/pm: gpt-5.3-codex
 
 const MODEL_PRESETS = {
   balanced: {
-    label:       'Balanced (recommended) — Sonnet for all agents',
-    defaults:    'sonnet',
-    overrides:   {},
+    label: 'Balanced (recommended) — mid-tier model for all agents',
+    perProvider: {
+      claude: { defaults: 'claude-sonnet-4-6',          overrides: {} },
+      codex:  { defaults: 'gpt-5.4',                    overrides: {} },
+    },
   },
   budget: {
-    label:       'Budget — Haiku for all agents (3× cheaper, faster)',
-    defaults:    'haiku',
-    overrides:   {},
+    label: 'Budget — small/fast model for all agents (cheaper, faster)',
+    perProvider: {
+      claude: { defaults: 'claude-haiku-4-5-20251001', overrides: {} },
+      codex:  { defaults: 'gpt-5.4-mini',               overrides: {} },
+    },
   },
   max: {
-    label:       'Max quality — Opus for architect + PM, Sonnet for rest',
-    defaults:    'sonnet',
-    overrides:   { 'sr-architect': 'opus', 'sr-product-manager': 'opus' },
+    label: 'Max quality — top model for architect + PM, mid-tier for the rest',
+    perProvider: {
+      claude: {
+        defaults:  'claude-sonnet-4-6',
+        overrides: { 'sr-architect': 'claude-opus-4-7', 'sr-product-manager': 'claude-opus-4-7' },
+      },
+      codex: {
+        defaults:  'gpt-5.4',
+        overrides: { 'sr-architect': 'gpt-5.3-codex', 'sr-product-manager': 'gpt-5.3-codex' },
+      },
+    },
   },
 };
+
+/**
+ * Resolve a preset key to concrete `{ defaults, overrides }` for a given provider.
+ * Exported-style helper so install.sh / enrich.md can mirror identical logic.
+ */
+function resolvePreset(presetKey, provider) {
+  const preset = MODEL_PRESETS[presetKey];
+  if (!preset) throw new Error(`Unknown preset: ${presetKey}`);
+  const per = preset.perProvider[provider] || preset.perProvider.claude;
+  return { defaults: per.defaults, overrides: { ...per.overrides } };
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -161,14 +203,15 @@ function writeInstallConfig(specrailsDir, cfg) {
 function writeDefaultConfig(specrailsDir, provider) {
   const defaultSelected = [...DEFAULT_SELECTED];
   const defaultExcluded = ALL_AGENT_IDS.filter(id => !DEFAULT_SELECTED.has(id));
+  const { defaults, overrides } = resolvePreset('balanced', provider);
   writeInstallConfig(specrailsDir, {
     provider,
     tier:           'full',
     selectedAgents: defaultSelected,
     excludedAgents: defaultExcluded,
     modelPreset:    'balanced',
-    modelDefaults:  'sonnet',
-    modelOverrides: {},
+    modelDefaults:  defaults,
+    modelOverrides: overrides,
     agentTeams:     false,
   });
 }
@@ -297,7 +340,7 @@ async function run() {
     })),
   });
 
-  const { defaults: modelDefaults, overrides: modelOverrides } = MODEL_PRESETS[modelPreset];
+  const { defaults: modelDefaults, overrides: modelOverrides } = resolvePreset(modelPreset, provider);
 
   // ── Step 5: Agent Teams (Claude only) ──────────────────────────────────────
 
@@ -331,9 +374,13 @@ async function run() {
   });
 
   console.log(`\n  ✓ Config written to .specrails/install-config.yaml`);
-  console.log(`  ✓ Provider: ${provider} | Tier: ${tier} | Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length} | Preset: ${modelPreset}`);
+  console.log(`  ✓ Provider: ${provider} | Tier: ${tier} | Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length} | Preset: ${modelPreset} | Model: ${modelDefaults}`);
+  if (provider === 'claude' && agentTeams) {
+    console.log(`  ✓ Agent Teams: enabled (requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)`);
+  }
   if (tier === 'full') {
-    console.log(`\n  Next: run /specrails:enrich --from-config inside ${provider} to AI-customize your agents.\n`);
+    const invocation = provider === 'codex' ? '$enrich' : '/specrails:enrich --from-config';
+    console.log(`\n  Next: run ${invocation} inside ${provider} to AI-customize your agents.\n`);
   } else {
     console.log(`\n  Agents will be installed with template defaults.\n`);
   }

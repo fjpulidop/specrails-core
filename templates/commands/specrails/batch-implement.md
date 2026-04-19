@@ -1,8 +1,8 @@
 # Batch Implementation Orchestrator
 
-Macro-orchestrator above `/specrails:implement`. Accepts a set of feature references, computes a dependency-aware wave execution plan, invokes `/specrails:implement` per wave, and produces a batch-level progress dashboard and final report. All per-feature pipeline work (sr-architect, sr-developer, sr-reviewer, git, CI) is fully delegated to `/specrails:implement`.
+Macro-orchestrator above `{{COMMAND_PREFIX}}implement`. Accepts a set of feature references, computes a dependency-aware wave execution plan, invokes `{{COMMAND_PREFIX}}implement` per wave, and produces a batch-level progress dashboard and final report. All per-feature pipeline work (sr-architect, sr-developer, sr-reviewer, git, CI) is fully delegated to `{{COMMAND_PREFIX}}implement`.
 
-**MANDATORY: Always follow this pipeline exactly as written. NEVER skip, shortcut, or "optimize away" any phase — even if the batch seems small enough to handle directly. The orchestrator MUST compute waves, confirm with the user, and invoke `/specrails:implement` per wave as specified. Do NOT implement any feature yourself in the main conversation. No exceptions.**
+**MANDATORY: Always follow this pipeline exactly as written. NEVER skip, shortcut, or "optimize away" any phase — even if the batch seems small enough to handle directly. The orchestrator MUST compute waves, confirm with the user, and invoke `{{COMMAND_PREFIX}}implement` per wave as specified. Do NOT implement any feature yourself in the main conversation. No exceptions.**
 
 **Input:** $ARGUMENTS — one or more feature references with optional flags:
 
@@ -10,7 +10,7 @@ Macro-orchestrator above `/specrails:implement`. Accepts a set of feature refere
 - **`--deps "<spec>"`**: inline dependency spec, e.g. `"#71 -> #85, #63 -> #85"` (meaning #71 and #63 must complete before #85)
 - **`--concurrency N`**: max features running in parallel across waves (default: 3)
 - **`--wave-size N`**: max features per wave regardless of concurrency (default: unlimited)
-- **`--dry-run` / `--preview`**: passed through to each `/specrails:implement` invocation; no git or backlog operations will run
+- **`--dry-run` / `--preview`**: passed through to each `{{COMMAND_PREFIX}}implement` invocation; no git or backlog operations will run
 
 **IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — background agents cannot request permissions interactively.
 
@@ -23,21 +23,21 @@ Macro-orchestrator above `/specrails:implement`. Accepts a set of feature refere
 Scan `$ARGUMENTS` for issue/ticket references (e.g. `#85`, `#71`). Collect into `FEATURE_REFS` list. If fewer than 2 refs are found, stop and print:
 
 ```
-[batch-implement] Error: at least 2 feature refs are required. For a single feature, use /specrails:implement directly.
+[batch-implement] Error: at least 2 feature refs are required. For a single feature, use {{COMMAND_PREFIX}}implement directly.
 ```
 
 ### Step 2: Extract flags
 
 Scan `$ARGUMENTS` for control flags:
 
-- If `--dry-run` or `--preview` is present: set `DRY_RUN=true`. This flag is forwarded to every `/specrails:implement` call.
+- If `--dry-run` or `--preview` is present: set `DRY_RUN=true`. This flag is forwarded to every `{{COMMAND_PREFIX}}implement` call.
 - If `--deps "<spec>"` is present: capture the quoted string as `DEPS_SPEC`. Strip from arguments.
 - If `--concurrency N` is present: set `CONCURRENCY=N` (integer ≥ 1). Default: 3.
 - If `--wave-size N` is present: set `WAVE_SIZE=N` (integer ≥ 1). Default: unlimited (no per-wave cap).
 
 **If `DRY_RUN=true`**, print:
 ```
-[dry-run] Preview mode active — /specrails:implement will be called with --dry-run for each wave.
+[dry-run] Preview mode active — {{COMMAND_PREFIX}}implement will be called with --dry-run for each wave.
 ```
 
 ### Step 3: Fetch issue titles
@@ -158,7 +158,7 @@ Wait for user confirmation.
 
 ## Phase 2: Wave Execution Loop
 
-Execute waves sequentially. Within each wave, invoke `/specrails:implement` for all features in parallel (up to `CONCURRENCY` at a time).
+Execute waves sequentially. Within each wave, invoke `{{COMMAND_PREFIX}}implement` for all features in parallel (up to `CONCURRENCY` at a time).
 
 ### Progress Dashboard
 
@@ -178,9 +178,9 @@ Before starting each wave, print the current dashboard state:
 
 Status values:
 - `pending` — not yet started
-- `running` — `/specrails:implement` invocation is active
-- `done` — `/specrails:implement` completed successfully
-- `failed` — `/specrails:implement` exited with an error
+- `running` — `{{COMMAND_PREFIX}}implement` invocation is active
+- `done` — `{{COMMAND_PREFIX}}implement` completed successfully
+- `failed` — `{{COMMAND_PREFIX}}implement` exited with an error
 - `blocked` — a dependency failed; this feature will not run
 
 ### Wave invocation
@@ -189,9 +189,9 @@ For each wave `W`:
 
 1. Print: `[wave W/TOTAL_WAVES] Starting — features: <ref-list>`
 2. For each feature batch of size ≤ `CONCURRENCY` within the wave:
-   - Invoke `/specrails:implement` with the feature refs and forwarded flags:
+   - Invoke `{{COMMAND_PREFIX}}implement` with the feature refs and forwarded flags:
      ```
-     /specrails:implement <ref1> <ref2> ... [--dry-run]
+     {{COMMAND_PREFIX}}implement <ref1> <ref2> ... [--dry-run]
      ```
    - Run invocations in the batch in parallel (`run_in_background: true`).
    - Wait for all in the batch to complete before starting the next batch.
@@ -246,12 +246,12 @@ Dry-run: <yes / no>
 | # | Feature | Title | Wave | Status | Notes |
 |---|---------|-------|------|--------|-------|
 | 1 | #85     | <title> | 1  | done   |       |
-| 2 | #71     | <title> | 1  | failed | see /specrails:implement output |
+| 2 | #71     | <title> | 1  | failed | see {{COMMAND_PREFIX}}implement output |
 | 3 | #63     | <title> | 2  | blocked| depends on #71 |
 
 ### Merge Conflicts
 
-[List any merge conflicts reported by /specrails:implement across all waves. If none: "No merge conflicts detected."]
+[List any merge conflicts reported by {{COMMAND_PREFIX}}implement across all waves. If none: "No merge conflicts detected."]
 
 | Feature | File | Conflicting Region |
 |---------|------|--------------------|
@@ -264,19 +264,19 @@ All features implemented. Review open PRs and monitor CI.
 
 [If any features failed:]
 Re-run failed features individually:
-  /specrails:implement <failed-ref>
-  /specrails:implement <failed-ref>
+  {{COMMAND_PREFIX}}implement <failed-ref>
+  {{COMMAND_PREFIX}}implement <failed-ref>
 
 [If any features were blocked:]
 Once failed features are fixed, re-run blocked features:
-  /specrails:implement <blocked-ref> [--deps "..."]
+  {{COMMAND_PREFIX}}implement <blocked-ref> [--deps "..."]
 ```
 
 ---
 
 ## Error Handling
 
-- If a `/specrails:implement` invocation fails: record failure, apply failure isolation, continue remaining waves
+- If a `{{COMMAND_PREFIX}}implement` invocation fails: record failure, apply failure isolation, continue remaining waves
 - If GitHub CLI is unavailable (detected during issue title fetch): proceed without titles, show refs only
 - If `--deps` spec contains unknown refs: warn and continue — unknown refs are ignored in graph construction
 - Never block the entire batch on a single feature failure. Always produce a final report.

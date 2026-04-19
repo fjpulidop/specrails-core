@@ -1216,12 +1216,12 @@ When generating each agent:
 **If `cli_provider == "codex"`:** Convert to TOML format:
 - Extract YAML frontmatter fields: `name`, `description`, `model`
 - Extract the body content (everything after the closing `---` of the frontmatter)
-- Map the `model` field: `sonnet` → `codex-mini-latest`, `opus` → `o3`, `haiku` → `codex-mini-latest`
+- Map the `model` field: `sonnet` → `gpt-5.4`, `opus` → `gpt-5.3-codex`, `haiku` → `gpt-5.4-mini`
 - Write a `.toml` file with this structure:
   ```toml
   name = "<name from frontmatter>"
   description = "<description from frontmatter, escaped for TOML>"
-  model = "codex-mini-latest"
+  model = "gpt-5.4"
   prompt = """
   <body content after placeholder substitution>
   """
@@ -1526,12 +1526,12 @@ Display the complete installation summary:
 | sr-security-reviewer | .claude/agents/sr-security-reviewer.md | Sonnet |
 | sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
 [If cli_provider == "codex":]
-| sr-architect | .codex/agents/sr-architect.toml | codex-mini-latest |
-| sr-developer | .codex/agents/sr-developer.toml | codex-mini-latest |
-| sr-reviewer | .codex/agents/sr-reviewer.toml | codex-mini-latest |
-| sr-test-writer | .codex/agents/sr-test-writer.toml | codex-mini-latest |
-| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | codex-mini-latest |
-| sr-product-manager | .codex/agents/sr-product-manager.toml | o3 |
+| sr-architect | .codex/agents/sr-architect.toml | gpt-5.3-codex |
+| sr-developer | .codex/agents/sr-developer.toml | gpt-5.4 |
+| sr-reviewer | .codex/agents/sr-reviewer.toml | gpt-5.4 |
+| sr-test-writer | .codex/agents/sr-test-writer.toml | gpt-5.4 |
+| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | gpt-5.4 |
+| sr-product-manager | .codex/agents/sr-product-manager.toml | gpt-5.3-codex |
 
 ### Personas Created
 | Persona | File | Source |

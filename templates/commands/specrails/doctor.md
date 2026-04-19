@@ -11,7 +11,7 @@ Run the specrails health check to validate that all prerequisites are correctly 
 | Claude Code CLI | `claude` binary found in PATH |
 | Claude API key | `claude config list` shows a key OR `ANTHROPIC_API_KEY` env var set |
 | Agent files | `agents/` directory exists with at least 1 `AGENTS.md` file |
-| CLAUDE.md | `CLAUDE.md` present in the repo root |
+| Instructions file | `{{INSTRUCTIONS_FILE}}` present in the repo root |
 | Git initialized | `.git/` directory present |
 | npm | `npm` binary found in PATH |
 
@@ -35,7 +35,7 @@ Each check is displayed as ✅ (pass) or ❌ (fail with fix instruction).
 
 On all checks passed:
 ```
-All 6 checks passed. Run /specrails:get-backlog-specs to get started.
+All 6 checks passed. Run {{COMMAND_PREFIX}}get-backlog-specs to get started.
 ```
 
 On failure:

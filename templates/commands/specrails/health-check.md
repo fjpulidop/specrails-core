@@ -88,7 +88,7 @@ The `static` check is always available (AI-assisted analysis requires no externa
 
 ## Phase 2: Load Previous Report
 
-Read `.claude/health-history/` to find the comparison baseline.
+Read `{{SPECRAILS_DIR}}/health-history/` to find the comparison baseline.
 
 **Variables to set:**
 - `PREV_REPORT_PATH` — absolute file path or `null`
@@ -97,7 +97,7 @@ Read `.claude/health-history/` to find the comparison baseline.
 
 **Logic:**
 
-1. Check whether `.claude/health-history/` exists and contains `.json` files.
+1. Check whether `{{SPECRAILS_DIR}}/health-history/` exists and contains `.json` files.
    - If directory is absent or empty: set `IS_FIRST_RUN=true`, `PREV_REPORT_PATH=null`, `PREV_REPORT=null`. Print: `First run — no previous report found. Regression comparison is not available.` Proceed.
 
 2. If reports exist and `COMPARE_DATE` is empty: select the most recently modified `.json` file.
@@ -256,7 +256,7 @@ perf: <PASS|FAIL|SKIPPED> (<tool>)
 Perform static code inspection to detect issues that tools cannot surface: missing documentation, broken imports, and unused exports. These checks are language-aware and use AI-assisted code reading rather than external tooling.
 
 Always exclude the following directories from analysis:
-- `node_modules/`, `.git/`, `dist/`, `build/`, `vendor/`, `.claude/`, `coverage/`
+- `node_modules/`, `.git/`, `dist/`, `build/`, `vendor/`, `{{SPECRAILS_DIR}}/`, `coverage/`
 
 For each finding, record a structured object:
 ```
@@ -504,24 +504,24 @@ For delta display: wrap positive deltas on error/failure metrics in `(+N)` to in
 Only store if `SAVE_SNAPSHOT=true`.
 
 1. Determine filename: `<YYYY-MM-DD>-<git_short_sha>.json` where the date is today's ISO date. If git is unavailable, use `<YYYY-MM-DD>-unknown.json`.
-2. Create `.claude/health-history/` if it does not exist (idempotent — no error if already present).
-3. Write `HEALTH_REPORT` serialized as JSON to `.claude/health-history/<filename>`.
-4. Print: `Stored: .claude/health-history/<filename>`
+2. Create `{{SPECRAILS_DIR}}/health-history/` if it does not exist (idempotent — no error if already present).
+3. Write `HEALTH_REPORT` serialized as JSON to `{{SPECRAILS_DIR}}/health-history/<filename>`.
+4. Print: `Stored: {{SPECRAILS_DIR}}/health-history/<filename>`
 
 ### Housekeeping notice
 
-After writing (or after checking the directory if `SAVE_SNAPSHOT=false`), count `.json` files in `.claude/health-history/`. If count > 30, print:
+After writing (or after checking the directory if `SAVE_SNAPSHOT=false`), count `.json` files in `{{SPECRAILS_DIR}}/health-history/`. If count > 30, print:
 
 ```
-Note: .claude/health-history/ has N reports. Consider pruning old ones with:
-  ls -t .claude/health-history/ | tail -n +31 | xargs -I{} rm .claude/health-history/{}
+Note: {{SPECRAILS_DIR}}/health-history/ has N reports. Consider pruning old ones with:
+  ls -t {{SPECRAILS_DIR}}/health-history/ | tail -n +31 | xargs -I{} rm {{SPECRAILS_DIR}}/health-history/{}
 ```
 
 ### .gitignore suggestion
 
-Check whether `.claude/health-history` appears in `.gitignore` (if `.gitignore` exists). If it does not appear, print:
+Check whether `{{SPECRAILS_DIR}}/health-history` appears in `.gitignore` (if `.gitignore` exists). If it does not appear, print:
 
 ```
 Tip: health history reports are local artifacts. Add to .gitignore:
-  echo '.claude/health-history/' >> .gitignore
+  echo '{{SPECRAILS_DIR}}/health-history/' >> .gitignore
 ```
