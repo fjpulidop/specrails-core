@@ -1,6 +1,8 @@
 # CLI Reference
 
-SpecRails commands are implemented as Skills (`SKILL.md` format) and run in both Claude Code and Codex. The command syntax is identical on both platforms.
+> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** Codex-specific sections below describe the planned behaviour. Codex installation is currently disabled — only Claude Code is available today.
+
+SpecRails commands are implemented as Skills (`SKILL.md` format) and are designed to run in both Claude Code and Codex. The command syntax is identical on both platforms. Today only the Claude Code runtime is available; Codex support is being tested in our lab and will ship shortly.
 
 **Platform support key used in this reference:**
 

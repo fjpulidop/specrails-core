@@ -74,17 +74,19 @@ The scaffold copies the full agent+command set into `.claude/` — you own and v
 
 **Best for:** Teams that want to version the agent prompts themselves, or projects that need full offline control.
 
-### 3. Codex project
+### 3. Codex project 🧪 _Coming Soon (in Lab)_
+
+> **Codex installation is not yet available.** OpenAI Codex integration is being tested in our lab and will ship shortly. The block below describes the **planned behaviour** for when the feature is released.
 
 ```bash
-npx specrails-core@latest init --root-dir .   # same as scaffold
+npx specrails-core@latest init --root-dir .   # same as scaffold (Codex path — not yet available)
 codex                                          # open Codex
 /specrails:enrich                             # configure
 ```
 
-Codex does not support the Claude Code plugin system. Use the scaffold method.
+Codex does not support the Claude Code plugin system. When Codex support ships, use the scaffold method.
 
-**Best for:** OpenAI Codex CLI users.
+**Best for (when available):** OpenAI Codex CLI users.
 
 ## The `/specrails:enrich` wizard
 

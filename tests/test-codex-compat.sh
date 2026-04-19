@@ -146,7 +146,7 @@ test_codex_output_dir_created() {
     run_install_mocked "--provider codex" >/dev/null
     assert_dir_exists "$TEST_TMPDIR/target/.codex"
 }
-run_test "SPEA-506: codex provider → .codex/ directory created" test_codex_output_dir_created
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-506: codex provider → .codex/ directory created" test_codex_output_dir_created
 
 test_claude_instruction_file_created() {
     setup_mock_bin
@@ -172,7 +172,7 @@ test_codex_instruction_file_created() {
     assert_contains "$(cat "$detection")" '"instructions_file": "AGENTS.md"' \
         ".provider-detection.json should record AGENTS.md as instructions file"
 }
-run_test "SPEA-506: codex provider → AGENTS.md instruction file created" test_codex_instruction_file_created
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-506: codex provider → AGENTS.md instruction file created" test_codex_instruction_file_created
 
 # ─────────────────────────────────────────────
 # SPEA-507: Skills format
@@ -214,7 +214,7 @@ test_skills_exist_for_codex() {
             "SKILL.md should exist for skill: $skill (codex)"
     done
 }
-run_test "SPEA-507: all expected SKILL.md files created for codex provider" test_skills_exist_for_codex
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-507: all expected SKILL.md files created for codex provider" test_skills_exist_for_codex
 
 test_backward_compat_slash_commands() {
     setup_mock_bin
@@ -249,7 +249,7 @@ test_codex_config_toml_created() {
     # install.sh stages codex-config.toml in setup-templates/; /setup deploys it to .codex/config.toml
     assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/settings/codex-config.toml"
 }
-run_test "SPEA-508: codex provider → .codex/config.toml created" test_codex_config_toml_created
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-508: codex provider → .codex/config.toml created" test_codex_config_toml_created
 
 test_codex_starlark_rules_created() {
     setup_mock_bin
@@ -258,7 +258,7 @@ test_codex_starlark_rules_created() {
     # install.sh stages codex-rules.star in setup-templates/; /setup deploys it as .codex/rules/default.rules
     assert_file_exists "$TEST_TMPDIR/target/.specrails/setup-templates/settings/codex-rules.star"
 }
-run_test "SPEA-508: codex provider → .codex/rules/default.rules created" test_codex_starlark_rules_created
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-508: codex provider → .codex/rules/default.rules created" test_codex_starlark_rules_created
 
 # ─────────────────────────────────────────────
 # SPEA-509: Agent definitions
@@ -304,7 +304,7 @@ test_codex_agent_toml_files() {
     assert_contains "$(cat "$enrich_skill")" "toml" \
         "\$setup skill should contain TOML generation logic for codex"
 }
-run_test "SPEA-509: codex provider → sr-*.toml agents with TOML format" test_codex_agent_toml_files
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "SPEA-509: codex provider → sr-*.toml agents with TOML format" test_codex_agent_toml_files
 
 test_agent_prompt_content_identical() {
     setup_mock_bin
@@ -416,7 +416,7 @@ test_switch_provider_claude_to_codex() {
     # .claude/ should still exist (we don't delete it)
     assert_dir_exists "$TEST_TMPDIR/target/.claude"
 }
-run_test "edge case: switching from claude to codex keeps both dirs intact" test_switch_provider_claude_to_codex
+SKIP_REASON="Codex support gated — coming soon (in lab)" run_test "edge case: switching from claude to codex keeps both dirs intact" test_switch_provider_claude_to_codex
 
 test_idempotent_reinstall_codex() {
     setup_mock_bin

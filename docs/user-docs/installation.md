@@ -2,7 +2,11 @@
 
 Install SpecRails into any git repository in two steps: install, then run `/specrails:enrich` inside your AI CLI.
 
-SpecRails supports both **Claude Code** and **OpenAI Codex**. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison.
+> ## 🧪 Codex (OpenAI) Support — Coming Soon (in Lab)
+>
+> OpenAI Codex integration is currently being **tested in our lab** and **cannot be installed yet**. The installer will refuse any attempt to install with `--provider codex` and will guide you to use Claude Code. Codex-specific sections below describe the **planned behaviour** for when the feature ships.
+
+SpecRails supports **Claude Code** today, with **OpenAI Codex** coming soon. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison of the upcoming Codex support.
 
 > **Looking for the comprehensive reference?** See [Installation & Setup](../installation.md) for full wizard phase details and advanced configuration.
 

@@ -1,8 +1,12 @@
 # Getting Started with SpecRails + Codex
 
-This guide gets you running SpecRails using OpenAI Codex as your AI agent. If you are using Claude Code instead, see the [standard installation guide](installation.md).
+> # 🧪 Coming Soon — Currently in Lab
+>
+> **OpenAI Codex support is being tested in our lab and is not yet available for installation.** The installer will refuse to install Codex and will ask you to use Claude Code. This document describes the planned behaviour and will be activated when the feature ships.
+>
+> **Current status:** Preview / documentation only. For now, use [Claude Code](https://claude.ai/download) — see the [standard installation guide](installation.md).
 
-> **Beta**: Codex support is available in SpecRails 1.x as a beta feature. Core Skills work out of the box. See [Codex vs Claude Code](codex-vs-claude-code.md) for what is and is not supported.
+This guide gets you running SpecRails using OpenAI Codex as your AI agent. If you are using Claude Code instead, see the [standard installation guide](installation.md).
 
 ---
 

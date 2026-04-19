@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm downloads](https://img.shields.io/npm/dw/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
 [![Claude Code](https://img.shields.io/badge/Built%20for-Claude%20Code-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
-[![Codex](https://img.shields.io/badge/Built%20for-OpenAI%20Codex-412991)](https://github.com/openai/codex)
+[![Codex — Coming Soon](https://img.shields.io/badge/OpenAI%20Codex-Coming%20Soon%20(in%20lab)-lightgrey)](https://github.com/openai/codex)
 
 **Your agentic development team. From idea to production code.**
 
@@ -16,7 +16,9 @@ npx specrails-core@latest init   # install into the current repo
 /specrails:enrich                # optional: deep codebase analysis
 ```
 
-> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex CLI](https://github.com/openai/codex) (one of them), git, Node 18+.
+> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), git, Node 18+.
+>
+> **🧪 Codex (OpenAI) support — Coming Soon:** We are testing Codex integration in our lab. Installation is disabled for now, but the feature will be available shortly. Follow the repo for updates.
 
 ---
 
@@ -217,7 +219,8 @@ Each persona scores features 0–5. Features are ranked by score / effort ratio.
 
 | Tool | Required | Purpose |
 |------|----------|---------|
-| **Claude Code** or **Codex CLI** | Yes (one of them) | AI agent runtime |
+| **Claude Code** | Yes | AI agent runtime |
+| **Codex CLI** _(coming soon — in lab)_ | 🧪 Not yet | OpenAI Codex support is being tested in our lab and will be available shortly. |
 | **git** | Yes | Repository detection |
 | **Node 18+** | Yes | Needed for `npx specrails-core@latest init` |
 | **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation. Not needed with local tickets. |
@@ -268,10 +271,10 @@ Not simultaneously for the same project — backlog commands use one active prov
 A full `/specrails:implement` cycle for one feature typically costs a few dollars in Claude API usage. The sr-product-manager uses Opus; all other agents use Sonnet or Haiku.
 
 **Does it work with private repos?**
-Yes. Everything runs locally through Claude Code (or Codex). No external services beyond the model API.
+Yes. Everything runs locally through Claude Code. No external services beyond the model API.
 
 **How do I use specrails with Codex?**
-Same install path: `npx specrails-core@latest init --root-dir .`. The TUI detects Codex and adjusts the agent configuration. See [docs/user-docs/getting-started-codex.md](./docs/user-docs/getting-started-codex.md).
+🧪 **Coming Soon — in lab.** OpenAI Codex support is currently being tested in our lab and will be available shortly. The install path will remain the same (`npx specrails-core@latest init --root-dir .`) — the installer will detect Codex and adjust the agent configuration automatically. See [docs/user-docs/getting-started-codex.md](./docs/user-docs/getting-started-codex.md) for the preview documentation.
 
 ---
 

@@ -8,6 +8,7 @@ TEST_TMPDIR=""
 TESTS_RUN=0
 TESTS_PASSED=0
 TESTS_FAILED=0
+TESTS_SKIPPED=0
 FAILED_TESTS=()
 
 # Colors
@@ -108,6 +109,16 @@ run_test() {
     local test_fn="$2"
     TESTS_RUN=$(( TESTS_RUN + 1 ))
 
+    # Skip tests gated while a feature is in the lab. Callers mark a test as
+    # skipped by declaring SKIP_REASON="..." before calling run_test. The
+    # variable is consumed and cleared so it never leaks to the next test.
+    if [[ -n "${SKIP_REASON:-}" ]]; then
+        echo -e "  $test_name ... ${YELLOW:-\033[1;33m}SKIP${NC:-\033[0m} (${SKIP_REASON})"
+        TESTS_SKIPPED=$(( ${TESTS_SKIPPED:-0} + 1 ))
+        unset SKIP_REASON
+        return 0
+    fi
+
     setup_test_env
 
     echo -n "  $test_name ... "
@@ -127,7 +138,11 @@ print_summary() {
     local suite_name="$1"
     echo ""
     echo -e "${BOLD}─── $suite_name ───${NC}"
-    echo -e "  Total: $TESTS_RUN  ${GREEN}Passed: $TESTS_PASSED${NC}  ${RED}Failed: $TESTS_FAILED${NC}"
+    local skipped_label=""
+    if [[ "${TESTS_SKIPPED:-0}" -gt 0 ]]; then
+        skipped_label="  ${YELLOW:-\033[1;33m}Skipped: ${TESTS_SKIPPED}${NC:-\033[0m}"
+    fi
+    echo -e "  Total: $TESTS_RUN  ${GREEN}Passed: $TESTS_PASSED${NC}  ${RED}Failed: $TESTS_FAILED${NC}${skipped_label}"
     if [[ ${#FAILED_TESTS[@]} -gt 0 ]]; then
         echo ""
         echo -e "  ${RED}Failed tests:${NC}"

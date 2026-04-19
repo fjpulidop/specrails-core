@@ -1,5 +1,7 @@
 # Deployment
 
+> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** Any Codex-specific option or step below describes the planned behaviour. Codex installation is currently disabled; the installer will guide you to Claude Code instead.
+
 SpecRails runs locally — no cloud infrastructure required. Choose the setup that fits your workflow.
 
 ## Options at a glance

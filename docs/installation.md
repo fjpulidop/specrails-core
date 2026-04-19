@@ -2,15 +2,19 @@
 
 This guide covers the complete installation process in detail. For the quick version, see [Getting Started](getting-started.md).
 
+> ## 🧪 Codex (OpenAI) Support — Coming Soon (in Lab)
+>
+> OpenAI Codex integration is currently being **tested in our lab** and **cannot be installed yet**. The installer will refuse any attempt to install with `--provider codex` and will guide you to use Claude Code instead. Codex-specific sections below describe the **planned behaviour** and will be activated when the feature ships.
+
 ## Installation methods
 
-SpecRails supports three distribution channels:
+SpecRails supports two distribution channels today, with a third coming soon:
 
 | Method | Command | Best for |
 |--------|---------|----------|
 | **Claude Code plugin** (recommended) | `claude plugin install sr` | Most projects — no Node.js required, auto-updates |
-| **Claude Code scaffold** | `npx specrails-core@latest init` | Full offline control, Codex users, custom agent edits |
-| **Codex project** | `npx specrails-core@latest init` | OpenAI Codex CLI users |
+| **Claude Code scaffold** | `npx specrails-core@latest init` | Full offline control, custom agent edits |
+| **Codex project** 🧪 _Coming Soon (in lab)_ | `npx specrails-core@latest init` | OpenAI Codex CLI users (not yet available) |
 
 ---
 
