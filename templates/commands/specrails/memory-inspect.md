@@ -5,7 +5,7 @@ category: Workflow
 tags: [workflow, memory, agents, maintenance, diagnostics]
 ---
 
-Inspect agent memory directories under `.claude/agent-memory/sr-*/` for **{{PROJECT_NAME}}**. Show per-agent stats, recent entries, and actionable recommendations.
+Inspect agent memory directories under `{{SPECRAILS_DIR}}/agent-memory/sr-*/` for **{{PROJECT_NAME}}**. Show per-agent stats, recent entries, and actionable recommendations.
 
 **Input:** `$ARGUMENTS` — optional:
 - `<agent-name>` — inspect a specific agent's memory (e.g. `sr-developer`, `sr-reviewer`)
@@ -40,18 +40,18 @@ Scanning: <all agents | agent: AGENT_FILTER> | Stale threshold: STALE_DAYS days 
 
 ## Phase 1: Discover Memory Directories
 
-Glob all directories matching `.claude/agent-memory/sr-*/`.
+Glob all directories matching `{{SPECRAILS_DIR}}/agent-memory/sr-*/`.
 
 If no directories are found:
 ```
-No agent memory directories found under .claude/agent-memory/.
+No agent memory directories found under {{SPECRAILS_DIR}}/agent-memory/.
 
-Agent memory is written by sr-* agents during the /specrails:implement pipeline.
-Run /specrails:implement on a feature to generate your first memory entries.
+Agent memory is written by sr-* agents during the {{COMMAND_PREFIX}}implement pipeline.
+Run {{COMMAND_PREFIX}}implement on a feature to generate your first memory entries.
 ```
 Then stop.
 
-If `AGENT_FILTER` is set, filter to only the directory `.claude/agent-memory/<AGENT_FILTER>/`. If that directory does not exist:
+If `AGENT_FILTER` is set, filter to only the directory `{{SPECRAILS_DIR}}/agent-memory/<AGENT_FILTER>/`. If that directory does not exist:
 ```
 No memory directory found for agent: <AGENT_FILTER>
 
@@ -188,11 +188,11 @@ Otherwise, print the full list of files and directories that will be deleted:
 The following N files will be permanently deleted:
 
 Stale files:
-  - .claude/agent-memory/sr-developer/common-fixes.md (69 days old)
+  - {{SPECRAILS_DIR}}/agent-memory/sr-developer/common-fixes.md (69 days old)
   - ...
 
 Orphaned directories:
-  - .claude/agent-memory/sr-old-agent/ (N files, N KB)
+  - {{SPECRAILS_DIR}}/agent-memory/sr-old-agent/ (N files, N KB)
 
 Proceed? [y/N]:
 ```
@@ -227,7 +227,7 @@ Print a final recommendations section based on findings:
 
 1. **Prune stale data** — if `STALE_COUNT > 0` across any agent and `PRUNE_MODE=false`:
    ```
-   - N stale files detected. Run `/specrails:memory-inspect --prune` to remove them and free N KB.
+   - N stale files detected. Run `{{COMMAND_PREFIX}}memory-inspect --prune` to remove them and free N KB.
    ```
 
 2. **Investigate large memory** — if any single agent's `TOTAL_SIZE > 1 MB`:
@@ -244,13 +244,13 @@ Print a final recommendations section based on findings:
 4. **Empty memory directories** — if any agent directory has `FILE_COUNT = 0`:
    ```
    - <agent-name> memory directory is empty. It may be safe to delete:
-     rm -rf .claude/agent-memory/<agent-name>/
+     rm -rf {{SPECRAILS_DIR}}/agent-memory/<agent-name>/
    ```
 
-5. **Gitignore advisory** — check whether `.claude/agent-memory` appears in `.gitignore`. If not:
+5. **Gitignore advisory** — check whether `{{SPECRAILS_DIR}}/agent-memory` appears in `.gitignore`. If not:
    ```
    - Agent memory is local runtime state. Add to .gitignore:
-       echo '.claude/agent-memory/' >> .gitignore
+       echo '{{SPECRAILS_DIR}}/agent-memory/' >> .gitignore
    ```
 
 If no recommendations apply, print:

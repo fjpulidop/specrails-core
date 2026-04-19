@@ -8,23 +8,23 @@ metadata:
   version: "1.0"
 ---
 
-# /specrails:why — In-Context Help
+# {{COMMAND_PREFIX}}why — In-Context Help
 
 Searches explanation records written by sr-architect, sr-developer, and sr-reviewer agents
 during the OpenSpec implementation pipeline.
 
-Records are stored in `.claude/agent-memory/explanations/` as Markdown files with
+Records are stored in `{{SPECRAILS_DIR}}/agent-memory/explanations/` as Markdown files with
 YAML frontmatter (agent, feature, tags, date).
 
 **Usage:**
-- `/specrails:why` — list the 20 most recent explanation records
-- `/specrails:why <query>` — search records by keyword or tag
+- `{{COMMAND_PREFIX}}why` — list the 20 most recent explanation records
+- `{{COMMAND_PREFIX}}why <query>` — search records by keyword or tag
 
 ---
 
 ## Step 1: Find explanation records
 
-Glob all files matching `.claude/agent-memory/explanations/*.md`.
+Glob all files matching `{{SPECRAILS_DIR}}/agent-memory/explanations/*.md`.
 
 If the directory does not exist or contains no files:
 Print:
@@ -34,7 +34,7 @@ No explanation records found yet.
 Explanation records are written by the sr-architect, sr-developer, and sr-reviewer agents
 when they make significant decisions during feature implementation.
 
-Run `/specrails:implement` on a feature to generate your first explanation records.
+Run `{{COMMAND_PREFIX}}implement` on a feature to generate your first explanation records.
 ```
 Then stop.
 
@@ -84,7 +84,7 @@ Then list all unique tags from existing records:
 
 [sorted list of all unique tags from all explanation records]
 
-Try `/specrails:why <tag>` with one of the tags above, or `/specrails:why` to browse all records.
+Try `{{COMMAND_PREFIX}}why <tag>` with one of the tags above, or `{{COMMAND_PREFIX}}why` to browse all records.
 ```
 
 If records match, print each matching record in full, separated by `---`:

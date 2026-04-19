@@ -12,7 +12,7 @@ Analyze **{{PROJECT_NAME}}** agent execution telemetry — token usage, API cost
 - `--period <filter>` — time window for analysis. Values: `today`, `week`, `all`. Default: `week`.
 - `--agent <name>` — focus on a single agent (e.g. `sr-developer`). Default: all agents.
 - `--format <fmt>` — output format: `markdown` or `json`. Default: `markdown`.
-- `--save` — write a snapshot to `.claude/telemetry/` after display.
+- `--save` — write a snapshot to `{{SPECRAILS_DIR}}/telemetry/` after display.
 
 ---
 
@@ -55,13 +55,13 @@ Collect JSONL session log files that may contain Claude CLI usage data. Search t
 
 ### 1a. Project-scoped logs
 
-Check for `.jsonl` files under the project `.claude/` directory (excluding `.claude/agent-memory/` and `.claude/health-history/`):
+Check for `.jsonl` files under the project `{{SPECRAILS_DIR}}/` directory (excluding `{{SPECRAILS_DIR}}/agent-memory/` and `{{SPECRAILS_DIR}}/health-history/`):
 
 ```bash
-find .claude/ -name "*.jsonl" \
-  -not -path ".claude/agent-memory/*" \
-  -not -path ".claude/health-history/*" \
-  -not -path ".claude/telemetry/*" 2>/dev/null
+find {{SPECRAILS_DIR}}/ -name "*.jsonl" \
+  -not -path "{{SPECRAILS_DIR}}/agent-memory/*" \
+  -not -path "{{SPECRAILS_DIR}}/health-history/*" \
+  -not -path "{{SPECRAILS_DIR}}/telemetry/*" 2>/dev/null
 ```
 
 ### 1b. Global Claude CLI logs
@@ -89,7 +89,7 @@ find "$HOME/.claude/projects/$PROJECT_HASH/" -name "*.jsonl" 2>/dev/null
 Also check these well-known paths:
 
 - `~/.claude/logs/*.jsonl`
-- `.claude/runs/*.jsonl`
+- `{{SPECRAILS_DIR}}/runs/*.jsonl`
 
 ### 1d. Collect results
 
@@ -107,10 +107,10 @@ If `LOG_FILES` is empty:
 ```
 No JSONL session logs found. Telemetry will be derived from agent-memory metadata only.
 Log locations searched:
-  - .claude/**/*.jsonl
+  - {{SPECRAILS_DIR}}/**/*.jsonl
   - ~/.claude/projects/<hash>/**/*.jsonl
   - ~/.claude/logs/*.jsonl
-  - .claude/runs/*.jsonl
+  - {{SPECRAILS_DIR}}/runs/*.jsonl
 
 To enable richer telemetry, configure Claude CLI to persist session logs.
 ```
@@ -178,7 +178,7 @@ Parsed N records from N log files.
 
 ## Phase 3: Agent-Memory Inventory
 
-Regardless of `LOGS_AVAILABLE`, collect metadata from `.claude/agent-memory/sr-*/`.
+Regardless of `LOGS_AVAILABLE`, collect metadata from `{{SPECRAILS_DIR}}/agent-memory/sr-*/`.
 
 For each directory:
 
@@ -283,11 +283,11 @@ Also compute:
 
 ## Phase 6: Trend Analysis
 
-Compare the current period's per-agent metrics against the previous equivalent period (loaded from `.claude/telemetry/` snapshots, if available).
+Compare the current period's per-agent metrics against the previous equivalent period (loaded from `{{SPECRAILS_DIR}}/telemetry/` snapshots, if available).
 
 ### 6a. Load Previous Snapshot
 
-Check `.claude/telemetry/` for JSON files matching `<YYYY-MM-DD>-<period>.json`. Select the snapshot from the previous equivalent period:
+Check `{{SPECRAILS_DIR}}/telemetry/` for JSON files matching `<YYYY-MM-DD>-<period>.json`. Select the snapshot from the previous equivalent period:
 
 - `today` → yesterday's `today` snapshot
 - `week` → the `week` snapshot from 7 days ago
@@ -420,7 +420,7 @@ Run with `--save` to persist a baseline for future trend analysis.
 1. **High failure rate** — if any agent has `success_rate < 80%`:
    ```
    ⚠️  <agent-name> has a N% success rate (N failures out of N runs).
-   Action: Review `.claude/agent-memory/<agent-name>/failure-patterns.md` for recurring errors.
+   Action: Review `{{SPECRAILS_DIR}}/agent-memory/<agent-name>/failure-patterns.md` for recurring errors.
    ```
 
 2. **Cost outlier** — if any agent accounts for > 50% of total cost:
@@ -452,14 +452,14 @@ Run with `--save` to persist a baseline for future trend analysis.
 6. **Memory not cleared** — if any agent has > 50 memory files:
    ```
    🗂️  <agent-name> has N memory files. Large memory stores may slow context loading.
-   Action: Run `/specrails:memory-inspect --prune` to clean stale entries.
+   Action: Run `{{COMMAND_PREFIX}}memory-inspect --prune` to clean stale entries.
    ```
 
 7. **Data gap warning** — if `LOGS_AVAILABLE=false`:
    ```
    ℹ️  Telemetry is based on agent-memory metadata only (no JSONL logs found).
    Token and cost data are unavailable. To enable full telemetry:
-     - Run /specrails:implement with Claude CLI configured to persist session logs.
+     - Run {{COMMAND_PREFIX}}implement with Claude CLI configured to persist session logs.
      - Check your Claude CLI version for `--output-format` or `--log` options.
    ```
 
@@ -533,20 +533,20 @@ Emit a single JSON object to stdout:
 Skip if `SAVE_SNAPSHOT=false`.
 
 1. Determine filename: `<YYYY-MM-DD>-<period>.json` using today's ISO date and the `PERIOD` value.
-2. Create `.claude/telemetry/` if it does not exist.
-3. Write the JSON telemetry object (same schema as `FORMAT=json` output) to `.claude/telemetry/<filename>`.
-4. Print: `Stored: .claude/telemetry/<filename>`
+2. Create `{{SPECRAILS_DIR}}/telemetry/` if it does not exist.
+3. Write the JSON telemetry object (same schema as `FORMAT=json` output) to `{{SPECRAILS_DIR}}/telemetry/<filename>`.
+4. Print: `Stored: {{SPECRAILS_DIR}}/telemetry/<filename>`
 
-**Housekeeping:** If `.claude/telemetry/` contains more than 60 files, print:
+**Housekeeping:** If `{{SPECRAILS_DIR}}/telemetry/` contains more than 60 files, print:
 
 ```
-Note: .claude/telemetry/ has N snapshots. Consider pruning old ones:
-  ls -t .claude/telemetry/ | tail -n +61 | xargs -I{} rm .claude/telemetry/{}
+Note: {{SPECRAILS_DIR}}/telemetry/ has N snapshots. Consider pruning old ones:
+  ls -t {{SPECRAILS_DIR}}/telemetry/ | tail -n +61 | xargs -I{} rm {{SPECRAILS_DIR}}/telemetry/{}
 ```
 
-**Gitignore advisory:** Check whether `.claude/telemetry` appears in `.gitignore`. If not:
+**Gitignore advisory:** Check whether `{{SPECRAILS_DIR}}/telemetry` appears in `.gitignore`. If not:
 
 ```
 Tip: Telemetry snapshots are local artifacts. Add to .gitignore:
-  echo '.claude/telemetry/' >> .gitignore
+  echo '{{SPECRAILS_DIR}}/telemetry/' >> .gitignore
 ```

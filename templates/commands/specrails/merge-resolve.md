@@ -152,7 +152,7 @@ The following files still contain conflict markers that require manual resolutio
   - path/to/file.ts (N block(s))
 
 Search for `<<<<<<<` in each file to locate the markers.
-Run `/specrails:merge-resolve` again after addressing the low-confidence conflicts,
+Run `{{COMMAND_PREFIX}}merge-resolve` again after addressing the low-confidence conflicts,
 or resolve them manually and commit.
 ```
 

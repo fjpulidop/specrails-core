@@ -22,7 +22,7 @@ Parse `$ARGUMENTS` to set runtime variables.
 
 **Variables to set:**
 
-- `MODE` — string, one of `"snapshot"`, `"diff"`, `"propose"`. Default: `"diff"` if `.claude/compat-snapshots/` contains any `.json` files; `"snapshot"` otherwise.
+- `MODE` — string, one of `"snapshot"`, `"diff"`, `"propose"`. Default: `"diff"` if `{{SPECRAILS_DIR}}/compat-snapshots/` contains any `.json` files; `"snapshot"` otherwise.
 - `COMPARE_DATE` — string (ISO date) or empty string. Default: `""` (use most recent snapshot).
 - `PROPOSE_DIR` — string or empty string. Default: `""`.
 - `DRY_RUN` — boolean. Default: `false`.
@@ -35,7 +35,7 @@ Parse `$ARGUMENTS` to set runtime variables.
 4. Scan for `--propose <change-dir>`. If found, set `PROPOSE_DIR=<change-dir>` and `MODE=propose`.
    - Verify `openspec/changes/<change-dir>/` exists. If not: print `Error: no change found at openspec/changes/<change-dir>/` and stop.
 5. Scan for `--dry-run`. If found, set `DRY_RUN=true`.
-6. Apply default-mode logic if `MODE` is not yet set: check whether `.claude/compat-snapshots/` exists and contains `.json` files. If yes: `MODE=diff`. If no: `MODE=snapshot`.
+6. Apply default-mode logic if `MODE` is not yet set: check whether `{{SPECRAILS_DIR}}/compat-snapshots/` exists and contains `.json` files. If yes: `MODE=diff`. If no: `MODE=snapshot`.
 
 **Verify prerequisites:**
 
@@ -126,7 +126,7 @@ Applies in `diff` and `propose` modes only.
 
 **For `diff` mode:**
 
-1. Check whether `.claude/compat-snapshots/` exists and contains `.json` files.
+1. Check whether `{{SPECRAILS_DIR}}/compat-snapshots/` exists and contains `.json` files.
    - If empty or missing: print `Advisory: no prior snapshot found. Switching to snapshot mode.` Set `MODE=snapshot`. Proceed to Phase 5.
 2. If `COMPARE_DATE` is empty: select the most recently modified `.json` file.
 3. If `COMPARE_DATE` is set: find the snapshot whose filename date is closest to `COMPARE_DATE` without exceeding it. If no match within 7 days: print `Warning: no snapshot found near <COMPARE_DATE>. Falling back to most recent.` Use most recent.
@@ -135,7 +135,7 @@ Applies in `diff` and `propose` modes only.
 
 **For `propose` mode:**
 
-1. Load the most recent snapshot from `.claude/compat-snapshots/` as `BASELINE_SURFACE` (same selection logic as `diff` mode with `COMPARE_DATE` empty).
+1. Load the most recent snapshot from `{{SPECRAILS_DIR}}/compat-snapshots/` as `BASELINE_SURFACE` (same selection logic as `diff` mode with `COMPARE_DATE` empty).
 2. Additionally read `openspec/changes/<PROPOSE_DIR>/design.md` to understand the projected surface changes.
    - If `design.md` does not exist: print `Warning: no design.md found in openspec/changes/<PROPOSE_DIR>/. Proceeding with surface extraction only (no projection).`
    - If it exists: read also `openspec/changes/<PROPOSE_DIR>/tasks.md` if present.
@@ -248,24 +248,24 @@ Skip the save. Still perform the housekeeping check and `.gitignore` check below
 **If `DRY_RUN=false`:**
 
 1. Determine filename: `<YYYY-MM-DD>-<git_short_sha>.json`. If git is unavailable: `<YYYY-MM-DD>-unknown.json`.
-2. Create `.claude/compat-snapshots/` if it does not exist.
-3. Write `CURRENT_SURFACE` serialized as JSON to `.claude/compat-snapshots/<filename>`.
-4. Print: `Snapshot saved: .claude/compat-snapshots/<filename>`
+2. Create `{{SPECRAILS_DIR}}/compat-snapshots/` if it does not exist.
+3. Write `CURRENT_SURFACE` serialized as JSON to `{{SPECRAILS_DIR}}/compat-snapshots/<filename>`.
+4. Print: `Snapshot saved: {{SPECRAILS_DIR}}/compat-snapshots/<filename>`
 
 **Housekeeping notice:**
 
-Count `.json` files in `.claude/compat-snapshots/`. If count > 30, print:
+Count `.json` files in `{{SPECRAILS_DIR}}/compat-snapshots/`. If count > 30, print:
 
 ```
-Note: .claude/compat-snapshots/ has N snapshots. Consider pruning old ones with:
-  ls -t .claude/compat-snapshots/ | tail -n +31 | xargs -I{} rm .claude/compat-snapshots/{}
+Note: {{SPECRAILS_DIR}}/compat-snapshots/ has N snapshots. Consider pruning old ones with:
+  ls -t {{SPECRAILS_DIR}}/compat-snapshots/ | tail -n +31 | xargs -I{} rm {{SPECRAILS_DIR}}/compat-snapshots/{}
 ```
 
 **.gitignore suggestion:**
 
-Check whether `.claude/compat-snapshots/` appears in `.gitignore` (if `.gitignore` exists). If it does not appear, print:
+Check whether `{{SPECRAILS_DIR}}/compat-snapshots/` appears in `.gitignore` (if `.gitignore` exists). If it does not appear, print:
 
 ```
 Tip: compat snapshots are local artifacts. Add to .gitignore:
-  echo '.claude/compat-snapshots/' >> .gitignore
+  echo '{{SPECRAILS_DIR}}/compat-snapshots/' >> .gitignore
 ```

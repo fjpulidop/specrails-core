@@ -1,6 +1,6 @@
 # Reconfig: Apply Agent Config to Generated Files
 
-Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all generated `.claude/agents/sr-*.md` files to match. No full re-setup needed — only model frontmatter is changed.
+Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all generated `{{SPECRAILS_DIR}}/agents/sr-*.md` files to match. No full re-setup needed — only model frontmatter is changed.
 
 ---
 
@@ -21,7 +21,7 @@ If the file does not exist, stop and display:
 ```
 No .specrails/agents.yaml found.
 
-Run /specrails:enrich to generate the config file, then edit it before running /specrails:reconfig.
+Run {{COMMAND_PREFIX}}enrich to generate the config file, then edit it before running {{COMMAND_PREFIX}}reconfig.
 ```
 
 If the file exists, parse it. Validate all `model:` values — only `opus`, `sonnet`, and `haiku` are accepted. If an invalid value is found, display a warning and skip that agent:

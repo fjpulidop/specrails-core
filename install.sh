@@ -417,6 +417,13 @@ else
     INSTRUCTIONS_FILE="CLAUDE.md"
 fi
 
+# Command invocation prefix — Claude uses "/specrails:", Codex uses "$"
+if [[ "$CLI_PROVIDER" == "codex" ]]; then
+    COMMAND_PREFIX='$'
+else
+    COMMAND_PREFIX='/specrails:'
+fi
+
 # 1.2b Agent Teams opt-in (Claude Code only)
 if [[ "$CLI_PROVIDER" == "claude" ]]; then
     if [[ "$FROM_CONFIG" == true || "$AGENT_TEAMS" == true ]]; then
@@ -946,6 +953,9 @@ if [[ "$TIER" == "quick" ]]; then
                 -e "s|{{MEMORY_PATH}}|${SPECRAILS_DIR}/agent-memory/${_name}/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
                 "$_dest" && rm -f "${_dest}.bak"
 
             # Strip remaining {{PLACEHOLDER}} lines (leave blank line)
@@ -1021,6 +1031,9 @@ if [[ "$TIER" == "quick" ]]; then
                 -e "s|{{MEMORY_PATH}}|${SPECRAILS_DIR}/agent-memory/|g" \
                 -e "s|{{PERSONA_DIR}}|${SPECRAILS_DIR}/agents/personas/|g" \
                 -e "s|{{SECURITY_EXEMPTIONS_PATH}}|${SPECRAILS_DIR}/security-exemptions.yaml|g" \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
                 "$_dest" && rm -f "${_dest}.bak"
             sed -i.bak 's/{{[A-Z_]*}}//g' "$_dest" && rm -f "${_dest}.bak"
             (( _cmd_count++ )) || true
@@ -1033,7 +1046,13 @@ if [[ "$TIER" == "quick" ]]; then
         mkdir -p "${REPO_ROOT}/${SPECRAILS_DIR}/rules"
         for _src in "$_templates/rules/"*.md; do
             [[ -f "$_src" ]] || continue
-            cp "$_src" "${REPO_ROOT}/${SPECRAILS_DIR}/rules/$(basename "$_src")"
+            _rule_dest="${REPO_ROOT}/${SPECRAILS_DIR}/rules/$(basename "$_src")"
+            cp "$_src" "$_rule_dest"
+            sed -i.bak \
+                -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
+                "$_rule_dest" && rm -f "${_rule_dest}.bak"
         done
         ok "Installed rules to ${SPECRAILS_DIR}/rules/"
     fi
@@ -1057,13 +1076,13 @@ if [[ "$TIER" == "quick" ]]; then
         _cfg_to_read="${CONFIG_PATH:-${REPO_ROOT}/.specrails/install-config.yaml}"
         _default_model="gpt-5.4"
         if [[ -f "$_cfg_to_read" ]]; then
-            _model_from_cfg="$(grep -E '^\s*defaults:\s*\{' "$_cfg_to_read" | sed -E 's/.*model:\s*([^ }]+).*/\1/' | tr -d '"' | head -n1 || true)"
+            _model_from_cfg="$(grep -E '^\s*defaults:\s*\{' "$_cfg_to_read" | sed -E 's/.*model:[[:space:]]*([^ }]+).*/\1/' | tr -d '"' | head -n1 || true)"
             if [[ -n "$_model_from_cfg" ]]; then
                 _default_model="$_model_from_cfg"
             fi
         fi
 
-        if [[ -f "$_templates/settings/codex-config.toml" && ! -f "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml" ]]; then
+        if [[ -f "$_templates/settings/codex-config.toml" ]]; then
             cp "$_templates/settings/codex-config.toml" "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml"
             sed -i.bak -e "s|{{DEFAULT_MODEL}}|${_default_model}|g" \
                 "${REPO_ROOT}/${SPECRAILS_DIR}/config.toml" \
@@ -1131,7 +1150,16 @@ LTEOF
             if echo " $_quick_excluded_skills " | grep -q " ${_skill_name} "; then
                 continue
             fi
-            cp -r "$_skill_dir" "${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            _skill_dest="${REPO_ROOT}/${SPECRAILS_DIR}/skills/${_skill_name}"
+            cp -r "$_skill_dir" "$_skill_dest"
+            # Substitute {{SPECRAILS_DIR}} in any markdown files inside the skill
+            while IFS= read -r -d '' _skill_file; do
+                sed -i.bak \
+                    -e "s|{{SPECRAILS_DIR}}|${SPECRAILS_DIR}|g" \
+                    -e "s|{{INSTRUCTIONS_FILE}}|${INSTRUCTIONS_FILE}|g" \
+                    -e "s|{{COMMAND_PREFIX}}|${COMMAND_PREFIX}|g" \
+                    "$_skill_file" && rm -f "${_skill_file}.bak"
+            done < <(find "$_skill_dest" -type f -name '*.md' -print0)
             (( _skill_count++ )) || true
         done
         ok "Installed ${_skill_count} skill(s) to ${SPECRAILS_DIR}/skills/"
