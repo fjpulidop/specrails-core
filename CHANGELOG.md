@@ -1,5 +1,18 @@
 # Changelog
 
+## [4.0.6](https://github.com/fjpulidop/specrails-core/compare/v4.0.5...v4.0.6) (2026-04-19)
+
+
+### Bug Fixes
+
+* **release:** remove invalid version-txt updater from release-please config ([#245](https://github.com/fjpulidop/specrails-core/issues/245)) ([db76a6f](https://github.com/fjpulidop/specrails-core/commit/db76a6ff56acf16ca77f8ecad814f2bee27a4140))
+* **release:** sync VERSION with package.json via version-txt updater ([#242](https://github.com/fjpulidop/specrails-core/issues/242)) ([3c858be](https://github.com/fjpulidop/specrails-core/commit/3c858bec5dc3dcabbbf6297199d1efc697e06066))
+
+
+### Miscellaneous
+
+* **codex:** disable Codex install + add Coming Soon notices ([#244](https://github.com/fjpulidop/specrails-core/issues/244)) ([3faf652](https://github.com/fjpulidop/specrails-core/commit/3faf652e5f12a1cea77581368573d4002ff67490))
+
 ## [4.0.5](https://github.com/fjpulidop/specrails-core/compare/v4.0.4...v4.0.5) (2026-04-17)
 
 
