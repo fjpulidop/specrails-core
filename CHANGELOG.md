@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.8](https://github.com/fjpulidop/specrails-core/compare/v4.0.7...v4.0.8) (2026-04-21)
+
+
+### Bug Fixes
+
+* **release:** sync VERSION file to 4.0.7 and auto-update on future releases ([#250](https://github.com/fjpulidop/specrails-core/issues/250)) ([d34e1cf](https://github.com/fjpulidop/specrails-core/commit/d34e1cf6cb5443d286bb2e1f642f7b37ed960993))
+
 ## [4.0.7](https://github.com/fjpulidop/specrails-core/compare/v4.0.6...v4.0.7) (2026-04-21)
 
 
