@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.7](https://github.com/fjpulidop/specrails-core/compare/v4.0.6...v4.0.7) (2026-04-21)
+
+
+### Bug Fixes
+
+* **implement:** emit final summary only after all parallel developers complete ([#248](https://github.com/fjpulidop/specrails-core/issues/248)) ([caf9530](https://github.com/fjpulidop/specrails-core/commit/caf95303bd3bd31dc1abf4cf096a54edbdfc031b))
+
 ## [4.0.6](https://github.com/fjpulidop/specrails-core/compare/v4.0.5...v4.0.6) (2026-04-19)
 
 
