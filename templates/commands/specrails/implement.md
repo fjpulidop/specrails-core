@@ -555,6 +555,24 @@ For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using
 
 Wait for all developers to complete.
 
+**Summary timing (multi-feature mode):** When running multiple background developer agents, individual `task_notification` completions MUST NOT trigger a final Phase 3b summary. As each agent completes, emit only a brief one-line acknowledgment:
+```
+[phase-3b] Developer for <feature> ✓ (<N> tool uses, <duration>)
+```
+Only after the LAST background agent sends its completion notification, emit the consolidated summary:
+```
+## Phase 3b Complete
+
+| Feature | Agent | Tool uses | Duration |
+|---------|-------|-----------|----------|
+| <feature-a> | sr-developer | 64 | 8m 02s |
+| <feature-b> | sr-developer | 50 | 7m 35s |
+
+All N developers complete. Proceeding to Phase 3c.
+```
+
+This prevents stale "still waiting" text from appearing as the terminal result when the job completes.
+
 **Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"<agent-id> failed: <exit code or error description>"`.
 
 ## Phase 3c: Write Tests
