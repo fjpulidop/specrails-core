@@ -38,46 +38,12 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/agentEntry" },
-      "description": "Ordered chain of agents that participate in the pipeline when this profile is active.",
-      "allOf": [
-        {
-          "description": "Required baseline agent: sr-architect",
-          "contains": {
-            "type": "object",
-            "properties": { "id": { "const": "sr-architect" } },
-            "required": ["id"]
-          }
-        },
-        {
-          "description": "Required baseline agent: sr-developer",
-          "contains": {
-            "type": "object",
-            "properties": { "id": { "const": "sr-developer" } },
-            "required": ["id"]
-          }
-        },
-        {
-          "description": "Required baseline agent: sr-reviewer",
-          "contains": {
-            "type": "object",
-            "properties": { "id": { "const": "sr-reviewer" } },
-            "required": ["id"]
-          }
-        },
-        {
-          "description": "Required baseline agent: sr-merge-resolver",
-          "contains": {
-            "type": "object",
-            "properties": { "id": { "const": "sr-merge-resolver" } },
-            "required": ["id"]
-          }
-        }
-      ]
+      "description": "Ordered chain of agents that participate in the pipeline when this profile is active. At least one agent is required. The shipped `default` profile is additionally expected to include the baseline quartet (sr-architect, sr-developer, sr-reviewer, sr-merge-resolver) — that constraint is enforced by the hub for the default profile only; custom profiles can pick any non-empty subset for maximum flexibility."
     },
     "routing": {
       "type": "array",
-      "minItems": 1,
-      "description": "Ordered routing rules. The first rule whose `tags` intersects the task's tag set wins. Exactly one terminal entry with `default: true` MUST appear as the last element.",
+      "minItems": 0,
+      "description": "Ordered routing rules. The first rule whose `tags` intersects the task's tag set wins. If a `default: true` entry is present it MUST be the last element. Custom profiles may omit routing entirely — tasks then fall through to the first developer-shaped agent in the chain.",
       "items": { "$ref": "#/$defs/routingRule" }
     }
   },
