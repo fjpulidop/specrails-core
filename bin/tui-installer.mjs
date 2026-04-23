@@ -64,10 +64,12 @@ const CORE_AGENTS = new Set([
   'sr-merge-resolver',
 ]);
 
+// Only the CORE agents are pre-selected. Optional agents (product manager,
+// test writer, layer specialists, reviewers, utilities) are opt-in so the
+// default install is as lean as possible. Users can add optional agents via
+// `/specrails:enrich` or by re-running init.
 const DEFAULT_SELECTED = new Set([
   ...CORE_AGENTS,
-  'sr-test-writer',
-  'sr-product-manager',
 ]);
 
 // ─── Model presets ────────────────────────────────────────────────────────────
@@ -319,7 +321,8 @@ async function run() {
     message: 'Agents to install:',
     choices: buildCheckboxChoices(),
     pageSize: agentPageSize,
-    validate: (selected) => selected.length > 0 || 'Select at least one agent.',
+    // Core agents are installed unconditionally (disabled rows above), so an
+    // empty optional selection is valid — means "only core, nothing extra".
   });
 
   // Core agents are always included regardless of checkbox state
