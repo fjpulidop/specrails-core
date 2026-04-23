@@ -4,20 +4,20 @@
   "description": "Baseline profile equivalent to pre-4.1.0 legacy behavior: full chain, per-agent models matching the shipped agent frontmatters, and legacy routing rules.",
   "orchestrator": { "model": "sonnet" },
   "agents": [
-    { "id": "sr-product-manager",     "model": "opus" },
-    { "id": "sr-product-analyst",     "model": "haiku" },
     { "id": "sr-architect",           "model": "sonnet", "required": true },
     { "id": "sr-developer",           "model": "sonnet", "required": true },
+    { "id": "sr-product-manager",     "model": "opus" },
+    { "id": "sr-product-analyst",     "model": "haiku" },
     { "id": "sr-frontend-developer",  "model": "sonnet" },
     { "id": "sr-backend-developer",   "model": "sonnet" },
     { "id": "sr-test-writer",         "model": "sonnet" },
     { "id": "sr-doc-sync",            "model": "sonnet" },
-    { "id": "sr-merge-resolver",      "model": "sonnet" },
     { "id": "sr-reviewer",            "model": "sonnet", "required": true },
     { "id": "sr-frontend-reviewer",   "model": "sonnet" },
     { "id": "sr-backend-reviewer",    "model": "sonnet" },
     { "id": "sr-security-reviewer",   "model": "sonnet" },
-    { "id": "sr-performance-reviewer","model": "sonnet" }
+    { "id": "sr-performance-reviewer","model": "sonnet" },
+    { "id": "sr-merge-resolver",      "model": "sonnet", "required": true }
   ],
   "routing": [
     { "tags": ["frontend"],          "agent": "sr-frontend-developer" },

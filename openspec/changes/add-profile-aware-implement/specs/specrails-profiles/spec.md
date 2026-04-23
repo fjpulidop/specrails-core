@@ -31,10 +31,14 @@ The system SHALL resolve the active profile in this precedence: (1) `$SPECRAILS_
 - **THEN** the pipeline runs in legacy mode with no behavior change from pre-profile versions
 
 ### Requirement: Required baseline agents
-The profile schema SHALL enforce that `agents[]` includes `sr-architect`, `sr-developer`, and `sr-reviewer` as baseline members. A profile missing any of these three SHALL be rejected at load time.
+The profile schema SHALL enforce that `agents[]` includes the four core agents as baseline members: `sr-architect`, `sr-developer`, `sr-reviewer`, and `sr-merge-resolver`. A profile missing any of these SHALL be rejected at load time. The baseline mirrors `CORE_AGENTS` in the installer — these are the agents the implement pipeline depends on unconditionally.
 
 #### Scenario: Profile without sr-reviewer rejected
 - **WHEN** a v1 profile JSON omits `sr-reviewer` from `agents[]`
+- **THEN** the pipeline halts with a validation error identifying the missing baseline agent
+
+#### Scenario: Profile without sr-merge-resolver rejected
+- **WHEN** a v1 profile JSON omits `sr-merge-resolver` from `agents[]`
 - **THEN** the pipeline halts with a validation error identifying the missing baseline agent
 
 ### Requirement: Routing rule ordering

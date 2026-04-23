@@ -63,6 +63,14 @@
             "properties": { "id": { "const": "sr-reviewer" } },
             "required": ["id"]
           }
+        },
+        {
+          "description": "Required baseline agent: sr-merge-resolver",
+          "contains": {
+            "type": "object",
+            "properties": { "id": { "const": "sr-merge-resolver" } },
+            "required": ["id"]
+          }
         }
       ]
     },
