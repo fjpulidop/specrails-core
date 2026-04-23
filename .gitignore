@@ -5,4 +5,6 @@
 .claude/backlog-cache.json
 coverage/
 templates/web-manager/node_modules/
+node_modules/
+package-lock.json
 

@@ -4,6 +4,19 @@ set -euo pipefail
 # specrails installer
 # Installs the agent workflow system into any repository.
 # Step 1 of 2: Prerequisites + scaffold. Step 2: Run /specrails:enrich inside Claude Code.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Reserved paths (MUST NOT be created, modified, or deleted by this script):
+#   - <repo>/.specrails/profiles/**        (project + hub-authored profile JSON)
+#   - <repo>/.claude/agents/custom-*.md    (user-authored custom agents)
+#
+# Rationale: these paths hold user/team configuration that must survive
+# re-running the installer. specrails-hub writes profile files here.
+# Audited by tests/test-profiles.sh.
+#
+# Other paths under .specrails/ (install-config.yaml, specrails-version,
+# specrails-manifest.json, setup-templates/) ARE managed by this script.
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Detect pipe mode (curl | bash) vs local execution
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then

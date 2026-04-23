@@ -178,11 +178,34 @@ function writeDefaultConfig(specrailsDir, provider) {
 async function run() {
   const rawArgs  = process.argv.slice(2);
   const autoYes  = rawArgs.includes('--yes') || rawArgs.includes('-y');
+  const withProfiles = rawArgs.includes('--with-profiles');
   const rootArg  = rawArgs.find(a => !a.startsWith('-'));
   const inputDir = rootArg ? resolve(rootArg) : process.cwd();
   const rootDir  = detectGitRoot(inputDir);
 
   const specrailsDir = resolve(rootDir, '.specrails');
+
+  // Optional: scaffold .specrails/profiles/project-default.json from the shipped template.
+  // Off by default to keep standalone installs zero-noise.
+  if (withProfiles) {
+    try {
+      const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import('node:fs');
+      const { dirname } = await import('node:path');
+      const scriptDir = new URL('..', import.meta.url).pathname;
+      const templatePath = resolve(scriptDir, 'templates/profiles/default.json');
+      const profilesDir = resolve(specrailsDir, 'profiles');
+      const targetPath = resolve(profilesDir, 'project-default.json');
+      if (existsSync(templatePath) && !existsSync(targetPath)) {
+        mkdirSync(profilesDir, { recursive: true });
+        writeFileSync(targetPath, readFileSync(templatePath));
+        console.log(`  ✓ Profile scaffolded at .specrails/profiles/project-default.json`);
+      } else if (existsSync(targetPath)) {
+        console.log(`  ↷ Profile already exists at .specrails/profiles/project-default.json — skipped`);
+      }
+    } catch (e) {
+      console.warn(`  ⚠  Could not scaffold profile: ${e.message}`);
+    }
+  }
 
   // Auto-yes: write defaults and exit (no TUI needed)
   //
