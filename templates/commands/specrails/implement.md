@@ -61,13 +61,150 @@ which openspec && openspec --version
 
 #### 5. Agent discovery
 
-Scan the agents directory to determine which agents are installed:
+Agent discovery runs in one of two modes: **profile mode** (a profile JSON is active) or **legacy mode** (no profile — identical to pre-4.1.0 behavior).
+
+##### Profile detection
+
+A profile is active when either condition holds:
+
+1. The environment variable `SPECRAILS_PROFILE_PATH` is set AND points to a readable file. Tools like `specrails-hub` set this to a job-scoped snapshot.
+2. The file `.specrails/profiles/project-default.json` exists and is readable.
+
+If condition 1 holds, use `$SPECRAILS_PROFILE_PATH` as the profile path. Otherwise, if condition 2 holds, use `.specrails/profiles/project-default.json`. Otherwise, fall through to **legacy mode**.
+
+##### Preflight: `jq` availability (profile mode only)
+
+When running in profile mode, `jq` is required to read the profile JSON. Run:
 
 ```bash
-ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort
+command -v jq >/dev/null 2>&1 || { echo "[error] 'jq' is required for profile-aware mode. Install with: brew install jq / apt install jq / https://stedolan.github.io/jq/"; exit 1; }
 ```
 
-Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapts dynamically to the installed agents:
+##### Profile mode — load, validate, populate
+
+Read the profile:
+
+```bash
+PROFILE="$(cat "$PROFILE_PATH")"
+```
+
+Validate the schema version. Only `schemaVersion: 1` is supported:
+
+```bash
+SCHEMA_VERSION="$(jq -r '.schemaVersion // empty' <<<"$PROFILE")"
+case "$SCHEMA_VERSION" in
+  1) ;;
+  "") echo "[error] profile validation failed: missing required field 'schemaVersion'"; exit 1 ;;
+  *) echo "[error] profile validation failed: unsupported schemaVersion '$SCHEMA_VERSION'. Supported: 1"; exit 1 ;;
+esac
+```
+
+Validate required top-level fields. Every valid v1 profile MUST contain `name`, `orchestrator.model`, `agents` (non-empty array), and `routing` (non-empty array):
+
+```bash
+for field in name orchestrator agents routing; do
+  jq -e ".$field" <<<"$PROFILE" >/dev/null 2>&1 || { echo "[error] profile validation failed: missing required field '$field'"; exit 1; }
+done
+jq -e '.orchestrator.model' <<<"$PROFILE" >/dev/null 2>&1 || { echo "[error] profile validation failed: missing required field 'orchestrator.model'"; exit 1; }
+jq -e '.agents | length > 0' <<<"$PROFILE" >/dev/null 2>&1 || { echo "[error] profile validation failed: 'agents' must be a non-empty array"; exit 1; }
+jq -e '.routing | length > 0' <<<"$PROFILE" >/dev/null 2>&1 || { echo "[error] profile validation failed: 'routing' must be a non-empty array"; exit 1; }
+```
+
+Validate baseline agents — `sr-architect`, `sr-developer`, and `sr-reviewer` MUST appear in `agents[]`:
+
+```bash
+for required in sr-architect sr-developer sr-reviewer; do
+  jq -e --arg id "$required" '[.agents[].id] | index($id)' <<<"$PROFILE" >/dev/null 2>&1 \
+    || { echo "[error] profile validation failed: required baseline agent '$required' missing from 'agents[]'"; exit 1; }
+done
+```
+
+Validate routing terminal rule — exactly one entry SHALL have `default: true` and it MUST be the last element:
+
+```bash
+DEFAULT_COUNT="$(jq '[.routing[] | select(.default == true)] | length' <<<"$PROFILE")"
+if [[ "$DEFAULT_COUNT" -ne 1 ]]; then
+  echo "[error] profile validation failed: routing must contain exactly one entry with 'default: true' (found $DEFAULT_COUNT)"; exit 1
+fi
+IS_LAST="$(jq '(.routing | last | .default) == true' <<<"$PROFILE")"
+if [[ "$IS_LAST" != "true" ]]; then
+  echo "[error] profile validation failed: the 'default: true' routing rule must be the last element of 'routing'"; exit 1
+fi
+```
+
+Populate `AVAILABLE_AGENTS` from the profile and verify each referenced agent file exists on disk:
+
+```bash
+AVAILABLE_AGENTS="$(jq -r '.agents[].id' <<<"$PROFILE" | sort)"
+for id in $AVAILABLE_AGENTS; do
+  [[ -f ".claude/agents/$id.md" ]] \
+    || { echo "[error] profile references agent '$id' but .claude/agents/$id.md does not exist"; exit 1; }
+done
+```
+
+Also store per-agent model overrides and the orchestrator model for use in later phases:
+
+```bash
+# ORCHESTRATOR_MODEL is informational; the caller is responsible for spawning
+# the orchestrator with this model (e.g. specrails-hub reads this field directly).
+ORCHESTRATOR_MODEL="$(jq -r '.orchestrator.model' <<<"$PROFILE")"
+
+# Per-agent model overrides keyed by agent id.
+# Consumed by subagent invocation sites in later phases.
+declare -A AGENT_MODEL
+while IFS=$'\t' read -r id model; do
+  [[ -n "$model" && "$model" != "null" ]] && AGENT_MODEL[$id]="$model"
+done < <(jq -r '.agents[] | [.id, (.model // "null")] | @tsv' <<<"$PROFILE")
+
+# Routing rules (array), consumed by Phase 3b.
+ROUTING="$(jq '.routing' <<<"$PROFILE")"
+
+PROFILE_MODE="profile"
+PROFILE_NAME="$(jq -r '.name' <<<"$PROFILE")"
+```
+
+##### Apply per-agent model overrides (profile mode only)
+
+Claude Code's Agent tool determines a subagent's model from the `model:` line in the agent's `.md` frontmatter at invocation time — there is no per-call model parameter. When a profile is active, rewrite each agent's frontmatter `model:` value in-place to match `AGENT_MODEL[$id]`.
+
+This rewrite is safe because:
+- Multi-feature runs execute in **isolated git worktrees** (`isolation: worktree`), so each rail mutates its own copy of `.claude/agents/` without cross-rail contention.
+- Single-feature runs are sequential within a single checkout.
+- The hub writes a job-scoped snapshot of the profile and spawns `claude` with `$SPECRAILS_PROFILE_PATH` pointing at it; the frontmatter rewrite follows the snapshot, never the catalog.
+
+```bash
+for id in "${!AGENT_MODEL[@]}"; do
+  model="${AGENT_MODEL[$id]}"
+  file=".claude/agents/$id.md"
+  [[ -f "$file" ]] || continue
+  # Rewrite the first `model:` line within the frontmatter block (lines between the
+  # first two `---` separators). Use sed with portable syntax (macOS + Linux).
+  awk -v new="$model" '
+    BEGIN { in_fm=0; done=0 }
+    /^---$/ { in_fm = !in_fm; print; next }
+    in_fm && !done && /^model:[[:space:]]/ { print "model: " new; done=1; next }
+    { print }
+  ' "$file" > "$file.tmp" && mv "$file.tmp" "$file"
+done
+```
+
+If a profile does not declare `model` for a given agent (the field is optional), that agent's frontmatter is left untouched.
+
+##### Legacy mode — preserve current behavior
+
+If no profile is active, scan the agents directory exactly as before:
+
+```bash
+AVAILABLE_AGENTS="$(ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort)"
+PROFILE_MODE="legacy"
+PROFILE_NAME=""
+```
+
+Per-agent model overrides are empty in legacy mode — subagent invocations inherit the `model:` value from each agent's `.md` frontmatter. Routing in Phase 3b uses the hardcoded legacy rules.
+
+##### Agent roles (both modes)
+
+The pipeline adapts dynamically to the installed agents:
 
 | Agent | Role | Required? | Phase(s) affected |
 |-------|------|-----------|-------------------|
@@ -88,6 +225,7 @@ Store the result as `AVAILABLE_AGENTS` (a list of agent IDs). The pipeline adapt
 **Gate rules** (applied throughout the pipeline):
 - If an optional agent is NOT in `AVAILABLE_AGENTS`, **skip** that phase/sub-step silently and note `"<agent> not installed — skipping"`.
 - Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run /specrails:enrich or reinstall.`
+- In **profile mode**, the profile's `agents[]` IS the source of truth for `AVAILABLE_AGENTS`. Agents not listed are considered unavailable regardless of what is on disk.
 
 ### Summary
 
@@ -518,7 +656,47 @@ Produce three sets: `FRONTEND_TASKS`, `BACKEND_TASKS`, `OTHER_TASKS`.
 
 **Step 2 — Route tasks to developer agents:**
 
-Evaluate available developer agents in `AVAILABLE_AGENTS` and apply these rules in priority order:
+Routing operates in one of two modes depending on the value of `PROFILE_MODE` set in Phase -1.
+
+##### Profile mode (`PROFILE_MODE=profile`)
+
+When a profile is active, apply `ROUTING` rules in their array order. For each task, collect its tag set (layer tags plus any explicit `[tag]` markers in tasks.md). The first rule whose `tags` array intersects the task's tag set wins. The terminal `default: true` rule catches tasks matched by no earlier rule.
+
+Example (pseudocode):
+
+```bash
+assigned_agent_for_task() {
+  local -a task_tags=("$@")
+  local rule_count
+  rule_count=$(jq 'length' <<<"$ROUTING")
+  local i=0
+  while [[ $i -lt $rule_count ]]; do
+    local is_default rule_tags agent
+    is_default=$(jq -r ".[$i].default // false" <<<"$ROUTING")
+    agent=$(jq -r ".[$i].agent" <<<"$ROUTING")
+    if [[ "$is_default" == "true" ]]; then
+      echo "$agent"
+      return
+    fi
+    rule_tags=$(jq -r ".[$i].tags[]" <<<"$ROUTING")
+    for rtag in $rule_tags; do
+      for ttag in "${task_tags[@]}"; do
+        if [[ "$rtag" == "$ttag" ]]; then
+          echo "$agent"
+          return
+        fi
+      done
+    done
+    i=$((i + 1))
+  done
+}
+```
+
+Produce `DEVELOPER_ROUTING` from the per-task decisions, grouping by assigned agent. An agent assigned by the profile SHALL only be used if it also appears in `AVAILABLE_AGENTS` (the profile's own `agents[]`). If the profile routes a task to an agent not present in `agents[]`, that is a profile configuration bug — **STOP** and print: `[error] profile routing references agent '<id>' which is not declared in profile.agents[]`.
+
+##### Legacy mode (`PROFILE_MODE=legacy`)
+
+When no profile is active, evaluate available developer agents in `AVAILABLE_AGENTS` and apply these hardcoded rules in priority order:
 
 | Condition | Agent(s) selected | Mode |
 |-----------|-------------------|------|
@@ -530,6 +708,14 @@ Evaluate available developer agents in `AVAILABLE_AGENTS` and apply these rules 
 | No layer-specific developers available (fallback) | **sr-developer** | Single agent for all tasks |
 
 Store the result as `DEVELOPER_ROUTING`: a map of `{agent_id: [task_list]}`.
+
+##### Routing trace (both modes)
+
+After computing `DEVELOPER_ROUTING`, optionally emit a trace line to aid debugging:
+
+```
+[phase-3b] routing decision: mode=$PROFILE_MODE profile=${PROFILE_NAME:-none} agents=[list]
+```
 
 **Step 3 — Print routing decision:**
 

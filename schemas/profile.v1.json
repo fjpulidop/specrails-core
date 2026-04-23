@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/fjpulidop/specrails-core/main/schemas/profile.v1.json",
+  "title": "specrails agent profile (v1)",
+  "description": "Declarative configuration for the specrails implement pipeline. Describes which agents participate, which models they run with, and how tasks are routed to specialists. Consumed by `implement.md` and produced by tools like specrails-hub.",
+  "type": "object",
+  "required": ["schemaVersion", "name", "orchestrator", "agents", "routing"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Profile schema version. v1 is the only supported value at this time."
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Human-readable identifier for this profile (kebab-case)."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 512,
+      "description": "Optional short summary of when to use this profile."
+    },
+    "orchestrator": {
+      "type": "object",
+      "required": ["model"],
+      "additionalProperties": false,
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/modelAlias",
+          "description": "Model used to run the top-level implement orchestrator."
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/agentEntry" },
+      "description": "Ordered chain of agents that participate in the pipeline when this profile is active.",
+      "allOf": [
+        {
+          "description": "Required baseline agent: sr-architect",
+          "contains": {
+            "type": "object",
+            "properties": { "id": { "const": "sr-architect" } },
+            "required": ["id"]
+          }
+        },
+        {
+          "description": "Required baseline agent: sr-developer",
+          "contains": {
+            "type": "object",
+            "properties": { "id": { "const": "sr-developer" } },
+            "required": ["id"]
+          }
+        },
+        {
+          "description": "Required baseline agent: sr-reviewer",
+          "contains": {
+            "type": "object",
+            "properties": { "id": { "const": "sr-reviewer" } },
+            "required": ["id"]
+          }
+        }
+      ]
+    },
+    "routing": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Ordered routing rules. The first rule whose `tags` intersects the task's tag set wins. Exactly one terminal entry with `default: true` MUST appear as the last element.",
+      "items": { "$ref": "#/$defs/routingRule" }
+    }
+  },
+  "$defs": {
+    "modelAlias": {
+      "type": "string",
+      "enum": ["sonnet", "opus", "haiku"],
+      "description": "Accepted model alias. Resolved to the current concrete model ID by the pipeline."
+    },
+    "agentEntry": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(sr|custom)-[a-z0-9][a-z0-9-]*$",
+          "description": "Agent identifier. MUST correspond to a file at `.claude/agents/<id>.md`."
+        },
+        "model": {
+          "$ref": "#/$defs/modelAlias",
+          "description": "Model override for this agent when this profile is active. When omitted, the agent's frontmatter `model:` is used as a fallback."
+        },
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the agent cannot be routed past. Baseline agents (sr-architect, sr-developer, sr-reviewer) SHOULD be marked required."
+        }
+      }
+    },
+    "routingRule": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["tags", "agent"],
+          "additionalProperties": false,
+          "properties": {
+            "tags": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]*$"
+              },
+              "description": "Task tags that trigger this rule. Rule wins if any tag intersects."
+            },
+            "agent": {
+              "type": "string",
+              "pattern": "^(sr|custom)-[a-z0-9][a-z0-9-]*$",
+              "description": "Agent to route the task to when this rule wins."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["default", "agent"],
+          "additionalProperties": false,
+          "properties": {
+            "default": {
+              "const": true,
+              "description": "Marks this rule as the terminal catch-all. Exactly one entry with `default: true` is allowed, and it MUST be the last element of `routing`."
+            },
+            "agent": {
+              "type": "string",
+              "pattern": "^(sr|custom)-[a-z0-9][a-z0-9-]*$",
+              "description": "Agent to route the task to when no earlier rule matched."
+            }
+          }
+        }
+      ]
+    }
+  }
+}
