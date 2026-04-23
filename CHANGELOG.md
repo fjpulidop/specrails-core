@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.0](https://github.com/fjpulidop/specrails-core/compare/v4.0.8...v4.1.0) (2026-04-23)
+
+
+### Features
+
+* profile-aware implement pipeline (v4.1.0) ([#252](https://github.com/fjpulidop/specrails-core/issues/252)) ([c0bc961](https://github.com/fjpulidop/specrails-core/commit/c0bc961ca5a582c455a10dbf222e9b1bf739f546))
+
 ## [4.0.8](https://github.com/fjpulidop/specrails-core/compare/v4.0.7...v4.0.8) (2026-04-21)
 
 
