@@ -4,6 +4,19 @@ set -euo pipefail
 # specrails updater
 # Updates an existing specrails installation in a target repository.
 # Preserves project-specific customizations (agents, personas, rules).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# Reserved paths (MUST NOT be created, modified, or deleted by this script):
+#   - <repo>/.specrails/profiles/**        (project + hub-authored profile JSON)
+#   - <repo>/.claude/agents/custom-*.md    (user-authored custom agents)
+#
+# Rationale: these paths hold user/team configuration that survives across
+# specrails-core upgrades. specrails-hub writes profile files here. Breaking
+# this contract silently destroys user work. Audited by tests/test-profiles.sh.
+#
+# Other paths under .specrails/ (install-config.yaml, specrails-version,
+# specrails-manifest.json, setup-templates/) ARE managed by this script.
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Detect pipe mode (curl | bash) vs local execution
 if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]:-}" == "bash" ]]; then

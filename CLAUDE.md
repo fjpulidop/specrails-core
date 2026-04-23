@@ -87,6 +87,29 @@ Layer-specific conventions are in `.claude/rules/` (loaded conditionally per lay
 - **Specs**: `openspec/specs/` is the source of truth. Read relevant specs before implementing.
 - **Changes**: `openspec/changes/<name>/`. Use `/opsx:ff` -> `/opsx:apply` -> `/opsx:archive`.
 
+## Profiles (v4.1.0+)
+
+`implement.md` can run in two modes:
+
+- **Legacy**: no profile present → current hardcoded behavior. Zero breakage for standalone users.
+- **Profile**: profile JSON active → `AVAILABLE_AGENTS`, routing, and per-agent models come from the profile instead of the hardcoded defaults.
+
+Profile resolution at Phase -1 (highest wins):
+1. `$SPECRAILS_PROFILE_PATH` env var (snapshot path)
+2. `<cwd>/.specrails/profiles/project-default.json`
+3. Legacy fallback
+
+Schema: `schemas/profile.v1.json` (shipped in the npm package). Validator error messages MUST name the offending field. Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) are required in every valid profile.
+
+### Reserved paths (contract with downstream tools)
+
+The following paths are **reserved** — `install.sh` and `update.sh` MUST NEVER create, modify, or delete files inside them:
+
+- `.specrails/profiles/**` — owned by projects (checked into git) and by tools like specrails-hub. Holds profile JSON files.
+- `.claude/agents/custom-*.md` — owned by user-authored or hub-generated custom agents. The `custom-` prefix is reserved for this purpose.
+
+Note: other paths under `.specrails/` (e.g. `.specrails/install-config.yaml`, `.specrails/specrails-version`, `.specrails/specrails-manifest.json`, `.specrails/setup-templates/`) ARE managed by `install.sh` / `update.sh` and remain so.
+
 ## Scoped context
 
 - Layer rules: `.claude/rules/*.md`

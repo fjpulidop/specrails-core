@@ -11,6 +11,7 @@ const COMMANDS = {
   "perf-check": "bin/perf-check.sh",
   enrich: null,
   version: null,
+  profile: null,
 };
 
 const args = process.argv.slice(2);
@@ -33,6 +34,7 @@ Usage:
   specrails-core doctor                                      Run health checks
   specrails-core perf-check [--files <list>]                 Performance regression check (CI)
   specrails-core enrich     [--from-config <path>]           Run /specrails:enrich via Claude CLI
+  specrails-core profile    <validate|show> [<path>]         Validate or pretty-print a profile JSON
   specrails-core version                                     Show installed version
 
 Flags for init:
@@ -65,6 +67,7 @@ const ALLOWED_FLAGS = {
   "perf-check": ["--files", "--context"],
   enrich: ["--from-config", "--quick"],
   version: [],
+  profile: [],
 };
 
 const subargs = args.slice(1);
@@ -83,6 +86,87 @@ if (subcommand === "version") {
   const pkg = require(resolve(ROOT, "package.json"));
   console.log(`specrails-core v${pkg.version}`);
   process.exit(0);
+}
+
+// ─── profile subcommand ──────────────────────────────────────────────────────
+// `specrails-core profile validate [path]`  — validate a profile JSON against v1 schema
+// `specrails-core profile show [path]`      — pretty-print the resolved profile
+// Resolution order when no path: $SPECRAILS_PROFILE_PATH → .specrails/profiles/project-default.json
+
+if (subcommand === "profile") {
+  const { existsSync, readFileSync } = require("fs");
+  const action = subargs[0];
+  const pathArg = subargs[1];
+
+  if (!action || (action !== "validate" && action !== "show")) {
+    console.error("Usage: specrails-core profile validate [<path>]");
+    console.error("       specrails-core profile show     [<path>]");
+    process.exit(1);
+  }
+
+  const resolveProfilePath = () => {
+    if (pathArg) return resolve(pathArg);
+    if (process.env.SPECRAILS_PROFILE_PATH) return resolve(process.env.SPECRAILS_PROFILE_PATH);
+    const projectDefault = resolve(process.cwd(), ".specrails/profiles/project-default.json");
+    if (existsSync(projectDefault)) return projectDefault;
+    return null;
+  };
+
+  const profilePath = resolveProfilePath();
+  if (!profilePath) {
+    console.error("No profile path given and none could be resolved.");
+    console.error("Pass an explicit path or set SPECRAILS_PROFILE_PATH, or place a profile at");
+    console.error("  .specrails/profiles/project-default.json");
+    process.exit(1);
+  }
+  if (!existsSync(profilePath)) {
+    console.error(`Profile file not found: ${profilePath}`);
+    process.exit(1);
+  }
+
+  let profile;
+  try {
+    profile = JSON.parse(readFileSync(profilePath, "utf8"));
+  } catch (e) {
+    console.error(`Profile is not valid JSON: ${e.message}`);
+    process.exit(1);
+  }
+
+  if (action === "show") {
+    console.log(JSON.stringify(profile, null, 2));
+    process.exit(0);
+  }
+
+  // action === "validate"
+  const schemaPath = resolve(ROOT, "schemas/profile.v1.json");
+  if (!existsSync(schemaPath)) {
+    console.error(`Schema not found at ${schemaPath} — install may be corrupt`);
+    process.exit(1);
+  }
+
+  let Ajv;
+  try {
+    Ajv = require("ajv");
+  } catch {
+    console.error("'ajv' is not installed. Run `npm install` in the specrails-core package directory first,");
+    console.error("or rely on the hub's own validator for user-facing flows.");
+    process.exit(1);
+  }
+
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
+  const ajv = new Ajv.default ? new Ajv.default({ allErrors: true, strict: false }) : new Ajv({ allErrors: true, strict: false });
+  const validate = ajv.compile(schema);
+
+  if (validate(profile)) {
+    console.log(`✓ ${profilePath} is a valid v1 profile.`);
+    process.exit(0);
+  } else {
+    console.error(`✗ ${profilePath} failed validation:`);
+    for (const err of validate.errors || []) {
+      console.error(`    ${err.instancePath || "/"} ${err.message} (${JSON.stringify(err.params)})`);
+    }
+    process.exit(1);
+  }
 }
 
 // ─── enrich subcommand ───────────────────────────────────────────────────────

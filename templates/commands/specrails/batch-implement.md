@@ -34,6 +34,7 @@ Scan `$ARGUMENTS` for control flags:
 - If `--deps "<spec>"` is present: capture the quoted string as `DEPS_SPEC`. Strip from arguments.
 - If `--concurrency N` is present: set `CONCURRENCY=N` (integer ≥ 1). Default: 3.
 - If `--wave-size N` is present: set `WAVE_SIZE=N` (integer ≥ 1). Default: unlimited (no per-wave cap).
+- If `--profiles "<spec>"` is present: parse a per-rail profile map of the form `ref=profile-name,ref=profile-name,...`. Capture as `PROFILE_MAP` and strip from arguments. Each mapped ref's `/specrails:implement` invocation will run under the named profile (the profile must exist at `.specrails/profiles/<profile-name>.json`). Unmapped refs inherit the batch-level profile resolution (see below).
 
 **If `DRY_RUN=true`**, print:
 ```
@@ -189,14 +190,18 @@ For each wave `W`:
 
 1. Print: `[wave W/TOTAL_WAVES] Starting — features: <ref-list>`
 2. For each feature batch of size ≤ `CONCURRENCY` within the wave:
+   - For every ref in the batch, determine the profile spawn env:
+     - If `PROFILE_MAP` contains an entry for this ref, set `SPECRAILS_PROFILE_PATH=<abs path to .specrails/profiles/<mapped-name>.json>` for this invocation only.
+     - Otherwise, inherit whatever `$SPECRAILS_PROFILE_PATH` was set by the caller (e.g. specrails-hub), or leave unset so the rail falls back to `.specrails/profiles/project-default.json` or legacy mode.
    - Invoke `/specrails:implement` with the feature refs and forwarded flags:
      ```
-     /specrails:implement <ref1> <ref2> ... [--dry-run]
+     SPECRAILS_PROFILE_PATH=<resolved-per-rail-path> /specrails:implement <ref> [--dry-run]
      ```
+   - Each ref in the batch spawns with its own resolved profile path — **distinct rails in the same batch MAY use distinct profiles concurrently**.
    - Run invocations in the batch in parallel (`run_in_background: true`).
    - Wait for all in the batch to complete before starting the next batch.
 3. For each completed invocation, record outcome in `WAVE_RESULTS`:
-   - `{ref, wave, status: "done" | "failed", error_summary: "..." | null}`
+   - `{ref, wave, status: "done" | "failed", profile: "<name or empty>", error_summary: "..." | null}`
 
 ### Failure isolation
 

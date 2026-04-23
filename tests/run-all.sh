@@ -28,6 +28,7 @@ bash "$SCRIPT_DIR/test-agent-selection.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-quick-tier.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-gitignore.sh" || TOTAL_EXIT=1
 bash "$SCRIPT_DIR/test-hub-json.sh" || TOTAL_EXIT=1
+bash "$SCRIPT_DIR/test-profiles.sh" || TOTAL_EXIT=1
 
 if [[ "$TOTAL_EXIT" -eq 0 ]]; then
     echo -e "\033[0;32m✓ All test suites passed\033[0m"

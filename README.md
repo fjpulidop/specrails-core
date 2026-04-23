@@ -177,6 +177,68 @@ AI product discovery using your personas. Evaluates ideas, creates tickets (loca
 
 ---
 
+## Agent profiles
+
+> Available in `specrails-core >= 4.1.0`. Optional — without a profile, the pipeline behaves exactly as before.
+
+Profiles are declarative JSON files that tell `/specrails:implement` which agents to use, which models to run them with, and how to route tasks to specialists. One project can define many profiles (e.g. `default`, `data-heavy`, `security-heavy`) and run different features with different profiles — useful for concurrent rails in `/specrails:batch-implement`.
+
+### File layout
+
+```
+<project>/.specrails/
+  profiles/
+    default.json          # checked into git, team-shared
+    data-heavy.json       # checked into git, team-shared
+    .user-preferred.json  # gitignored, your personal default
+```
+
+### Resolution order
+
+When running the pipeline, the active profile is resolved in this order:
+
+1. `$SPECRAILS_PROFILE_PATH` environment variable (absolute path to a JSON snapshot)
+2. `<cwd>/.specrails/profiles/project-default.json`
+3. No profile — legacy behavior (identical to pre-4.1.0)
+
+Tools such as [specrails-hub](https://github.com/fjpulidop/specrails-hub) set `$SPECRAILS_PROFILE_PATH` to a job-scoped snapshot so concurrent rails can run independent profiles.
+
+### Schema
+
+The v1 profile schema is published at [`schemas/profile.v1.json`](./schemas/profile.v1.json). Example:
+
+```json
+{
+  "schemaVersion": 1,
+  "name": "data-heavy",
+  "description": "Data engineering rail with stricter review",
+  "orchestrator": { "model": "opus" },
+  "agents": [
+    { "id": "sr-architect",     "model": "opus",   "required": true },
+    { "id": "sr-data-engineer", "model": "sonnet" },
+    { "id": "sr-developer",     "model": "sonnet", "required": true },
+    { "id": "sr-reviewer",      "model": "opus",   "required": true }
+  ],
+  "routing": [
+    { "tags": ["etl", "schema", "data"], "agent": "sr-data-engineer" },
+    { "default": true, "agent": "sr-developer" }
+  ]
+}
+```
+
+Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) MUST appear in `agents[]`. The `routing` array is ordered — first rule whose `tags` intersects the task's tags wins; the terminal `default: true` rule catches everything else.
+
+### Reserved paths
+
+The following paths are **reserved** — `update.sh` will never create, modify, or delete anything inside them:
+
+- `.specrails/profiles/**` — profile JSON files (yours and hub-authored).
+- `.claude/agents/custom-*.md` — your custom agents. Use the `custom-` prefix to opt in to this protection.
+
+This contract is what lets you safely hand-author (or let specrails-hub author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under `update.sh`'s control.
+
+---
+
 ## Local ticket management
 
 specrails-core ships with a built-in ticket system — no GitHub account or external tools required.
