@@ -146,7 +146,7 @@ if (subcommand === "profile") {
 
   let Ajv;
   try {
-    Ajv = require("ajv");
+    Ajv = require("ajv/dist/2020.js").default;
   } catch {
     console.error("'ajv' is not installed. Run `npm install` in the specrails-core package directory first,");
     console.error("or rely on the hub's own validator for user-facing flows.");
@@ -154,7 +154,7 @@ if (subcommand === "profile") {
   }
 
   const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-  const ajv = new Ajv.default ? new Ajv.default({ allErrors: true, strict: false }) : new Ajv({ allErrors: true, strict: false });
+  const ajv = new Ajv({ allErrors: true, strict: false });
   const validate = ajv.compile(schema);
 
   if (validate(profile)) {

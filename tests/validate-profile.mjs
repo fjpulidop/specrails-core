@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import Ajv from 'ajv';
+import Ajv from 'ajv/dist/2020.js';
 
 const [, , schemaPath, profilePath] = process.argv;
 
