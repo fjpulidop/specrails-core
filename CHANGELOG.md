@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.1.1](https://github.com/fjpulidop/specrails-core/compare/v4.1.0...v4.1.1) (2026-04-23)
+
+
+### Miscellaneous
+
+* bump version to 4.1.1 ([#254](https://github.com/fjpulidop/specrails-core/issues/254)) ([f0f0934](https://github.com/fjpulidop/specrails-core/commit/f0f09343ce6d23a0f733553c882cc9f2f9e003e2))
+
 ## [4.1.0](https://github.com/fjpulidop/specrails-core/compare/v4.0.8...v4.1.0) (2026-04-23)
 
 
