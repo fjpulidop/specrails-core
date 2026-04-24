@@ -109,6 +109,8 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
 
   step('Update complete')
   info(`specrails-core ${previousVersion ?? '?'} → ${currentVersion}`)
+  // Terminal sentinel for programmatic consumers (see comment in init.ts).
+  ok('update complete')
   return { repoRoot, previousVersion, currentVersion, provider, dryRun: false }
 }
 

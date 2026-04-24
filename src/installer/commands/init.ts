@@ -130,9 +130,13 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     step('Next steps')
     info('Run `/specrails:enrich` inside Claude Code to complete your setup.')
   } else {
-    step('Install complete')
+    step('Installation complete')
     info('Quick tier: agents + rules were placed directly; enrich not required.')
   }
+  // Terminal sentinel for programmatic consumers (specrails-hub's setup
+  // wizard matches this exact line via regex to mark the "init complete"
+  // checkpoint). Keep the spelling stable.
+  ok('init complete')
 
   return {
     repoRoot,
