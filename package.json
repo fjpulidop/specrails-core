@@ -4,13 +4,11 @@
   "description": "AI agent workflow system for Claude Code — installs 12 specialized agents, orchestration commands, and persona-driven product discovery into any repository",
   "type": "module",
   "bin": {
-    "specrails-core": "bin/specrails-core.cjs"
+    "specrails-core": "bin/specrails-core.mjs"
   },
   "files": [
     "bin/",
     "dist/",
-    "install.sh",
-    "update.sh",
     "templates/",
     ".claude/skills/",
     "commands/",
@@ -55,12 +53,9 @@
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test:node": "vitest run",
-    "test:node:watch": "vitest",
-    "test:node:coverage": "vitest run --coverage",
-    "test:sh": "bash tests/run-all.sh",
-    "test": "npm run typecheck && npm run build && npm run test:node",
-    "test:coverage": "npm run test:node:coverage",
+    "test": "npm run typecheck && npm run build && vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "prepack": "npm run build"
   },
   "specrails": {
