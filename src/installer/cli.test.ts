@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { NOT_IMPLEMENTED, main, parseArgs } from './cli.js'
+import { main, parseArgs } from './cli.js'
 
 describe('cli.parseArgs', () => {
   it('captures the first positional as the subcommand', () => {
@@ -67,12 +67,7 @@ describe('cli.main', () => {
     expect(await main(['bogus'])).toBe(1)
   })
 
-  it('update / doctor / perf-check still return NOT_IMPLEMENTED during the port', async () => {
-    // This assertion flips as each Phase 3-4 handler lands; the test
-    // is updated in lock-step with its corresponding handler so a
-    // silent regression (accidental implementation revert) fails CI.
-    expect(await main(['update'])).toBe(NOT_IMPLEMENTED)
-    expect(await main(['doctor'])).toBe(NOT_IMPLEMENTED)
-    expect(await main(['perf-check'])).toBe(NOT_IMPLEMENTED)
+  it('perf-check returns 0 (no runtime perf paths in core)', async () => {
+    expect(await main(['perf-check'])).toBe(0)
   })
 })

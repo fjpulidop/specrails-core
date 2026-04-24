@@ -13,7 +13,10 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { runDoctor, type DoctorFlags } from './commands/doctor.js'
 import { runInit, type InitFlags } from './commands/init.js'
+import { runPerfCheck, type PerfCheckFlags } from './commands/perf-check.js'
+import { runUpdate, type UpdateFlags } from './commands/update.js'
 import { isInstallerError } from './util/errors.js'
 import { fatal } from './util/logger.js'
 
@@ -127,12 +130,15 @@ async function dispatch(
       await runInit(flags as InitFlags)
       return 0
     case 'update':
-    case 'doctor':
+      await runUpdate(flags as UpdateFlags)
+      return 0
+    case 'doctor': {
+      const result = await runDoctor(flags as DoctorFlags)
+      return result.failed === 0 ? 0 : 1
+    }
     case 'perf-check':
-      process.stderr.write(
-        `[specrails-core] "${subcommand}" not yet implemented in the Node installer — falling back to bash.\n`,
-      )
-      return NOT_IMPLEMENTED
+      await runPerfCheck(flags as PerfCheckFlags)
+      return 0
     case 'help':
     case '':
       process.stdout.write(usageText())
