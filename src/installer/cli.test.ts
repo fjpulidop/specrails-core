@@ -67,12 +67,10 @@ describe('cli.main', () => {
     expect(await main(['bogus'])).toBe(1)
   })
 
-  it('init / update / doctor / perf-check return NOT_IMPLEMENTED during the port', async () => {
-    // This assertion flips as each Phase 2-4 handler lands; the test
-    // is updated in lock-step with its corresponding PR so a
-    // regression (accidental early implementation, or silent revert)
-    // fails CI immediately.
-    expect(await main(['init'])).toBe(NOT_IMPLEMENTED)
+  it('update / doctor / perf-check still return NOT_IMPLEMENTED during the port', async () => {
+    // This assertion flips as each Phase 3-4 handler lands; the test
+    // is updated in lock-step with its corresponding handler so a
+    // silent regression (accidental implementation revert) fails CI.
     expect(await main(['update'])).toBe(NOT_IMPLEMENTED)
     expect(await main(['doctor'])).toBe(NOT_IMPLEMENTED)
     expect(await main(['perf-check'])).toBe(NOT_IMPLEMENTED)

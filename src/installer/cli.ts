@@ -13,6 +13,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { runInit, type InitFlags } from './commands/init.js'
 import { isInstallerError } from './util/errors.js'
 import { fatal } from './util/logger.js'
 
@@ -118,11 +119,13 @@ export const NOT_IMPLEMENTED = 2
 
 async function dispatch(
   subcommand: string,
-  _flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean>,
   _positionals: string[],
 ): Promise<number> {
   switch (subcommand) {
     case 'init':
+      await runInit(flags as InitFlags)
+      return 0
     case 'update':
     case 'doctor':
     case 'perf-check':
