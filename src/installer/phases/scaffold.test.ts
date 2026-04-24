@@ -17,6 +17,59 @@ function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'commands', 'team-debug.md'), 'team debug')
 }
 
+function setupRichFakeSource(scriptDir: string): void {
+  // Agents (incl. VPC-dependent + reviewer for explanations dir)
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
+    '# arch\nproject: {{PROJECT_NAME}}\nmemory: {{MEMORY_PATH}}\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'),
+    '# dev\nmemory: {{MEMORY_PATH}}\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'),
+    '# reviewer\nmemory: {{MEMORY_PATH}}\nsecurity: {{SECURITY_EXEMPTIONS_PATH}}\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-product-manager.md'),
+    '# product manager\nneeds-enrich: true\npersonas: {{PERSONA_DIR}}\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-product-analyst.md'),
+    '# product analyst\nneeds-enrich: true\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'),
+    '# merge resolver\nmemory: {{MEMORY_PATH}}\n',
+  )
+
+  // Commands (incl. product/merge/team variants so we can assert
+  // dependency-driven exclusion).
+  const cmds = [
+    ['implement.md', '/specrails:implement\nmemory: {{MEMORY_PATH}}\n'],
+    ['why.md', '/specrails:why'],
+    ['auto-propose-backlog-specs.md', '/specrails:auto-propose-backlog-specs'],
+    ['get-backlog-specs.md', '/specrails:get-backlog-specs'],
+    ['vpc-drift.md', '/specrails:vpc-drift'],
+    ['merge-resolve.md', '/specrails:merge-resolve'],
+    ['team-debug.md', '/specrails:team-debug'],
+    ['team-review.md', '/specrails:team-review'],
+    ['unknown-ph.md', 'raw {{UNKNOWN_PLACEHOLDER}} trailing'],
+  ] as const
+  for (const [name, content] of cmds) {
+    writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', name), content)
+  }
+
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'rules', 'general.md'),
+    '# rules for {{PROJECT_NAME}}\n',
+  )
+
+  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
+  writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
+}
+
 describe('scaffold', () => {
   let tmpDir: string
 
@@ -167,6 +220,160 @@ describe('scaffold', () => {
 
       expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.claude', 'rules', 'general.md'))).toBe(true)
+    })
+
+    describe('quick tier — VPC exclusion + placeholders + command deps', () => {
+      it('excludes VPC-dependent agents (sr-product-*)', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const agentsDir = path.join(repoRoot, '.claude', 'agents')
+        expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-product-manager.md'))).toBe(false)
+        expect(pathExists(path.join(agentsDir, 'sr-product-analyst.md'))).toBe(false)
+      })
+
+      it('substitutes every documented placeholder', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const projectName = path.basename(repoRoot)
+        const archContent = readTextFile(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))
+        expect(archContent).toContain(`project: ${projectName}`)
+        expect(archContent).toContain('memory: .claude/agent-memory/sr-architect/')
+        expect(archContent).not.toContain('{{PROJECT_NAME}}')
+        expect(archContent).not.toContain('{{MEMORY_PATH}}')
+
+        const reviewer = readTextFile(path.join(repoRoot, '.claude', 'agents', 'sr-reviewer.md'))
+        expect(reviewer).toContain('security: .claude/security-exemptions.yaml')
+      })
+
+      it('strips unknown {{PLACEHOLDER}} tokens rather than leaving them raw', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const cmd = readTextFile(path.join(repoRoot, '.claude', 'commands', 'specrails', 'unknown-ph.md'))
+        expect(cmd).toBe('raw  trailing')
+      })
+
+      it('excludes commands whose required agents were excluded', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
+        // Product-manager gone → auto-propose-backlog-specs + vpc-drift gone
+        expect(pathExists(path.join(cmdsDir, 'auto-propose-backlog-specs.md'))).toBe(false)
+        expect(pathExists(path.join(cmdsDir, 'vpc-drift.md'))).toBe(false)
+        // Product-analyst gone → get-backlog-specs gone
+        expect(pathExists(path.join(cmdsDir, 'get-backlog-specs.md'))).toBe(false)
+        // Merge-resolver IS installed → merge-resolve stays
+        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(true)
+        // Unrelated commands stay
+        expect(pathExists(path.join(cmdsDir, 'implement.md'))).toBe(true)
+        expect(pathExists(path.join(cmdsDir, 'why.md'))).toBe(true)
+      })
+
+      it('excludes team-* commands unless agentTeams is true', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
+        expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(false)
+        expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(false)
+      })
+
+      it('includes team-* commands when agentTeams is true', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: true,
+          tier: 'quick',
+        })
+
+        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
+        expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(true)
+        expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(true)
+      })
+
+      it('creates per-agent memory directories + shared explanations dir when an arch/reviewer ships', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+        })
+
+        const memRoot = path.join(repoRoot, '.claude', 'agent-memory')
+        expect(isDir(path.join(memRoot, 'sr-architect'))).toBe(true)
+        expect(isDir(path.join(memRoot, 'sr-developer'))).toBe(true)
+        expect(isDir(path.join(memRoot, 'sr-reviewer'))).toBe(true)
+        expect(isDir(path.join(memRoot, 'explanations'))).toBe(true)
+      })
     })
 
     it('adds entries to .gitignore without duplicating existing lines', () => {

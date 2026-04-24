@@ -6,6 +6,31 @@ import { info, ok, warn } from '../util/logger.js'
 import type { Provider } from './provider-detect.js'
 
 /**
+ * Agents excluded from the quick tier because they require a full
+ * /specrails:enrich persona pass to function correctly.
+ */
+const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst'])
+
+/**
+ * Command → required agent dependency map. A command is excluded
+ * from the quick tier when its required agent was excluded (i.e.
+ * VPC-dependent) or when the feature flag (Agent Teams) is off.
+ */
+const COMMAND_AGENT_DEPENDENCIES: Array<{ command: string; requires: string[] }> = [
+  { command: 'auto-propose-backlog-specs', requires: ['sr-product-manager'] },
+  { command: 'vpc-drift', requires: ['sr-product-manager', 'sr-product-analyst'] },
+  { command: 'get-backlog-specs', requires: ['sr-product-analyst'] },
+  { command: 'merge-resolve', requires: ['sr-merge-resolver'] },
+]
+
+/**
+ * Agents that write "explanation" memory records. When any of them
+ * ships we also need a shared `.claude/agent-memory/explanations/`
+ * directory alongside the per-agent memory dirs.
+ */
+const EXPLANATION_AUTHORS = new Set(['sr-architect', 'sr-reviewer'])
+
+/**
  * Phase 2 + Phase 3 of the retired install.sh:
  *   - Detect prior installation state (.claude/.codex/openspec already present).
  *   - Create the directory skeleton.
@@ -115,8 +140,12 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   // --- Quick tier: direct-placement short-circuit ---
   if (input.tier === 'quick') {
     const placed = placeQuickTierArtefacts({ ...input })
-    copiedFiles += placed
-    info(`Quick tier: placed ${placed} agent/rule files directly into ${input.providerDir}/`)
+    copiedFiles += placed.agents + placed.commands + placed.rules
+    const skippedNote = placed.skippedAgents > 0 ? ` (skipped ${placed.skippedAgents} VPC-dependent)` : ''
+    info(
+      `Quick tier: placed ${placed.agents} agent(s) + ${placed.commands} command(s) + ` +
+        `${placed.rules} rule file(s) directly into ${input.providerDir}/${skippedNote}`,
+    )
   }
 
   ok(`Created ${createdDirs.length} directories, copied ${copiedFiles} files`)
@@ -163,25 +192,138 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   input.copiedIncrement(count)
 }
 
-function placeQuickTierArtefacts(input: ScaffoldInput): number {
-  // Directly copy templates/agents/* → <providerDir>/agents/*
-  // and templates/rules/* → <providerDir>/rules/* so the user can
-  // start invoking agents immediately after install without running
-  // the enrich phase.
-  let count = 0
-  const agentsSrc = path.join(input.scriptDir, 'templates', 'agents')
-  const rulesSrc = path.join(input.scriptDir, 'templates', 'rules')
+interface QuickPlacement {
+  agents: number
+  commands: number
+  rules: number
+  skippedAgents: number
+}
+
+/**
+ * Quick-tier placement: copy agents / commands / rules from the
+ * .specrails/setup-templates/ staging directory into the live
+ * provider directory, substituting template placeholders and
+ * excluding agents + commands whose dependencies are not present.
+ *
+ * Source is setup-templates/ (not scriptDir/templates/) so the pipeline
+ * is: scriptDir/templates/ → setup-templates/ (earlier scaffold step)
+ * → <providerDir>/ (this function). The intermediate hop mirrors the
+ * retired bash installer and lets downstream consumers (specrails-hub's
+ * deployTemplates, /specrails:enrich, update flow) read from a single
+ * canonical staging dir.
+ */
+function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
+  const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+  const projectName = path.basename(input.repoRoot)
+  const providerDirAbs = path.join(input.repoRoot, input.providerDir)
+
+  const placeholders = {
+    PROJECT_NAME: projectName,
+    SECURITY_EXEMPTIONS_PATH: `${input.providerDir}/security-exemptions.yaml`,
+    PERSONA_DIR: `${input.providerDir}/agents/personas/`,
+  }
+
+  // --- Agents ---
+  const agentsSrc = path.join(setupTemplates, 'agents')
+  const agentsDest = path.join(providerDirAbs, 'agents')
+  let agentsPlaced = 0
+  let agentsSkipped = 0
+  const installedAgentNames = new Set<string>()
   if (isDir(agentsSrc)) {
-    const agentsDest = path.join(input.repoRoot, input.providerDir, 'agents')
-    copyDir(agentsSrc, agentsDest)
-    count += countFiles(agentsDest)
+    mkdirp(agentsDest)
+    for (const src of listDir(agentsSrc)) {
+      const name = path.basename(src)
+      if (!name.endsWith('.md')) continue
+      const agentId = name.slice(0, -3)
+
+      if (QUICK_EXCLUDED_AGENTS.has(agentId)) {
+        agentsSkipped++
+        continue
+      }
+
+      const dest = path.join(agentsDest, name)
+      const rendered = renderPlaceholders(readTextFile(src), {
+        ...placeholders,
+        MEMORY_PATH: `.claude/agent-memory/${agentId}/`,
+      })
+      writeFileLf(dest, rendered)
+      agentsPlaced++
+      installedAgentNames.add(agentId)
+
+      // Per-agent memory directory. Created even when empty so
+      // the first run of the agent doesn't error on ENOENT.
+      mkdirp(path.join(input.repoRoot, '.claude', 'agent-memory', agentId))
+
+      if (EXPLANATION_AUTHORS.has(agentId)) {
+        mkdirp(path.join(input.repoRoot, '.claude', 'agent-memory', 'explanations'))
+      }
+    }
   }
+
+  // --- Commands ---
+  // Skip commands whose required agents were excluded.
+  const excludedCommands = new Set<string>()
+  for (const dep of COMMAND_AGENT_DEPENDENCIES) {
+    const hasAllRequired = dep.requires.every((a) => installedAgentNames.has(a))
+    if (!hasAllRequired) excludedCommands.add(dep.command)
+  }
+  if (!input.agentTeams) {
+    excludedCommands.add('team-debug')
+    excludedCommands.add('team-review')
+  }
+
+  const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')
+  const commandsDest = path.join(providerDirAbs, 'commands', 'specrails')
+  let commandsPlaced = 0
+  if (isDir(commandsSrc)) {
+    mkdirp(commandsDest)
+    for (const src of listDir(commandsSrc)) {
+      const name = path.basename(src)
+      if (!name.endsWith('.md')) continue
+      const cmdId = name.slice(0, -3)
+      if (excludedCommands.has(cmdId)) continue
+
+      const dest = path.join(commandsDest, name)
+      const rendered = renderPlaceholders(readTextFile(src), {
+        ...placeholders,
+        MEMORY_PATH: '.claude/agent-memory/',
+      })
+      writeFileLf(dest, rendered)
+      commandsPlaced++
+    }
+  }
+
+  // --- Rules ---
+  const rulesSrc = path.join(setupTemplates, 'rules')
+  const rulesDest = path.join(providerDirAbs, 'rules')
+  let rulesPlaced = 0
   if (isDir(rulesSrc)) {
-    const rulesDest = path.join(input.repoRoot, input.providerDir, 'rules')
-    copyDir(rulesSrc, rulesDest)
-    count += countFiles(rulesDest)
+    mkdirp(rulesDest)
+    for (const src of listDir(rulesSrc)) {
+      const name = path.basename(src)
+      if (!name.endsWith('.md')) continue
+      const dest = path.join(rulesDest, name)
+      const rendered = renderPlaceholders(readTextFile(src), placeholders)
+      writeFileLf(dest, rendered)
+      rulesPlaced++
+    }
   }
-  return count
+
+  return { agents: agentsPlaced, commands: commandsPlaced, rules: rulesPlaced, skippedAgents: agentsSkipped }
+}
+
+/**
+ * Substitutes `{{KEY}}` tokens in the input text with the provided
+ * values, then strips any remaining `{{UNKNOWN}}` tokens (replacing
+ * them with the empty string). Matches the retired bash installer's
+ * `sed` pipeline byte-for-byte for the documented token set.
+ */
+function renderPlaceholders(text: string, values: Record<string, string>): string {
+  let out = text
+  for (const [k, v] of Object.entries(values)) {
+    out = out.split(`{{${k}}}`).join(v)
+  }
+  return out.replace(/\{\{[A-Z_]*\}\}/g, '')
 }
 
 function ensureGitignore(repoRoot: string, entries: string[]): void {
