@@ -75,7 +75,10 @@ No cloning required. Downloads the latest version and runs the installer automat
 
 ```bash
 git clone https://github.com/fjpulidop/specrails-core.git
-./specrails-core/install.sh --root-dir <your-project>
+cd specrails-core
+npm install
+npm run build
+node bin/specrails-core.mjs init --root-dir <your-project>
 ```
 
 > **Important:** Always run the installer from the **target repository** — the project where you want SpecRails installed.
@@ -349,7 +352,7 @@ You're running the installer from inside the SpecRails repo. Run it from your ta
 
 ```bash
 cd /path/to/your-project
-bash /path/to/specrails/install.sh
+npx specrails-core@latest init
 ```
 
 ### Existing `.claude/` directory detected
