@@ -37,7 +37,7 @@ describe('git', () => {
   })
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('gitInstalled returns true in CI / dev environments', async () => {

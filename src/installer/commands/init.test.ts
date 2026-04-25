@@ -46,7 +46,7 @@ describe('runInit', () => {
     else process.env.SPECRAILS_SKIP_PREREQS = prevSkipPrereqs
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('installs into a fresh git repo on the quick tier', async () => {

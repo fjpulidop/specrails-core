@@ -79,7 +79,7 @@ describe('reserved paths audit', () => {
     else process.env.SPECRAILS_SKIP_PREREQS = prevSkipPrereqs
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('init preserves profile JSON and custom-* agents when they pre-exist', async () => {

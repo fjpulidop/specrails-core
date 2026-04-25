@@ -19,7 +19,7 @@ describe('runDoctor', () => {
 
   afterEach(() => {
     process.chdir(prevCwd)
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('reports failures for an empty directory', async () => {

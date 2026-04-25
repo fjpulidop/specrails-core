@@ -30,7 +30,7 @@ describe('checkPrerequisites — OSS detection', () => {
   afterEach(() => {
     if (prevSkip === undefined) delete process.env.SPECRAILS_SKIP_PREREQS
     else process.env.SPECRAILS_SKIP_PREREQS = prevSkip
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('returns ossSignals with every flag false on a bare git repo', async () => {

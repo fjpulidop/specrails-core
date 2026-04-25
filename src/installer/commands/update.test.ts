@@ -43,7 +43,7 @@ describe('runUpdate', () => {
     process.chdir(prevCwd)
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
-    rmSync(tmpDir, { recursive: true, force: true })
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('refuses to run when no prior install is present', async () => {

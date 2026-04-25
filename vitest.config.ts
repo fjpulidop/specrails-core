@@ -5,7 +5,10 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     environment: 'node',
     globals: false,
-    testTimeout: 10_000,
+    // Bump from 10s to 20s — git + scaffold integration tests on
+    // Windows + Node 22 cells routinely take 8-12s under emulation
+    // and tripped the prior 10s ceiling.
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
