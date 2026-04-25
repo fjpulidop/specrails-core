@@ -62,6 +62,7 @@ function assertReservedUntouched(fx: ReservedFixtures): void {
 describe('reserved paths audit', () => {
   let tmpDir: string
   let prevSkipPrereqs: string | undefined
+  let prevSkipOpenSpecInit: string | undefined
   let prevScriptDirOverride: string | undefined
   let prevCwd: string
 
@@ -69,14 +70,20 @@ describe('reserved paths audit', () => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-reserved-test-'))
     prevCwd = process.cwd()
     prevSkipPrereqs = process.env.SPECRAILS_SKIP_PREREQS
+    prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
     process.env.SPECRAILS_SKIP_PREREQS = '1'
+    // Reserved-paths audit doesn't depend on OpenSpec; skip the npx
+    // fetch so the test stays fast and Windows CI doesn't time out.
+    process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
   })
 
   afterEach(() => {
     process.chdir(prevCwd)
     if (prevSkipPrereqs === undefined) delete process.env.SPECRAILS_SKIP_PREREQS
     else process.env.SPECRAILS_SKIP_PREREQS = prevSkipPrereqs
+    if (prevSkipOpenSpecInit === undefined) delete process.env.SPECRAILS_SKIP_OPENSPEC_INIT
+    else process.env.SPECRAILS_SKIP_OPENSPEC_INIT = prevSkipOpenSpecInit
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
