@@ -35,8 +35,9 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
+      # `npm install` (not `npm ci`) — package-lock.json is intentionally
+      # gitignored in this repo (library convention), so `npm ci` would fail.
+      - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm run build
       - run: npx vitest run
@@ -49,8 +50,9 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: 20
-          cache: npm
-      - run: npm ci
+      # `npm install` (not `npm ci`) — package-lock.json is intentionally
+      # gitignored in this repo (library convention), so `npm ci` would fail.
+      - run: npm install --no-audit --no-fund
       - run: npm run build
       - name: Run tests with coverage
         run: npx vitest run --coverage
