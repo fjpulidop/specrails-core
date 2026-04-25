@@ -178,9 +178,17 @@ function readVersion(scriptDir: string): string {
   }
 }
 
-// Pinned OpenSpec version. Bump deliberately when validating an upgrade.
-// Latest checked: @fission-ai/openspec 1.3.1 (2026-04-25).
-const OPENSPEC_PINNED_VERSION = '1.3.1'
+function readPinnedVersion(scriptDir: string, key: string, fallback: string): string {
+  const p = path.join(scriptDir, 'pinned-versions.json')
+  if (!pathExists(p)) return fallback
+  try {
+    const parsed = JSON.parse(readTextFile(p)) as Record<string, unknown>
+    const value = parsed[key]
+    return typeof value === 'string' && value.length > 0 ? value : fallback
+  } catch {
+    return fallback
+  }
+}
 
 async function installOpenSpecProject(repoRoot: string, provider: Provider): Promise<void> {
   if (process.env.SPECRAILS_SKIP_OPENSPEC_INIT === '1') {
@@ -191,6 +199,7 @@ async function installOpenSpecProject(repoRoot: string, provider: Provider): Pro
   // Tests can point this at a fake binary on PATH to avoid hitting npm.
   // Default: invoke through npx so users never need a global install.
   const override = process.env.SPECRAILS_OPENSPEC_BIN
+  const pinnedVersion = readPinnedVersion(resolveScriptDir(), 'openspec', '1.3.1')
   const { bin, args } = override
     ? { bin: override, args: ['init', '--tools', provider, repoRoot] }
     : {
@@ -198,7 +207,7 @@ async function installOpenSpecProject(repoRoot: string, provider: Provider): Pro
         args: [
           '--yes',
           '-p',
-          `@fission-ai/openspec@${OPENSPEC_PINNED_VERSION}`,
+          `@fission-ai/openspec@${pinnedVersion}`,
           '--',
           'openspec',
           'init',

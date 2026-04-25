@@ -15,7 +15,8 @@
     "docs/",
     "schemas/",
     "VERSION",
-    "integration-contract.json"
+    "integration-contract.json",
+    "pinned-versions.json"
   ],
   "engines": {
     "node": ">=20.0.0"
