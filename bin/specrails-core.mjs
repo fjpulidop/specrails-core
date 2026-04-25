@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -217,7 +217,7 @@ async function runNodeCli(argv) {
     )
     process.exit(1)
   }
-  const mod = await import(cliPath)
+  const mod = await import(pathToFileURL(cliPath).href)
   if (typeof mod.main !== 'function') {
     console.error('Installer runtime is missing the expected main() export — corrupt install?')
     process.exit(1)
