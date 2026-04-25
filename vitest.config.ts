@@ -5,10 +5,12 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     environment: 'node',
     globals: false,
-    // Bump from 10s to 20s — git + scaffold integration tests on
-    // Windows + Node 22 cells routinely take 8-12s under emulation
-    // and tripped the prior 10s ceiling.
-    testTimeout: 20_000,
+    // Windows runners under load take 25-40s for git + scaffold
+    // integration tests and trip the 20s ceiling, leaving subprocesses
+    // holding files open which cascades into EBUSY rmdir failures
+    // across the rest of the suite. 60s gives generous headroom;
+    // healthy POSIX runs still finish in <5s.
+    testTimeout: 60_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
