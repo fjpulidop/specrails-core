@@ -55,7 +55,8 @@ Clone the repository for full control and the ability to customize agents.
 git clone https://github.com/fjpulidop/specrails-core
 cd specrails-core
 npm install
-./install.sh --root-dir <your-project>
+npm run build
+node bin/specrails-core.mjs init --root-dir <your-project>
 ```
 
 ### Updating
