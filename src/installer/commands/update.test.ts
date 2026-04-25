@@ -113,6 +113,86 @@ describe('runUpdate', () => {
     ).toBe('custom reviewer content')
   })
 
+  describe('--only flag', () => {
+    it('defaults to scope=all when --only is omitted', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot })
+      expect(result.scope).toBe('all')
+    })
+
+    it('--only=rules refreshes only the rules subtree', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, only: 'rules' })
+      expect(result.scope).toBe('rules')
+      // Rules staging is populated.
+      expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'rules', 'general.md'))).toBe(true)
+      // Manifest still bumped to current version.
+      const manifest = JSON.parse(
+        readTextFile(path.join(repoRoot, '.specrails', 'specrails-manifest.json')),
+      )
+      expect(manifest.version).toBe('5.0.0')
+    })
+
+    it('--only=agents refreshes only the agents subtree', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, only: 'agents' })
+      expect(result.scope).toBe('agents')
+      expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'agents', 'sr-architect.md'))).toBe(true)
+    })
+
+    it('--only=web-manager warns and exits without writing (deprecated)', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, only: 'web-manager' })
+      expect(result.scope).toBe('web-manager')
+      // specrails-version unchanged.
+      expect(readTextFile(path.join(repoRoot, '.specrails', 'specrails-version')).trim()).toBe('4.2.0')
+    })
+
+    it('--only=core re-applies the full bundled template layer', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, only: 'core' })
+      expect(result.scope).toBe('core')
+      // Bundled commands present (full scaffold ran).
+      expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(true)
+    })
+
+    it('unknown --only value falls back to scope=all with a warning', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, only: 'bogus' })
+      expect(result.scope).toBe('all')
+    })
+  })
+
   it('refreshes the manifest version to match the installed core', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')

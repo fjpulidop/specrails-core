@@ -1,5 +1,8 @@
+import path from 'node:path'
+
 import { PrerequisiteError } from '../util/errors.js'
-import { commandExists } from '../util/exec.js'
+import { commandExists, runCommand } from '../util/exec.js'
+import { isDir, isFile, listDir } from '../util/fs.js'
 import { info, ok, warn } from '../util/logger.js'
 import { gitInstalled, initRepo, isGitRepo, repoRoot } from '../util/git.js'
 
@@ -34,6 +37,22 @@ export interface PrereqOptions {
 export interface PrereqResult {
   availability: ProviderAvailability
   provider: Provider
+  /**
+   * OSS heuristics. Three signals must align for `isOss` to be true:
+   * a public GitHub repo (via `gh repo view`), at least one CI workflow
+   * file under `.github/workflows/`, and a `CONTRIBUTING.md` at the
+   * repo root or under `.github/`. Surfaced for the downstream
+   * `/specrails:enrich` flow to tailor the persona generation.
+   */
+  ossSignals: OssSignals
+}
+
+export interface OssSignals {
+  hasGh: boolean
+  publicRepo: boolean
+  hasCi: boolean
+  hasContributing: boolean
+  isOss: boolean
 }
 
 /**
@@ -106,12 +125,57 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
   }
 
   // 1.6 GitHub CLI — optional; enables OSS detection + issue-backed flows.
-  if (await commandExists('gh')) {
+  const hasGh = await commandExists('gh')
+  if (hasGh) {
     ok('GitHub CLI: found')
   } else {
     info('GitHub CLI not found — optional, enables OSS detection')
   }
 
+  // 1.7 OSS detection — runs only when gh is present + authenticated.
+  //     Degrades gracefully (every signal independently false) when
+  //     prereqs are missing.
+  const ossSignals = await detectOssSignals(options.repoRoot, hasGh)
+  if (ossSignals.isOss) {
+    ok('OSS project detected (public repo + CI + CONTRIBUTING.md)')
+  }
+
   // 1.8 JIRA CLI — silently skipped when missing (only relevant in enrich).
-  return { availability, provider }
+  return { availability, provider, ossSignals }
+}
+
+async function detectOssSignals(repoRoot: string, hasGh: boolean): Promise<OssSignals> {
+  let publicRepo = false
+  if (hasGh) {
+    try {
+      const { stdout } = await runCommand(
+        'gh',
+        ['repo', 'view', '--json', 'isPrivate', '--jq', '.isPrivate'],
+        { cwd: repoRoot, inherit: false },
+      )
+      // gh emits 'true' / 'false' newline-terminated.
+      publicRepo = stdout.trim().toLowerCase() === 'false'
+    } catch {
+      /* not a gh-tracked repo or gh not authenticated — leave false */
+    }
+  }
+
+  const hasCi = hasCiWorkflows(repoRoot)
+  const hasContributing =
+    isFile(path.join(repoRoot, 'CONTRIBUTING.md')) ||
+    isFile(path.join(repoRoot, '.github', 'CONTRIBUTING.md'))
+
+  return {
+    hasGh,
+    publicRepo,
+    hasCi,
+    hasContributing,
+    isOss: hasGh && publicRepo && hasCi && hasContributing,
+  }
+}
+
+function hasCiWorkflows(repoRoot: string): boolean {
+  const dir = path.join(repoRoot, '.github', 'workflows')
+  if (!isDir(dir)) return false
+  return listDir(dir).some((p) => p.endsWith('.yml') || p.endsWith('.yaml'))
 }

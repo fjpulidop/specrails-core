@@ -1,4 +1,4 @@
-import { spawn, type SpawnOptions } from 'node:child_process'
+import { spawn, spawnSync, type SpawnOptions } from 'node:child_process'
 
 import { ExecError } from './errors.js'
 
@@ -71,11 +71,7 @@ export async function runCommand(
 
     if (opts.timeoutMs && opts.timeoutMs > 0) {
       timer = setTimeout(() => {
-        try {
-          child.kill('SIGKILL')
-        } catch {
-          /* ignore */
-        }
+        terminateProcessTree(child.pid)
       }, opts.timeoutMs)
     }
 
@@ -127,6 +123,46 @@ export async function tryRunCommand(
 export async function commandExists(cmd: string): Promise<boolean> {
   const probe = process.platform === 'win32' ? 'where' : 'which'
   return tryRunCommand(probe, [cmd], { inherit: false })
+}
+
+/**
+ * Terminates a child process tree, not just the immediate child.
+ *
+ * On POSIX, `child.kill('SIGKILL')` to the immediate child is enough
+ * because Node sends the signal to the process and (when detached)
+ * its group. We don't detach, so a SIGKILL to the leader works for
+ * the common case.
+ *
+ * On Windows, when shell:true is in effect (always, in this module),
+ * the immediate child is cmd.exe. Terminating cmd.exe leaves its
+ * spawned children orphaned with stdio pipes still open, and Node's
+ * 'close' event never fires on the parent handle. The fix is to ask
+ * Windows to terminate the entire descendant tree via taskkill /T /F.
+ *
+ * Falls back silently when the PID is unavailable or taskkill fails —
+ * the caller's promise will eventually reject either way (timeout
+ * source unchanged), so the worst-case outcome is the original
+ * "orphan child holds the pipe" behaviour.
+ */
+function terminateProcessTree(pid: number | undefined): void {
+  if (pid === undefined) return
+
+  if (process.platform === 'win32') {
+    try {
+      // /T = include child processes, /F = force.
+      spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' })
+    } catch {
+      /* taskkill missing or failed — fall through to single-process kill */
+    }
+    return
+  }
+
+  // POSIX: SIGKILL the leader. Node delivers the signal directly.
+  try {
+    process.kill(pid, 'SIGKILL')
+  } catch {
+    /* process already exited */
+  }
 }
 
 /**

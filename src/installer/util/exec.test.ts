@@ -32,17 +32,13 @@ describe('exec', () => {
       ).rejects.toBeTruthy()
     })
 
-    // Windows-only caveat: with shell:true, the immediate child is
-    // cmd.exe wrapping the real binary. Sending SIGKILL terminates
-    // cmd.exe but Windows does not propagate the signal down its
-    // children — the inner node process is orphaned and keeps stdio
-    // pipes open, so the runCommand promise never resolves until the
-    // test timeout fires. Tree-kill via `taskkill /T /F /PID <pid>` is
-    // the canonical fix; tracked in a follow-up. For now we exercise
-    // the timeout path on POSIX where SIGKILL behaves as expected.
-    it.runIf(process.platform !== 'win32')(
-      'honours a timeout by SIGKILLing the child',
+    it(
+      'honours a timeout by terminating the child (and its tree on Windows)',
       async () => {
+        // Inline script kept space-free so cmd.exe shell wrapping
+        // doesn't re-tokenise it. The setInterval keeps Node alive
+        // until terminate-process-tree fires (taskkill /T /F /PID on
+        // Windows, SIGKILL on POSIX).
         await expect(
           runCommand(
             'node',
