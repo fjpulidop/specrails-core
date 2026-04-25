@@ -11,6 +11,14 @@ import type { Provider } from './provider-detect.js'
  * /specrails:enrich persona pass to function correctly.
  */
 const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst'])
+/**
+ * Skills excluded from the quick tier because they depend on
+ * VPC-only agents (sr-product-manager, sr-product-analyst).
+ */
+const QUICK_EXCLUDED_SKILLS = new Set([
+  'sr-auto-propose-backlog-specs',
+  'sr-get-backlog-specs',
+])
 const QUICK_REQUIRED_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
@@ -113,6 +121,7 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     mk(path.join(input.repoRoot, '.agents', 'skills', 'doctor'))
   } else {
     mk(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails'))
+    mk(path.join(input.repoRoot, input.providerDir, 'skills'))
   }
   const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
   mk(path.join(setupTemplates, 'agents'))
@@ -155,6 +164,25 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     info(
       `Quick tier: placed ${placed.agents} agent(s) + ${placed.commands} command(s) + ` +
         `${placed.rules} rule file(s) directly into ${input.providerDir}/${skippedNote}`,
+    )
+  }
+
+  // --- Skills direct-placement (both tiers, claude provider) ---
+  if (input.provider === 'claude') {
+    const skills = placeSkills(input)
+    copiedFiles += skills.filesCopied
+    const skillSkipNote = skills.skipped > 0 ? ` (skipped ${skills.skipped} VPC-dependent)` : ''
+    info(
+      `Placed ${skills.placed} skill(s) into ${input.providerDir}/skills/${skillSkipNote}`,
+    )
+  }
+
+  // --- Full-tier hint: enrich is required to generate VPC artefacts ---
+  if (input.tier === 'full') {
+    info(
+      'Full tier staged. Run `/specrails:enrich` in Claude Code to generate ' +
+        'VPC personas and adapt agents (including sr-product-manager and ' +
+        'sr-product-analyst) to this codebase.',
     )
   }
 
@@ -349,6 +377,40 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   }
 
   return { agents: agentsPlaced, commands: commandsPlaced, rules: rulesPlaced, skippedAgents: agentsSkipped }
+}
+
+interface SkillsPlacement {
+  placed: number
+  skipped: number
+  filesCopied: number
+}
+
+// Copy each `sr-*` subfolder from `.specrails/setup-templates/skills/`
+// into `<providerDir>/skills/`. Skills are full directories
+// (SKILL.md + optional assets), so the whole folder is copied.
+// Quick tier excludes VPC-dependent skills; full tier copies all.
+function placeSkills(input: ScaffoldInput): SkillsPlacement {
+  const setupSkills = path.join(input.repoRoot, '.specrails', 'setup-templates', 'skills')
+  const destBase = path.join(input.repoRoot, input.providerDir, 'skills')
+  const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
+
+  if (!isDir(setupSkills)) return result
+  mkdirp(destBase)
+
+  for (const entry of listDir(setupSkills)) {
+    if (!isDir(entry)) continue
+    const skillId = path.basename(entry)
+    if (input.tier === 'quick' && QUICK_EXCLUDED_SKILLS.has(skillId)) {
+      result.skipped++
+      continue
+    }
+    const dest = path.join(destBase, skillId)
+    copyDir(entry, dest)
+    result.placed++
+    result.filesCopied += countFiles(dest)
+  }
+
+  return result
 }
 
 /**
