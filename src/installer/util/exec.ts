@@ -39,15 +39,23 @@ export async function runCommand(
   opts: RunOptions = {},
 ): Promise<RunResult> {
   const inherit = opts.inherit ?? true
+  const useShell = process.platform === 'win32'
   const spawnOpts: SpawnOptions = {
     cwd: opts.cwd,
     env: opts.env ? { ...process.env, ...opts.env } : process.env,
-    shell: process.platform === 'win32',
+    shell: useShell,
     stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   }
 
+  // When shell:true, Node hands argv to cmd.exe / sh which re-tokenises
+  // the command line. Args containing spaces (commit messages, paths
+  // with whitespace, JSON strings) get split unless we quote them.
+  // POSIX double-quotes work; Windows cmd.exe also accepts them when
+  // we escape inner double quotes as `""`.
+  const finalArgs = useShell ? args.map(quoteArgForShell) : args
+
   return new Promise<RunResult>((resolve, reject) => {
-    const child = spawn(cmd, args, spawnOpts)
+    const child = spawn(cmd, finalArgs, spawnOpts)
     let stdout = ''
     let stderr = ''
     let timer: NodeJS.Timeout | null = null
@@ -119,4 +127,19 @@ export async function tryRunCommand(
 export async function commandExists(cmd: string): Promise<boolean> {
   const probe = process.platform === 'win32' ? 'where' : 'which'
   return tryRunCommand(probe, [cmd], { inherit: false })
+}
+
+/**
+ * Quotes a single argv entry so it survives re-tokenisation by cmd.exe
+ * (Windows shell:true) or sh (POSIX shell:true). Already-quoted
+ * arguments and arguments with no whitespace are returned untouched.
+ *
+ * The quoting strategy is deliberately simple: wrap in double quotes,
+ * escape inner double quotes as `\"`. cmd.exe accepts this dialect
+ * uniformly and POSIX sh does too.
+ */
+function quoteArgForShell(arg: string): string {
+  if (arg.length === 0) return '""'
+  if (!/\s|[<>|&^"`$\\]/.test(arg)) return arg
+  return `"${arg.replace(/"/g, '\\"')}"`
 }

@@ -1,4 +1,5 @@
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { realpath } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -58,10 +59,18 @@ describe('git', () => {
   it('repoRoot resolves to the init directory', async () => {
     await initRepo(tmpDir)
     const root = await repoRoot(tmpDir)
-    // macOS / Windows tmpdirs frequently contain symlink segments
-    // (/var → /private/var on macOS, junction points on Windows), so
-    // compare realpath-resolved forms.
-    expect(realpathSync(root)).toBe(realpathSync(tmpDir))
+    // Path equality is fiddly across hosts:
+    //   - macOS:   /var/folders/... is a symlink to /private/var/folders/...
+    //   - Windows: tmp paths surface as 8.3 short names ("RUNNER~1")
+    //              from one source and long names ("runneradmin") from
+    //              the other.
+    // fs/promises.realpath is sensitive to both: it resolves symlinks
+    // AND, on Windows, expands 8.3 short components to their long form.
+    // Compare both sides through realpath then case-insensitively (NTFS
+    // is case-insensitive but case-preserving).
+    const a = (await realpath(root)).toLowerCase()
+    const b = (await realpath(tmpDir)).toLowerCase()
+    expect(a).toBe(b)
   })
 
   it('repoRoot throws GitError outside a repo', async () => {
