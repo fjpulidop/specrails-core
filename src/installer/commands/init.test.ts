@@ -130,7 +130,11 @@ describe('runInit', () => {
     ).rejects.toThrow(/Codex/)
   })
 
-  it('runs openspec init and creates OpenSpec project files when the CLI is available', async () => {
+  // Fake openspec binary uses a POSIX shell script (#!/bin/sh) that
+  // Windows cannot execute. The init flow itself is platform-agnostic
+  // (covered by other tests on Windows runners); only the test fixture
+  // is POSIX-only.
+  it.skipIf(process.platform === 'win32')('runs openspec init and creates OpenSpec project files when the CLI is available', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     const binDir = path.join(tmpDir, 'bin')
