@@ -5,6 +5,7 @@ import { InstallerError, PrerequisiteError } from '../util/errors.js'
 import { info, ok, step, warn } from '../util/logger.js'
 import { copyDir, isDir, pathExists, readTextFile } from '../util/fs.js'
 
+import { loadInstallConfig, resolveConfigPath, type Tier } from '../phases/install-config.js'
 import { buildManifest, writeManifestFiles, type SpecrailsManifest } from '../phases/manifest.js'
 import { derivedPaths, detectAvailability, resolveProvider, type Provider } from '../phases/provider-detect.js'
 import { scaffoldInstallation } from '../phases/scaffold.js'
@@ -57,6 +58,10 @@ export interface UpdateResult {
   dryRun: boolean
   /** Resolved scope of the update — what was actually re-applied. */
   scope: OnlyComponent
+  /** Tier honored during this update (read from install-config.yaml when present). */
+  tier: Tier
+  /** Whether Agent Teams commands are kept on this update. */
+  agentTeams: boolean
 }
 
 export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
@@ -67,7 +72,13 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
     typeof flags['root-dir'] === 'string' ? flags['root-dir'] : process.cwd(),
   )
   const dryRun = flags['dry-run'] === true
-  const agentTeams = flags['agent-teams'] === true
+
+  // Read install-config.yaml so the user's original choices (tier,
+  // agent_teams) survive the update. Flag overrides win when present;
+  // missing config falls back to defaults (tier=full, agent_teams=false).
+  const config = loadInstallConfig(resolveConfigPath(repoRoot))
+  const tier: Tier = config?.tier ?? 'full'
+  const agentTeams = flags['agent-teams'] === true || config?.agent_teams === true
 
   const marker = path.join(repoRoot, '.specrails', 'specrails-version')
   if (!pathExists(marker)) {
@@ -89,14 +100,19 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       '--only=web-manager is deprecated. The standalone web-manager has been retired; ' +
         'specrails-hub is the supported dashboard. Skipping with no changes.',
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier, agentTeams }
+  }
+
+  if (config) {
+    info(`Honouring install-config.yaml: tier=${tier}, agent_teams=${agentTeams}`)
   }
 
   if (dryRun) {
     info(
-      `Dry run: would update [${scope}] for ${previousVersion ?? '(unknown)'} → ${currentVersion}.`,
+      `Dry run: would update [${scope}, tier=${tier}, agent_teams=${agentTeams}] ` +
+        `for ${previousVersion ?? '(unknown)'} → ${currentVersion}.`,
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier, agentTeams }
   }
 
   step(`Update: refreshing scaffold [scope=${scope}] (${previousVersion ?? '?'} → ${currentVersion})`)
@@ -108,12 +124,11 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       provider,
       providerDir,
       agentTeams,
-      // Update always applies the full layer; quick-tier-vs-full is an
-      // install-time choice. We re-apply whatever the user had (we
-      // cannot know the original tier from the repo state alone, so
-      // default to `full` — the extra files under setup-templates/ are
-      // exactly what the enrich flow expects).
-      tier: 'full',
+      // tier read from install-config.yaml above. If the user installed
+      // with --quick, we re-apply the quick-tier direct placement
+      // (agents + commands into <providerDir> with placeholder substitution
+      // and VPC exclusion) instead of leaving the live agents/ stale.
+      tier,
     })
   } else if (scope === 'rules') {
     rescaffoldComponent('rules', { scriptDir, repoRoot })
@@ -135,7 +150,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   info(`specrails-core ${previousVersion ?? '?'} → ${currentVersion}`)
   // Terminal sentinel for programmatic consumers (see comment in init.ts).
   ok('update complete')
-  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope }
+  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope, tier, agentTeams }
 }
 
 /**
