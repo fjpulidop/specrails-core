@@ -178,6 +178,10 @@ function readVersion(scriptDir: string): string {
   }
 }
 
+// Pinned OpenSpec version. Bump deliberately when validating an upgrade.
+// Latest checked: @fission-ai/openspec 1.3.1 (2026-04-25).
+const OPENSPEC_PINNED_VERSION = '1.3.1'
+
 async function installOpenSpecProject(repoRoot: string, provider: Provider): Promise<void> {
   if (process.env.SPECRAILS_SKIP_OPENSPEC_INIT === '1') {
     info('Skipping OpenSpec project init (SPECRAILS_SKIP_OPENSPEC_INIT=1)')
@@ -189,7 +193,20 @@ async function installOpenSpecProject(repoRoot: string, provider: Provider): Pro
   const override = process.env.SPECRAILS_OPENSPEC_BIN
   const { bin, args } = override
     ? { bin: override, args: ['init', '--tools', provider, repoRoot] }
-    : { bin: 'npx', args: ['--yes', 'openspec@latest', 'init', '--tools', provider, repoRoot] }
+    : {
+        bin: 'npx',
+        args: [
+          '--yes',
+          '-p',
+          `@fission-ai/openspec@${OPENSPEC_PINNED_VERSION}`,
+          '--',
+          'openspec',
+          'init',
+          '--tools',
+          provider,
+          repoRoot,
+        ],
+      }
 
   step('Phase 3c: Installing OpenSpec')
   try {
