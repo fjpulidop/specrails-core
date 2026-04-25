@@ -33,13 +33,32 @@ describe('exec', () => {
     })
 
     it('honours a timeout by SIGKILLing the child', async () => {
+      // Inline script kept space-free so the cmd.exe shell wrapping on
+      // Windows + Node 20+ shell:true does not re-tokenise it. Real
+      // production callsites that pass paths with spaces are exercised
+      // by the dedicated quoting test below.
       await expect(
         runCommand(
           'node',
-          ['-e', 'setTimeout(() => process.exit(0), 10000)'],
+          ['-e', 'setInterval(()=>{},1000)'],
           { inherit: false, timeoutMs: 150 },
         ),
       ).rejects.toBeTruthy()
+    }, 5000)
+
+    it('quotes args containing spaces so they reach the child as one token', async () => {
+      // Asserts that an arg with embedded whitespace round-trips
+      // through the shell wrapper unchanged. Reproduces the production
+      // scenario where the installer spawns `git commit -m "<message
+      // with spaces>"` or runs against a project path containing
+      // spaces (e.g. `C:\Users\Javi Pulido\repos\test1`).
+      const phrase = 'a b c spaced phrase'
+      const result = await runCommand(
+        'node',
+        ['-e', `process.stdout.write(process.argv[1])`, phrase],
+        { inherit: false },
+      )
+      expect(result.stdout.trim()).toBe(phrase)
     })
   })
 
