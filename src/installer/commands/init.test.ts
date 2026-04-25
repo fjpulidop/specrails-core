@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { chmodSync, mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -20,6 +20,8 @@ async function setupFakeScriptDir(scriptDir: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'VERSION'), '4.2.0\n')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), 'reviewer')
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'), 'merge')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
@@ -28,15 +30,20 @@ async function setupFakeScriptDir(scriptDir: string): Promise<void> {
 describe('runInit', () => {
   let tmpDir: string
   let prevSkipPrereqs: string | undefined
+  let prevSkipOpenSpecInit: string | undefined
   let prevCwd: string
 
   let prevScriptDirOverride: string | undefined
+  let prevPath: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-init-test-'))
     prevSkipPrereqs = process.env.SPECRAILS_SKIP_PREREQS
+    prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
+    prevPath = process.env.PATH
     process.env.SPECRAILS_SKIP_PREREQS = '1'
+    process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
     prevCwd = process.cwd()
   })
 
@@ -44,8 +51,12 @@ describe('runInit', () => {
     process.chdir(prevCwd)
     if (prevSkipPrereqs === undefined) delete process.env.SPECRAILS_SKIP_PREREQS
     else process.env.SPECRAILS_SKIP_PREREQS = prevSkipPrereqs
+    if (prevSkipOpenSpecInit === undefined) delete process.env.SPECRAILS_SKIP_OPENSPEC_INIT
+    else process.env.SPECRAILS_SKIP_OPENSPEC_INIT = prevSkipOpenSpecInit
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
+    if (prevPath === undefined) delete process.env.PATH
+    else process.env.PATH = prevPath
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -104,6 +115,10 @@ describe('runInit', () => {
 
     expect(result.tier).toBe('quick')
     expect(result.agentTeams).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(true)
   })
 
   it('rejects --provider codex with a "coming soon" error', async () => {
@@ -113,5 +128,55 @@ describe('runInit', () => {
     await expect(
       runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex' }),
     ).rejects.toThrow(/Codex/)
+  })
+
+  it('runs openspec init and creates OpenSpec project files when the CLI is available', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo')
+    const binDir = path.join(tmpDir, 'bin')
+    mkdirp(repoRoot)
+    mkdirp(binDir)
+    await setupFakeScriptDir(scriptDir)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+    process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '0'
+    process.env.PATH = `${binDir}:${prevPath ?? process.env.PATH ?? ''}`
+
+    const fakeOpenSpec = path.join(binDir, 'openspec')
+    writeFileLf(
+      fakeOpenSpec,
+      [
+        '#!/bin/sh',
+        'if [ "$1" = "init" ]; then',
+        '  repo="$4"',
+        '  mkdir -p "$repo/openspec/changes/archive" "$repo/openspec/specs"',
+        '  mkdir -p "$repo/.claude/commands/opsx" "$repo/.claude/skills/openspec-propose"',
+        '  : > "$repo/.claude/commands/opsx/propose.md"',
+        '  : > "$repo/.claude/skills/openspec-propose/SKILL.md"',
+        '  exit 0',
+        'fi',
+        'if [ "$1" = "--version" ]; then',
+        '  echo "1.2.0"',
+        '  exit 0',
+        'fi',
+        'exit 0',
+        '',
+      ].join('\n'),
+    )
+    chmodSync(fakeOpenSpec, 0o755)
+
+    await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'claude',
+      quick: true,
+    })
+
+    expect(pathExists(path.join(repoRoot, 'openspec', 'changes', 'archive'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, 'openspec', 'specs'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'opsx', 'propose.md'))).toBe(true)
+    expect(
+      pathExists(path.join(repoRoot, '.claude', 'skills', 'openspec-propose', 'SKILL.md')),
+    ).toBe(true)
   })
 })

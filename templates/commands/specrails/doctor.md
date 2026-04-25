@@ -10,23 +10,23 @@ Run the specrails health check to validate that all prerequisites are correctly 
 |-------|---------------|
 | Claude Code CLI | `claude` binary found in PATH |
 | Claude API key | `claude config list` shows a key OR `ANTHROPIC_API_KEY` env var set |
-| Agent files | `agents/` directory exists with at least 1 `AGENTS.md` file |
+| Agent files | Generated agent files exist under `.claude/agents/` |
 | CLAUDE.md | `CLAUDE.md` present in the repo root |
 | Git initialized | `.git/` directory present |
 | npm | `npm` binary found in PATH |
 
 ## How to run
 
-This command delegates to the standalone health check script installed at `.specrails/bin/doctor.sh`. Run it directly:
-
-```
-Bash tool: bash .specrails/bin/doctor.sh
-```
-
-Or via the npm CLI wrapper:
+This command uses the Node-native doctor runtime. Run it directly with:
 
 ```
 npx specrails-core@latest doctor
+```
+
+If `specrails-core` is already on your `PATH`, this works too:
+
+```
+specrails-core doctor
 ```
 
 ## Output

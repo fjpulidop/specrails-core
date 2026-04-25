@@ -2,7 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
-import { info, ok, step } from '../util/logger.js'
+import { commandExists, runCommand } from '../util/exec.js'
+import { info, ok, step, warn } from '../util/logger.js'
 import { readTextFile, pathExists } from '../util/fs.js'
 
 import {
@@ -66,6 +67,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   let providerHint: Provider | undefined
   let tierHint: Tier | undefined
   let agentTeamsHint = flags['agent-teams'] === true
+  let selectedAgentsHint: string[] | undefined
 
   if (fromConfigFlag !== undefined) {
     const explicitPath = typeof fromConfigFlag === 'string' ? fromConfigFlag : undefined
@@ -75,6 +77,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
       providerHint = config.provider
       tierHint = config.tier
       if (config.agent_teams) agentTeamsHint = true
+      selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
     } else {
       info(`install-config.yaml not found at ${resolved} — falling back to auto-detection`)
@@ -116,6 +119,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     providerDir,
     agentTeams: agentTeamsHint,
     tier: tierHint ?? 'full',
+    selectedAgents: selectedAgentsHint,
   })
 
   // ─── Phase 3b — manifest ──────────────────────────────────────────────
@@ -124,6 +128,8 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   const { manifestPath, versionPath } = writeManifestFiles(repoRoot, manifest)
   ok(`Wrote ${path.relative(repoRoot, manifestPath)}`)
   ok(`Wrote ${path.relative(repoRoot, versionPath)}`)
+
+  await installOpenSpecProject(repoRoot, prereqs.provider)
 
   const tier: Tier = tierHint ?? 'full'
   if (tier === 'full') {
@@ -169,5 +175,31 @@ function readVersion(scriptDir: string): string {
     return readTextFile(p).trim() || 'unknown'
   } catch {
     return 'unknown'
+  }
+}
+
+async function installOpenSpecProject(repoRoot: string, provider: Provider): Promise<void> {
+  if (process.env.SPECRAILS_SKIP_OPENSPEC_INIT === '1') {
+    info('Skipping OpenSpec project init (SPECRAILS_SKIP_OPENSPEC_INIT=1)')
+    return
+  }
+
+  if (!(await commandExists('openspec'))) {
+    warn('OpenSpec CLI not found — skipping project OpenSpec init')
+    return
+  }
+
+  step('Phase 3c: Installing OpenSpec')
+  try {
+    await runCommand('openspec', ['init', '--tools', provider, repoRoot], {
+      cwd: repoRoot,
+      timeoutMs: 120000,
+    })
+    ok(`OpenSpec project files installed (${provider})`)
+  } catch (err) {
+    throw new InstallerError(
+      `OpenSpec init failed: ${(err as Error).message}`,
+      50,
+    )
   }
 }

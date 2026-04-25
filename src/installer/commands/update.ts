@@ -79,6 +79,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   const config = loadInstallConfig(resolveConfigPath(repoRoot))
   const tier: Tier = config?.tier ?? 'full'
   const agentTeams = flags['agent-teams'] === true || config?.agent_teams === true
+  const selectedAgents = config?.agents.selected
 
   const marker = path.join(repoRoot, '.specrails', 'specrails-version')
   if (!pathExists(marker)) {
@@ -124,6 +125,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       provider,
       providerDir,
       agentTeams,
+      selectedAgents,
       // tier read from install-config.yaml above. If the user installed
       // with --quick, we re-apply the quick-tier direct placement
       // (agents + commands into <providerDir> with placeholder substitution

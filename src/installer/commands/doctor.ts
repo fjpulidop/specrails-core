@@ -7,6 +7,7 @@ import { commandExists, runCommand } from '../util/exec.js'
 import { isDir, isFile, listDir, mkdirp } from '../util/fs.js'
 
 import { assertClaudeAuthenticated } from '../phases/provider-detect.js'
+import { derivedPaths, type Provider } from '../phases/provider-detect.js'
 
 /**
  * `npx specrails-core doctor` — health check for a specrails install.
@@ -40,6 +41,8 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   const addFail = (message: string, fix: string): void => {
     results.push({ kind: 'fail', message, fix })
   }
+  const provider = resolveInstalledProvider(projectRoot)
+  const { providerDir, instructionsFile } = derivedPaths(provider)
 
   // Check 1: Claude Code CLI
   if (await commandExists('claude')) {
@@ -62,33 +65,38 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
     }
   }
 
-  // Check 3: Agent files present (legacy `agents/` directory layout)
-  const agentsDir = path.join(projectRoot, 'agents')
+  // Check 3: Agent files present in the active provider directory.
+  const agentsDir = path.join(projectRoot, providerDir, 'agents')
   if (isDir(agentsDir)) {
-    const agentMdFiles = findAgentMdFiles(agentsDir)
-    if (agentMdFiles.length >= 1) {
-      const names = agentMdFiles
-        .map((f) => path.basename(path.dirname(f)))
+    const agentFiles = findInstalledAgentFiles(agentsDir, provider)
+    if (agentFiles.length >= 1) {
+      const names = agentFiles
+        .map((f) => path.basename(f, path.extname(f)))
         .join(', ')
-      addPass(`Agent files: ${agentMdFiles.length} agent(s) found (${names})`)
+      addPass(`Agent files: ${agentFiles.length} agent(s) found in ${providerDir}/agents (${names})`)
     } else {
       addFail(
-        'Agent files: agents/ exists but no AGENTS.md found',
+        `Agent files: ${providerDir}/agents exists but no generated agent files were found`,
         'Run specrails-core init to set up agents',
       )
     }
   } else {
     addFail(
-      'Agent files: agents/ directory not found',
+      `Agent files: ${providerDir}/agents directory not found`,
       'Run specrails-core init to set up agents',
     )
   }
 
-  // Check 4: CLAUDE.md present
-  if (isFile(path.join(projectRoot, 'CLAUDE.md'))) {
-    addPass('CLAUDE.md: present')
+  // Check 4: provider instructions file present
+  if (isFile(path.join(projectRoot, instructionsFile))) {
+    addPass(`${instructionsFile}: present`)
   } else {
-    addFail('CLAUDE.md: missing', 'Run /specrails:setup inside Claude Code to regenerate')
+    addFail(
+      `${instructionsFile}: missing`,
+      provider === 'codex'
+        ? 'Run specrails-core init to regenerate the provider instructions.'
+        : 'Run /specrails:enrich inside Claude Code to regenerate.',
+    )
   }
 
   // Check 5: Git initialized
@@ -148,17 +156,20 @@ async function resolveCommandPath(cmd: string): Promise<string | null> {
   }
 }
 
-function findAgentMdFiles(root: string): string[] {
-  const out: string[] = []
-  if (!isDir(root)) return out
-  const walk = (dir: string): void => {
-    for (const entry of listDir(dir)) {
-      if (isDir(entry)) walk(entry)
-      else if (path.basename(entry) === 'AGENTS.md') out.push(entry)
-    }
-  }
-  walk(root)
-  return out
+function resolveInstalledProvider(projectRoot: string): Provider {
+  if (isDir(path.join(projectRoot, '.codex'))) return 'codex'
+  return 'claude'
+}
+
+function findInstalledAgentFiles(root: string, provider: Provider): string[] {
+  if (!isDir(root)) return []
+  const matcher =
+    provider === 'codex'
+      ? /^(custom-|sr-).+\.toml$/
+      : /^(custom-|sr-).+\.md$/
+  return listDir(root)
+    .filter((entry) => isFile(entry) && matcher.test(path.basename(entry)))
+    .sort()
 }
 
 function appendDoctorLog(passed: number, failed: number): void {

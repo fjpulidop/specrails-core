@@ -57,6 +57,7 @@
     "test": "npm run typecheck && npm run build && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "prepare": "npm run build",
     "prepack": "npm run build"
   },
   "specrails": {

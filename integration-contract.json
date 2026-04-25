@@ -80,7 +80,7 @@
     }
   },
   "legacyCompat": {
-    "setupCommandAlias": true,
-    "note": "During transition, /specrails:setup may still be installed as an alias in some repos. Hub should prefer /specrails:enrich."
+    "setupCommandAlias": false,
+    "note": "The Node-native installer ships /specrails:enrich only. Existing repos should prune any leftover /specrails:setup alias during re-install or update."
   }
 }

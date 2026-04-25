@@ -13,6 +13,7 @@ function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
+  writeFileLf(path.join(scriptDir, 'commands', 'setup.md'), 'legacy setup')
   writeFileLf(path.join(scriptDir, 'commands', 'team-review.md'), 'team review')
   writeFileLf(path.join(scriptDir, 'commands', 'team-debug.md'), 'team debug')
 }
@@ -164,6 +165,49 @@ describe('scaffold', () => {
       const dest = path.join(repoRoot, '.claude', 'commands', 'specrails')
       expect(pathExists(path.join(dest, 'enrich.md'))).toBe(true)
       expect(pathExists(path.join(dest, 'doctor.md'))).toBe(true)
+      expect(pathExists(path.join(dest, 'setup.md'))).toBe(false)
+    })
+
+    it('prunes legacy setup aliases and shell artefacts during scaffold', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      setupFakeSource(scriptDir)
+      writeFileLf(path.join(repoRoot, '.claude', 'commands', 'setup.md'), 'legacy')
+      writeFileLf(path.join(repoRoot, '.claude', 'commands', 'specrails', 'setup.md'), 'legacy')
+      writeFileLf(path.join(repoRoot, '.specrails', 'bin', 'doctor.sh'), '#!/bin/sh\n')
+      writeFileLf(
+        path.join(repoRoot, '.specrails', 'setup-templates', '.provider-detection.json'),
+        '{}\n',
+      )
+      writeFileLf(
+        path.join(repoRoot, '.specrails', 'setup-templates', 'settings', 'integration-contract.json'),
+        '{}\n',
+      )
+      writeFileLf(path.join(repoRoot, '.specrails-version'), '4.0.0\n')
+
+      scaffoldInstallation({
+        scriptDir,
+        repoRoot,
+        provider: 'claude',
+        providerDir: '.claude',
+        agentTeams: false,
+        tier: 'full',
+      })
+
+      expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'setup.md'))).toBe(false)
+      expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails', 'setup.md'))).toBe(
+        false,
+      )
+      expect(pathExists(path.join(repoRoot, '.specrails', 'bin', 'doctor.sh'))).toBe(false)
+      expect(
+        pathExists(path.join(repoRoot, '.specrails', 'setup-templates', '.provider-detection.json')),
+      ).toBe(false)
+      expect(
+        pathExists(
+          path.join(repoRoot, '.specrails', 'setup-templates', 'settings', 'integration-contract.json'),
+        ),
+      ).toBe(false)
+      expect(pathExists(path.join(repoRoot, '.specrails-version'))).toBe(false)
     })
 
     it('skips team-* commands when agentTeams=false', () => {
@@ -244,6 +288,35 @@ describe('scaffold', () => {
         expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(true)
         expect(pathExists(path.join(agentsDir, 'sr-product-manager.md'))).toBe(false)
         expect(pathExists(path.join(agentsDir, 'sr-product-analyst.md'))).toBe(false)
+      })
+
+      it('honours selectedAgents for config-driven quick installs while keeping the baseline quartet', () => {
+        const scriptDir = path.join(tmpDir, 'core')
+        const repoRoot = path.join(tmpDir, 'repo')
+        setupRichFakeSource(scriptDir)
+
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'claude',
+          providerDir: '.claude',
+          agentTeams: false,
+          tier: 'quick',
+          selectedAgents: ['sr-architect'],
+        })
+
+        const agentsDir = path.join(repoRoot, '.claude', 'agents')
+        expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
+        expect(pathExists(path.join(agentsDir, 'sr-frontend-developer.md'))).toBe(false)
+
+        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
+        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(true)
+        expect(pathExists(path.join(cmdsDir, 'implement.md'))).toBe(true)
+        expect(pathExists(path.join(cmdsDir, 'auto-propose-backlog-specs.md'))).toBe(false)
+        expect(pathExists(path.join(cmdsDir, 'get-backlog-specs.md'))).toBe(false)
       })
 
       it('substitutes every documented placeholder', () => {

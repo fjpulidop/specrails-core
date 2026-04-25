@@ -59,7 +59,7 @@ These are the most common reasons code passes locally but fails in CI:
 
 The orchestrator runs specialized layer reviewers in parallel before you launch. Their reports are injected here. A value of `"SKIPPED"` means no files of that layer type were in the changeset.
 
-**These are NOT `/specrails:setup` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
+**These are NOT `/specrails:enrich` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
 
 FRONTEND_REVIEW_REPORT:
 [injected]

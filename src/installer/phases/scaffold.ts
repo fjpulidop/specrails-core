@@ -1,3 +1,4 @@
+import { rmSync } from 'node:fs'
 import path from 'node:path'
 
 import { copyDir, copyFile, isDir, listDir, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
@@ -10,6 +11,12 @@ import type { Provider } from './provider-detect.js'
  * /specrails:enrich persona pass to function correctly.
  */
 const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst'])
+const QUICK_REQUIRED_AGENTS = new Set([
+  'sr-architect',
+  'sr-developer',
+  'sr-reviewer',
+  'sr-merge-resolver',
+])
 
 /**
  * Command → required agent dependency map. A command is excluded
@@ -57,6 +64,8 @@ export interface ScaffoldInput {
   agentTeams: boolean
   /** Install tier — `quick` triggers the direct-placement path. */
   tier: 'full' | 'quick'
+  /** Optional explicit allow-list used by config-driven quick installs. */
+  selectedAgents?: string[]
 }
 
 export interface ScaffoldResult {
@@ -136,6 +145,7 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
 
   // --- Write bundled commands (enrich.md + doctor.md) ---
   copyBundledCommands({ ...input, copiedIncrement: (n) => (copiedFiles += n) })
+  pruneLegacyArtifacts(input)
 
   // --- Quick tier: direct-placement short-circuit ---
   if (input.tier === 'quick') {
@@ -184,12 +194,37 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   for (const entry of listDir(commandsSrc)) {
     const name = path.basename(entry)
     if (!name.endsWith('.md')) continue
+    if (name === 'setup.md') continue
     // Agent Teams gating — skip team-* commands unless explicitly opted in.
     if (!input.agentTeams && /^team-/.test(name)) continue
     copyFile(entry, path.join(destDir, name))
     count++
   }
   input.copiedIncrement(count)
+}
+
+function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider' | 'providerDir'>): void {
+  const legacyPaths = [
+    path.join(input.repoRoot, '.specrails', 'bin', 'doctor.sh'),
+    path.join(input.repoRoot, '.specrails', 'setup-templates', '.provider-detection.json'),
+    path.join(input.repoRoot, '.specrails', 'setup-templates', 'settings', 'integration-contract.json'),
+    path.join(input.repoRoot, '.specrails-version'),
+  ]
+
+  if (input.provider === 'codex') {
+    legacyPaths.push(path.join(input.repoRoot, '.agents', 'skills', 'setup'))
+  } else {
+    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'setup.md'))
+    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', 'setup.md'))
+  }
+
+  for (const target of legacyPaths) {
+    try {
+      rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
+    } catch (err) {
+      warn(`failed to prune legacy artifact ${target}: ${(err as Error).message}`)
+    }
+  }
 }
 
 interface QuickPlacement {
@@ -229,12 +264,16 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   let agentsPlaced = 0
   let agentsSkipped = 0
   const installedAgentNames = new Set<string>()
+  const selectedAgents = input.selectedAgents
+    ? new Set([...input.selectedAgents, ...QUICK_REQUIRED_AGENTS])
+    : null
   if (isDir(agentsSrc)) {
     mkdirp(agentsDest)
     for (const src of listDir(agentsSrc)) {
       const name = path.basename(src)
       if (!name.endsWith('.md')) continue
       const agentId = name.slice(0, -3)
+      if (selectedAgents && !selectedAgents.has(agentId)) continue
 
       if (QUICK_EXCLUDED_AGENTS.has(agentId)) {
         agentsSkipped++

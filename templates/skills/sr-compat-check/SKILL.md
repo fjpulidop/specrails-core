@@ -44,7 +44,7 @@ Parse `$ARGUMENTS` to set runtime variables.
 **Verify prerequisites:**
 
 - Check whether `templates/` directory exists. If not: print `Error: templates/ not found — is this a specrails repo?` and stop.
-- Check whether `install.sh` exists. If not: set `INSTALLER_AVAILABLE=false` (installer flags category will be skipped). Otherwise set `INSTALLER_AVAILABLE=true`.
+- Check whether `bin/specrails-core.mjs` exists. If not: set `INSTALLER_AVAILABLE=false` (installer flags category will be skipped). Otherwise set `INSTALLER_AVAILABLE=true`.
 
 **Print active configuration:**
 
@@ -60,9 +60,9 @@ Read the codebase and build the surface snapshot. Print one progress line as eac
 
 **Surface category: installer_flags**
 
-If `INSTALLER_AVAILABLE=false`: print `  installer_flags: skipped (install.sh not found)` and record as unavailable.
+If `INSTALLER_AVAILABLE=false`: print `  installer_flags: skipped (bin/specrails-core.mjs not found)` and record as unavailable.
 
-Otherwise: read `install.sh`. Find all `case` blocks that parse CLI arguments. Extract every `--<word>)` flag pattern. For each flag, record the flag string and line number.
+Otherwise: read `bin/specrails-core.mjs`. Extract every `--<word>` flag pattern that is accepted by the CLI dispatcher. For each flag, record the flag string and line number.
 
 Print: `  installer_flags: N found`
 
