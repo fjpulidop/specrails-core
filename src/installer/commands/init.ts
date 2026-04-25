@@ -2,8 +2,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
-import { commandExists, runCommand } from '../util/exec.js'
-import { info, ok, step, warn } from '../util/logger.js'
+import { runCommand } from '../util/exec.js'
+import { info, ok, step } from '../util/logger.js'
 import { readTextFile, pathExists } from '../util/fs.js'
 
 import {
@@ -184,16 +184,18 @@ async function installOpenSpecProject(repoRoot: string, provider: Provider): Pro
     return
   }
 
-  if (!(await commandExists('openspec'))) {
-    warn('OpenSpec CLI not found — skipping project OpenSpec init')
-    return
-  }
+  // Tests can point this at a fake binary on PATH to avoid hitting npm.
+  // Default: invoke through npx so users never need a global install.
+  const override = process.env.SPECRAILS_OPENSPEC_BIN
+  const { bin, args } = override
+    ? { bin: override, args: ['init', '--tools', provider, repoRoot] }
+    : { bin: 'npx', args: ['--yes', 'openspec@latest', 'init', '--tools', provider, repoRoot] }
 
   step('Phase 3c: Installing OpenSpec')
   try {
-    await runCommand('openspec', ['init', '--tools', provider, repoRoot], {
+    await runCommand(bin, args, {
       cwd: repoRoot,
-      timeoutMs: 120000,
+      timeoutMs: 180000,
     })
     ok(`OpenSpec project files installed (${provider})`)
   } catch (err) {

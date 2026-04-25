@@ -35,6 +35,7 @@ describe('runInit', () => {
 
   let prevScriptDirOverride: string | undefined
   let prevPath: string | undefined
+  let prevOpenSpecBin: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-init-test-'))
@@ -42,6 +43,7 @@ describe('runInit', () => {
     prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
     prevPath = process.env.PATH
+    prevOpenSpecBin = process.env.SPECRAILS_OPENSPEC_BIN
     process.env.SPECRAILS_SKIP_PREREQS = '1'
     process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
     prevCwd = process.cwd()
@@ -57,6 +59,8 @@ describe('runInit', () => {
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
     if (prevPath === undefined) delete process.env.PATH
     else process.env.PATH = prevPath
+    if (prevOpenSpecBin === undefined) delete process.env.SPECRAILS_OPENSPEC_BIN
+    else process.env.SPECRAILS_OPENSPEC_BIN = prevOpenSpecBin
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -130,10 +134,10 @@ describe('runInit', () => {
     ).rejects.toThrow(/Codex/)
   })
 
-  // Fake openspec binary uses a POSIX shell script (#!/bin/sh) that
-  // Windows cannot execute. The init flow itself is platform-agnostic
-  // (covered by other tests on Windows runners); only the test fixture
-  // is POSIX-only.
+  // Uses a POSIX shell script as a fake openspec binary, pointed at via
+  // SPECRAILS_OPENSPEC_BIN so the installer doesn't shell out to npx
+  // (which would hit the live npm registry). #!/bin/sh fixture means
+  // the test only runs on POSIX.
   it.skipIf(process.platform === 'win32')('runs openspec init and creates OpenSpec project files when the CLI is available', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
@@ -144,7 +148,6 @@ describe('runInit', () => {
     await initRepo(repoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
     process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '0'
-    process.env.PATH = `${binDir}:${prevPath ?? process.env.PATH ?? ''}`
 
     const fakeOpenSpec = path.join(binDir, 'openspec')
     writeFileLf(
@@ -168,6 +171,7 @@ describe('runInit', () => {
       ].join('\n'),
     )
     chmodSync(fakeOpenSpec, 0o755)
+    process.env.SPECRAILS_OPENSPEC_BIN = fakeOpenSpec
 
     await runInit({
       'root-dir': repoRoot,

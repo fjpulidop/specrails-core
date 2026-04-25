@@ -116,12 +116,13 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
     ok('npm: found')
   }
 
-  // 1.5 OpenSpec CLI — optional but highly recommended (used by the
-  //     agent workflow). Warn only.
+  // 1.5 OpenSpec CLI — optional. The installer falls back to
+  //     `npx openspec` automatically, so a missing global install is
+  //     not a problem. Warn only when present is preferable (faster).
   if (await commandExists('openspec')) {
-    ok('OpenSpec CLI: found')
+    ok('OpenSpec CLI: found (global)')
   } else {
-    info('OpenSpec CLI not found — install via `npm install -g openspec` (optional)')
+    info('OpenSpec CLI not on PATH — will fetch via npx during install')
   }
 
   // 1.6 GitHub CLI — optional; enables OSS detection + issue-backed flows.
