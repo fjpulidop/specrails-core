@@ -59,7 +59,7 @@ The plugin bundles the logic layer — agents, skills, commands, hooks, and refe
 
 | Tool | Why | Install |
 |------|-----|---------|
-| **Node.js 18+** | Required for the installer | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
+| **Node.js 20+** | Required for the installer (macOS, Linux, Windows) | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
 | **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
 | **Claude Code** or **Codex CLI** | The AI CLI that runs the agents | See [codex-vs-claude-code.md](user-docs/codex-vs-claude-code.md) |
 
