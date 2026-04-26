@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.0](https://github.com/fjpulidop/specrails-core/compare/v4.1.1...v4.2.0) (2026-04-26)
+
+
+### Features
+
+* **installer:** cross-platform installer (Node port) — design proposal ([#256](https://github.com/fjpulidop/specrails-core/issues/256)) ([620f16f](https://github.com/fjpulidop/specrails-core/commit/620f16f0b448e9c2b633cb7e42d9f79f64fc9674))
+
 ## [4.1.1](https://github.com/fjpulidop/specrails-core/compare/v4.1.0...v4.1.1) (2026-04-23)
 
 
