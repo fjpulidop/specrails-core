@@ -1,0 +1,35 @@
+# Enforce LF line endings on all text files. This prevents Windows'
+# core.autocrlf=true from injecting \r bytes into published artifacts
+# (templates, JSON manifests, shell scripts) that land on macOS/Linux
+# user systems where CR bytes corrupt pipelines and break scripts.
+#
+# Rationale: the Node installer writes LF-terminated files to user
+# repositories regardless of host platform (see src/installer/util/fs.ts
+# writeFileLf). This .gitattributes guarantees the same LF invariant
+# for files checked into this repository and published via npm.
+
+* text=auto eol=lf
+
+# Explicit declarations for common text types.
+*.ts       text eol=lf
+*.js       text eol=lf
+*.mjs      text eol=lf
+*.cjs      text eol=lf
+*.json     text eol=lf
+*.md       text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.sh       text eol=lf
+*.toml     text eol=lf
+*.txt      text eol=lf
+
+# Binary — leave untouched.
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.ico      binary
+*.icns     binary
+*.zip      binary
+*.gz       binary
+*.tgz      binary

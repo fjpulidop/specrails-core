@@ -86,7 +86,7 @@ After producing the task breakdown and before finalizing output:
 1. **Extract the proposed surface changes** from your implementation design: which commands, agents, placeholders, flags, or config keys are being added, removed, renamed, or modified?
 
 2. **Compare against the current surface** by reading:
-   - `install.sh` for CLI flags
+   - `bin/specrails-core.mjs` for CLI flags
    - `templates/commands/*.md` for command names and argument flags
    - `templates/agents/*.md` for agent names
    - `templates/**/*.md` for `{{PLACEHOLDER}}` keys

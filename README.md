@@ -16,7 +16,7 @@ npx specrails-core@latest init   # install into the current repo
 /specrails:enrich                # optional: deep codebase analysis
 ```
 
-> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), git, Node 18+.
+> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), git, Node 20+. Cross-platform: macOS, Linux, Windows.
 >
 > **🧪 Codex (OpenAI) support — Coming Soon:** We are testing Codex integration in our lab. Installation is disabled for now, but the feature will be available shortly. Follow the repo for updates.
 
@@ -230,12 +230,12 @@ Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) MUST appear in `
 
 ### Reserved paths
 
-The following paths are **reserved** — `update.sh` will never create, modify, or delete anything inside them:
+The following paths are **reserved** — `specrails-core update` will never create, modify, or delete anything inside them:
 
 - `.specrails/profiles/**` — profile JSON files (yours and hub-authored).
 - `.claude/agents/custom-*.md` — your custom agents. Use the `custom-` prefix to opt in to this protection.
 
-This contract is what lets you safely hand-author (or let specrails-hub author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under `update.sh`'s control.
+This contract is what lets you safely hand-author (or let specrails-hub author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under update's control. Audited by `src/installer/__tests__/reserved-paths.test.ts` on every CI run.
 
 ---
 
@@ -284,7 +284,7 @@ Each persona scores features 0–5. Features are ranked by score / effort ratio.
 | **Claude Code** | Yes | AI agent runtime |
 | **Codex CLI** _(coming soon — in lab)_ | 🧪 Not yet | OpenAI Codex support is being tested in our lab and will be available shortly. |
 | **git** | Yes | Repository detection |
-| **Node 18+** | Yes | Needed for `npx specrails-core@latest init` |
+| **Node 20+** | Yes | Needed for `npx specrails-core@latest init`. Cross-platform: macOS, Linux, Windows (10/11, x64 + ARM64 via emulation). |
 | **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation. Not needed with local tickets. |
 | **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA. Not needed with local tickets. |
 

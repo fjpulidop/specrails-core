@@ -8,8 +8,8 @@ Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all
 
 Determine `$SPECRAILS_DIR`:
 
-1. Read `.specrails/setup-templates/.provider-detection.json` to get `cli_provider` and `specrails_dir`.
-2. If the file does not exist, default to `cli_provider = "claude"` and `specrails_dir = ".claude"`.
+1. If `.codex/agents/` exists, set `cli_provider = "codex"` and `specrails_dir = ".codex"`.
+2. Otherwise set `cli_provider = "claude"` and `specrails_dir = ".claude"`.
 3. Set `$AGENTS_DIR = $SPECRAILS_DIR/agents`
 
 ## Step 2: Read agent config

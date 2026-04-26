@@ -57,7 +57,7 @@ If no persona files are found in either location:
 Error: No VPC persona files found.
 Expected location: .claude/agents/*.md or {{PERSONA_DIR}}/*.md
 Each persona file must contain a ## Value Proposition Canvas section.
-Run /specrails:setup to generate persona files from templates.
+Run /specrails:enrich to generate persona files from templates.
 ```
 
 Stop.

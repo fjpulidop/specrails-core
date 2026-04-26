@@ -40,7 +40,7 @@ Always exclude the following from all analysis:
 
 ## Phase 1.5: VPC Context
 
-Check whether persona files exist at `.claude/agents/personas/`. This path is present in any repo that has run `/specrails:setup`.
+Check whether persona files exist at `.claude/agents/personas/`. This path is present in any repo that has run `/specrails:enrich`.
 
 ```bash
 ls .claude/agents/personas/ 2>/dev/null
@@ -208,5 +208,5 @@ Issues created: {N}  (or "dry-run: no issues created")
 ```
 
 Where:
-- `{vpc_header}` is `VPC personas loaded: {persona names}` when `VPC_AVAILABLE=true`, or `VPC personas: not found (run /specrails:setup to enable)` otherwise.
+- `{vpc_header}` is `VPC personas loaded: {persona names}` when `VPC_AVAILABLE=true`, or `VPC personas: not found (run /specrails:enrich to enable)` otherwise.
 - `{vpc_detail}` is `**VPC Value**: {vpc_value}/5 — {vpc_persona}: {vpc_rationale}` when `VPC_AVAILABLE=true`, omitted otherwise.

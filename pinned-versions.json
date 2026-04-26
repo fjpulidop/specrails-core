@@ -1,0 +1,4 @@
+{
+  "$comment": "Pinned versions of third-party tools the installer fetches via npx. Edit and commit to bump deliberately.",
+  "openspec": "1.3.1"
+}

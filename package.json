@@ -2,22 +2,24 @@
   "name": "specrails-core",
   "version": "4.1.1",
   "description": "AI agent workflow system for Claude Code — installs 12 specialized agents, orchestration commands, and persona-driven product discovery into any repository",
+  "type": "module",
   "bin": {
-    "specrails-core": "bin/specrails-core.js"
+    "specrails-core": "bin/specrails-core.mjs"
   },
   "files": [
     "bin/",
-    "install.sh",
-    "update.sh",
+    "dist/",
     "templates/",
     ".claude/skills/",
     "commands/",
     "docs/",
     "schemas/",
-    "VERSION"
+    "VERSION",
+    "integration-contract.json",
+    "pinned-versions.json"
   ],
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "repository": {
     "type": "git",
@@ -50,17 +52,30 @@
     "url": "https://github.com/fjpulidop/specrails-core/issues"
   },
   "scripts": {
-    "test": "bash tests/run-all.sh",
-    "test:coverage": "bash tests/run-coverage.sh"
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "test": "npm run typecheck && npm run build && vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
   },
   "specrails": {
     "openspecVersion": "1.2.0"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.0.0"
+    "@inquirer/prompts": "^7.0.0",
+    "js-yaml": "^4.1.0",
+    "picocolors": "^1.1.1"
   },
   "devDependencies": {
-    "ajv": "^8.18.0"
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.8",
+    "ajv": "^8.18.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
   },
   "license": "MIT",
   "author": "fjpulidop"

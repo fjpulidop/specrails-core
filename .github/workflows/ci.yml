@@ -20,14 +20,27 @@ jobs:
       - name: Scan for secrets
         run: gitleaks detect --source . --redact --exit-code 1
 
+  # Cross-platform Node test matrix. Runs on macOS, Linux, and Windows;
+  # covers Node 20 (current LTS) and Node 22 (next LTS) per
+  # package.json#engines.
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: ['20', '22']
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
-          node-version: 20
-      - run: bash tests/run-all.sh
+          node-version: ${{ matrix.node }}
+      # `npm install` (not `npm ci`) — package-lock.json is intentionally
+      # gitignored in this repo (library convention), so `npm ci` would fail.
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npx vitest run
 
   coverage:
     runs-on: ubuntu-latest
@@ -37,14 +50,12 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: 20
-      - name: Install kcov
-        run: |
-          KCOV_VERSION=v43
-          sudo apt-get update && sudo apt-get install -y cmake libcurl4-gnutls-dev libelf-dev libdw-dev binutils-dev libiberty-dev
-          curl -sSfL "https://github.com/SimonKagstrom/kcov/archive/refs/tags/${KCOV_VERSION}.tar.gz" | tar xz
-          cd "kcov-${KCOV_VERSION#v}" && mkdir build && cd build && cmake .. && make -j"$(nproc)" && sudo make install
+      # `npm install` (not `npm ci`) — package-lock.json is intentionally
+      # gitignored in this repo (library convention), so `npm ci` would fail.
+      - run: npm install --no-audit --no-fund
+      - run: npm run build
       - name: Run tests with coverage
-        run: bash tests/run-coverage.sh
+        run: npx vitest run --coverage
       - name: Upload coverage report
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         if: always()

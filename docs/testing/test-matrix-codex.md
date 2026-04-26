@@ -100,12 +100,22 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 
 ## Test Files
 
+The shell-based test suite was retired in v4.2.0 when the installer
+moved to native Node. Coverage is now provided by vitest specs
+co-located with the installer source:
+
 | File | Suite | Covers |
 |------|-------|--------|
-| `tests/test-install.sh` | Install | Existing install flow (Claude Code only) |
-| `tests/test-update.sh` | Update | Update flow (existing) |
-| `tests/test-cli.sh` | CLI | Argument validation, injection safety |
-| `tests/test-codex-compat.sh` | Codex compat | Provider detection, dual-output structure, edge cases |
+| `src/installer/commands/init.test.ts` | Install | init flow end-to-end (Claude + Codex) |
+| `src/installer/commands/update.test.ts` | Update | update flow + reserved paths + --only |
+| `src/installer/commands/doctor.test.ts` | Doctor | health checks against fixture repos |
+| `src/installer/cli.test.ts` | CLI | Argument parsing, dispatch, exit codes |
+| `src/installer/phases/scaffold.test.ts` | Scaffold | template placement, VPC exclusion, agent-teams gate |
+| `src/installer/phases/manifest.test.ts` | Manifest | sha256 stability, sorted output, exclusions |
+| `src/installer/phases/install-config.test.ts` | Config validation | YAML round-trip + validation errors |
+| `src/installer/phases/provider-detect.test.ts` | Provider | claude vs codex resolution + Codex coming-soon error |
+| `src/installer/phases/prereqs.test.ts` | Prereqs | OSS detection + provider auth |
+| `src/installer/__tests__/reserved-paths.test.ts` | Reserved paths | profile + custom-* survival across init/update |
 
 ---
 
@@ -113,10 +123,8 @@ Epic: [SPEA-505](/SPEA/issues/SPEA-505) — Codex Compatibility Approach B
 
 Before SPEA-505 can be merged and released:
 
-1. `tests/test-codex-compat.sh` — all tests green
-2. `tests/test-install.sh` — all existing tests still green (regression)
-3. `tests/test-update.sh` — all existing tests still green (regression)
-4. `tests/test-cli.sh` — all existing tests still green (regression)
-5. No broken placeholders: `grep -r '{{[A-Z_]*}}' .claude/agents/ .codex/agents/ 2>/dev/null` returns empty
-6. Skills valid: every `SKILL.md` in `.claude/skills/` has required frontmatter
-7. Agent TOML valid: every `.toml` in `.codex/agents/` is parseable TOML
+1. `npm run test` — full vitest suite green (currently 168 specs).
+2. CI matrix `[ubuntu, macos, windows] × [node 20, 22]` all green.
+3. No broken placeholders: `grep -r '{{[A-Z_]*}}' .claude/agents/ .codex/agents/ 2>/dev/null` returns empty.
+4. Skills valid: every `SKILL.md` in `.claude/skills/` has required frontmatter.
+5. Agent TOML valid: every `.toml` in `.codex/agents/` is parseable TOML.

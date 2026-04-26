@@ -2,7 +2,7 @@
 
 Interactive wizard to configure the full agent workflow system for this repository. Analyzes the codebase, discovers target users, generates VPC personas, and creates all agents, commands, rules, and configuration adapted to this project. Supports config-driven mode for direct installation from a pre-built config file.
 
-**Prerequisites:** Run `specrails/install.sh` first to install templates.
+**Prerequisites:** Ensure this repo was initialized with `npx specrails-core@latest init` (or via specrails-hub) so `.specrails/setup-templates/` exists.
 
 ### Hub Checkpoint Protocol
 
@@ -69,7 +69,7 @@ To resolve the model for any given agent:
 
 ### FC2: Provider Setup
 
-Read `.specrails/setup-templates/.provider-detection.json` if present, to get `cli_provider` and `specrails_dir`. If `FC_provider` differs from the detected value, use `FC_provider` (config takes precedence).
+Use `FC_provider` from the config as the source of truth. Set `CLI_PROVIDER = FC_provider`, and set `SPECRAILS_DIR` to `.codex` when `CLI_PROVIDER == "codex"`, otherwise `.claude`.
 
 Set `SPECRAILS_DIR` and `CLI_PROVIDER` from resolved provider.
 
@@ -139,12 +139,12 @@ Read the following files to understand the current installation state:
    }
    ```
    If this file does not exist, inform the user:
-   > "No `.specrails/specrails-manifest.json` found. This looks like a pre-versioning installation. Run `update.sh` first to initialize the manifest, then re-run `/specrails:enrich --update`."
+   > "No `.specrails/specrails-manifest.json` found. This repo predates the Node-native installer. Re-run `npx specrails-core@latest init` to refresh the install, then re-run `/specrails:enrich --update`."
    Then stop.
 
 2. Read `.specrails/specrails-version` — contains the current version string (e.g., `0.2.0`). If it does not exist, treat version as `0.1.0 (legacy)`.
 
-3. Determine `$SPECRAILS_DIR` by reading `.specrails/setup-templates/.provider-detection.json`. Extract `cli_provider` and `specrails_dir`. If not found, default to `cli_provider = "claude"`, `specrails_dir = ".claude"`.
+3. Determine `$SPECRAILS_DIR` from the existing install layout. If `.codex/` exists, use `cli_provider = "codex"` and `specrails_dir = ".codex"`. Otherwise use `cli_provider = "claude"` and `specrails_dir = ".claude"`.
 
 4. List all template files in `.specrails/setup-templates/agents/` — these are the NEW agent templates from the update:
    ```bash
@@ -964,7 +964,7 @@ How should we interact with JIRA?
 
 Set `BACKLOG_WRITE=true/false`.
 
-<!-- no separate template — this file IS the source (install.sh copies commands/setup.md directly) -->
+<!-- This command is also mirrored into templates/commands/specrails/enrich.md for staged installs. -->
 
 #### Project Label
 
@@ -1090,7 +1090,7 @@ Wait for final confirmation.
 
 Read each template from `.specrails/setup-templates/` and generate the final files adapted to this project. Use the codebase analysis from Phase 1, personas from Phase 2, and configuration from Phase 3.
 
-**Provider detection (required before any file generation):** Read `.specrails/setup-templates/.provider-detection.json` to determine `cli_provider` (`"claude"` or `"codex"`) and `specrails_dir` (`.claude` or `.codex`). All output paths in Phase 4 use `$SPECRAILS_DIR` as the base directory. If the file is missing, fall back to `cli_provider = "claude"` and `specrails_dir = ".claude"`.
+**Provider detection (required before any file generation):** Determine `cli_provider` from the existing install layout: use `"codex"` when `.codex/` exists, otherwise `"claude"`. Set `specrails_dir` to `.codex` or `.claude` accordingly. All output paths in Phase 4 use `$SPECRAILS_DIR` as the base directory.
 
 ### 4.1 Generate agents
 
@@ -1316,7 +1316,7 @@ Each rule file must:
 
 ### 4.6 Generate settings
 
-Read `.specrails/setup-templates/.provider-detection.json` (written by `install.sh`) to determine `cli_provider` (`"claude"` or `"codex"`).
+Resolve `cli_provider` from the existing install layout (`.codex/` => `codex`, otherwise `claude`).
 
 **If `cli_provider == "claude"` (default):**
 
@@ -1376,7 +1376,7 @@ rm -rf .specrails/setup-templates/
 rm -f .claude/commands/enrich.md
 
 # 3. Remove the specrails/ directory from the repo if it exists at the root
-#    (it was only needed for install.sh and templates — everything is now in .claude/)
+#    (it was only needed for the retired shell installer and staging templates — everything is now in .claude/)
 #    NOTE: Only remove if it's inside this repo. Ask the user if unsure.
 ```
 
@@ -1413,7 +1413,7 @@ Apply the user's choice.
 After cleanup, verify that only the intended files remain:
 
 ```bash
-# These should exist (the actual system) — use $SPECRAILS_DIR from .provider-detection.json:
+# These should exist (the actual system) — use the resolved $SPECRAILS_DIR:
 # If cli_provider == "claude":
 ls .claude/agents/sr-*.md
 ls .claude/agents/personas/*.md
