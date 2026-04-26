@@ -1,6 +1,6 @@
 {
   "name": "specrails-core",
-  "version": "4.2.0",
+  "version": "4.2.1",
   "description": "AI agent workflow system for Claude Code — installs 12 specialized agents, orchestration commands, and persona-driven product discovery into any repository",
   "type": "module",
   "bin": {
