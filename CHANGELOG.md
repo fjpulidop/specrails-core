@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.2.1](https://github.com/fjpulidop/specrails-core/compare/v4.2.0...v4.2.1) (2026-04-26)
+
+
+### Miscellaneous
+
+* update test tooling security ([#258](https://github.com/fjpulidop/specrails-core/issues/258)) ([3ae7697](https://github.com/fjpulidop/specrails-core/commit/3ae7697e3f46b61a237fbbad228d60fb1fb242f0))
+
 ## [4.2.0](https://github.com/fjpulidop/specrails-core/compare/v4.1.1...v4.2.0) (2026-04-26)
 
 
