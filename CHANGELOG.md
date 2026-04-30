@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.3.0](https://github.com/fjpulidop/specrails-core/compare/v4.2.1...v4.3.0) (2026-04-30)
+
+
+### Features
+
+* add /specrails:explore-spec interactive command ([#262](https://github.com/fjpulidop/specrails-core/issues/262)) ([99be70d](https://github.com/fjpulidop/specrails-core/commit/99be70d110e86c2b020983fc739d7ec7d748ef34))
+
 ## [4.2.1](https://github.com/fjpulidop/specrails-core/compare/v4.2.0...v4.2.1) (2026-04-26)
 
 
