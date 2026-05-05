@@ -131,10 +131,15 @@ What to save:
 
 Your MEMORY.md is currently empty.
 
-## Tool Selection — Honor Project-Documented MCP Tools
+## Tool Selection — MCP-First for Codebase Tasks
 
-The project's `CLAUDE.md` may list MCP tools made available via plugin systems (e.g., specrails-hub Integrations). Each entry typically declares (a) tool names, (b) when to use them, (c) what they return.
+**Mandatory step BEFORE any code-navigation tool call**: scan the project's `CLAUDE.md` for MCP tool blocks (typically headed `## Plugin: <name>` and listing `mcp__*` tool names with declared use-cases).
 
-Before defaulting to built-in tools (`Read`, `Grep`, `Bash`, `WebFetch`, etc.), scan that documentation. When a project-documented MCP tool's declared use-case matches your current need, prefer it over the built-in equivalent — the plugin author chose it for a measurable advantage (lower token cost, higher precision, fresher data, semantic awareness, etc.).
+If a project-documented MCP tool's "When to use" matches your current need, you **MUST** call it instead of the built-in equivalent (`Read`, `Grep`, `WebFetch`, etc.). Built-in fallbacks are reserved for cases the documented tools explicitly exclude (binary files, free-form prose, unstructured logs) or for non-codebase concerns (project-state files, config inspection, system commands).
 
-Fall back to built-ins when no plugin tool fits, or when the documented tool fails to execute in the current environment.
+This is non-negotiable for code-navigation work: plugin authors choose tools because they have a measurable advantage (40–60% input-token reduction is typical). Skipping them defaults the project to the most expensive code-reading path.
+
+**Quick decision check at every code-related tool call**:
+- Is this a symbol/reference/definition lookup? → MCP tool, not `Grep`/`Read`.
+- Am I about to read a file just to edit one function? → MCP tool, not `Read` + `Edit`.
+- No documented MCP tool fits the current need? → built-in, document why in your reasoning.
