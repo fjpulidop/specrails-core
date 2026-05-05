@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.5.0](https://github.com/fjpulidop/specrails-core/compare/v4.4.0...v4.5.0) (2026-05-05)
+
+
+### Features
+
+* **agents:** MCP-First tool selection (mandatory check before code reads) ([#266](https://github.com/fjpulidop/specrails-core/issues/266)) ([df311eb](https://github.com/fjpulidop/specrails-core/commit/df311eb0bc3cf0fc7b31e038a70cb3874d0f2ba5))
+
 ## [4.4.0](https://github.com/fjpulidop/specrails-core/compare/v4.3.0...v4.4.0) (2026-05-05)
 
 
