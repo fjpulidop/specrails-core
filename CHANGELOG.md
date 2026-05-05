@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.4.0](https://github.com/fjpulidop/specrails-core/compare/v4.3.0...v4.4.0) (2026-05-05)
+
+
+### Features
+
+* **agents:** teach sr-* agents to prefer MCP semantic-navigation tools ([#264](https://github.com/fjpulidop/specrails-core/issues/264)) ([c6f2699](https://github.com/fjpulidop/specrails-core/commit/c6f269975b5e0f2dedf23ae3b7808c6efd87cf2f))
+
 ## [4.3.0](https://github.com/fjpulidop/specrails-core/compare/v4.2.1...v4.3.0) (2026-04-30)
 
 
