@@ -65,7 +65,7 @@
     "openspecVersion": "1.2.0"
   },
   "dependencies": {
-    "@inquirer/prompts": "^7.0.0",
+    "@inquirer/prompts": "^8.4.2",
     "js-yaml": "^4.1.0",
     "picocolors": "^1.1.1"
   },
