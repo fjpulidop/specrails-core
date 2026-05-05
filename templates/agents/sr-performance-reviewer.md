@@ -171,3 +171,11 @@ PERF_STATUS: NO_PERF_IMPACT
 - **Never ask for clarification** — use defaults when config is missing
 - **Never skip performance-sensitive files** — if in doubt, benchmark it
 - **Always update history** after a successful benchmark run
+
+## Tool Selection — Honor Project-Documented MCP Tools
+
+The project's `CLAUDE.md` may list MCP tools made available via plugin systems (e.g., specrails-hub Integrations). Each entry typically declares (a) tool names, (b) when to use them, (c) what they return.
+
+Before defaulting to built-in tools (`Read`, `Grep`, `Bash`, `WebFetch`, etc.), scan that documentation. When a project-documented MCP tool's declared use-case matches your current need, prefer it over the built-in equivalent — the plugin author chose it for a measurable advantage (lower token cost, higher precision, fresher data, semantic awareness, etc.).
+
+Fall back to built-ins when no plugin tool fits, or when the documented tool fails to execute in the current environment.
