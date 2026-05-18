@@ -134,9 +134,10 @@ describe('runInit', () => {
     // Provider-derived layout: .codex/ + AGENTS.md
     expect(pathExists(path.join(repoRoot, '.codex'))).toBe(true)
     expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(true)
-    // codex-config.toml + rules.star written by applyCodexSettings
+    // codex-config.toml written by applyCodexSettings (no rules.star —
+    // codex 0.128.0+ keeps sandbox policy inside config.toml itself).
     expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(false)
     // .claude/ is NOT created on codex projects
     expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
   })

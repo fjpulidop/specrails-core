@@ -133,7 +133,14 @@ if (subcommand === 'init') {
         ? path.resolve(subargs[rootDirIdx + 1])
         : process.cwd()
 
+    // Forward --provider so the TUI can honour an explicit choice and
+    // skip the interactive picker. Other flags stay with the Node CLI step.
+    const providerIdx = subargs.indexOf('--provider')
+    const providerVal = providerIdx >= 0 ? subargs[providerIdx + 1] : null
+    const providerEqArg = subargs.find((a) => a.startsWith('--provider='))
     const tuiArgs = [path.resolve(ROOT, 'bin', 'tui-installer.mjs'), rootDir]
+    if (providerVal) tuiArgs.push('--provider', providerVal)
+    else if (providerEqArg) tuiArgs.push(providerEqArg)
     const tuiResult = spawnSync('node', tuiArgs, {
       stdio: 'inherit',
       cwd: process.cwd(),

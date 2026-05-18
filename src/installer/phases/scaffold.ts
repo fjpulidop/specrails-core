@@ -189,7 +189,7 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     const written = applyCodexSettings(input)
     copiedFiles += written
     if (written > 0) {
-      info(`Codex provider: wrote ${written} setting file(s) (config.toml, rules.star, AGENTS.md)`)
+      info(`Codex provider: wrote ${written} setting file(s) (config.toml, AGENTS.md)`)
     }
   }
 
@@ -221,14 +221,24 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
 
   if (input.provider === 'codex') {
     // Codex: write enrich + doctor as Agent Skills under <providerDir>/skills/.
-    copyFile(
-      path.join(commandsSrc, 'enrich.md'),
-      path.join(input.repoRoot, input.providerDir, 'skills', 'enrich', 'SKILL.md'),
-    )
-    copyFile(
-      path.join(commandsSrc, 'doctor.md'),
-      path.join(input.repoRoot, input.providerDir, 'skills', 'doctor', 'SKILL.md'),
-    )
+    // Source .md files are claude slash-command bodies with no YAML
+    // frontmatter; codex skill loader requires `---`-delimited frontmatter
+    // (name, description, license, compatibility), so we synthesise it
+    // around the original body.
+    writeCodexSkillFromCommand({
+      src: path.join(commandsSrc, 'enrich.md'),
+      dest: path.join(input.repoRoot, input.providerDir, 'skills', 'enrich', 'SKILL.md'),
+      name: 'enrich',
+      description:
+        'Interactive wizard to configure the specrails agent workflow for this repository: codebase analysis, persona generation, and full-tier asset enrichment.',
+    })
+    writeCodexSkillFromCommand({
+      src: path.join(commandsSrc, 'doctor.md'),
+      dest: path.join(input.repoRoot, input.providerDir, 'skills', 'doctor', 'SKILL.md'),
+      name: 'doctor',
+      description:
+        'specrails health check: validate that all prerequisites are correctly configured in this repository.',
+    })
     input.copiedIncrement(2)
     return
   }
@@ -246,6 +256,32 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
     count++
   }
   input.copiedIncrement(count)
+}
+
+/**
+ * Wrap a claude command body (raw markdown, no frontmatter) with the
+ * `---`-delimited YAML frontmatter codex 0.128.0+ requires for skill
+ * loading. The original body is preserved byte-for-byte after the
+ * closing `---` delimiter.
+ */
+function writeCodexSkillFromCommand(args: {
+  src: string
+  dest: string
+  name: string
+  description: string
+}): void {
+  if (!pathExists(args.src)) return
+  const body = readTextFile(args.src)
+  const frontmatter = [
+    '---',
+    `name: ${args.name}`,
+    `description: ${JSON.stringify(args.description)}`,
+    'license: MIT',
+    'compatibility: "Requires the specrails-core installation in this repository."',
+    '---',
+    '',
+  ].join('\n')
+  writeFileLf(args.dest, frontmatter + body)
 }
 
 function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider' | 'providerDir'>): void {
@@ -298,7 +334,7 @@ interface QuickPlacement {
 function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   // Codex projects: the quick-tier rail/command/rule placement is handled
   // by `placeSkills` (rail skills under `.codex/skills/rails/`) and
-  // `applyCodexSettings` (config.toml, rules.star, AGENTS.md). The
+  // `applyCodexSettings` (config.toml, AGENTS.md). The
   // claude-style `agents/`, `commands/specrails/`, `rules/` placement
   // below does not apply to codex.
   if (input.provider === 'codex') {
@@ -416,10 +452,10 @@ interface SkillsPlacement {
 
 /**
  * Codex-specific provider settings. Writes `.codex/config.toml` (model +
- * sandbox baseline), `.codex/rules.star` (Starlark execution policy with
- * shell rules sub'd into the `{{CODEX_SHELL_RULES}}` placeholder), and
- * `AGENTS.md` (top-level instructions file consumed by `codex` on startup,
- * sentinel-protected so user edits outside the managed block survive).
+ * reasoning effort + sandbox baseline; conforms to the codex 0.128.0+
+ * top-level TOML schema) and `AGENTS.md` (top-level instructions file
+ * consumed by `codex` on startup, sentinel-protected so user edits
+ * outside the managed block survive).
  *
  * Idempotent: existing files outside the sentinel block are preserved.
  * Returns the count of files written/refreshed.
@@ -435,18 +471,6 @@ function applyCodexSettings(input: ScaffoldInput): number {
   if (pathExists(configTomlSrc)) {
     const dest = path.join(input.repoRoot, input.providerDir, 'config.toml')
     const rendered = readTextFile(configTomlSrc).replace(/\{\{MODEL_NAME\}\}/g, 'gpt-5.4-mini')
-    writeFileLf(dest, rendered)
-    written++
-  }
-
-  // rules.star — Starlark execution policy. `{{CODEX_SHELL_RULES}}` is the
-  // detected-tools allow-list; defaults to an empty block in this minimal
-  // pass (the full enrich flow can refine this later).
-  const rulesStarSrc = path.join(settingsSrc, 'codex-rules.star')
-  if (pathExists(rulesStarSrc)) {
-    const dest = path.join(input.repoRoot, input.providerDir, 'rules.star')
-    const rendered = readTextFile(rulesStarSrc)
-      .replace(/\{\{CODEX_SHELL_RULES\}\}/g, '# (no project-specific shell rules detected yet)')
     writeFileLf(dest, rendered)
     written++
   }
@@ -493,7 +517,8 @@ function renderInitialAgentsMd(repoRoot: string): string {
     '- Prefer the skills in `.codex/skills/sr-*` over ad-hoc edits when a',
     '  skill covers the task (implement, batch-implement, refactor-recommender,',
     '  compat-check, why, ...).',
-    '- Honour the sandbox policy declared in `.codex/rules.star`.',
+    '- Honour the sandbox policy declared in `.codex/config.toml`',
+    '  (`sandbox_mode` + `approval_policy` top-level keys).',
     '',
     AGENTS_MD_END,
     '',

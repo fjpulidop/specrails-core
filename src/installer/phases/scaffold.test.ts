@@ -15,11 +15,7 @@ function setupFakeSource(scriptDir: string): void {
   // substitutes.
   writeFileLf(
     path.join(scriptDir, 'templates', 'settings', 'codex-config.toml'),
-    '[model]\nname = "{{MODEL_NAME}}"\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'settings', 'codex-rules.star'),
-    'prefix_rule(pattern=["git"], decision="allow")\n{{CODEX_SHELL_RULES}}\n',
+    'model = "{{MODEL_NAME}}"\n',
   )
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
@@ -500,7 +496,7 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'doctor', 'SKILL.md'))).toBe(true)
     })
 
-    it('codex provider applies codex-config.toml + codex-rules.star + AGENTS.md', () => {
+    it('codex provider applies codex-config.toml + AGENTS.md (no rules.star)', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo-codex-settings')
       setupFakeSource(scriptDir)
@@ -515,16 +511,17 @@ describe('scaffold', () => {
       })
 
       expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
-      expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(true)
       expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(true)
+      // rules.star is intentionally NOT written — codex 0.128.0+ keeps
+      // sandbox policy inside config.toml itself (top-level `sandbox_mode`).
+      expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(false)
 
       const configToml = require('node:fs').readFileSync(path.join(repoRoot, '.codex', 'config.toml'), 'utf8')
       // {{MODEL_NAME}} should be substituted with gpt-5.4-mini (default)
       expect(configToml).toContain('gpt-5.4-mini')
       expect(configToml).not.toContain('{{MODEL_NAME}}')
-
-      const rulesStar = require('node:fs').readFileSync(path.join(repoRoot, '.codex', 'rules.star'), 'utf8')
-      expect(rulesStar).not.toContain('{{CODEX_SHELL_RULES}}')
+      // Top-level `model = "..."` schema, not `[model] / name = ...`
+      expect(configToml).toMatch(/^model\s*=\s*"gpt-5\.4-mini"/m)
 
       const agentsMd = require('node:fs').readFileSync(path.join(repoRoot, 'AGENTS.md'), 'utf8')
       expect(agentsMd).toContain('<!-- specrails-managed:start -->')
