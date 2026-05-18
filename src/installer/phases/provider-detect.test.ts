@@ -9,13 +9,12 @@ describe('provider-detect.resolveProvider', () => {
     expect(result).toBe('claude')
   })
 
-  it('rejects explicit codex with a "coming soon" error', async () => {
-    await expect(
-      resolveProvider({ claude: true, codex: true }, { explicit: 'codex' }),
-    ).rejects.toBeInstanceOf(ProviderError)
+  it('uses explicit codex flag unconditionally', async () => {
+    const result = await resolveProvider({ claude: false, codex: false }, { explicit: 'codex' })
+    expect(result).toBe('codex')
   })
 
-  it('prefers claude when both are installed', async () => {
+  it('prefers claude when both are installed (historical default)', async () => {
     expect(await resolveProvider({ claude: true, codex: true })).toBe('claude')
   })
 
@@ -23,10 +22,8 @@ describe('provider-detect.resolveProvider', () => {
     expect(await resolveProvider({ claude: true, codex: false })).toBe('claude')
   })
 
-  it('throws when only codex is installed', async () => {
-    await expect(
-      resolveProvider({ claude: false, codex: true }),
-    ).rejects.toBeInstanceOf(ProviderError)
+  it('returns codex when only codex is installed', async () => {
+    expect(await resolveProvider({ claude: false, codex: true })).toBe('codex')
   })
 
   it('throws when neither is installed', async () => {

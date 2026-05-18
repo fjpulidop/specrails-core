@@ -11,6 +11,16 @@ function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
+  // Codex settings templates — fake content with placeholders the installer
+  // substitutes.
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'settings', 'codex-config.toml'),
+    '[model]\nname = "{{MODEL_NAME}}"\n',
+  )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'settings', 'codex-rules.star'),
+    'prefix_rule(pattern=["git"], decision="allow")\n{{CODEX_SHELL_RULES}}\n',
+  )
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
   writeFileLf(path.join(scriptDir, 'commands', 'setup.md'), 'legacy setup')
@@ -484,8 +494,78 @@ describe('scaffold', () => {
         tier: 'full',
       })
 
-      expect(pathExists(path.join(repoRoot, '.agents', 'skills', 'enrich', 'SKILL.md'))).toBe(true)
-      expect(pathExists(path.join(repoRoot, '.agents', 'skills', 'doctor', 'SKILL.md'))).toBe(true)
+      // Codex skills live under <providerDir>/skills/ now (was: .agents/skills/
+      // in the pre-§18 gated state — that path was never read by codex).
+      expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'enrich', 'SKILL.md'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'doctor', 'SKILL.md'))).toBe(true)
+    })
+
+    it('codex provider applies codex-config.toml + codex-rules.star + AGENTS.md', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-codex-settings')
+      setupFakeSource(scriptDir)
+
+      scaffoldInstallation({
+        scriptDir,
+        repoRoot,
+        provider: 'codex',
+        providerDir: '.codex',
+        agentTeams: false,
+        tier: 'quick',
+      })
+
+      expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(true)
+
+      const configToml = require('node:fs').readFileSync(path.join(repoRoot, '.codex', 'config.toml'), 'utf8')
+      // {{MODEL_NAME}} should be substituted with gpt-5.4-mini (default)
+      expect(configToml).toContain('gpt-5.4-mini')
+      expect(configToml).not.toContain('{{MODEL_NAME}}')
+
+      const rulesStar = require('node:fs').readFileSync(path.join(repoRoot, '.codex', 'rules.star'), 'utf8')
+      expect(rulesStar).not.toContain('{{CODEX_SHELL_RULES}}')
+
+      const agentsMd = require('node:fs').readFileSync(path.join(repoRoot, 'AGENTS.md'), 'utf8')
+      expect(agentsMd).toContain('<!-- specrails-managed:start -->')
+      expect(agentsMd).toContain('<!-- specrails-managed:end -->')
+      expect(agentsMd).toContain('repo-codex-settings')
+    })
+
+    it('codex provider does NOT create .claude/agent-memory/ directories', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-no-claude-memory')
+      setupFakeSource(scriptDir)
+
+      scaffoldInstallation({
+        scriptDir,
+        repoRoot,
+        provider: 'codex',
+        providerDir: '.codex',
+        agentTeams: false,
+        tier: 'quick',
+      })
+
+      // The claude-only quick-tier placement is skipped, so no
+      // .claude/agent-memory/ should be created on a codex project.
+      expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
+    })
+  })
+
+  describe('rail skill parity', () => {
+    it('every rail in templates/agents/ has a matching SKILL.md under templates/skills/rails/', () => {
+      // Walks the live (non-fixture) templates directory in the installed
+      // package to enforce: if a Claude rail .md exists, its codex skill
+      // SKILL.md must exist with the same name. Prevents silent drift.
+      const fs = require('node:fs')
+      const repoRoot = path.resolve(__dirname, '..', '..', '..')
+      const railIds = ['sr-architect', 'sr-developer', 'sr-reviewer', 'sr-merge-resolver']
+      for (const id of railIds) {
+        const claudePath = path.join(repoRoot, 'templates', 'agents', id + '.md')
+        const skillPath = path.join(repoRoot, 'templates', 'skills', 'rails', id, 'SKILL.md')
+        expect(fs.existsSync(claudePath), `${claudePath} missing`).toBe(true)
+        expect(fs.existsSync(skillPath), `${skillPath} missing — port the rail to SKILL.md format`).toBe(true)
+      }
     })
   })
 })

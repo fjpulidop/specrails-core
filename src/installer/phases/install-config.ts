@@ -93,12 +93,8 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
 
   if (doc.provider === undefined) {
     errors.push(`missing required 'provider' field`)
-  } else if (doc.provider === 'codex') {
-    errors.push(
-      `Codex (OpenAI) support is coming soon — currently being tested in our lab. Set provider: claude.`,
-    )
-  } else if (doc.provider !== 'claude') {
-    errors.push(`unsupported provider '${String(doc.provider)}' (expected: claude)`)
+  } else if (doc.provider !== 'claude' && doc.provider !== 'codex') {
+    errors.push(`unsupported provider '${String(doc.provider)}' (expected: claude or codex)`)
   }
 
   if (doc.tier !== undefined && doc.tier !== 'full' && doc.tier !== 'quick') {

@@ -125,13 +125,29 @@ describe('runInit', () => {
     expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(true)
   })
 
-  it('rejects --provider codex with a "coming soon" error', async () => {
-    const repoRoot = path.join(tmpDir, 'repo')
+  it('accepts --provider codex and produces a codex install (.codex/ + AGENTS.md)', async () => {
+    const repoRoot = path.join(tmpDir, 'repo-codex')
+    mkdirp(repoRoot)
+    await initRepo(repoRoot)
+    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true })
+    expect(result.provider).toBe('codex')
+    // Provider-derived layout: .codex/ + AGENTS.md
+    expect(pathExists(path.join(repoRoot, '.codex'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(true)
+    // codex-config.toml + rules.star written by applyCodexSettings
+    expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(true)
+    // .claude/ is NOT created on codex projects
+    expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
+  })
+
+  it('rejects --provider with an unknown value', async () => {
+    const repoRoot = path.join(tmpDir, 'repo-unknown')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
     await expect(
-      runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex' }),
-    ).rejects.toThrow(/Codex/)
+      runInit({ 'root-dir': repoRoot, yes: true, provider: 'turbofake' as never }),
+    ).rejects.toThrow(/must be 'claude' or 'codex'/)
   })
 
   // Uses a POSIX shell script as a fake openspec binary, pointed at via
