@@ -220,26 +220,28 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   if (!isDir(commandsSrc)) return
 
   if (input.provider === 'codex') {
-    // Codex: write enrich + doctor as Agent Skills under <providerDir>/skills/.
-    // Source .md files are claude slash-command bodies with no YAML
-    // frontmatter; codex skill loader requires `---`-delimited frontmatter
-    // (name, description, license, compatibility), so we synthesise it
-    // around the original body.
-    writeCodexSkillFromCommand({
-      src: path.join(commandsSrc, 'enrich.md'),
-      dest: path.join(input.repoRoot, input.providerDir, 'skills', 'enrich', 'SKILL.md'),
-      name: 'enrich',
-      description:
-        'Interactive wizard to configure the specrails agent workflow for this repository: codebase analysis, persona generation, and full-tier asset enrichment.',
-    })
-    writeCodexSkillFromCommand({
-      src: path.join(commandsSrc, 'doctor.md'),
-      dest: path.join(input.repoRoot, input.providerDir, 'skills', 'doctor', 'SKILL.md'),
-      name: 'doctor',
-      description:
-        'specrails health check: validate that all prerequisites are correctly configured in this repository.',
-    })
-    input.copiedIncrement(2)
+    // Codex: every claude slash-command (`templates/commands/specrails/*.md`)
+    // ships as a SKILL under `.codex/skills/<name>/SKILL.md`. The codex skill
+    // loader requires `---`-delimited frontmatter with at least `name` and
+    // `description`; the source bodies usually have a claude-style
+    // frontmatter with just `description`, which we extract and re-emit in
+    // the canonical codex shape. Team-* commands are gated identically to
+    // the claude path.
+    let count = 0
+    for (const entry of listDir(commandsSrc)) {
+      const name = path.basename(entry)
+      if (!name.endsWith('.md')) continue
+      if (name === 'setup.md') continue
+      if (!input.agentTeams && /^team-/.test(name)) continue
+      const skillName = name.replace(/\.md$/, '')
+      writeCodexSkillFromCommand({
+        src: entry,
+        dest: path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md'),
+        name: skillName,
+      })
+      count++
+    }
+    input.copiedIncrement(count)
     return
   }
 
@@ -259,29 +261,64 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
 }
 
 /**
- * Wrap a claude command body (raw markdown, no frontmatter) with the
- * `---`-delimited YAML frontmatter codex 0.128.0+ requires for skill
- * loading. The original body is preserved byte-for-byte after the
- * closing `---` delimiter.
+ * Convert a claude slash-command markdown file into a codex SKILL.md.
+ *
+ * Claude commands ship with either no frontmatter or a minimal
+ * `--- description: ... ---` block. Codex skill loader needs explicit
+ * `name`, `description`, `license`, and `compatibility` keys. We strip
+ * the source frontmatter (if any), keep its description, and re-emit
+ * the canonical codex shape. The remaining body is preserved.
+ *
+ * If `args.description` is provided it overrides any value extracted
+ * from the source frontmatter — used for the lifecycle skills where we
+ * want a more polished one-liner than what the slash-command file ships
+ * with.
  */
 function writeCodexSkillFromCommand(args: {
   src: string
   dest: string
   name: string
-  description: string
+  description?: string
 }): void {
   if (!pathExists(args.src)) return
-  const body = readTextFile(args.src)
+  const raw = readTextFile(args.src)
+  const { body, description: srcDescription } = stripFrontmatter(raw)
+  const description =
+    args.description ?? srcDescription ?? `specrails ${args.name} command (ported to codex skill).`
   const frontmatter = [
     '---',
     `name: ${args.name}`,
-    `description: ${JSON.stringify(args.description)}`,
+    `description: ${JSON.stringify(description)}`,
     'license: MIT',
     'compatibility: "Requires the specrails-core installation in this repository."',
     '---',
     '',
   ].join('\n')
   writeFileLf(args.dest, frontmatter + body)
+}
+
+/**
+ * Strip a leading `---`-delimited YAML frontmatter block and return the
+ * remaining body plus the `description:` value if present. Defensive
+ * parser: only handles `key: value` lines (no nested maps), which is
+ * the shape every slash-command file ships with today.
+ */
+function stripFrontmatter(raw: string): { body: string; description?: string } {
+  if (!raw.startsWith('---\n')) return { body: raw }
+  const endIdx = raw.indexOf('\n---\n', 4)
+  if (endIdx < 0) return { body: raw }
+  const yaml = raw.slice(4, endIdx)
+  const body = raw.slice(endIdx + 5)
+  let description: string | undefined
+  for (const line of yaml.split('\n')) {
+    const m = line.match(/^description\s*:\s*(.*)$/)
+    if (m) {
+      const v = m[1].trim()
+      description = v.replace(/^['"](.*)['"]$/, '$1')
+      break
+    }
+  }
+  return { body, description }
 }
 
 function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider' | 'providerDir'>): void {
@@ -332,13 +369,33 @@ interface QuickPlacement {
  * canonical staging dir.
  */
 function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
-  // Codex projects: the quick-tier rail/command/rule placement is handled
-  // by `placeSkills` (rail skills under `.codex/skills/rails/`) and
-  // `applyCodexSettings` (config.toml, AGENTS.md). The
-  // claude-style `agents/`, `commands/specrails/`, `rules/` placement
-  // below does not apply to codex.
+  // Codex projects: the quick-tier `agents/` + `rules/` placement is
+  // skipped (handled by `placeSkills` rail-skills + `applyCodexSettings`).
+  // The slash-command catalogue under `setup-templates/commands/specrails/`
+  // IS ported, but to `.codex/skills/<name>/SKILL.md` instead of
+  // `.claude/commands/specrails/<name>.md`, so codex users get the same
+  // command surface (`propose-spec`, `explore-spec`, `retry`, …) as
+  // claude.
   if (input.provider === 'codex') {
-    return { agents: 0, commands: 0, rules: 0, skippedAgents: 0 }
+    const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+    const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')
+    let commandsPlaced = 0
+    if (isDir(commandsSrc)) {
+      for (const src of listDir(commandsSrc)) {
+        const name = path.basename(src)
+        if (!name.endsWith('.md')) continue
+        if (name === 'setup.md') continue
+        if (!input.agentTeams && /^team-/.test(name)) continue
+        const skillName = name.slice(0, -3)
+        writeCodexSkillFromCommand({
+          src,
+          dest: path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md'),
+          name: skillName,
+        })
+        commandsPlaced++
+      }
+    }
+    return { agents: 0, commands: commandsPlaced, rules: 0, skippedAgents: 0 }
   }
 
   const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')

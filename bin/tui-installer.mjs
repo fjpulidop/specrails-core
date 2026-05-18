@@ -200,9 +200,27 @@ async function run() {
   const rawArgs  = process.argv.slice(2);
   const autoYes  = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const withProfiles = rawArgs.includes('--with-profiles');
-  const rootArg  = rawArgs.find(a => !a.startsWith('-'));
+  // First positional arg (skipping flag values that follow `--provider`,
+  // `--root-dir`, etc.) is the target directory.
+  const FLAGS_WITH_VALUES = new Set(['--provider', '--root-dir', '--from-config']);
+  let rootArg;
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a.startsWith('-')) {
+      if (FLAGS_WITH_VALUES.has(a)) i++; // skip its value
+      continue;
+    }
+    rootArg = a;
+    break;
+  }
   const inputDir = rootArg ? resolve(rootArg) : process.cwd();
-  const rootDir  = detectGitRoot(inputDir);
+  // Use inputDir directly — matches the Node CLI step that reads back
+  // install-config.yaml from `<inputDir>/.specrails/`. We deliberately do
+  // NOT walk up to a git root here: if the user wants the install to land
+  // at a git ancestor, they can pass `--root-dir <path>` explicitly, and
+  // the Node CLI will honour the same path. Otherwise TUI + Node CLI must
+  // agree on the same directory or the config gets stranded.
+  const rootDir = inputDir;
 
   const specrailsDir = resolve(rootDir, '.specrails');
 
