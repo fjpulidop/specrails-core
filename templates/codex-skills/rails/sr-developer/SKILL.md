@@ -58,7 +58,7 @@ reply — do not block on the architect.
   reviewer's job; running both wastes turns.
 - **Do not** spawn further sub-agents.
 - **Do not** write to `.claude/agent-memory/`. Codex projects use
-  `.codex/agent-memory/`.
+  `.specrails/agent-memory/`.
 
 ## How you finish
 

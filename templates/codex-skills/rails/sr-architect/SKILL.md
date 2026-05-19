@@ -1,6 +1,6 @@
 ---
 name: sr-architect
-description: "Architect role for the specrails implement pipeline. Reads a backlog ticket, surveys the repo, and produces an implementation plan (files to touch, invariants, edge cases, validation step). Does NOT write code. Output: a plan artefact under .codex/agent-memory/explanations/. Invoked by the implement orchestrator via $sr-architect after a spawn_agent / send_message handoff."
+description: "Architect role for the specrails implement pipeline. Reads a backlog ticket, surveys the repo, and produces an implementation plan (files to touch, invariants, edge cases, validation step). Does NOT write code. Output: a plan artefact under .specrails/agent-memory/explanations/. Invoked by the implement orchestrator via $sr-architect after a spawn_agent / send_message handoff."
 license: MIT
 compatibility: "Codex-native. Designed to run as a full-history sub-agent fork of the implement orchestrator."
 ---
@@ -19,7 +19,7 @@ source files. The only file you create is your plan document.
 
 A markdown file at:
 
-`.codex/agent-memory/explanations/YYYY-MM-DD-architect-ticket-{TICKET_ID}.md`
+`.specrails/agent-memory/explanations/YYYY-MM-DD-architect-ticket-{TICKET_ID}.md`
 
 (use today's date; create the parent directory if missing). The
 file MUST contain the following sections, in this order:
@@ -60,7 +60,7 @@ fallback such as `node --check`.>
 - **Do not** update `.specrails/local-tickets.json` — only the
   implement orchestrator owns that.
 - **Do not** write to `.claude/agent-memory/`. Codex projects use
-  `.codex/agent-memory/`.
+  `.specrails/agent-memory/`.
 
 ## How you finish
 

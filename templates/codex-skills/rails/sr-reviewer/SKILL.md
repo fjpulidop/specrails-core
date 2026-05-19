@@ -50,7 +50,7 @@ circumstances — your output is **findings only**.
 
 5. **Write the confidence artefact** at:
 
-   `.codex/agent-memory/explanations/YYYY-MM-DD-reviewer-ticket-{TICKET_ID}.confidence-score.json`
+   `.specrails/agent-memory/explanations/YYYY-MM-DD-reviewer-ticket-{TICKET_ID}.confidence-score.json`
 
    (use today's date; create the parent directory if missing).
    The JSON MUST have this shape:
@@ -93,7 +93,7 @@ circumstances — your output is **findings only**.
   orchestrator writes that after reading your verdict.
 - **Do not** spawn further sub-agents.
 - **Do not** write to `.claude/agent-memory/` — codex projects
-  use `.codex/agent-memory/`.
+  use `.specrails/agent-memory/`.
 
 ## How you finish
 

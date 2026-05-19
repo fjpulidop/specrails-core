@@ -173,6 +173,6 @@ Follow-up:   <one bullet per item the user must know>
 - **Do NOT loop the fix-review more than once**. After one
   follow-up developer pass + one follow-up review, exit.
 - **Do NOT touch `.claude/agent-memory/`** — codex projects use
-  `.codex/agent-memory/`.
+  `.specrails/agent-memory/`.
 - **Do NOT update `.specrails/local-tickets.json`** from inside
   a sub-agent. Only you (the orchestrator) write that file.
