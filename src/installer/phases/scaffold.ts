@@ -690,7 +690,15 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
   // These ship as SKILL.md siblings of the claude `.claude/agents/sr-*.md`
   // counterparts so codex projects can invoke the pipeline via skills
   // (codex doesn't honour Claude's `.claude/agents/` convention).
+  //
+  // Codex-native overrides at `templates/codex-skills/rails/<name>/` win
+  // over the upstream ported copy when present — used to ship skill
+  // bodies written for codex's spawn_agent semantics (no
+  // `subagent_type:`, role conveyed via $-mention from the orchestrator).
   const railsDir = path.join(setupSkills, 'rails')
+  const codexRailsOverridesDir = input.provider === 'codex'
+    ? path.join(input.scriptDir, 'templates', 'codex-skills', 'rails')
+    : null
   if (isDir(railsDir)) {
     const destRails = path.join(destBase, 'rails')
     mkdirp(destRails)
@@ -698,8 +706,17 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       if (!isDir(entry)) continue
       const skillId = path.basename(entry)
       const dest = path.join(destRails, skillId)
-      copyDir(entry, dest)
-      if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
+      const overrideSrc = codexRailsOverridesDir
+        ? path.join(codexRailsOverridesDir, skillId)
+        : null
+      if (overrideSrc && isDir(overrideSrc) && pathExists(path.join(overrideSrc, 'SKILL.md'))) {
+        // Codex-native override exists: ship it verbatim and skip the
+        // upstream ported body + the translate-claude pass entirely.
+        copyDir(overrideSrc, dest)
+      } else {
+        copyDir(entry, dest)
+        if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
+      }
       result.placed++
       result.filesCopied += countFiles(dest)
     }
