@@ -406,6 +406,13 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   if (input.provider === 'codex') {
     const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
     const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')
+    // Codex-native skill overrides live at `templates/codex-skills/<name>/`.
+    // When one exists for a given slash-command name (e.g. `implement`), the
+    // scaffold writes that file verbatim instead of porting the claude
+    // command body. Use these to ship skills written for codex's
+    // single-agent model (no `subagent_type`, no `.claude/agent-memory/`,
+    // codex-shape spawn semantics).
+    const codexOverridesSrc = path.join(input.scriptDir, 'templates', 'codex-skills')
     let commandsPlaced = 0
     if (isDir(commandsSrc)) {
       for (const src of listDir(commandsSrc)) {
@@ -414,9 +421,22 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
         if (name === 'setup.md') continue
         if (!input.agentTeams && /^team-/.test(name)) continue
         const skillName = name.slice(0, -3)
+        const dest = path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md')
+
+        // If a codex-native override exists, ship it verbatim and skip the
+        // ported claude body entirely. Mirrors a directory copy in case the
+        // override ships sibling assets.
+        const overrideDir = path.join(codexOverridesSrc, skillName)
+        const overrideSkill = path.join(overrideDir, 'SKILL.md')
+        if (pathExists(overrideSkill)) {
+          copyDir(overrideDir, path.dirname(dest))
+          commandsPlaced++
+          continue
+        }
+
         writeCodexSkillFromCommand({
           src,
-          dest: path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md'),
+          dest,
           name: skillName,
         })
         commandsPlaced++
