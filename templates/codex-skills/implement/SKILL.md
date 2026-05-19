@@ -32,11 +32,18 @@ space as the ticket id.
 ```
   YOU (orchestrator)
     │
-    ├─►  spawn_agent → send "$sr-architect for ticket #N" → wait
+    ├─►  $sr-architect  ──► writes openspec/changes/<slug>/
+    │                       {proposal,design,tasks,specs} +
+    │                       plan artefact
     │
-    ├─►  spawn_agent → send "$sr-developer, plan at <path>" → wait
+    ├─►  $sr-developer  ──► walks tasks.md in TDD order
+    │                       (red → green → refactor) and
+    │                       ticks every box
     │
-    ├─►  spawn_agent → send "$sr-reviewer, plan + changed files" → wait
+    ├─►  $sr-reviewer   ──► validates openspec artefacts +
+    │                       design adherence + TDD evidence +
+    │                       acceptance criteria + re-runs the
+    │                       full test/build suite
     │
     └─►  Close ticket + report
 ```
