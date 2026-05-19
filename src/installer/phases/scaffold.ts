@@ -704,17 +704,39 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
     mkdirp(destRails)
     const placedIds = new Set<string>()
 
+    // Core rails that ALWAYS install (the implement orchestrator depends
+    // on them — leaving any out would break the pipeline). Mirrors
+    // QUICK_REQUIRED_AGENTS from the claude path.
+    const CORE_RAIL_AGENTS = new Set([
+      'sr-architect', 'sr-developer', 'sr-reviewer', 'sr-merge-resolver',
+    ])
+
+    // Honour the wizard's agent selection on codex projects, same as
+    // claude. If the wizard wrote `agents.selected: [a, b, ...]` to the
+    // install-config, install only the rails whose id is in that list
+    // OR is a core dependency. Without a selection (legacy installs)
+    // fall back to installing every rail that exists.
+    const selectedAgents = input.selectedAgents
+      ? new Set([...input.selectedAgents, ...CORE_RAIL_AGENTS])
+      : null
+    const shouldPlace = (skillId: string): boolean => {
+      if (selectedAgents === null) return true
+      return selectedAgents.has(skillId)
+    }
+
     if (isDir(railsDir)) {
       for (const entry of listDir(railsDir)) {
         if (!isDir(entry)) continue
         const skillId = path.basename(entry)
+        if (!shouldPlace(skillId)) {
+          result.skipped++
+          continue
+        }
         const dest = path.join(destRails, skillId)
         const overrideSrc = codexRailsOverridesDir
           ? path.join(codexRailsOverridesDir, skillId)
           : null
         if (overrideSrc && isDir(overrideSrc) && pathExists(path.join(overrideSrc, 'SKILL.md'))) {
-          // Codex-native override exists: ship it verbatim and skip the
-          // upstream ported body + the translate-claude pass entirely.
           copyDir(overrideSrc, dest)
         } else {
           copyDir(entry, dest)
@@ -726,19 +748,18 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       }
     }
 
-    // For codex projects: also place every codex-skills/rails/<name>/
-    // override that has no upstream counterpart. These are the
-    // specialised agents (sr-frontend-developer / sr-backend-developer /
-    // sr-{frontend,backend,security,performance}-reviewer /
-    // sr-product-manager / sr-product-analyst / sr-test-writer /
-    // sr-doc-sync) that exist only on the codex side because they were
-    // never modelled as upstream skill dirs. Without this loop they'd be
-    // orphaned in the templates tree.
+    // Codex-only rails that have no upstream counterpart (frontend/
+    // backend developers, layer reviewers, product, test writer, doc
+    // sync). Same selectedAgents gate applies.
     if (input.provider === 'codex' && codexRailsOverridesDir && isDir(codexRailsOverridesDir)) {
       for (const entry of listDir(codexRailsOverridesDir)) {
         if (!isDir(entry)) continue
         const skillId = path.basename(entry)
         if (placedIds.has(skillId)) continue
+        if (!shouldPlace(skillId)) {
+          result.skipped++
+          continue
+        }
         if (!pathExists(path.join(entry, 'SKILL.md'))) continue
         const dest = path.join(destRails, skillId)
         copyDir(entry, dest)
