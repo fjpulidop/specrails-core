@@ -699,26 +699,53 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
   const codexRailsOverridesDir = input.provider === 'codex'
     ? path.join(input.scriptDir, 'templates', 'codex-skills', 'rails')
     : null
-  if (isDir(railsDir)) {
+  if (isDir(railsDir) || (codexRailsOverridesDir && isDir(codexRailsOverridesDir))) {
     const destRails = path.join(destBase, 'rails')
     mkdirp(destRails)
-    for (const entry of listDir(railsDir)) {
-      if (!isDir(entry)) continue
-      const skillId = path.basename(entry)
-      const dest = path.join(destRails, skillId)
-      const overrideSrc = codexRailsOverridesDir
-        ? path.join(codexRailsOverridesDir, skillId)
-        : null
-      if (overrideSrc && isDir(overrideSrc) && pathExists(path.join(overrideSrc, 'SKILL.md'))) {
-        // Codex-native override exists: ship it verbatim and skip the
-        // upstream ported body + the translate-claude pass entirely.
-        copyDir(overrideSrc, dest)
-      } else {
-        copyDir(entry, dest)
-        if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
+    const placedIds = new Set<string>()
+
+    if (isDir(railsDir)) {
+      for (const entry of listDir(railsDir)) {
+        if (!isDir(entry)) continue
+        const skillId = path.basename(entry)
+        const dest = path.join(destRails, skillId)
+        const overrideSrc = codexRailsOverridesDir
+          ? path.join(codexRailsOverridesDir, skillId)
+          : null
+        if (overrideSrc && isDir(overrideSrc) && pathExists(path.join(overrideSrc, 'SKILL.md'))) {
+          // Codex-native override exists: ship it verbatim and skip the
+          // upstream ported body + the translate-claude pass entirely.
+          copyDir(overrideSrc, dest)
+        } else {
+          copyDir(entry, dest)
+          if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
+        }
+        placedIds.add(skillId)
+        result.placed++
+        result.filesCopied += countFiles(dest)
       }
-      result.placed++
-      result.filesCopied += countFiles(dest)
+    }
+
+    // For codex projects: also place every codex-skills/rails/<name>/
+    // override that has no upstream counterpart. These are the
+    // specialised agents (sr-frontend-developer / sr-backend-developer /
+    // sr-{frontend,backend,security,performance}-reviewer /
+    // sr-product-manager / sr-product-analyst / sr-test-writer /
+    // sr-doc-sync) that exist only on the codex side because they were
+    // never modelled as upstream skill dirs. Without this loop they'd be
+    // orphaned in the templates tree.
+    if (input.provider === 'codex' && codexRailsOverridesDir && isDir(codexRailsOverridesDir)) {
+      for (const entry of listDir(codexRailsOverridesDir)) {
+        if (!isDir(entry)) continue
+        const skillId = path.basename(entry)
+        if (placedIds.has(skillId)) continue
+        if (!pathExists(path.join(entry, 'SKILL.md'))) continue
+        const dest = path.join(destRails, skillId)
+        copyDir(entry, dest)
+        placedIds.add(skillId)
+        result.placed++
+        result.filesCopied += countFiles(dest)
+      }
     }
   }
 
