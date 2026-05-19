@@ -283,8 +283,15 @@ function writeCodexSkillFromCommand(args: {
   if (!pathExists(args.src)) return
   const raw = readTextFile(args.src)
   const { body, description: srcDescription } = stripFrontmatter(raw)
+  // The carried-over claude description may mention `/specrails:foo`; rewrite
+  // those occurrences (description field only, not the body — body
+  // translation runs further down) so the codex skill picker shows a
+  // codex-shape name to the model.
+  const translatedSrcDescription = srcDescription
+    ?.replace(/\/specrails:([\w-]+)/g, '$$$1')
+    ?.replace(/\/sr:([\w-]+)/g, '$$$1')
   const description =
-    args.description ?? srcDescription ?? `specrails ${args.name} command (ported to codex skill).`
+    args.description ?? translatedSrcDescription ?? `specrails ${args.name} command (ported to codex skill).`
   const frontmatter = [
     '---',
     `name: ${args.name}`,
@@ -294,7 +301,27 @@ function writeCodexSkillFromCommand(args: {
     '---',
     '',
   ].join('\n')
-  writeFileLf(args.dest, frontmatter + body)
+  // Translate claude-specific paths and slash-command references to their
+  // codex equivalents so the skill body reads natively on a codex project:
+  //   .claude/                  → .codex/  (config + memory paths)
+  //   /specrails:<name>         → $<name>  (codex skill mention syntax;
+  //                                          our scaffold writes a matching
+  //                                          .codex/skills/<name>/SKILL.md
+  //                                          for every claude slash command)
+  //   /sr:<name>                → $<name>  (alias used in some docs)
+  // `/opsx:<name>` is intentionally left untouched: the claude→codex
+  // mapping is non-trivial (most opsx commands map to
+  // `$openspec-<name>-change` but a few drop the suffix, and a couple
+  // don't map at all). The references appear inside docstrings only,
+  // not at execution paths, so leaving them as-is keeps the skill
+  // working without inventing a wrong mapping.
+  const translated = body
+    .replace(/\.claude\//g, '.codex/')
+    .replace(/`\/specrails:([\w-]+)`/g, '`$$$1`')
+    .replace(/`\/sr:([\w-]+)`/g, '`$$$1`')
+    .replace(/\/specrails:([\w-]+)/g, '$$$1')
+    .replace(/\/sr:([\w-]+)/g, '$$$1')
+  writeFileLf(args.dest, frontmatter + translated)
 }
 
 /**
@@ -605,6 +632,15 @@ function upsertAgentsMdManagedBlock(existing: string, managedBlock: string): str
 // agents in SKILL.md format) into `<providerDir>/skills/`. Skills are
 // full directories (SKILL.md + optional assets), so the whole folder is
 // copied. Quick tier excludes VPC-dependent skills; full tier copies all.
+//
+// For codex projects, every copied `.md` file gets a post-copy textual
+// translation so the body reads natively on codex:
+//   .claude/                  → .codex/
+//   /specrails:<name>         → $<name>
+//   /sr:<name>                → $<name>
+//   /opsx:<name>              → $openspec-<name>
+// The source templates stay canonical (claude-flavoured); the rewrite is
+// applied only to the codex-side copies.
 function placeSkills(input: ScaffoldInput): SkillsPlacement {
   const setupSkills = path.join(input.repoRoot, '.specrails', 'setup-templates', 'skills')
   const destBase = path.join(input.repoRoot, input.providerDir, 'skills')
@@ -625,6 +661,7 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
     }
     const dest = path.join(destBase, skillId)
     copyDir(entry, dest)
+    if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
     result.placed++
     result.filesCopied += countFiles(dest)
   }
@@ -642,12 +679,39 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       const skillId = path.basename(entry)
       const dest = path.join(destRails, skillId)
       copyDir(entry, dest)
+      if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
       result.placed++
       result.filesCopied += countFiles(dest)
     }
   }
 
   return result
+}
+
+/**
+ * Walk a directory and rewrite every `.md` file in place with the
+ * claude→codex translation map. Used after copying an upstream skill
+ * directory onto a codex project so the body refers to `.codex/` and
+ * codex's `$skill` mention syntax instead of `.claude/` and
+ * `/specrails:` slash commands.
+ */
+function translateCodexMarkdownInTree(dir: string): void {
+  if (!isDir(dir)) return
+  for (const entry of listDir(dir)) {
+    if (isDir(entry)) {
+      translateCodexMarkdownInTree(entry)
+      continue
+    }
+    if (!entry.endsWith('.md')) continue
+    const raw = readTextFile(entry)
+    const translated = raw
+      .replace(/\.claude\//g, '.codex/')
+      .replace(/`\/specrails:([\w-]+)`/g, '`$$$1`')
+      .replace(/`\/sr:([\w-]+)`/g, '`$$$1`')
+      .replace(/\/specrails:([\w-]+)/g, '$$$1')
+      .replace(/\/sr:([\w-]+)/g, '$$$1')
+    if (translated !== raw) writeFileLf(entry, translated)
+  }
 }
 
 /**
