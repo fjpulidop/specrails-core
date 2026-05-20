@@ -24,6 +24,18 @@ single turn.
 - `$implement <free-form>` — implement a free-form description
   (no ticket id; skip the ticket-update step at the end).
 
+### Single-ticket only
+
+You handle **exactly one** ticket per invocation. If the user
+passes more than one `#N` (e.g. `$implement #5 #6 --yes`), do
+NOT improvise a multi-ticket flow — reply with:
+
+`"$implement runs one ticket at a time. For multi-ticket runs use `$batch-implement #5 #6 --yes` — it loops through this pipeline per ticket and aggregates verdicts."`
+
+and end. Routing multi-ticket invocations through
+`$batch-implement` keeps file-mutation conflicts impossible
+and gives you a single aggregated report.
+
 ## Pipeline (logical phases)
 
 ```
@@ -258,8 +270,42 @@ Build:     <ran command, ok/fail/n/a>
 Follow-up: <one bullet per item>
 ```
 
+## While a sub-agent is running: WAIT, do nothing else
+
+After `spawn_agent` + `send_message`, the only tool you should
+call is `wait_agent`. Do **not**:
+
+- Read files (`sed`, `cat`, `head`, `tail`) for "context to
+  prepare the next phase"
+- Run `find`, `git status`, `git diff`, `npm test`, `ls`, or
+  any other inspection during the wait
+- Spawn additional sub-agents speculatively
+- Try to "save time" by overlapping work
+
+Why:
+
+- The sub-agent is editing files; concurrent reads race with
+  its writes and can return half-written content that
+  poisons your next decision.
+- Each `sed`/`find`/`grep` you run costs tokens. A
+  10-minute developer phase with you reading the codebase
+  every 30s adds up to a real cost increase for no benefit.
+- The next phase's brief is **deterministic** — it only
+  needs the sub-agent's reply. You don't need to pre-scout.
+
+If `wait_agent` returns before the sub-agent is done (e.g.
+timeout on your side), wait again. Do not start
+inspecting.
+
+The only acceptable activity during the wait is your own
+narration — a single short line explaining what you're
+waiting for is fine for the user, but do not chain more
+than one such line per wait.
+
 ## What you must NOT do
 
+- **Do NOT handle multi-ticket invocations.** Route them to
+  `$batch-implement` (see "Single-ticket only" above).
 - **Do NOT pass `agent_type`, `model`, or `reasoning_effort`** to
   `spawn_agent` on full-history forks.
 - **Do NOT inline role instructions** in your messages — each

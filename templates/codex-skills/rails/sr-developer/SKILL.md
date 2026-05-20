@@ -29,10 +29,28 @@ note it in your reply — do not block on the architect.
      Read **every section**, especially "Architecture", "Data
      shapes", "State & lifecycle", "Public API / surface",
      "Trade-offs" (so you know what NOT to revisit), and "Open
-     questions" (so you know what's still uncertain).
+     questions".
    - `openspec/changes/<slug>/tasks.md` — your execution checklist.
    - `openspec/changes/<slug>/specs/<cap>/spec.md` — the
      behavioural contracts the tests must encode.
+
+   **About design.md's "Open questions" section** — if the
+   architect left an unresolved question that would CHANGE
+   the implementation (e.g. "is this a real binding or a
+   reserved slot?", "engine change or UI-only?"), you must
+   NOT silently pick a "conservative" answer and implement
+   it. That pattern leads to reviewer rejection on the next
+   pass. Instead:
+
+   - If the question has an obvious-correct answer (the
+     ticket's acceptance criteria force it), follow that
+     answer and note your reasoning in your reply's Notes.
+   - If the question is genuinely ambiguous, reply
+     `"BLOCKED: open question in design.md: <verbatim
+     question> — cannot proceed without architect
+     clarification"` and end. This kicks the issue back to
+     the orchestrator without burning a developer turn on
+     a guess the reviewer will reject anyway.
 
 2. **Walk `tasks.md` in order**, one task block at a time. Each
    block IS a TDD cycle. Do not skip or batch cycles.
