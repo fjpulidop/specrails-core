@@ -13,6 +13,15 @@ collect verdicts, and produce a single aggregated report.
 You do NOT re-implement the architect / developer / reviewer
 fan-out — that lives in `$implement`. You're the outer loop.
 
+**This skill is fully headless / non-interactive.** Do NOT
+interpret any line of this skill as requiring user input. Every
+sub-agent invocation must include the equivalent of `--yes`.
+There is no "interactive mode" — if you find yourself thinking
+"the batch skill is interactive by design, let me run inline
+instead", you're misreading. The `(non-interactive)` phrase
+inside the send_message body is INSTRUCTING the sub-agent to
+behave that way, not a hint about how this skill itself works.
+
 ## How the user invokes you
 
 - `$batch-implement #1 #2 #3 --yes` — implement these three

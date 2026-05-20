@@ -16,6 +16,20 @@ role via `$skill_name`.
 wants the multi-agent split. Do not collapse the work into a
 single turn.
 
+**Each phase MUST be a real `spawn_agent` call.** You are
+*forbidden* from "doing the developer phase inline to save
+time" or "running the architect work directly because the
+ticket looks small". Every phase below is a hard requirement
+to spawn the named role skill via `spawn_agent` +
+`send_message`. If your final report says "local
+implementation" or "did this myself" anywhere, you violated
+this contract.
+
+The only reason a phase can be skipped is the BLOCKED reply
+path documented per phase (architect / developer can return
+`BLOCKED: …` and you stop). Otherwise: spawn, wait, close,
+move on.
+
 ## How the user invokes you
 
 - `$implement #N` — implement ticket `N` from
