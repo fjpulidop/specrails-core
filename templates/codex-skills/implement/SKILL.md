@@ -221,14 +221,24 @@ returns.
 
 - Per reviewer: parse `Score: N/100` and `Verdict: …` from the
   reply.
-- Overall verdict:
-  - `blocked` if any reviewer said `blocked: …`
-  - `fix needed` if any reviewer said `fix needed: …` OR any
-    score < 70
-  - `clean` only if every reviewer scored ≥ 70 AND nobody said
-    fix/blocked
 - Overall score = minimum of the reviewer scores (the harshest
   reviewer is the bound).
+- Overall verdict:
+  - `clean` — every reviewer scored ≥ 70 AND nobody said
+    fix/blocked
+  - `fix needed` — any reviewer said `fix needed: …`, OR any
+    score < 70 with no `blocked: …` verdict, OR any reviewer
+    said `blocked: …` AND the overall score is **in the
+    recoverable range 30-69**. The recoverable-blocked case is
+    the common one where the reviewer used "blocked" because
+    the issue is significant, not because the design itself is
+    wrong — a single developer fix pass can usually clear it
+    (e.g. API surface mismatch, missing JSX component shape,
+    forgotten persistence hook).
+  - `blocked` — any reviewer said `blocked: …` AND overall
+    score is **< 30**, OR every reviewer said `blocked: …`.
+    This is the design-level case where another developer
+    pass won't help — the architect needs to re-engage.
 
 ### 4. Phase 4 — Optional augmentation
 
