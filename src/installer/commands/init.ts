@@ -83,17 +83,13 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
       info(`install-config.yaml not found at ${resolved} — falling back to auto-detection`)
     }
   } else if (typeof flags.provider === 'string') {
-    if (flags.provider === 'codex') {
+    if (flags.provider !== 'claude' && flags.provider !== 'codex') {
       throw new InstallerError(
-        'Codex (OpenAI) support is coming soon — currently being tested in our lab. ' +
-          'Use --provider claude for now.',
+        `--provider value must be 'claude' or 'codex', got: ${flags.provider}`,
         40,
       )
     }
-    if (flags.provider !== 'claude') {
-      throw new InstallerError(`--provider value must be 'claude', got: ${flags.provider}`, 40)
-    }
-    providerHint = 'claude'
+    providerHint = flags.provider as Provider
   }
 
   if (flags.quick === true) {

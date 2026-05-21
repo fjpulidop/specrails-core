@@ -62,27 +62,20 @@ export async function resolveProvider(
   availability: ProviderAvailability,
   options: { explicit?: Provider; skipPrereqs?: boolean } = {},
 ): Promise<Provider> {
-  if (options.explicit === 'codex') {
-    throw new ProviderError(
-      'Codex (OpenAI) support is coming soon — currently being tested in our lab. ' +
-        'Use --provider claude for now.',
-    )
-  }
+  if (options.explicit === 'codex') return 'codex'
   if (options.explicit === 'claude') return 'claude'
 
+  // Both installed: prefer Claude (the historical default) so existing
+  // projects don't get re-bootstrapped onto a different provider when the
+  // user just runs `npx specrails-core init` without `--provider`. Users
+  // who want codex pass --provider codex or set it in install-config.yaml.
   if (availability.claude && availability.codex) return 'claude'
   if (availability.claude) return 'claude'
-  if (availability.codex) {
-    throw new ProviderError(
-      'Only Codex detected — Codex (OpenAI) support is coming soon (currently in our lab). ' +
-        'Please install Claude Code to continue: https://claude.ai/download',
-    )
-  }
+  if (availability.codex) return 'codex'
   if (options.skipPrereqs) return 'claude'
   throw new ProviderError(
-    'No AI CLI found (claude). ' +
-      'Install Claude Code: https://claude.ai/download. ' +
-      'Codex (OpenAI) support: coming soon.',
+    'No AI CLI found. Install Claude Code (https://claude.ai/download) or ' +
+      'Codex CLI (https://developers.openai.com/codex) before running specrails-core init.',
   )
 }
 

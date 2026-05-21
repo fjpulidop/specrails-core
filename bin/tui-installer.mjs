@@ -102,6 +102,25 @@ function detectProvider() {
   return { hasClaude, hasCodex };
 }
 
+// Parse `--provider <id>` or `--provider=<id>` from process.argv. Returns
+// 'claude' | 'codex' | null. Unknown values warn-then-null so the TUI
+// falls back to interactive selection.
+function parseProviderArg() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--provider' && args[i + 1]) {
+      const v = args[i + 1].trim().toLowerCase();
+      return v === 'claude' || v === 'codex' ? v : null;
+    }
+    if (a.startsWith('--provider=')) {
+      const v = a.slice('--provider='.length).trim().toLowerCase();
+      return v === 'claude' || v === 'codex' ? v : null;
+    }
+  }
+  return null;
+}
+
 function detectGitRoot(dir) {
   try {
     return execSync('git rev-parse --show-toplevel', { cwd: dir, stdio: ['ignore', 'pipe', 'ignore'] })
@@ -181,9 +200,27 @@ async function run() {
   const rawArgs  = process.argv.slice(2);
   const autoYes  = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const withProfiles = rawArgs.includes('--with-profiles');
-  const rootArg  = rawArgs.find(a => !a.startsWith('-'));
+  // First positional arg (skipping flag values that follow `--provider`,
+  // `--root-dir`, etc.) is the target directory.
+  const FLAGS_WITH_VALUES = new Set(['--provider', '--root-dir', '--from-config']);
+  let rootArg;
+  for (let i = 0; i < rawArgs.length; i++) {
+    const a = rawArgs[i];
+    if (a.startsWith('-')) {
+      if (FLAGS_WITH_VALUES.has(a)) i++; // skip its value
+      continue;
+    }
+    rootArg = a;
+    break;
+  }
   const inputDir = rootArg ? resolve(rootArg) : process.cwd();
-  const rootDir  = detectGitRoot(inputDir);
+  // Use inputDir directly — matches the Node CLI step that reads back
+  // install-config.yaml from `<inputDir>/.specrails/`. We deliberately do
+  // NOT walk up to a git root here: if the user wants the install to land
+  // at a git ancestor, they can pass `--root-dir <path>` explicitly, and
+  // the Node CLI will honour the same path. Otherwise TUI + Node CLI must
+  // agree on the same directory or the config gets stranded.
+  const rootDir = inputDir;
 
   const specrailsDir = resolve(rootDir, '.specrails');
 
@@ -211,19 +248,40 @@ async function run() {
 
   // Auto-yes: write defaults and exit (no TUI needed)
   //
-  // Codex (OpenAI) support is currently being tested in our lab ("Coming Soon").
-  // If only Codex is detected, bail out instead of silently picking it — Claude
-  // Code is the only runtime we can install for today.
+  // Honours an explicit --provider <id> argv flag when present; otherwise
+  // picks claude → codex → first-detected. Errors only when none detected.
   if (autoYes) {
     const { hasClaude, hasCodex } = detectProvider();
-    if (!hasClaude && hasCodex) {
+    const argvProvider = parseProviderArg();
+    let provider;
+    if (argvProvider) {
+      if (argvProvider === 'claude' && !hasClaude) {
+        console.error('');
+        console.error('  ⚠  --provider claude requested but Claude Code is not installed.');
+        console.error('     Install: https://claude.ai/download');
+        console.error('');
+        process.exit(1);
+      }
+      if (argvProvider === 'codex' && !hasCodex) {
+        console.error('');
+        console.error('  ⚠  --provider codex requested but Codex CLI is not installed.');
+        console.error('     Install: https://developers.openai.com/codex');
+        console.error('');
+        process.exit(1);
+      }
+      provider = argvProvider;
+    } else if (hasClaude) {
+      provider = 'claude';
+    } else if (hasCodex) {
+      provider = 'codex';
+    } else {
       console.error('');
-      console.error('  ⚠  Only Codex detected — Codex (OpenAI) support is coming soon (in lab).');
-      console.error('     Please install Claude Code to continue: https://claude.ai/download');
+      console.error('  ⚠  Neither Claude Code nor Codex CLI detected on PATH.');
+      console.error('     Install Claude: https://claude.ai/download');
+      console.error('     Install Codex:  https://developers.openai.com/codex');
       console.error('');
       process.exit(1);
     }
-    const provider = 'claude';
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
     console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
@@ -253,36 +311,41 @@ async function run() {
   console.log(banner.join('\n'));
 
   // ── Step 1: Provider ────────────────────────────────────────────────────────
-  //
-  // Codex (OpenAI) is still being tested in our lab ("Coming Soon"). Until the
-  // feature ships, the TUI exposes only Claude Code as a runtime — Codex shows
-  // as a disabled "Coming Soon" option so users can see it's on the roadmap.
 
   const { hasClaude, hasCodex } = detectProvider();
+  const argvProvider = parseProviderArg();
   let provider;
 
-  if (hasClaude && hasCodex) {
+  if (argvProvider) {
+    if (argvProvider === 'claude' && !hasClaude) {
+      exitFullscreen();
+      console.error('\n  ⚠  --provider claude requested but Claude Code is not installed.\n     Install: https://claude.ai/download\n');
+      process.exit(1);
+    }
+    if (argvProvider === 'codex' && !hasCodex) {
+      exitFullscreen();
+      console.error('\n  ⚠  --provider codex requested but Codex CLI is not installed.\n     Install: https://developers.openai.com/codex\n');
+      process.exit(1);
+    }
+    provider = argvProvider;
+    console.log(`  → Provider: ${provider} (from --provider flag)\n`);
+  } else if (hasClaude && hasCodex) {
     provider = await select({
       message: 'Which AI provider will you use?',
       choices: [
         { value: 'claude', name: 'Claude Code (recommended)' },
-        { value: 'codex',  name: 'Codex — Coming Soon (in lab)', disabled: '🧪 coming soon' },
+        { value: 'codex',  name: 'Codex (OpenAI)' },
       ],
     });
   } else if (hasCodex) {
-    exitFullscreen();
-    console.error('');
-    console.error('  ⚠  Only Codex detected — Codex (OpenAI) support is coming soon (in lab).');
-    console.error('     Please install Claude Code to continue: https://claude.ai/download');
-    console.error('');
-    process.exit(1);
+    provider = 'codex';
+    console.log('  → Provider: codex (auto-detected — Claude Code not found)\n');
+  } else if (hasClaude) {
+    provider = 'claude';
+    console.log('  → Provider: claude (auto-detected)\n');
   } else {
     provider = 'claude';
-    if (hasClaude) {
-      console.log('  → Provider: claude (auto-detected)\n');
-    } else {
-      console.log('  → Provider: claude (default — claude CLI not found, install it at claude.ai/download)\n');
-    }
+    console.log('  → Provider: claude (default — neither claude nor codex CLI found)\n');
   }
 
   // ── Step 2: Installation tier ───────────────────────────────────────────────
