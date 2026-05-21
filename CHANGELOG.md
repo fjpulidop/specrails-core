@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.1](https://github.com/fjpulidop/specrails-core/compare/v4.6.0...v4.6.1) (2026-05-21)
+
+
+### Bug Fixes
+
+* **release:** re-publish 4.6.0 contents under 4.6.1 ([1ca4032](https://github.com/fjpulidop/specrails-core/commit/1ca4032e4f15abe9f94769126b9fc131e4f740f1))
+
 ## [4.6.0](https://github.com/fjpulidop/specrails-core/compare/v4.5.0...v4.6.0) (2026-05-21)
 
 
