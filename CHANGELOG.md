@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.0](https://github.com/fjpulidop/specrails-core/compare/v4.5.0...v4.6.0) (2026-05-21)
+
+
+### Features
+
+* **codex:** codex-native provider end-to-end ([b95bb33](https://github.com/fjpulidop/specrails-core/commit/b95bb33f4eac0eaad895c55250af512936f53bc2))
+
 ## [4.5.0](https://github.com/fjpulidop/specrails-core/compare/v4.4.0...v4.5.0) (2026-05-05)
 
 
