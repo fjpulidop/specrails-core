@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.4](https://github.com/fjpulidop/specrails-core/compare/v4.6.3...v4.6.4) (2026-06-01)
+
+
+### Bug Fixes
+
+* unify version source on package.json, drop stale VERSION file ([#279](https://github.com/fjpulidop/specrails-core/issues/279)) ([885a7f1](https://github.com/fjpulidop/specrails-core/commit/885a7f11f061f7b163277f1ff521db109877dc39))
+
 ## [4.6.3](https://github.com/fjpulidop/specrails-core/compare/v4.6.2...v4.6.3) (2026-06-01)
 
 
