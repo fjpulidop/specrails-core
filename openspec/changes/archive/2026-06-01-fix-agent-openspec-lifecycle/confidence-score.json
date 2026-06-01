@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "change": "fix-agent-openspec-lifecycle",
+  "agent": "reviewer",
+  "scored_at": "2026-06-01T10:40:00Z",
+  "overall": 91,
+  "aspects": {
+    "type_correctness": 95,
+    "pattern_adherence": 92,
+    "test_coverage": 90,
+    "security": 95,
+    "architectural_alignment": 88
+  },
+  "notes": {
+    "type_correctness": "All template files and installed agent files use consistent Skill() invocation syntax; no type mismatches in TypeScript test file.",
+    "pattern_adherence": "opsx:new before opsx:ff sequence matches established opsx workflow pattern; specName guard follows the same halt-and-report pattern used elsewhere in agent templates.",
+    "test_coverage": "30 vitest tests in agent-lifecycle.test.ts cover all three templates: architect sequence order, developer apply+checkbox gate, reviewer task gate+archive. All 205 tests pass.",
+    "security": "No new attack surface; changes are purely Markdown prompt instructions and test assertions — no executable code paths modified.",
+    "architectural_alignment": "Changes respect template/installed-file duality (both sources updated); lifecycle commands delegate to opsx skill layer rather than hand-authoring artifacts, consistent with the layered architecture."
+  },
+  "flags": []
+}
