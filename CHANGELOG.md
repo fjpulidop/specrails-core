@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.3](https://github.com/fjpulidop/specrails-core/compare/v4.6.2...v4.6.3) (2026-06-01)
+
+
+### Bug Fixes
+
+* **agents:** enforce OpenSpec lifecycle commands in sr-architect/developer/reviewer ([#277](https://github.com/fjpulidop/specrails-core/issues/277)) ([65b8183](https://github.com/fjpulidop/specrails-core/commit/65b8183f77ebbb213b8816cd6e19285fdface3ae))
+
 ## [4.6.2](https://github.com/fjpulidop/specrails-core/compare/v4.6.1...v4.6.2) (2026-05-21)
 
 
