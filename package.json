@@ -14,7 +14,6 @@
     "commands/",
     "docs/",
     "schemas/",
-    "VERSION",
     "integration-contract.json",
     "pinned-versions.json"
   ],

@@ -99,13 +99,16 @@ function usageText(): string {
 }
 
 function readVersion(): string {
-  // Resolve VERSION relative to the compiled module location.
-  // In src: src/installer/cli.ts → ../../VERSION
-  // In dist: dist/installer/cli.js → ../../VERSION
+  // Single source of truth: package.json `version` (bumped by
+  // release-please on every release). Resolve it relative to the
+  // compiled module location.
+  // In src: src/installer/cli.ts → ../../package.json
+  // In dist: dist/installer/cli.js → ../../package.json
   const here = path.dirname(fileURLToPath(import.meta.url))
-  const versionPath = path.resolve(here, '..', '..', 'VERSION')
+  const pkgPath = path.resolve(here, '..', '..', 'package.json')
   try {
-    return readFileSync(versionPath, 'utf8').trim()
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: string }
+    return pkg.version?.trim() || 'unknown'
   } catch {
     return 'unknown'
   }
