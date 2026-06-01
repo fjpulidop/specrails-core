@@ -165,10 +165,13 @@ function resolveScriptDir(): string {
 }
 
 function readVersion(scriptDir: string): string {
-  const p = path.join(scriptDir, 'VERSION')
+  // Single source of truth: package.json `version` (bumped by
+  // release-please). scriptDir is the specrails-core package root.
+  const p = path.join(scriptDir, 'package.json')
   if (!pathExists(p)) return 'unknown'
   try {
-    return readTextFile(p).trim() || 'unknown'
+    const pkg = JSON.parse(readTextFile(p)) as { version?: string }
+    return pkg.version?.trim() || 'unknown'
   } catch {
     return 'unknown'
   }

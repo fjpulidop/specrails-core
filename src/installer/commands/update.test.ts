@@ -10,7 +10,7 @@ import { initRepo } from '../util/git.js'
 import { runUpdate } from './update.js'
 
 async function setupFakeScriptDir(scriptDir: string, version: string): Promise<void> {
-  writeFileLf(path.join(scriptDir, 'VERSION'), `${version}\n`)
+  writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version })}\n`)
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'v2-arch')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'v2-rules')
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')

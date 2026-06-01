@@ -17,7 +17,7 @@ import { runInit } from './init.js'
  */
 
 async function setupFakeScriptDir(scriptDir: string): Promise<void> {
-  writeFileLf(path.join(scriptDir, 'VERSION'), '4.2.0\n')
+  writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '4.2.0' })}\n`)
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), 'reviewer')
