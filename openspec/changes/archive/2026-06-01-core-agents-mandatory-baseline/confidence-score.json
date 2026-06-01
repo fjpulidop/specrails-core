@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "change": "core-agents-mandatory-baseline",
+  "agent": "reviewer",
+  "scored_at": "2026-06-01T12:30:00Z",
+  "overall": 95,
+  "aspects": {
+    "type_correctness": 97,
+    "pattern_adherence": 96,
+    "test_coverage": 93,
+    "security": 98,
+    "architectural_alignment": 95
+  },
+  "notes": {
+    "type_correctness": "CORE_AGENTS exported as Set<string>, consistent with existing QUICK_EXCLUDED_AGENTS pattern. All function signatures unchanged.",
+    "pattern_adherence": "CORE_AGENTS constant follows the same const Set pattern as QUICK_EXCLUDED_AGENTS and EXPLANATION_AUTHORS. Comment references schema/profile.v1.json as required.",
+    "test_coverage": "Tests cover CORE_AGENTS constant membership, default placement (no config), and opt-in agent placement. 212 tests pass. TUI default behavior not unit-tested but is a thin wrapper over the constant.",
+    "security": "No new attack surface. Change is purely about which agent files are placed by default; no auth, network, or privilege changes.",
+    "architectural_alignment": "Correctly separates mandatory baseline (3 agents) from optional agents. COMMAND_AGENT_DEPENDENCIES still lists merge-resolve requiring sr-merge-resolver, preserving opt-in wiring."
+  },
+  "flags": []
+}

@@ -1,0 +1,28 @@
+{
+  "schema_version": "1",
+  "feature": "fix-agent-openspec-lifecycle",
+  "started_at": "2026-06-01T08:22:00Z",
+  "updated_at": "2026-06-01T08:22:00Z",
+  "phases": {
+    "architect": "pending",
+    "developer": "pending",
+    "test-writer": "skipped",
+    "doc-sync": "skipped",
+    "reviewer": "pending",
+    "ship": "pending",
+    "ci": "pending"
+  },
+  "last_successful_phase": null,
+  "failed_phase": null,
+  "error_context": null,
+  "openspec_artifacts": "openspec/changes/fix-agent-openspec-lifecycle/",
+  "implemented_files": [],
+  "input": {
+    "issues": [1],
+    "flags": {
+      "dry_run": false,
+      "apply_mode": false,
+      "single_mode": true
+    }
+  }
+}
