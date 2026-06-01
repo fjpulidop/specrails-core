@@ -9,10 +9,10 @@
     "test-writer": "skipped",
     "doc-sync": "skipped",
     "reviewer": "done",
-    "ship": "pending",
+    "ship": "done",
     "ci": "pending"
   },
-  "last_successful_phase": "reviewer",
+  "last_successful_phase": "ship",
   "failed_phase": null,
   "error_context": null,
   "openspec_artifacts": "openspec/changes/archive/2026-06-01-core-agents-mandatory-baseline/",
