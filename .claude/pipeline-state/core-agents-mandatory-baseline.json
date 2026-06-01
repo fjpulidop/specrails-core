@@ -1,0 +1,35 @@
+{
+  "schema_version": "1",
+  "feature": "core-agents-mandatory-baseline",
+  "started_at": "2026-06-01T10:00:35Z",
+  "updated_at": "2026-06-01T10:20:00Z",
+  "phases": {
+    "architect": "done",
+    "developer": "done",
+    "test-writer": "skipped",
+    "doc-sync": "skipped",
+    "reviewer": "done",
+    "ship": "done",
+    "ci": "pending"
+  },
+  "last_successful_phase": "ship",
+  "failed_phase": null,
+  "error_context": null,
+  "openspec_artifacts": "openspec/changes/archive/2026-06-01-core-agents-mandatory-baseline/",
+  "implemented_files": [
+    "bin/tui-installer.mjs",
+    "src/installer/__tests__/scaffold.test.ts",
+    "src/installer/commands/init.test.ts",
+    "src/installer/phases/scaffold.test.ts",
+    "src/installer/phases/scaffold.ts",
+    "templates/commands/specrails/implement.md"
+  ],
+  "input": {
+    "issues": [2],
+    "flags": {
+      "dry_run": false,
+      "apply_mode": false,
+      "single_mode": true
+    }
+  }
+}

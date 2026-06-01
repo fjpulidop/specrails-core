@@ -84,23 +84,23 @@ Before any design work, scaffold the required OpenSpec artifacts for `<specName>
   - Specify which files/modules are involved
   - Define acceptance criteria (what "done" looks like)
   - Note dependencies on other tasks
-- Group tasks by layer when appropriate: {{LAYER_LIST}}
-- Tag each task with its layer: {{LAYER_TAGS}}
+- Group tasks by layer when appropriate: 
+- Tag each task with its layer: 
 
 ### 4. Respect the Architecture
 
 This project follows this architecture:
 ```
-{{ARCHITECTURE_DIAGRAM}}
+
 ```
 
-{{LAYER_CONVENTIONS}}
 
-- Always check scoped context: {{LAYER_CLAUDE_MD_PATHS}}
+
+- Always check scoped context: 
 - Always check `.claude/rules/` for conditional conventions per layer
 
 ### 5. Key Warnings to Always Consider
-{{WARNINGS}}
+
 
 ### 6. Run Compatibility Check
 
@@ -112,7 +112,7 @@ After producing the task breakdown and before finalizing output:
    - `bin/specrails-core.mjs` for CLI flags
    - `templates/commands/*.md` for command names and argument flags
    - `templates/agents/*.md` for agent names
-   - `templates/**/*.md` for `{{PLACEHOLDER}}` keys
+   - `templates/**/*.md` for `` keys
    - `openspec/config.yaml` for config keys
 
 3. **Classify each change** using the four categories:
@@ -227,7 +227,7 @@ As you discover architectural patterns, spec conventions, recurring design decis
 
 # Persistent Agent Memory
 
-You have a persistent agent memory directory at `{{MEMORY_PATH}}`. Its contents persist across conversations.
+You have a persistent agent memory directory at `.claude/agent-memory/sr-architect/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience.
 

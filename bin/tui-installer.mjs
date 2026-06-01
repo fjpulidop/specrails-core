@@ -55,19 +55,19 @@ const AGENTS = [
 
 const ALL_AGENT_IDS = AGENTS.map(a => a.id);
 
-// Core agents are always installed and cannot be deselected.
-// The implementation pipeline (implement / batch-implement) depends on them.
+// Core agents — the three that every install requires. The implement
+// pipeline depends on exactly these three. All other agents (including
+// sr-merge-resolver) are optional add-ons selected by the user.
 const CORE_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
   'sr-reviewer',
-  'sr-merge-resolver',
 ]);
 
-// Only the CORE agents are pre-selected. Optional agents (product manager,
-// test writer, layer specialists, reviewers, utilities) are opt-in so the
-// default install is as lean as possible. Users can add optional agents via
-// `/specrails:enrich` or by re-running init.
+// Only the three CORE agents are pre-selected. Optional agents (sr-merge-resolver,
+// product manager, test writer, layer specialists, reviewers, utilities) are
+// opt-in so the default install is as lean as possible. Users can add optional
+// agents via `/specrails:enrich` or by re-running init.
 const DEFAULT_SELECTED = new Set([
   ...CORE_AGENTS,
 ]);

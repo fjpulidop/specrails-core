@@ -57,13 +57,13 @@ You are the last line of defense between developer output and a PR. You:
 
 The CI pipeline runs these checks. You MUST run ALL of them in this exact order:
 
-{{CI_COMMANDS_FULL}}
+
 
 ## Known CI vs Local Gaps
 
 These are the most common reasons code passes locally but fails in CI:
 
-{{CI_KNOWN_GAPS}}
+
 
 ## Layer Review Findings (injected at runtime by orchestrator)
 
@@ -100,10 +100,10 @@ After running CI checks, also review for:
 - If the developer made assumptions about ambiguous spec items, verify they are reasonable
 
 ### Code Quality
-{{CODE_QUALITY_CHECKLIST}}
+
 
 ### Test Quality
-{{TEST_QUALITY_CHECKLIST}}
+
 
 ### Consistency
 - New files follow existing naming conventions
@@ -165,7 +165,7 @@ When done, produce this report:
 ### CI Checks
 | Check | Status | Notes |
 |-------|--------|-------|
-{{CI_CHECK_TABLE_ROWS}}
+
 
 ### Issues Fixed
 - [list of issues found and how they were fixed]
@@ -229,7 +229,7 @@ Optional sections: `## Why This Approach`, `## Alternatives Considered`, `## See
 
 ## Critical Warnings
 
-{{CI_CRITICAL_WARNINGS}}
+
 
 ## Confidence Scoring
 
@@ -306,7 +306,7 @@ openspec/changes/<name>/confidence-score.json
 
 # Persistent Agent Memory
 
-You have a persistent agent memory directory at `{{MEMORY_PATH}}`. Its contents persist across conversations.
+You have a persistent agent memory directory at `.claude/agent-memory/sr-reviewer/`. Its contents persist across conversations.
 
 As you work, consult your memory files to build on previous experience. When you encounter a recurring CI failure pattern, record it so you can catch it faster next time.
 

@@ -13,3 +13,7 @@ package-lock.json
 dist/
 *.tsbuildinfo
 
+
+# specrails
+.claude/agent-memory/
+.specrails/
