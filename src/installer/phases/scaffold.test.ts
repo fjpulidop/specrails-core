@@ -291,12 +291,13 @@ describe('scaffold', () => {
         expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
         expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
         expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(true)
+        // sr-merge-resolver is now optional — NOT placed by default
+        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(false)
         expect(pathExists(path.join(agentsDir, 'sr-product-manager.md'))).toBe(false)
         expect(pathExists(path.join(agentsDir, 'sr-product-analyst.md'))).toBe(false)
       })
 
-      it('honours selectedAgents for config-driven quick installs while keeping the baseline quartet', () => {
+      it('honours selectedAgents for config-driven quick installs while keeping the baseline trio', () => {
         const scriptDir = path.join(tmpDir, 'core')
         const repoRoot = path.join(tmpDir, 'repo')
         setupRichFakeSource(scriptDir)
@@ -314,12 +315,14 @@ describe('scaffold', () => {
         const agentsDir = path.join(repoRoot, '.claude', 'agents')
         expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
         expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(true)
+        // sr-merge-resolver is optional — not placed unless explicitly selected
+        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(false)
         expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
         expect(pathExists(path.join(agentsDir, 'sr-frontend-developer.md'))).toBe(false)
 
         const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
-        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(true)
+        // merge-resolve command is excluded because sr-merge-resolver was not selected
+        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(false)
         expect(pathExists(path.join(cmdsDir, 'implement.md'))).toBe(true)
         expect(pathExists(path.join(cmdsDir, 'auto-propose-backlog-specs.md'))).toBe(false)
         expect(pathExists(path.join(cmdsDir, 'get-backlog-specs.md'))).toBe(false)
@@ -388,8 +391,8 @@ describe('scaffold', () => {
         expect(pathExists(path.join(cmdsDir, 'vpc-drift.md'))).toBe(false)
         // Product-analyst gone → get-backlog-specs gone
         expect(pathExists(path.join(cmdsDir, 'get-backlog-specs.md'))).toBe(false)
-        // Merge-resolver IS installed → merge-resolve stays
-        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(true)
+        // sr-merge-resolver is now optional and not placed by default → merge-resolve excluded too
+        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(false)
         // Unrelated commands stay
         expect(pathExists(path.join(cmdsDir, 'implement.md'))).toBe(true)
         expect(pathExists(path.join(cmdsDir, 'why.md'))).toBe(true)

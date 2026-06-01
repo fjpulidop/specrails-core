@@ -7,6 +7,21 @@ import { info, ok, warn } from '../util/logger.js'
 import type { Provider } from './provider-detect.js'
 
 /**
+ * The three baseline agents that every specrails install requires.
+ * These are the only agents guaranteed to be present — the implement
+ * pipeline depends on all three. sr-merge-resolver and every other
+ * agent are optional add-ons selected at install time.
+ *
+ * Mirrors the `allOf` baseline in schemas/profile.v1.json — update
+ * both files together if this set ever changes.
+ */
+export const CORE_AGENTS = new Set([
+  'sr-architect',
+  'sr-developer',
+  'sr-reviewer',
+])
+
+/**
  * Agents excluded from the quick tier because they require a full
  * /specrails:enrich persona pass to function correctly.
  */
@@ -18,12 +33,6 @@ const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst
 const QUICK_EXCLUDED_SKILLS = new Set([
   'sr-auto-propose-backlog-specs',
   'sr-get-backlog-specs',
-])
-const QUICK_REQUIRED_AGENTS = new Set([
-  'sr-architect',
-  'sr-developer',
-  'sr-reviewer',
-  'sr-merge-resolver',
 ])
 
 /**
@@ -461,9 +470,13 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   let agentsPlaced = 0
   let agentsSkipped = 0
   const installedAgentNames = new Set<string>()
+  // When no agent selection is provided (fresh init with no install-config),
+  // default to placing only the three core agents. This keeps the default
+  // install lean — optional agents (sr-merge-resolver, layer specialists,
+  // product agents) are explicitly opt-in via the TUI or install-config.
   const selectedAgents = input.selectedAgents
-    ? new Set([...input.selectedAgents, ...QUICK_REQUIRED_AGENTS])
-    : null
+    ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+    : new Set([...CORE_AGENTS])
   if (isDir(agentsSrc)) {
     mkdirp(agentsDest)
     for (const src of listDir(agentsSrc)) {
@@ -686,10 +699,12 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
     result.filesCopied += countFiles(dest)
   }
 
-  // Rail skills (sr-architect, sr-developer, sr-reviewer, sr-merge-resolver).
+  // Rail skills (sr-architect, sr-developer, sr-reviewer, sr-merge-resolver, etc.).
   // These ship as SKILL.md siblings of the claude `.claude/agents/sr-*.md`
   // counterparts so codex projects can invoke the pipeline via skills
   // (codex doesn't honour Claude's `.claude/agents/` convention).
+  // Only the three CORE_AGENTS are placed by default; sr-merge-resolver and
+  // other optional rails are placed only when selectedAgents includes them.
   //
   // Codex-native overrides at `templates/codex-skills/rails/<name>/` win
   // over the upstream ported copy when present — used to ship skill
@@ -704,21 +719,15 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
     mkdirp(destRails)
     const placedIds = new Set<string>()
 
-    // Core rails that ALWAYS install (the implement orchestrator depends
-    // on them — leaving any out would break the pipeline). Mirrors
-    // QUICK_REQUIRED_AGENTS from the claude path.
-    const CORE_RAIL_AGENTS = new Set([
-      'sr-architect', 'sr-developer', 'sr-reviewer', 'sr-merge-resolver',
-    ])
-
     // Honour the wizard's agent selection on codex projects, same as
     // claude. If the wizard wrote `agents.selected: [a, b, ...]` to the
     // install-config, install only the rails whose id is in that list
-    // OR is a core dependency. Without a selection (legacy installs)
-    // fall back to installing every rail that exists.
+    // OR is a core dependency. Without a selection (fresh install with no
+    // install-config), default to the three core agents only — consistent
+    // with the claude placeQuickTierArtefacts behavior.
     const selectedAgents = input.selectedAgents
-      ? new Set([...input.selectedAgents, ...CORE_RAIL_AGENTS])
-      : null
+      ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+      : new Set([...CORE_AGENTS])
     const shouldPlace = (skillId: string): boolean => {
       if (selectedAgents === null) return true
       return selectedAgents.has(skillId)

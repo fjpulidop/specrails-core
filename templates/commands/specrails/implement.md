@@ -211,7 +211,7 @@ The pipeline adapts dynamically to the installed agents:
 | sr-architect | Architecture & design | **Core** (always present) | 3a |
 | sr-developer | Full-stack implementation | **Core** (always present) | 3b |
 | sr-reviewer | Generalist quality gate | **Core** (always present) | 4b |
-| sr-merge-resolver | Merge conflict resolution | **Core** (always present) | 4a |
+| sr-merge-resolver | Merge conflict resolution | Optional — required for multi-feature merge conflict resolution | 4a |
 | sr-product-manager | Product exploration | Optional | 1 |
 | sr-test-writer | Test generation | Optional | 3c |
 | sr-doc-sync | Documentation sync | Optional | 3d |
@@ -239,7 +239,7 @@ Print a setup report:
 | OpenSpec | ok | ... |
 | Dependencies | ok | ... |
 | Test runner | ok | ... |
-| Agents | N installed | core: 4/4, optional: M |
+| Agents | N installed | core: 3/3, optional: M |
 ```
 
 **Pass `TEST_CMD`, `BACKLOG_AVAILABLE`, and `AVAILABLE_AGENTS` forward** — all later phases must use these.
@@ -927,7 +927,7 @@ After all features are processed, print the preliminary report:
 
 **Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true` or `sr-merge-resolver` ∉ `AVAILABLE_AGENTS`)
 
-If `sr-merge-resolver` is not installed, print: `[smart-merge] sr-merge-resolver not installed — skipping automatic resolution. Fix conflicts manually.` and skip to Step 5b.
+If `sr-merge-resolver` is not installed, print: `[smart-merge] sr-merge-resolver not installed — skipping merge conflict resolution agent. Fix conflicts manually.` and skip to Step 5b.
 
 If `MERGE_REPORT.requires_resolution` is non-empty:
 

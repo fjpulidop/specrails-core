@@ -122,7 +122,8 @@ describe('runInit', () => {
     expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
     expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(true)
+    // sr-merge-resolver is optional — not placed unless it appears in agents.selected
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
   })
 
   it('accepts --provider codex and produces a codex install (.codex/ + AGENTS.md)', async () => {
