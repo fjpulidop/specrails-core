@@ -30,6 +30,12 @@ path documented per phase (architect / developer can return
 `BLOCKED: …` and you stop). Otherwise: spawn, wait, close,
 move on.
 
+**A `clean` run is NOT finished until the change is archived.**
+Archiving (`openspec archive`) is a hard obligation, not an
+optional epilogue — see Phase 5. If you mark a ticket `done`
+without an archived change under `openspec/changes/archive/`,
+you violated this contract.
+
 ## How the user invokes you
 
 - `$implement #N` — implement ticket `N` from
@@ -95,9 +101,10 @@ the combo and you'll burn a turn on the retry.
 3. **List the installed rail skills**:
    `ls .codex/skills/rails/`
    The output drives routing in phases 2-4. Skills that aren't
-   listed are not installed — never spawn them. The four core
-   rails (`sr-architect`, `sr-developer`, `sr-reviewer`,
-   `sr-merge-resolver`) are always present.
+   listed are not installed — never spawn them. The three core
+   rails (`sr-architect`, `sr-developer`, `sr-reviewer`) are
+   always present. `sr-merge-resolver` and every layer specialist
+   are optional — spawn them only when listed.
 4. State (≤4 lines) the ticket goal, the stack you detected from
    a quick `ls`/`find`, and the optional rails that are
    available. Do NOT plan files-to-touch — that's the
@@ -247,8 +254,11 @@ Skip when the overall verdict is `fix needed` or `blocked` — no
 point sugar-coating an unsound change.
 
 - If `sr-test-writer` is installed AND the reviewer's confidence
-  artefact reports a coverage decrease, spawn it with the
-  changed files list. It writes more tests, runs them, reports.
+  artefact reports a coverage gap (`tdd_evidence.all_tasks_have_tests`
+  is `false`, or `tdd_evidence.tests_are_non_trivial` is `false`),
+  spawn it with the changed files list. It writes more tests, runs
+  them, reports. (These are the fields the `$sr-reviewer` skill
+  actually writes — do not key on a non-existent "coverage" field.)
 - If `sr-doc-sync` is installed AND the change touches a
   publicly-documented surface (README mentions a renamed
   function, AGENTS.md references a removed file, openspec specs
@@ -270,9 +280,65 @@ If phase 3's overall verdict is `fix needed`:
   `blocked`, **do not loop again** — surface in the final
   report.
 
-### 6. Phase 5 — Close + report
+### 6. Phase 5 — Archive FIRST, then close + report
 
-If a ticket id is in play:
+> **INVARIANT.** A ticket may be marked `done` ONLY if its change is
+> archived (`openspec/changes/archive/<slug>/` exists). A `clean`
+> verdict with an unarchived change is `todo` + `fix needed`, never
+> `done`. Archiving the change and closing the ticket are a single
+> atomic obligation — you cannot satisfy one and skip the other.
+
+**Step A — Archive the OpenSpec change through `$sr-reviewer`
+(mandatory when the verdict is `clean`). Run this BEFORE touching the
+ticket or writing the report.** A change is not done until it is
+archived — this is the codex equivalent of `opsx:archive`, and it MUST
+run. When the overall verdict is `clean`, delegate the final OpenSpec
+close to the reviewer rail so the same agent that validated the change
+performs the lifecycle close:
+
+1. Spawn `$sr-reviewer` one final time (full-history fork).
+2. Send this exact close prompt:
+
+   > `$sr-reviewer`
+   >
+   > ARCHIVE_ONLY=true
+   > ARCHIVE_AUTHORIZED=true
+   > Ticket id: `<TICKET_ID>`
+   > Plan: `<PLAN_PATH>`
+   > Change slug: `<slug>`
+   >
+   > The aggregated reviewer verdict is clean. Follow the
+   > `$sr-reviewer` archive-only instructions exactly: validate the
+   > OpenSpec change, confirm every task is checked, perform the
+   > OpenSpec archive command, and verify the archive landed.
+
+3. `wait_agent`, parse the two-line `Score:` / `Verdict:` reply, and
+   `close_agent`.
+4. Treat any non-clean archive reply as archive failure.
+
+The reviewer rail's archive-only mode must run these checks:
+
+1. Re-confirm every task box in `openspec/changes/<slug>/tasks.md`
+   is ticked (`- [x]`) and the change validates:
+   `openspec validate "<slug>" --strict`.
+2. Archive it: `openspec archive "<slug>" -y` — this updates the
+   main specs and moves the change to `openspec/changes/archive/`.
+3. **Verify the archive landed — do NOT assume success.** Confirm
+   `openspec/changes/archive/` now contains the slug
+   (`ls -d openspec/changes/archive/*<slug>* 2>/dev/null`) AND that
+   `openspec/changes/<slug>/` is gone. If the archive directory is
+   absent, archiving FAILED.
+4. If `openspec validate`, `openspec archive`, or the step-3
+   verification fails: do NOT mark the ticket `done`. Treat the run
+   as `fix needed`, surface the error in the final report, set the
+   report's `Archive:` line to `FAILED`, and leave the ticket
+   `todo`.
+
+Skip archiving only when the verdict is `fix needed` or `blocked` —
+an unsound change must never be archived. In that case set the
+report's `Archive:` line to `skipped (<verdict>)`.
+
+**Step B — Close the ticket + report.** If a ticket id is in play:
 
 - Update `.specrails/local-tickets.json`. Modify only:
   - `tickets["<ID>"].status` → `"done"` (clean) or `"todo"`
@@ -288,6 +354,7 @@ Print the final summary (≤18 lines):
 Pipeline:  architect → <developer skill(s)> → <reviewer skill(s)>
 Plan:      <path>
 Confidence: <best path> (overall <score>/100)
+Archive:   archived → openspec/changes/archive/<slug>  |  skipped (<verdict>)  |  FAILED
 Files:     <one path per line, capped at 12; truncate beyond>
 Tests:     <ran command, pass/fail>
 Build:     <ran command, ok/fail/n/a>

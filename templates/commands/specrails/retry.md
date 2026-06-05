@@ -177,8 +177,9 @@ If `n` or no response: exit without changes.
 
 Execute phases in canonical order starting from `RESUME_PHASE`. For each phase:
 
+- If its status in `PHASE_STATUSES` is `"skipped"`: **skip** — the agent was not installed at the original run (e.g. an optional sr-test-writer / sr-doc-sync). Never launch a phase that was skipped, regardless of its position relative to `RESUME_PHASE`.
 - If its status in `PHASE_STATUSES` is `"done"` AND it precedes `RESUME_PHASE` in canonical order: **skip** — do not re-run.
-- If it equals `RESUME_PHASE` or comes after: **run** it.
+- If it equals `RESUME_PHASE` or comes after (and is not `"skipped"`): **run** it.
 
 After each phase completes (or fails), update `.claude/pipeline-state/<FEATURE_NAME>.json`:
 1. Read the current file.

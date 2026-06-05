@@ -45,7 +45,7 @@ Then stop.
 
 Parse the YAML and extract:
 - `config.version` — must be `1`; if not, warn and proceed
-- `config.provider` — `claude` or `codex`; default `claude`
+- `config.provider` — `claude` (this is the Claude enrichment flow); default `claude`
 - `config.tier` — `full` or `quick`; default `full`
 - `config.agents.selected` — list of agent names to install
 - `config.agents.excluded` — list of agent names to skip (for reference only)
@@ -69,9 +69,7 @@ To resolve the model for any given agent:
 
 ### FC2: Provider Setup
 
-Use `FC_provider` from the config as the source of truth. Set `CLI_PROVIDER = FC_provider`, and set `SPECRAILS_DIR` to `.codex` when `CLI_PROVIDER == "codex"`, otherwise `.claude`.
-
-Set `SPECRAILS_DIR` and `CLI_PROVIDER` from resolved provider.
+This is the Claude enrichment flow. Set `SPECRAILS_DIR = ".claude"`.
 
 ### FC3: If tier is `quick` — run Quick Mode with config context
 
@@ -144,7 +142,7 @@ Read the following files to understand the current installation state:
 
 2. Read `.specrails/specrails-version` — contains the current version string (e.g., `0.2.0`). If it does not exist, treat version as `0.1.0 (legacy)`.
 
-3. Determine `$SPECRAILS_DIR` from the existing install layout. If `.codex/` exists, use `cli_provider = "codex"` and `specrails_dir = ".codex"`. Otherwise use `cli_provider = "claude"` and `specrails_dir = ".claude"`.
+3. This is the **Claude** enrichment flow: it operates on `.claude/` (`specrails_dir = ".claude"`). Codex projects use their own codex-native `$enrich` skill, not this command.
 
 4. List all template files in `.specrails/setup-templates/agents/` — these are the NEW agent templates from the update:
    ```bash
@@ -265,26 +263,20 @@ For each agent in the "changed" list:
    - If not present, check `AGENTS_CONFIG.defaults.model` (global default)
    - If `AGENTS_CONFIG` is null, use the model from the template frontmatter
    - Replace the `model:` field in the YAML frontmatter with the resolved value before writing
-4. Write the adapted agent using the format for the active provider (same dual-format rules as Phase 4.1):
-   - `cli_provider == "claude"`: write to `$SPECRAILS_DIR/agents/sr-<name>.md` (Markdown with YAML frontmatter)
-   - `cli_provider == "codex"`: write to `$SPECRAILS_DIR/agents/sr-<name>.toml` (TOML format with `name`, `description`, `model`, `prompt` fields)
+4. Write the adapted agent (same rules as Phase 4.1):
+   - Write to `.claude/agents/sr-<name>.md` (Markdown with YAML frontmatter)
 5. Show: `✓ Regenerated sr-<name>`
 
 After regenerating all changed agents, verify no unresolved placeholders remain:
 ```bash
-# Claude Code
 grep -r '{{[A-Z_]*}}' .claude/agents/sr-*.md 2>/dev/null || echo "OK: no broken placeholders"
-# Codex
-grep -r '{{[A-Z_]*}}' .codex/agents/sr-*.toml 2>/dev/null || echo "OK: no broken placeholders"
 ```
 
 ### Phase U4b: Update Changed Commands
 
 For each command in the "changed commands" list from Phase U3:
 
-1. Read the NEW template:
-   - If `cli_provider == "claude"`: from `.specrails/setup-templates/commands/specrails/<name>.md`
-   - If `cli_provider == "codex"`: from `.specrails/setup-templates/skills/sr-<name>/SKILL.md`
+1. Read the NEW template from `.specrails/setup-templates/commands/specrails/<name>.md`
 2. Read stored backlog configuration from `.specrails/backlog-config.json` (if it exists) to resolve provider-specific placeholders:
    - `BACKLOG_PROVIDER` → `provider` field (`github`, `jira`, or `none`)
    - `BACKLOG_WRITE` → `write_access` field
@@ -300,19 +292,12 @@ For each command in the "changed commands" list from Phase U3:
    - `{{BACKLOG_VIEW_CMD}}` → provider-specific view command from backlog config
    - `{{BACKLOG_PREFLIGHT}}` → provider-specific preflight check from backlog config
    - Any other `{{PLACEHOLDER}}` values → use Phase U2 analysis data
-4. Write the updated file:
-   - If `cli_provider == "claude"`: to `.claude/commands/specrails/<name>.md`
-   - If `cli_provider == "codex"`: to `.agents/skills/sr-<name>/SKILL.md`
-5. Show:
-   - If `cli_provider == "claude"`: `✓ Updated /specrails:<name>`
-   - If `cli_provider == "codex"`: `✓ Updated $sr-<name>`
+4. Write the updated file to `.claude/commands/specrails/<name>.md`
+5. Show: `✓ Updated /specrails:<name>`
 
-After updating all changed commands/skills, verify no unresolved placeholders remain:
+After updating all changed commands, verify no unresolved placeholders remain:
 ```bash
-# If cli_provider == "claude":
 grep -l '{{[A-Z_]*}}' .claude/commands/specrails/*.md 2>/dev/null || echo "OK: no broken placeholders"
-# If cli_provider == "codex":
-grep -rl '{{[A-Z_]*}}' .agents/skills/sr-*/SKILL.md 2>/dev/null || echo "OK: no broken placeholders"
 ```
 If any placeholders remain unresolved, warn the user:
 > "⚠ Some placeholders in `<filename>` could not be resolved automatically. Please review the file and fill them in manually."
@@ -336,32 +321,22 @@ For each agent in the "new" list:
 
 For each command in the "new commands" list from Phase U3:
 
-1. Read the template:
-   - If `cli_provider == "claude"`: from `.specrails/setup-templates/commands/specrails/<name>.md`
-   - If `cli_provider == "codex"`: from `.specrails/setup-templates/skills/sr-<name>/SKILL.md`
-2. Prompt the user:
-   - If `cli_provider == "claude"`: `"New command available: /specrails:<name> — [one-line description]. Install it? [Y/n]"`
-   - If `cli_provider == "codex"`: `"New skill available: $sr-<name> — [one-line description]. Install it? [Y/n]"`
+1. Read the template from `.specrails/setup-templates/commands/specrails/<name>.md`
+2. Prompt the user: `"New command available: /specrails:<name> — [one-line description]. Install it? [Y/n]"`
 3. If the user accepts (or presses Enter):
    - Apply placeholder substitution using the same rules as Phase U4b (backlog config + codebase analysis)
-   - If `cli_provider == "claude"`: write to `.claude/commands/specrails/<name>.md` — show `✓ Added /specrails:<name>`
-   - If `cli_provider == "codex"`: write to `.agents/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name>`
+   - Write to `.claude/commands/specrails/<name>.md` — show `✓ Added /specrails:<name>`
 4. If the user declines:
-   - If `cli_provider == "claude"`: show `→ Skipped /specrails:<name>`
-   - If `cli_provider == "codex"`: show `→ Skipped $sr-<name>`
+   - Show `→ Skipped /specrails:<name>`
 
 ### Phase U6: Update Workflow Commands
 
 If any new agents were added in Phase U5:
 
-1. Read the implement command/skill:
-   - If `cli_provider == "claude"`: `.claude/commands/specrails/implement.md`
-   - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
+1. Read the implement command at `.claude/commands/specrails/implement.md`
 2. Check if the file references agent names in its orchestration steps (look for `sr-architect`, `sr-developer`, `sr-reviewer` etc.)
 3. If newly added agents belong in the implementation pipeline (i.e., they are layer-specific developers such as `sr-frontend-developer` or `sr-backend-developer`), add them to the appropriate step in the implement command — specifically where parallel developer agents are launched
-4. Write the updated file if any changes were made:
-   - If `cli_provider == "claude"`: `.claude/commands/specrails/implement.md`
-   - If `cli_provider == "codex"`: `.agents/skills/sr-implement/SKILL.md`
+4. Write the updated file to `.claude/commands/specrails/implement.md` if any changes were made
 5. Show which commands were updated, or "No command updates needed" if nothing changed
 
 This is a lightweight check — only update commands where the sr- agent clearly belongs. Do not restructure the entire command.
@@ -463,28 +438,17 @@ Store as `QS_IS_EXISTING_CODEBASE=true/false`.
 
 Before generating files, check if this is a re-run:
 
-1. Check if commands/skills already exist:
-   - If `cli_provider == "claude"`: check if `.claude/commands/specrails/` directory exists with any `.md` files:
-     ```bash
-     ls .claude/commands/specrails/*.md 2>/dev/null
-     ```
-   - If `cli_provider == "codex"`: check if `.agents/skills/sr-*/SKILL.md` files exist:
-     ```bash
-     ls .agents/skills/sr-*/SKILL.md 2>/dev/null
-     ```
+1. Check if commands already exist — check if `.claude/commands/specrails/` directory exists with any `.md` files:
+   ```bash
+   ls .claude/commands/specrails/*.md 2>/dev/null
+   ```
 2. If files are found → this is a **re-run**. Store `QS_IS_RERUN=true`.
 3. If the directory does not exist or is empty → this is a **fresh install**. Store `QS_IS_RERUN=false`.
 
-In re-run mode, QS3 executes in **gap-fill mode** for command/skill files:
-- For each command in the list, check if it already exists:
-  - If `cli_provider == "claude"`: at `.claude/commands/specrails/<name>.md`
-  - If `cli_provider == "codex"`: at `.agents/skills/sr-<name>/SKILL.md`
-- If it exists: skip it and show:
-  - Claude: `✓ Already installed: /specrails:<name>`
-  - Codex: `✓ Already installed: $sr-<name>`
-- If it does NOT exist: install it and show:
-  - Claude: `✓ Added /specrails:<name> (was missing)`
-  - Codex: `✓ Added $sr-<name> (was missing)`
+In re-run mode, QS3 executes in **gap-fill mode** for command files:
+- For each command in the list, check if it already exists at `.claude/commands/specrails/<name>.md`
+- If it exists: skip it and show `✓ Already installed: /specrails:<name>`
+- If it does NOT exist: install it and show `✓ Added /specrails:<name> (was missing)`
 - Do NOT prompt the user for confirmation on missing files — install them automatically
 
 For CLAUDE.md/AGENTS.md and agent files, the existing per-file prompts already handle re-runs (user is asked before overwriting). No change needed there.
@@ -507,9 +471,8 @@ Skip if user says no.
 
 **2. Agent files**
 
-For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `.specrails/setup-templates/agents/<name>.md` and generate the adapted agent file using the dual-format rules from Phase 4.1:
-- `cli_provider == "claude"`: write to `.claude/agents/<name>.md` (Markdown with frontmatter)
-- `cli_provider == "codex"`: write to `.codex/agents/<name>.toml` (TOML format)
+For each default agent (sr-architect, sr-developer, sr-reviewer, sr-product-manager), read the template from `.specrails/setup-templates/agents/<name>.md` and generate the adapted agent file using the rules from Phase 4.1:
+- Write to `.claude/agents/<name>.md` (Markdown with frontmatter)
 
 If `.specrails/agents.yaml` exists, read it and apply model resolution (per-agent override → defaults → template value) before writing each agent file.
 
@@ -545,21 +508,11 @@ Core commands (always install if missing):
    }
    ```
 
-**If `cli_provider == "claude"`:**
-
 If `QS_IS_RERUN=false` (fresh install): for each core command, read the template from `.specrails/setup-templates/commands/specrails/<name>.md`, substitute the backlog placeholders with local values (using the same table as Phase 4.3 "Local Tickets"), stub all persona placeholders with `(Quick Mode — run /specrails:enrich to configure personas)`, then write to `.claude/commands/specrails/<name>.md`.
 
 If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.claude/commands/specrails/<name>.md` already exists:
 - If it exists: skip it — show `✓ Already installed: /specrails:<name>`
 - If it does NOT exist: read template, substitute placeholders as above, write to `.claude/commands/specrails/<name>.md` — show `✓ Added /specrails:<name> (was missing)`
-
-**If `cli_provider == "codex"`:**
-
-If `QS_IS_RERUN=false` (fresh install): for each core command, read the corresponding skill template from `.specrails/setup-templates/skills/sr-<name>/SKILL.md`, substitute the backlog placeholders with local values and stub persona placeholders with `(Quick Mode — run /specrails:enrich to configure personas)`, then write to `.agents/skills/sr-<name>/SKILL.md` (create the directory first).
-
-If `QS_IS_RERUN=true` (gap-fill mode): for each command in the list above, check if `.agents/skills/sr-<name>/SKILL.md` already exists:
-- If it exists: skip it — show `✓ Already installed: $sr-<name>`
-- If it does NOT exist: read template, substitute placeholders as above, write to `.agents/skills/sr-<name>/SKILL.md` — show `✓ Added $sr-<name> (was missing)`
 
 **4. Cleanup**
 
@@ -1155,7 +1108,7 @@ Wait for final confirmation.
 
 Read each template from `.specrails/setup-templates/` and generate the final files adapted to this project. Use the codebase analysis from Phase 1, personas from Phase 2, and configuration from Phase 3.
 
-**Provider detection (required before any file generation):** Determine `cli_provider` from the existing install layout: use `"codex"` when `.codex/` exists, otherwise `"claude"`. Set `specrails_dir` to `.codex` or `.claude` accordingly. All output paths in Phase 4 use `$SPECRAILS_DIR` as the base directory.
+**Output base directory:** All output paths in Phase 4 use `.claude` as the base directory (`specrails_dir = ".claude"`).
 
 ### 4.1 Generate agents
 
@@ -1163,7 +1116,6 @@ For each selected agent, read the template and generate the adapted version.
 
 **Template → Output mapping:**
 
-**If `cli_provider == "claude"` (default):**
 - `.specrails/setup-templates/agents/sr-architect.md` → `.claude/agents/sr-architect.md`
 - `.specrails/setup-templates/agents/sr-developer.md` → `.claude/agents/sr-developer.md`
 - `.specrails/setup-templates/agents/sr-reviewer.md` → `.claude/agents/sr-reviewer.md`
@@ -1173,17 +1125,6 @@ For each selected agent, read the template and generate the adapted version.
 - `.specrails/setup-templates/agents/sr-product-analyst.md` → `.claude/agents/sr-product-analyst.md`
 - `.specrails/setup-templates/agents/sr-backend-developer.md` → `.claude/agents/sr-backend-developer.md` (if backend layer)
 - `.specrails/setup-templates/agents/sr-frontend-developer.md` → `.claude/agents/sr-frontend-developer.md` (if frontend layer)
-
-**If `cli_provider == "codex"`:**
-- `.specrails/setup-templates/agents/sr-architect.md` → `.codex/agents/sr-architect.toml`
-- `.specrails/setup-templates/agents/sr-developer.md` → `.codex/agents/sr-developer.toml`
-- `.specrails/setup-templates/agents/sr-reviewer.md` → `.codex/agents/sr-reviewer.toml`
-- `.specrails/setup-templates/agents/sr-test-writer.md` → `.codex/agents/sr-test-writer.toml`
-- `.specrails/setup-templates/agents/sr-security-reviewer.md` → `.codex/agents/sr-security-reviewer.toml`
-- `.specrails/setup-templates/agents/sr-product-manager.md` → `.codex/agents/sr-product-manager.toml`
-- `.specrails/setup-templates/agents/sr-product-analyst.md` → `.codex/agents/sr-product-analyst.toml`
-- `.specrails/setup-templates/agents/sr-backend-developer.md` → `.codex/agents/sr-backend-developer.toml` (if backend layer)
-- `.specrails/setup-templates/agents/sr-frontend-developer.md` → `.codex/agents/sr-frontend-developer.toml` (if frontend layer)
 
 When generating each agent:
 1. Read the template
@@ -1209,23 +1150,7 @@ When generating each agent:
    - If not present, check `AGENTS_CONFIG.defaults.model` (global default)
    - If `AGENTS_CONFIG` was not loaded (e.g., re-run without config), use the model from the template frontmatter (current behavior)
    - Replace the `model:` field in the YAML frontmatter with the resolved value before writing
-4. Write the final file in the format for the active provider:
-
-**If `cli_provider == "claude"`:** Write as Markdown with YAML frontmatter — the template file as-is (frontmatter preserved).
-
-**If `cli_provider == "codex"`:** Convert to TOML format:
-- Extract YAML frontmatter fields: `name`, `description`, `model`
-- Extract the body content (everything after the closing `---` of the frontmatter)
-- Map the `model` field: `sonnet` → `codex-mini-latest`, `opus` → `o3`, `haiku` → `codex-mini-latest`
-- Write a `.toml` file with this structure:
-  ```toml
-  name = "<name from frontmatter>"
-  description = "<description from frontmatter, escaped for TOML>"
-  model = "codex-mini-latest"
-  prompt = """
-  <body content after placeholder substitution>
-  """
-  ```
+4. Write the final file as Markdown with YAML frontmatter — the template file as-is (frontmatter preserved).
 
 ### 4.2 Generate personas
 
@@ -1245,11 +1170,10 @@ Write each persona to `$SPECRAILS_DIR/agents/personas/`:
 - Use the VPC personas generated in Phase 2
 - File naming: kebab-case of persona nickname (e.g., `the-developer.md`, `the-admin.md`)
 
-### 4.3 Generate commands / skills
+### 4.3 Generate commands
 
 For each selected command, read the template and adapt.
 
-**If `cli_provider == "claude"` (default):**
 - `.specrails/setup-templates/commands/specrails/implement.md` → `.claude/commands/specrails/implement.md`
 - `.specrails/setup-templates/commands/specrails/batch-implement.md` → `.claude/commands/specrails/batch-implement.md`
 - `.specrails/setup-templates/commands/specrails/propose-spec.md` → `.claude/commands/specrails/propose-spec.md`
@@ -1260,31 +1184,7 @@ For each selected command, read the template and adapt.
 - `.specrails/setup-templates/commands/specrails/why.md` → `.claude/commands/specrails/why.md`
 - `.specrails/setup-templates/commands/specrails/reconfig.md` → `.claude/commands/specrails/reconfig.md`
 
-**If `cli_provider == "codex"`:**
-- `.specrails/setup-templates/skills/sr-implement/SKILL.md` → `.agents/skills/sr-implement/SKILL.md`
-- `.specrails/setup-templates/skills/sr-batch-implement/SKILL.md` → `.agents/skills/sr-batch-implement/SKILL.md`
-- `.specrails/setup-templates/commands/specrails/propose-spec.md` → `.agents/skills/sr-propose-spec/SKILL.md` (wrap with YAML frontmatter if no skill template exists)
-- `.specrails/setup-templates/commands/specrails/get-backlog-specs.md` → `.agents/skills/sr-get-backlog-specs/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
-- `.specrails/setup-templates/commands/specrails/auto-propose-backlog-specs.md` → `.agents/skills/sr-auto-propose-backlog-specs/SKILL.md` (if `BACKLOG_PROVIDER != none`; wrap with frontmatter)
-- `.specrails/setup-templates/skills/sr-compat-check/SKILL.md` → `.agents/skills/sr-compat-check/SKILL.md`
-- `.specrails/setup-templates/skills/sr-refactor-recommender/SKILL.md` → `.agents/skills/sr-refactor-recommender/SKILL.md`
-- `.specrails/setup-templates/skills/sr-why/SKILL.md` → `.agents/skills/sr-why/SKILL.md`
-- `.specrails/setup-templates/commands/specrails/reconfig.md` → `.agents/skills/sr-reconfig/SKILL.md` (wrap with YAML frontmatter)
-
-**Codex skill frontmatter wrapping:** When a dedicated skill template does not exist in `.specrails/setup-templates/skills/` for a command, generate the `SKILL.md` by prepending YAML frontmatter to the command content:
-```yaml
----
-name: sr-<name>
-description: "<one-line description from the command's first heading>"
-license: MIT
-compatibility: "Requires git."
-metadata:
-  author: specrails
-  version: "1.0"
----
-```
-
-For both providers, create the output directory before writing (`mkdir -p` for `.claude/commands/specrails/` or `.agents/skills/sr-<name>/`).
+Create the output directory before writing (`mkdir -p .claude/commands/specrails/`).
 
 Adapt:
 - CI commands to match detected stack
@@ -1382,15 +1282,9 @@ Each rule file must:
 
 ### 4.5 Generate root instructions file
 
-**If `cli_provider == "claude"`:** If no `CLAUDE.md` exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
-
-**If `cli_provider == "codex"`:** If no `AGENTS.md` exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
+If no `CLAUDE.md` exists, generate one from the template. If one already exists, **merge** — add the agent workflow sections without removing existing content.
 
 ### 4.6 Generate settings
-
-Resolve `cli_provider` from the existing install layout (`.codex/` => `codex`, otherwise `claude`).
-
-**If `cli_provider == "claude"` (default):**
 
 Create or merge `.claude/settings.json` with permissions for:
 - All detected CI commands
@@ -1398,29 +1292,6 @@ Create or merge `.claude/settings.json` with permissions for:
 - OpenSpec CLI (if installed)
 - GitHub CLI (if available)
 - Language-specific tools (python, npm, cargo, go, etc.)
-
-**If `cli_provider == "codex"`:**
-
-1. Read `.specrails/setup-templates/settings/codex-config.toml`. Write it to `.codex/config.toml` as-is (no substitutions needed — the TOML is static).
-
-2. Read `.specrails/setup-templates/settings/codex-rules.star`. Replace `{{CODEX_SHELL_RULES}}` with Starlark `prefix_rule(...)` lines for each detected tool allowance:
-
-   | Detected tool/command | Starlark rule |
-   |----------------------|---------------|
-   | OpenSpec CLI (`openspec`) | `prefix_rule(pattern=["openspec"], decision="allow")` |
-   | Python (`python`, `pip`) | `prefix_rule(pattern=["python"], decision="allow")`<br>`prefix_rule(pattern=["pip"], decision="allow")` |
-   | npm (`npm`) | `prefix_rule(pattern=["npm"], decision="allow")` |
-   | Cargo (`cargo`) | `prefix_rule(pattern=["cargo"], decision="allow")` |
-   | Go (`go`) | `prefix_rule(pattern=["go"], decision="allow")` |
-   | Any detected CI command | `prefix_rule(pattern=["<cmd>"], decision="allow")` |
-
-   Write the rendered file to `.codex/rules/default.rules`.
-
-   ```bash
-   mkdir -p .codex/rules
-   ```
-
-   If `cli_provider` cannot be determined (file missing), fall back to `"claude"` behavior.
 
 ### 4.7 Initialize agent memory
 
@@ -1485,25 +1356,16 @@ Apply the user's choice.
 After cleanup, verify that only the intended files remain:
 
 ```bash
-# These should exist (the actual system) — use the resolved $SPECRAILS_DIR:
-# If cli_provider == "claude":
+# These should exist (the actual system):
 ls .claude/agents/sr-*.md
 ls .claude/agents/personas/*.md
 ls .claude/commands/specrails/*.md
 ls .claude/rules/*.md
 ls .claude/agent-memory/
 
-# If cli_provider == "codex":
-ls .codex/agents/sr-*.toml
-ls .codex/agents/personas/*.md
-ls .agents/skills/sr-*/SKILL.md
-ls .codex/rules/*.md
-ls .codex/agent-memory/
-
 # These should NOT exist (scaffolding):
 # .specrails/setup-templates/  — GONE
-# If cli_provider == "claude": $SPECRAILS_DIR/commands/enrich.md  — GONE
-# If cli_provider == "codex": .agents/skills/setup/  — GONE (installer scaffold, not a generated sr-skill)
+# .claude/commands/enrich.md  — GONE
 ```
 
 If any scaffolding artifact remains, remove it.
@@ -1518,20 +1380,12 @@ Display the complete installation summary:
 ### Agents Installed
 | Agent | File | Model |
 |-------|------|-------|
-[If cli_provider == "claude":]
 | sr-architect | .claude/agents/sr-architect.md | Sonnet |
 | sr-developer | .claude/agents/sr-developer.md | Sonnet |
 | sr-reviewer | .claude/agents/sr-reviewer.md | Sonnet |
 | sr-test-writer | .claude/agents/sr-test-writer.md | Sonnet |
 | sr-security-reviewer | .claude/agents/sr-security-reviewer.md | Sonnet |
 | sr-product-manager | .claude/agents/sr-product-manager.md | Opus |
-[If cli_provider == "codex":]
-| sr-architect | .codex/agents/sr-architect.toml | codex-mini-latest |
-| sr-developer | .codex/agents/sr-developer.toml | codex-mini-latest |
-| sr-reviewer | .codex/agents/sr-reviewer.toml | codex-mini-latest |
-| sr-test-writer | .codex/agents/sr-test-writer.toml | codex-mini-latest |
-| sr-security-reviewer | .codex/agents/sr-security-reviewer.toml | codex-mini-latest |
-| sr-product-manager | .codex/agents/sr-product-manager.toml | o3 |
 
 ### Personas Created
 | Persona | File | Source |
@@ -1541,8 +1395,7 @@ Display the complete installation summary:
 [For each user-generated persona:]
 | "[Name]" — The [Role] | $SPECRAILS_DIR/agents/personas/[name].md | Generated |
 
-### Commands / Skills Installed
-[If cli_provider == "claude":]
+### Commands Installed
 | Command | File |
 |---------|------|
 | /specrails:implement | .claude/commands/specrails/implement.md |
@@ -1553,19 +1406,8 @@ Display the complete installation summary:
 | /specrails:compat-check | .claude/commands/specrails/compat-check.md |
 | /specrails:refactor-recommender | .claude/commands/specrails/refactor-recommender.md |
 | /specrails:why | .claude/commands/specrails/why.md |
-[If cli_provider == "codex":]
-| Skill | File |
-|-------|------|
-| $sr-implement | .agents/skills/sr-implement/SKILL.md |
-| $sr-batch-implement | .agents/skills/sr-batch-implement/SKILL.md |
-| $sr-propose-spec | .agents/skills/sr-propose-spec/SKILL.md |
-| $sr-get-backlog-specs | .agents/skills/sr-get-backlog-specs/SKILL.md |
-| $sr-auto-propose-backlog-specs | .agents/skills/sr-auto-propose-backlog-specs/SKILL.md |
-| $sr-compat-check | .agents/skills/sr-compat-check/SKILL.md |
-| $sr-refactor-recommender | .agents/skills/sr-refactor-recommender/SKILL.md |
-| $sr-why | .agents/skills/sr-why/SKILL.md |
 
-Note: Only commands/skills selected during setup are shown. Backlog commands are excluded if no backlog provider was configured.
+Note: Only commands selected during setup are shown. Backlog commands are excluded if no backlog provider was configured.
 
 ### Rules Created
 | Layer | File |
@@ -1577,33 +1419,20 @@ Note: Only commands/skills selected during setup are shown. Backlog commands are
 | Artifact | Status |
 |----------|--------|
 | .specrails/setup-templates/ | Deleted |
-[If cli_provider == "claude":] | .claude/commands/enrich.md | Deleted |
-[If cli_provider == "codex":] | .agents/skills/setup/ | Deleted |
+| .claude/commands/enrich.md | Deleted |
 | specrails/ | [User's choice] |
 
 ### Next Steps
-[If cli_provider == "claude":]
 1. Review the generated files in .claude/
 2. Run `/specrails:get-backlog-specs` to see your backlog (if GitHub Issues exist)
 3. Run `/specrails:auto-propose-backlog-specs` to generate feature ideas
 4. Run `/specrails:implement #issue-number` to implement a feature
 5. Commit the .claude/ directory to version control
-[If cli_provider == "codex":]
-1. Review the generated files in .codex/ and .agents/skills/
-2. Run `$sr-get-backlog-specs` to see your backlog (if GitHub Issues exist)
-3. Run `$sr-auto-propose-backlog-specs` to generate feature ideas
-4. Run `$sr-implement #issue-number` to implement a feature
-5. Commit the .codex/ and .agents/ directories to version control
 
 ### Quick Start
-[If cli_provider == "claude":]
 - `/specrails:implement "describe a feature"` — implement something right now
 - `/specrails:get-backlog-specs` — see prioritized feature ideas
 - `/specrails:auto-propose-backlog-specs` — discover new features using VPC
-[If cli_provider == "codex":]
-- `$sr-implement "describe a feature"` — implement something right now
-- `$sr-get-backlog-specs` — see prioritized feature ideas
-- `$sr-auto-propose-backlog-specs` — discover new features using VPC
 ```
 
 ## First Task Prompt (Full Wizard)
@@ -1615,10 +1444,7 @@ After displaying the setup complete summary above, detect the project type and o
 ✅ Setup complete.
 
 Try your first spec:
-[If cli_provider == "claude":]
   > /specrails:get-backlog-specs
-[If cli_provider == "codex":]
-  > $sr-get-backlog-specs
 ```
 
 **Existing codebase** (one or more of the above files found in root):
@@ -1626,10 +1452,7 @@ Try your first spec:
 ✅ Setup complete.
 
 Try your first spec:
-[If cli_provider == "claude":]
   > /specrails:refactor-recommender
-[If cli_provider == "codex":]
-  > $sr-refactor-recommender
 ```
 
 Then stop.

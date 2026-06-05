@@ -19,16 +19,35 @@ source files outside `openspec/` and `.specrails/agent-memory/`.
 
 ### A. OpenSpec change package
 
-Create a directory at:
+**Scaffold the change with the OpenSpec CLI — this is mandatory.**
+Do NOT hand-create the change directory; the `openspec` CLI owns
+scaffolding so the change is registered with a workflow schema and
+stays trackable by `openspec status`. Run:
 
-`openspec/changes/<slug>/`
+```
+openspec new change "<slug>" --schema spec-driven
+```
 
 where `<slug>` is a kebab-case derivation of the ticket title
 (e.g. ticket "Build a Playable Tetris Game" → `add-tetris-game`).
-If `openspec/` doesn't exist yet, create it. If the change
-directory already exists from a prior run, **reuse** it (idempotent).
+This creates `openspec/changes/<slug>/.openspec.yaml`.
 
-Inside that directory, write four files:
+- If the command fails because OpenSpec isn't initialised in this
+  repo, run `openspec init . --tools codex --force` once, then
+  re-run `openspec new change …`.
+- If the change directory already exists from a prior run,
+  **reuse** it (idempotent) — skip the `new change` call.
+
+Then fill the change's artefacts **in the dependency order
+OpenSpec enforces** (proposal first; then design + specs; then
+tasks). Check the order and what's still outstanding at any time
+with:
+
+```
+openspec status --change "<slug>" --json
+```
+
+Write these four artefacts into `openspec/changes/<slug>/`:
 
 **`proposal.md`** — the change's executive summary:
 
@@ -237,12 +256,19 @@ on the touched files as a fallback.>
 When BOTH the OpenSpec change package and the plan artefact are
 written:
 
-1. Reply with two lines:
+1. **Validate the change with the OpenSpec CLI** (mandatory):
+   ```
+   openspec validate "<slug>"
+   ```
+   If validation reports structural errors, fix the offending
+   artefact and re-run until it passes. Do not hand off a change
+   that fails `openspec validate`.
+2. Reply with two lines:
    ```
    OpenSpec change: openspec/changes/<slug>/
    Plan written to <plan-path>; files to touch: <comma-separated list>
    ```
-2. End your turn. The orchestrator will read your plan + the
+3. End your turn. The orchestrator will read your plan + the
    tasks.md and spawn the developer next.
 
 If you cannot produce a plan (ticket is too ambiguous, repo

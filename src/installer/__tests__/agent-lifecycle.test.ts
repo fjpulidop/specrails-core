@@ -10,15 +10,23 @@ import { describe, expect, it } from 'vitest'
  * These tests assert that the templates contain the structural patterns
  * required by the fix-agent-openspec-lifecycle change:
  *
- *   - sr-architect: opsx:new precedes opsx:ff; specName guard present;
- *                   hand-authoring prohibition present
+ *   - sr-architect: scaffolds via opsx:ff only (no opsx:new — ff creates the
+ *                   change itself); specName guard; hand-authoring prohibition
  *   - sr-developer: opsx:apply present; checkbox gate `- [ ]` checked;
  *                   specName guard present; Phase 4 prerequisite note present
  *   - sr-reviewer:  task gate present; opsx:archive present;
  *                   specName guard present
  *
- * Each invariant is tested against BOTH the canonical template file
- * (templates/agents/) and the installed agent file (.claude/agents/).
+ * Each invariant is tested against the two live Claude sources that must
+ * stay in lockstep:
+ *   - the canonical Claude subagent template (templates/agents/)
+ *   - the installed Claude subagent file (.claude/agents/)
+ *
+ * Codex enforces the equivalent OpenSpec-CLI lifecycle through its own
+ * codex-native skills. Because codex reviewers run in PARALLEL and only the
+ * orchestrator holds the aggregated verdict, the archive obligation lives in
+ * the implement ORCHESTRATOR (not the reviewer rail). The codex archive
+ * contract is asserted at the bottom of this file.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -63,20 +71,15 @@ describe('sr-architect lifecycle invariants', () => {
         expect(content).toMatch(/\[error\] specName is required/)
       })
 
-      it('contains opsx:new invocation before opsx:ff in the body', () => {
-        // Strip the frontmatter block before checking order — the frontmatter
+      it('scaffolds via opsx:ff only and does NOT pre-call opsx:new (which would make ff fail)', () => {
+        // Strip the frontmatter block before checking — the frontmatter
         // legitimately mentions opsx:ff (to say the agent does NOT auto-trigger
-        // on it), but Step 0 in the body must list opsx:new before opsx:ff.
+        // on it). opsx:ff already runs `openspec new change` internally, so a
+        // separate opsx:new Skill call makes ff abort with "Change already exists".
         const bodyStart = content.indexOf('\n---\n') + 5
         const body = content.slice(bodyStart)
-        expect(body).toMatch(/opsx:new/)
-        expect(body).toMatch(/opsx:ff/)
-        // Verify ordering within body: opsx:new must appear before opsx:ff
-        const newIndex = body.indexOf('opsx:new')
-        const ffIndex = body.indexOf('opsx:ff')
-        expect(newIndex).toBeGreaterThanOrEqual(0)
-        expect(ffIndex).toBeGreaterThanOrEqual(0)
-        expect(newIndex).toBeLessThan(ffIndex)
+        expect(body).toMatch(/Skill\("opsx:ff"/)
+        expect(body).not.toMatch(/Skill\("opsx:new"/)
       })
 
       it('prohibits hand-authoring of proposal.md, design.md, tasks.md', () => {
@@ -163,4 +166,78 @@ describe('sr-reviewer lifecycle invariants', () => {
       })
     })
   }
+})
+
+/**
+ * Codex archive contract.
+ *
+ * Regression guard for the bug where a codex `clean` run closed the ticket
+ * but never archived the OpenSpec change (the archive step was absent from
+ * every committed version of the codex implement orchestrator).
+ *
+ * Archive is authorized by the orchestrator after aggregation, then executed
+ * by the reviewer rail in archive-only mode. This keeps the aggregate verdict
+ * decision in the orchestrator while forcing the lifecycle close through the
+ * reviewer and the OpenSpec CLI.
+ */
+function readCodexSkill(relPath: string): string {
+  return readFileSync(path.join(repoRoot, 'templates', 'codex-skills', relPath), 'utf8')
+}
+
+describe('codex implement orchestrator archive contract', () => {
+  const content = readCodexSkill(path.join('implement', 'SKILL.md'))
+
+  it('runs `openspec archive <slug> -y`', () => {
+    expect(content).toMatch(/openspec archive .*-y/)
+  })
+
+  it('makes archive mandatory on a clean verdict', () => {
+    expect(content).toMatch(/mandatory[\s\S]{0,40}clean/i)
+  })
+
+  it('validates / re-confirms task boxes BEFORE archiving (gate precedes archive)', () => {
+    // Anchor on the exact Phase 5 command strings: a bare `openspec archive`
+    // also appears in the top-of-file contract clause, which would defeat a
+    // loose indexOf comparison.
+    const gateIndex = content.indexOf('openspec validate "<slug>" --strict')
+    const archiveIndex = content.indexOf('openspec archive "<slug>" -y')
+    expect(gateIndex).toBeGreaterThanOrEqual(0)
+    expect(archiveIndex).toBeGreaterThanOrEqual(0)
+    expect(gateIndex).toBeLessThan(archiveIndex)
+  })
+
+  it('exposes an Archive field in the mandatory final-report template', () => {
+    expect(content).toMatch(/Archive:\s+archived/)
+  })
+
+  it('verifies the archive landed under openspec/changes/archive/<slug>', () => {
+    expect(content).toMatch(/changes\/archive\/[^\n]*<slug>/)
+  })
+
+  it('delegates the clean archive close to sr-reviewer with authorization', () => {
+    expect(content).toMatch(/\$sr-reviewer/)
+    expect(content).toMatch(/ARCHIVE_ONLY=true/)
+    expect(content).toMatch(/ARCHIVE_AUTHORIZED=true/)
+  })
+})
+
+describe('codex reviewer rail archive contract', () => {
+  const content = readCodexSkill(path.join('rails', 'sr-reviewer', 'SKILL.md'))
+
+  it('archives with the OpenSpec CLI only when the orchestrator authorizes it', () => {
+    expect(content).toMatch(/ARCHIVE_AUTHORIZED=true/)
+    expect(content).toMatch(/ARCHIVE_ONLY=true/)
+    expect(content).toMatch(/openspec archive "<slug>" -y/)
+  })
+
+  it('validates and checks task boxes before archiving', () => {
+    const gateIndex = content.indexOf('openspec validate "<slug>" --strict')
+    const taskIndex = content.indexOf('- [ ]')
+    const archiveIndex = content.indexOf('openspec archive "<slug>" -y')
+    expect(gateIndex).toBeGreaterThanOrEqual(0)
+    expect(taskIndex).toBeGreaterThanOrEqual(0)
+    expect(archiveIndex).toBeGreaterThanOrEqual(0)
+    expect(gateIndex).toBeLessThan(archiveIndex)
+    expect(taskIndex).toBeLessThan(archiveIndex)
+  })
 })

@@ -53,15 +53,18 @@ When invoked by the orchestrator with a specName argument, you must execute the 
 
 ### Step 0: Scaffold OpenSpec Artifacts
 
-Before any design work, scaffold the required OpenSpec artifacts for `<specName>` by invoking the following skills via the Skill tool, in this exact order:
+Before any design work, scaffold the required OpenSpec artifacts for `<specName>` by invoking the OpenSpec fast-forward skill via the Skill tool:
 
-1. Invoke `Skill("opsx:new", specName)` — creates the change directory and initial proposal.md
-2. Invoke `Skill("opsx:ff", specName)` — fast-forwards through design.md and tasks.md generation
+```
+Skill("opsx:ff", specName)
+```
+
+`opsx:ff` creates the change directory AND generates `proposal.md`, `design.md`, and `tasks.md` in a single pass.
 
 **Critical rules:**
-- You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md` — these are produced exclusively by the opsx CLI tools above
-- `/opsx:new` MUST precede `/opsx:ff` — the order is not interchangeable
-- Both commands run non-interactively — do NOT prompt the user or ask for confirmation at any point
+- You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md` — these are produced exclusively by `opsx:ff`
+- Do NOT call `opsx:new` first. `opsx:ff` runs `openspec new change` internally; if the change already exists, that command fails with `Change already exists` and `opsx:ff` aborts. `opsx:ff` alone is the complete scaffold step.
+- `opsx:ff` runs non-interactively — do NOT prompt the user or ask for confirmation at any point
 - Only after Step 0 completes successfully do you proceed to Steps 1–6 below
 
 ### 1. Analyze Spec Changes
