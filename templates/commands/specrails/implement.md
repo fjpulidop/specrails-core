@@ -617,7 +617,6 @@ If no shared files: print `No shared files detected. All features modify indepen
 ### 3a.2 Pre-validate architect output
 
 Quick-check each architect's artifacts:
-0. **OpenSpec CLI validation (hard gate):** run `openspec validate "<name>" --strict`. A pass proves the change was scaffolded through the `openspec` CLI and is structurally real. A failure (or a missing `openspec/changes/<name>/.openspec.yaml`) means the architect hand-authored a *simulated* change instead of running the CLI — treat the area as failed; do NOT proceed to developers for it.
 1. tasks.md exists and has tasks
 2. context-bundle.md exists
 3. File references are real (>70% must exist)

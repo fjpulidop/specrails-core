@@ -7,20 +7,15 @@ import { describe, expect, it } from 'vitest'
 /**
  * Lifecycle invariant tests for the three sr-* agent templates.
  *
- * These tests assert that the Claude agent templates drive the OpenSpec
- * lifecycle through the `openspec` CLI DIRECTLY — not via the interactive
- * `/opsx:*` Skill wrappers. Those wrappers call AskUserQuestion/TodoWrite and
- * pause for input, so inside a non-interactive subagent they stall and push
- * the agent to hand-author a "simulated" (CLI-unregistered) change:
+ * These tests assert that the templates contain the structural patterns
+ * required by the fix-agent-openspec-lifecycle change:
  *
- *   - sr-architect: scaffolds via `openspec new change` + `openspec validate`
- *                   (no Skill/opsx:ff indirection); specName guard; never
- *                   hand-creates the change directory
- *   - sr-developer: drives tasks.md directly (no Skill/opsx:apply); checkbox
- *                   gate `- [ ]` checked; specName guard; Phase 4 prerequisite
- *   - sr-reviewer:  task gate present; archives via `openspec archive -y` and
- *                   `openspec validate --strict` (no Skill/opsx:archive);
- *                   specName guard
+ *   - sr-architect: scaffolds via opsx:ff only (no opsx:new — ff creates the
+ *                   change itself); specName guard; hand-authoring prohibition
+ *   - sr-developer: opsx:apply present; checkbox gate `- [ ]` checked;
+ *                   specName guard present; Phase 4 prerequisite note present
+ *   - sr-reviewer:  task gate present; opsx:archive present;
+ *                   specName guard present
  *
  * Each invariant is tested against the two live Claude sources that must
  * stay in lockstep:
@@ -28,7 +23,10 @@ import { describe, expect, it } from 'vitest'
  *   - the installed Claude subagent file (.claude/agents/)
  *
  * Codex enforces the equivalent OpenSpec-CLI lifecycle through its own
- * codex-native skills; that contract is asserted at the bottom of this file.
+ * codex-native skills. Because codex reviewers run in PARALLEL and only the
+ * orchestrator holds the aggregated verdict, the archive obligation lives in
+ * the implement ORCHESTRATOR (not the reviewer rail). The codex archive
+ * contract is asserted at the bottom of this file.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -73,23 +71,22 @@ describe('sr-architect lifecycle invariants', () => {
         expect(content).toMatch(/\[error\] specName is required/)
       })
 
-      it('scaffolds via the openspec CLI directly (no Skill/opsx:* indirection)', () => {
+      it('scaffolds via opsx:ff only and does NOT pre-call opsx:new (which would make ff fail)', () => {
+        // Strip the frontmatter block before checking — the frontmatter
+        // legitimately mentions opsx:ff (to say the agent does NOT auto-trigger
+        // on it). opsx:ff already runs `openspec new change` internally, so a
+        // separate opsx:new Skill call makes ff abort with "Change already exists".
         const bodyStart = content.indexOf('\n---\n') + 5
         const body = content.slice(bodyStart)
-        // CLI-first: the agent runs `openspec new change` and validates.
-        expect(body).toMatch(/openspec new change/)
-        expect(body).toMatch(/openspec validate/)
-        // No interactive Skill wrappers — those stall in a non-interactive subagent.
-        expect(body).not.toMatch(/Skill\("opsx:/)
+        expect(body).toMatch(/Skill\("opsx:ff"/)
+        expect(body).not.toMatch(/Skill\("opsx:new"/)
       })
 
-      it('registers the change through the CLI and never hand-creates the change dir', () => {
-        // The agent authors the artifact PROSE, but the change itself must be
-        // registered by `openspec new change` — never mkdir'd by hand.
-        expect(content).toMatch(/never create the change directory/)
-        expect(content).toMatch(/proposal/)
+      it('prohibits hand-authoring of proposal.md, design.md, tasks.md', () => {
+        expect(content).toMatch(/MUST NOT hand-author/)
+        expect(content).toMatch(/proposal\.md/)
         expect(content).toMatch(/design\.md/)
-        expect(content).toMatch(/tasks/)
+        expect(content).toMatch(/tasks\.md/)
       })
     })
   }
@@ -108,11 +105,10 @@ describe('sr-developer lifecycle invariants', () => {
         expect(content).toMatch(/\[error\] specName is required/)
       })
 
-      it('drives tasks.md directly and does NOT use the opsx:apply Skill wrapper', () => {
-        expect(content).toMatch(/read the task list directly/)
-        expect(content).toMatch(/tasks\.md/)
-        // Must NOT route through the interactive Skill wrapper.
-        expect(content).not.toMatch(/Skill\("opsx:apply"/)
+      it('invokes opsx:apply via Skill tool before writing files', () => {
+        expect(content).toMatch(/opsx:apply/)
+        // Must instruct to use Skill tool, not shell command
+        expect(content).toMatch(/Skill\("opsx:apply"/)
       })
 
       it('contains checkbox verification gate checking for - [ ] pattern', () => {
@@ -154,20 +150,14 @@ describe('sr-reviewer lifecycle invariants', () => {
         expect(content).toMatch(/BLOCK archive/)
       })
 
-      it('archives via the openspec CLI (no opsx:archive Skill wrapper)', () => {
-        expect(content).toMatch(/openspec archive "<specName>" -y/)
-        // The real CLI archive syncs delta specs + moves the dir; the Skill
-        // wrapper does a manual move that skips sync and nests a Task spawn.
-        expect(content).not.toMatch(/Skill\("opsx:archive"/)
-      })
-
-      it('runs openspec validate --strict as a structural gate', () => {
-        expect(content).toMatch(/openspec validate "<specName>" --strict/)
+      it('invokes opsx:archive via Skill tool only when gate passes', () => {
+        expect(content).toMatch(/opsx:archive/)
+        expect(content).toMatch(/Skill\("opsx:archive"/)
       })
 
       it('states archive step is only reachable when task gate passes', () => {
-        // The CLI archive command must appear AFTER the Task Completion Gate.
-        const archiveIndex = content.indexOf('openspec archive "<specName>" -y')
+        // Step 6 (Archive) should be conditional on Step 5 (gate) passing
+        const archiveIndex = content.indexOf('opsx:archive')
         const gateIndex = content.indexOf('Task Completion Gate')
         expect(archiveIndex).toBeGreaterThanOrEqual(0)
         expect(gateIndex).toBeGreaterThanOrEqual(0)

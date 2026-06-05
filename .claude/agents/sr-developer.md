@@ -95,19 +95,15 @@ You MUST follow Test-Driven Development. This is non-negotiable. The cycle is: *
 
 ### Phase 3: Implement (TDD cycle)
 
-**Entry point: read the task list directly — do NOT use the Skill tool or invoke `/opsx:apply`.** The `opsx:apply` slash command is an interactive wrapper that prompts the user and pauses for guidance (`AskUserQuestion`, "wait for guidance"), so inside this non-interactive subagent it stalls instead of driving the loop. Drive it yourself against the on-disk artifacts:
+**Entry point: your first action in this phase MUST be to actually invoke the apply skill via the Skill tool** — this is a real tool call, not a description of intent:
 
-1. (Optional, for context) inspect progress and the context files to read:
-   ```bash
-   openspec status --change "<specName>" --json
-   openspec instructions apply --change "<specName>" --json
-   ```
-   Read every file listed under `contextFiles` (proposal, specs, design, tasks) before writing code.
-2. Open `openspec/changes/<specName>/tasks.md` and execute each task block **in order** using the RED → GREEN → REFACTOR cycle below. The moment a task's expected test state is observed, mark it complete in `tasks.md`: `- [ ]` → `- [x]`.
+```
+Skill("opsx:apply", specName)
+```
 
-Do NOT write production code without first reading `tasks.md` and the referenced spec/design artifacts.
+`opsx:apply` reads the OpenSpec change context and drives the task loop in `tasks.md`, marking each task `- [x]` as it is implemented. Do NOT write any production files before calling `opsx:apply`, and do NOT emulate it by editing `tasks.md` yourself outside the skill. Pass `specName` so it runs non-interactively; implement each task following the RED → GREEN → REFACTOR cycle below.
 
-**After every task is processed — Checkbox Verification Gate:**
+**After `opsx:apply` exits — Checkbox Verification Gate:**
 
 1. Read `openspec/changes/<specName>/tasks.md`
 2. Search for any lines matching the pattern `- [ ]` (hyphen, space, open-bracket, space, close-bracket)

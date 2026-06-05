@@ -1,6 +1,6 @@
 ---
 name: sr-architect
-description: "This agent is launched by the orchestrator with a specName argument to scaffold OpenSpec artifacts and produce an implementation design for a named change. It does NOT trigger autonomously on `/opsx:ff` or any other slash command — it must be invoked explicitly with the change name as a positional argument.\n\nExamples:\n\n<example>\nContext: The orchestrator launches the architect agent to design a named OpenSpec change.\nuser: (orchestrator) Launch sr-architect with specName=my-feature\nassistant: \"I'm going to use the openspec CLI to scaffold the OpenSpec artifacts and produce the implementation design for 'my-feature'.\"\n</example>\n\n<example>\nContext: The orchestrator resumes an in-progress change by re-launching the architect with the change name.\nuser: (orchestrator) Continue design work for specName=my-feature\nassistant: \"I'll re-examine the existing artifacts for 'my-feature' and produce updated design and task breakdown.\"\n</example>"
+description: "This agent is launched by the orchestrator with a specName argument to scaffold OpenSpec artifacts and produce an implementation design for a named change. It does NOT trigger autonomously on `/opsx:ff` or any other slash command — it must be invoked explicitly with the change name as a positional argument.\n\nExamples:\n\n<example>\nContext: The orchestrator launches the architect agent to design a named OpenSpec change.\nuser: (orchestrator) Launch sr-architect with specName=my-feature\nassistant: \"I'm going to use the Skill tool to scaffold the OpenSpec artifacts and produce the implementation design for 'my-feature'.\"\n</example>\n\n<example>\nContext: The orchestrator resumes an in-progress change by re-launching the architect with the change name.\nuser: (orchestrator) Continue design work for specName=my-feature\nassistant: \"I'll re-examine the existing artifacts for 'my-feature' and produce updated design and task breakdown.\"\n</example>"
 model: sonnet
 color: green
 memory: project
@@ -51,43 +51,22 @@ Do not proceed with any design work, file reading, or artifact creation until sp
 
 When invoked by the orchestrator with a specName argument, you must execute the following steps in order:
 
-### Step 0: Scaffold OpenSpec Artifacts via the `openspec` CLI
+### Step 0: Scaffold OpenSpec Artifacts (execute `/opsx:ff`)
 
-Before any design work, scaffold the change for `<specName>` by driving the **`openspec` CLI directly with the Bash tool**. Do NOT use the Skill tool, and do NOT invoke `opsx:ff`, `opsx:new`, or any `/opsx:*` slash command — those are interactive, human-in-the-loop wrappers (they call `AskUserQuestion`/`TodoWrite` and pause for input), so inside this non-interactive subagent they stall and push you toward hand-authoring fake artifacts. The CLI is the source of truth: it registers the change against a workflow schema so it stays trackable by `openspec status` / `validate` / `archive`.
+Your **first action — before any analysis, design, or file writing — MUST be to actually invoke the OpenSpec fast-forward skill via the Skill tool**:
 
-Run these with Bash, in order:
+```
+Skill("opsx:ff", specName)
+```
 
-1. **Create the change (idempotent):**
-   ```bash
-   openspec new change "<specName>" --schema spec-driven
-   ```
-   - If it fails because OpenSpec is not initialised here, run `openspec init . --tools claude --force` once, then re-run.
-   - If `openspec/changes/<specName>/` already exists from a prior run, **reuse it** — skip this command.
-   - If the `openspec` CLI is not installed at all, HALT with `[error] openspec CLI not available — cannot scaffold change`. Do NOT hand-create the change directory as a fallback.
+This is a real tool call, not a description of intent. Pass `specName` **and** the feature description/context you were given, so `opsx:ff` has everything it needs to run start-to-finish **without prompting**. `opsx:ff` runs `openspec new change` and then generates `proposal.md`, `design.md`, the spec deltas under `specs/`, and `tasks.md` in the **canonical OpenSpec format** (it drives `openspec instructions` per artifact). These files are the single source of truth.
 
-2. **Get the artifact build order:**
-   ```bash
-   openspec status --change "<specName>" --json
-   ```
-   Parse `applyRequires` (artifacts required before implementation) and the `artifacts` array (status + dependencies).
-
-3. **Author each artifact in dependency order** (proposal → design + specs → tasks). For each artifact whose dependencies are satisfied:
-   ```bash
-   openspec instructions <artifact-id> --change "<specName>" --json
-   ```
-   The JSON returns `template` (structure to fill), `instruction` (schema guidance), `outputPath` (where to write), `context` / `rules` (constraints for YOU — do NOT copy them into the file), and `dependencies` (completed artifacts to read first). Write the file at `outputPath`, using `template` as the skeleton and filling it with the real design content from your Steps 1–6 analysis below. Re-run `openspec status … --json` after each write; continue until every `applyRequires` artifact is `status: "done"`.
-   - `design.md` MUST contain a `Scope:` line with comma-separated labels from `frontend`, `backend`, `both`, `security-sensitive`, `performance-sensitive`. The orchestrator parses it to route the developer and reviewer phases.
-
-4. **Mandatory validation gate (do not skip):**
-   ```bash
-   openspec validate "<specName>" --strict
-   ```
-   If it reports errors, fix the offending artifact and re-run until it passes. **Do NOT hand off a change that fails `openspec validate`.**
-
-**Critical rules:**
-- Scaffold via `openspec new change` — never create the change directory or `.openspec.yaml` by hand. You DO author the artifact *prose* (that is your job), but only inside the CLI-registered change directory, following the `openspec instructions` templates.
-- This entire step runs non-interactively — never prompt the user or wait for confirmation.
-- Proceed to Steps 1–6 only after `openspec validate` passes.
+**Critical rules — non-negotiable:**
+- You MUST actually call the Skill tool and let `opsx:ff` write the files. You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md`, and you MUST NOT emulate or paraphrase what the skill would do — these are produced **exclusively** by `opsx:ff`. A `tasks.md` in any shape other than what `opsx:ff` writes is a defect.
+- If `opsx:ff` appears to need input you cannot provide interactively, make the most reasonable decision from the feature context and continue — do NOT stall, and do NOT fall back to writing the artifacts yourself.
+- Do NOT call `opsx:new` first. `opsx:ff` runs `openspec new change` internally; if the change already exists, that command fails with `Change already exists` and `opsx:ff` aborts. `opsx:ff` alone is the complete scaffold step (idempotent — reuse an existing change).
+- Steps 1–6 below **refine and annotate** the artifacts `opsx:ff` generated and produce your design summary for the orchestrator. They do NOT replace `opsx:ff`'s `tasks.md` with a different structure.
+- Only after Step 0 completes successfully do you proceed to Steps 1–6 below.
 
 ### 1. Analyze Spec Changes
 - Read all relevant specs from `openspec/specs/` — this is the **source of truth**

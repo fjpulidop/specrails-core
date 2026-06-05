@@ -112,31 +112,26 @@ After running CI checks, also review for:
 
 ## Workflow
 
-1. **Validate the OpenSpec change structure first** (mandatory gate):
-   ```bash
-   openspec validate "<specName>" --strict
-   ```
-   If it reports structural errors, the change is malformed — often a sign the artifacts were hand-authored instead of CLI-scaffolded. Treat this as a blocking issue: fix the offending artifact (or report it) and re-run until it passes before continuing.
-2. **Run all CI checks** (all layers, in the exact order CI runs them)
-3. **If anything fails**: Fix it, then re-run ALL checks from scratch (not just the failing one)
-4. **Repeat** up to 3 fix-and-verify cycles
-5. **Report** a summary of what passed, what failed, and what you fixed
-6. **Task Completion Gate** — Before archiving, verify all tasks are complete:
+1. **Run all CI checks** (all layers, in the exact order CI runs them)
+2. **If anything fails**: Fix it, then re-run ALL checks from scratch (not just the failing one)
+3. **Repeat** up to 3 fix-and-verify cycles
+4. **Report** a summary of what passed, what failed, and what you fixed
+5. **Task Completion Gate** — Before archiving, verify all tasks are complete:
    - Read `openspec/changes/<specName>/tasks.md`
    - Search for any lines matching `- [ ]` (hyphen, space, open-bracket, space, close-bracket)
-   - **If any `- [ ]` lines are found**: BLOCK archive. List every incomplete task title. Report to orchestrator that archive is blocked — do NOT archive.
-   - **If no `- [ ]` lines remain** (all tasks are `- [x]`): gate passes — proceed to Step 7.
-7. **Archive via the `openspec` CLI** — Only reachable when the Step 6 gate passes. Do NOT use the Skill tool or invoke `/opsx:archive`: that wrapper prompts the user, does a manual directory move that **skips spec-sync**, and nests a `Task` spawn — all of which break in this non-interactive subagent. Run the CLI directly instead:
-   ```bash
-   openspec validate "<specName>" --strict   # final structural check
-   openspec archive "<specName>" -y          # syncs delta specs into main specs AND moves the change to openspec/changes/archive/
+   - **If any `- [ ]` lines are found**: BLOCK archive. List every incomplete task title. Report to orchestrator that archive is blocked — do NOT invoke `/opsx:archive`.
+   - **If no `- [ ]` lines remain** (all tasks are `- [x]`): gate passes — proceed to Step 6.
+6. **Archive** — Only reachable when Step 5 gate passes. Your archive action MUST be a real call to the archive skill via the Skill tool (not a manual directory move, not an emulation):
    ```
-   Then confirm the archive landed:
-   ```bash
-   ls -d openspec/changes/archive/*<specName>* 2>/dev/null   # archive dir MUST exist
-   ls openspec/changes/<specName> 2>/dev/null                # original dir MUST be gone
+   Skill("opsx:archive", specName)
    ```
-   If either check fails, archiving did not complete — report `archive failed` to the orchestrator and do NOT treat the change as done. Run non-interactively; never prompt the user.
+   `opsx:archive` must **sync the delta specs** from `openspec/changes/<specName>/specs/` into the main specs under `openspec/specs/` AND move the change to `openspec/changes/archive/`. Pass `specName` so it runs non-interactively; do NOT prompt the user.
+
+   **Verify the archive landed** after the skill returns:
+   - `openspec/changes/<specName>/` no longer exists (the change was moved), and
+   - the delta-spec changes are now present under `openspec/specs/`.
+
+   If either is false, the archive did NOT complete (a common symptom of a *simulated* archive is delta specs that were never synced) — report `archive incomplete` to the orchestrator and do NOT treat the change as done.
 
 ## Write Failure Records
 
