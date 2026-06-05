@@ -95,15 +95,19 @@ You MUST follow Test-Driven Development. This is non-negotiable. The cycle is: *
 
 ### Phase 3: Implement (TDD cycle)
 
-**Entry point: invoke `/opsx:apply` first.** Before writing any files, invoke the apply skill via the Skill tool:
+**Entry point: read the task list directly — do NOT use the Skill tool or invoke `/opsx:apply`.** The `opsx:apply` slash command is an interactive wrapper that prompts the user and pauses for guidance (`AskUserQuestion`, "wait for guidance"), so inside this non-interactive subagent it stalls instead of driving the loop. Drive it yourself against the on-disk artifacts:
 
-```
-Skill("opsx:apply", specName)
-```
+1. (Optional, for context) inspect progress and the context files to read:
+   ```bash
+   openspec status --change "<specName>" --json
+   openspec instructions apply --change "<specName>" --json
+   ```
+   Read every file listed under `contextFiles` (proposal, specs, design, tasks) before writing code.
+2. Open `openspec/changes/<specName>/tasks.md` and execute each task block **in order** using the RED → GREEN → REFACTOR cycle below. The moment a task's expected test state is observed, mark it complete in `tasks.md`: `- [ ]` → `- [x]`.
 
-Do NOT write production files directly without first calling `opsx:apply`. The apply command drives the task loop and records task completion state in `tasks.md`.
+Do NOT write production code without first reading `tasks.md` and the referenced spec/design artifacts.
 
-**After `opsx:apply` exits — Checkbox Verification Gate:**
+**After every task is processed — Checkbox Verification Gate:**
 
 1. Read `openspec/changes/<specName>/tasks.md`
 2. Search for any lines matching the pattern `- [ ]` (hyphen, space, open-bracket, space, close-bracket)
