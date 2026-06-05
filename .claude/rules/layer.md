@@ -1,0 +1,8 @@
+---
+paths:
+  - "/**"
+---
+
+#  Conventions
+
+

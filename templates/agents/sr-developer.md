@@ -95,13 +95,13 @@ You MUST follow Test-Driven Development. This is non-negotiable. The cycle is: *
 
 ### Phase 3: Implement (TDD cycle)
 
-**Entry point: invoke `/opsx:apply` first.** Before writing any files, invoke the apply skill via the Skill tool:
+**Entry point: your first action in this phase MUST be to actually invoke the apply skill via the Skill tool** — this is a real tool call, not a description of intent:
 
 ```
 Skill("opsx:apply", specName)
 ```
 
-Do NOT write production files directly without first calling `opsx:apply`. The apply command drives the task loop and records task completion state in `tasks.md`.
+`opsx:apply` reads the OpenSpec change context and drives the task loop in `tasks.md`, marking each task `- [x]` as it is implemented. Do NOT write any production files before calling `opsx:apply`, and do NOT emulate it by editing `tasks.md` yourself outside the skill. Pass `specName` so it runs non-interactively; implement each task following the RED → GREEN → REFACTOR cycle below.
 
 **After `opsx:apply` exits — Checkbox Verification Gate:**
 

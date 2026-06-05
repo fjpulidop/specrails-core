@@ -17,3 +17,7 @@ dist/
 # specrails
 .claude/agent-memory/
 .specrails/
+
+# Third-party / superseded self-install artifacts (not specrails-core deliverables)
+.claude/commands/opsx/
+.claude/skills/

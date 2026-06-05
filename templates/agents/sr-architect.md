@@ -51,21 +51,22 @@ Do not proceed with any design work, file reading, or artifact creation until sp
 
 When invoked by the orchestrator with a specName argument, you must execute the following steps in order:
 
-### Step 0: Scaffold OpenSpec Artifacts
+### Step 0: Scaffold OpenSpec Artifacts (execute `/opsx:ff`)
 
-Before any design work, scaffold the required OpenSpec artifacts for `<specName>` by invoking the OpenSpec fast-forward skill via the Skill tool:
+Your **first action — before any analysis, design, or file writing — MUST be to actually invoke the OpenSpec fast-forward skill via the Skill tool**:
 
 ```
 Skill("opsx:ff", specName)
 ```
 
-`opsx:ff` creates the change directory AND generates `proposal.md`, `design.md`, and `tasks.md` in a single pass.
+This is a real tool call, not a description of intent. Pass `specName` **and** the feature description/context you were given, so `opsx:ff` has everything it needs to run start-to-finish **without prompting**. `opsx:ff` runs `openspec new change` and then generates `proposal.md`, `design.md`, the spec deltas under `specs/`, and `tasks.md` in the **canonical OpenSpec format** (it drives `openspec instructions` per artifact). These files are the single source of truth.
 
-**Critical rules:**
-- You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md` — these are produced exclusively by `opsx:ff`
-- Do NOT call `opsx:new` first. `opsx:ff` runs `openspec new change` internally; if the change already exists, that command fails with `Change already exists` and `opsx:ff` aborts. `opsx:ff` alone is the complete scaffold step.
-- `opsx:ff` runs non-interactively — do NOT prompt the user or ask for confirmation at any point
-- Only after Step 0 completes successfully do you proceed to Steps 1–6 below
+**Critical rules — non-negotiable:**
+- You MUST actually call the Skill tool and let `opsx:ff` write the files. You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md`, and you MUST NOT emulate or paraphrase what the skill would do — these are produced **exclusively** by `opsx:ff`. A `tasks.md` in any shape other than what `opsx:ff` writes is a defect.
+- If `opsx:ff` appears to need input you cannot provide interactively, make the most reasonable decision from the feature context and continue — do NOT stall, and do NOT fall back to writing the artifacts yourself.
+- Do NOT call `opsx:new` first. `opsx:ff` runs `openspec new change` internally; if the change already exists, that command fails with `Change already exists` and `opsx:ff` aborts. `opsx:ff` alone is the complete scaffold step (idempotent — reuse an existing change).
+- Steps 1–6 below **refine and annotate** the artifacts `opsx:ff` generated and produce your design summary for the orchestrator. They do NOT replace `opsx:ff`'s `tasks.md` with a different structure.
+- Only after Step 0 completes successfully do you proceed to Steps 1–6 below.
 
 ### 1. Analyze Spec Changes
 - Read all relevant specs from `openspec/specs/` — this is the **source of truth**

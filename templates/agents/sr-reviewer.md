@@ -121,11 +121,17 @@ After running CI checks, also review for:
    - Search for any lines matching `- [ ]` (hyphen, space, open-bracket, space, close-bracket)
    - **If any `- [ ]` lines are found**: BLOCK archive. List every incomplete task title. Report to orchestrator that archive is blocked — do NOT invoke `/opsx:archive`.
    - **If no `- [ ]` lines remain** (all tasks are `- [x]`): gate passes — proceed to Step 6.
-6. **Archive** — Only reachable when Step 5 gate passes. Invoke the archive skill via the Skill tool:
+6. **Archive** — Only reachable when Step 5 gate passes. Your archive action MUST be a real call to the archive skill via the Skill tool (not a manual directory move, not an emulation):
    ```
    Skill("opsx:archive", specName)
    ```
-   Run non-interactively. Do NOT prompt the user or ask for confirmation.
+   `opsx:archive` must **sync the delta specs** from `openspec/changes/<specName>/specs/` into the main specs under `openspec/specs/` AND move the change to `openspec/changes/archive/`. Pass `specName` so it runs non-interactively; do NOT prompt the user.
+
+   **Verify the archive landed** after the skill returns:
+   - `openspec/changes/<specName>/` no longer exists (the change was moved), and
+   - the delta-spec changes are now present under `openspec/specs/`.
+
+   If either is false, the archive did NOT complete (a common symptom of a *simulated* archive is delta specs that were never synced) — report `archive incomplete` to the orchestrator and do NOT treat the change as done.
 
 ## Write Failure Records
 
