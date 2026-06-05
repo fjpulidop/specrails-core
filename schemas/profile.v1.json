@@ -38,7 +38,7 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/agentEntry" },
-      "description": "Ordered chain of agents that participate in the pipeline when this profile is active. Every profile (default + custom) must include the baseline quartet (sr-architect, sr-developer, sr-reviewer, sr-merge-resolver) — the pipeline depends on all four. Custom profiles add optional agents on top of the baseline.",
+      "description": "Ordered chain of agents that participate in the pipeline when this profile is active. Every profile (default + custom) must include the baseline trio (sr-architect, sr-developer, sr-reviewer) — the pipeline depends on all three. sr-merge-resolver and every other agent are optional add-ons selected at install time. Custom profiles add optional agents on top of the baseline.",
       "allOf": [
         {
           "description": "Required baseline agent: sr-architect",
@@ -61,14 +61,6 @@
           "contains": {
             "type": "object",
             "properties": { "id": { "const": "sr-reviewer" } },
-            "required": ["id"]
-          }
-        },
-        {
-          "description": "Required baseline agent: sr-merge-resolver",
-          "contains": {
-            "type": "object",
-            "properties": { "id": { "const": "sr-merge-resolver" } },
             "required": ["id"]
           }
         }

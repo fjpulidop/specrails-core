@@ -6,11 +6,7 @@ Reads `.specrails/agents.yaml` and updates the `model:` frontmatter field in all
 
 ## Step 1: Locate generated agents directory
 
-Determine `$SPECRAILS_DIR`:
-
-1. If `.codex/agents/` exists, set `cli_provider = "codex"` and `specrails_dir = ".codex"`.
-2. Otherwise set `cli_provider = "claude"` and `specrails_dir = ".claude"`.
-3. Set `$AGENTS_DIR = $SPECRAILS_DIR/agents`
+This command targets the Claude install: set `$AGENTS_DIR = .claude/agents`. (Codex agents are codex-native rails under `.codex/skills/rails/` and carry no per-agent `model:` config — codex `spawn_agent` forks don't accept a model — so reconfig does not apply to codex projects.)
 
 ## Step 2: Read agent config
 
@@ -52,11 +48,6 @@ For each agent with a recorded change:
 3. Write the file back
 
 The `model:` line is always in the frontmatter block (between the first `---` and second `---`). Replace only that specific line — do not modify any other content.
-
-**Codex format:** If `cli_provider == "codex"`, apply the same logic to `.codex/agents/sr-*.toml` files. Replace the `model = "..."` line with the mapped Codex model:
-- `sonnet` → `codex-mini-latest`
-- `opus` → `o3`
-- `haiku` → `codex-mini-latest`
 
 ## Step 5: Report results
 

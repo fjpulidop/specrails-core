@@ -201,7 +201,7 @@ jobs:
 | `ANTHROPIC_API_KEY` | Yes | Your Claude API key |
 | `GITHUB_TOKEN` | For PR creation | GitHub personal access token or Actions token |
 | `SPECRAILS_LOG_LEVEL` | No | `debug`, `info` (default), `warn`, `error` |
-| `SPECRAILS_MODEL` | No | Override default model (e.g. `claude-opus-4-6`) |
+| `SPECRAILS_MODEL` | No | Override default model (e.g. `claude-opus-4-8`) |
 
 ---
 

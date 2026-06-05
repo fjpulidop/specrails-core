@@ -129,10 +129,10 @@ This project uses **specrails** with the **codex** provider.
 
 ## Rail skills installed
 - `$implement`, `$batch-implement` — pipeline entry points
-- `$sr-architect`, `$sr-developer`, `$sr-reviewer`,
-  `$sr-merge-resolver` — core rails
+- `$sr-architect`, `$sr-developer`, `$sr-reviewer` — core rails
 - <list any optional rails installed in
-  .codex/skills/rails/>
+  .codex/skills/rails/ — e.g. `$sr-merge-resolver`, layer
+  specialists>
 
 <!-- specrails-managed:end -->
 ```

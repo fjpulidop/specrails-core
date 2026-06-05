@@ -36,6 +36,52 @@ const QUICK_EXCLUDED_SKILLS = new Set([
 ])
 
 /**
+ * Claude top-level `sr-*` skills, GENERATED at install time from their
+ * canonical slash-command body under `templates/commands/specrails/<command>.md`.
+ * The command is the single source of truth; the skill is just that body wrapped
+ * in skill frontmatter, so the two can never drift (the previous hand-maintained
+ * `templates/skills/sr-<name>/SKILL.md` copies had drifted ~88% out of sync).
+ * Codex does not use these — it invokes the command-ports (`$implement`, …).
+ */
+const SKILL_FROM_COMMAND: Record<string, { command: string; description: string }> = {
+  'sr-implement': {
+    command: 'implement',
+    description:
+      'sr:implement — Full OpenSpec lifecycle with specialized agents: architect designs, developer implements, reviewer validates. Use for implementing GitHub Issues or feature descriptions.',
+  },
+  'sr-batch-implement': {
+    command: 'batch-implement',
+    description:
+      'sr:batch-implement — Batch implementation orchestrator. Accepts multiple feature references, computes dependency-aware execution waves, invokes sr:implement per wave.',
+  },
+  'sr-compat-check': {
+    command: 'compat-check',
+    description:
+      'sr:compat-check — Snapshot the API surface and detect breaking changes against a prior baseline. Generates a migration guide when breaking changes are found.',
+  },
+  'sr-refactor-recommender': {
+    command: 'refactor-recommender',
+    description:
+      'sr:refactor-recommender — Scan the codebase for refactoring opportunities ranked by impact/effort ratio. Optionally creates GitHub Issues for tracking.',
+  },
+  'sr-why': {
+    command: 'why',
+    description:
+      'sr:why — Search explanation records written by specrails agents during the OpenSpec implementation pipeline.',
+  },
+  'sr-get-backlog-specs': {
+    command: 'get-backlog-specs',
+    description:
+      'sr:get-backlog-specs — View product-driven backlog from GitHub Issues and propose top 3 for implementation.',
+  },
+  'sr-auto-propose-backlog-specs': {
+    command: 'auto-propose-backlog-specs',
+    description:
+      'sr:auto-propose-backlog-specs — Generate new feature ideas through product discovery, create GitHub Issues.',
+  },
+}
+
+/**
  * Command → required agent dependency map. A command is excluded
  * from the quick tier when its required agent was excluded (i.e.
  * VPC-dependent) or when the feature flag (Agent Teams) is off.
@@ -180,10 +226,11 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     )
   }
 
-  // --- Skills direct-placement (both tiers, both providers) ---
-  // Skills are provider-neutral (Anthropic Skills format == OpenAI Codex
-  // Skills format). The same templates/skills/ directory feeds both
-  // .claude/skills/ and .codex/skills/.
+  // --- Skills placement (both tiers, both providers) ---
+  // Claude: top-level `sr-*` skills are generated from their canonical
+  // command bodies (single source of truth). Codex: skips top-level skills
+  // (it uses the command-ports) and instead receives the codex-native rails.
+  // See placeSkills for the full per-provider contract.
   {
     const skills = placeSkills(input)
     copiedFiles += skills.filesCopied
@@ -229,39 +276,47 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   if (!isDir(commandsSrc)) return
 
   if (input.provider === 'codex') {
-    // Codex: every claude slash-command (`templates/commands/specrails/*.md`)
-    // ships as a SKILL under `.codex/skills/<name>/SKILL.md`. The codex skill
-    // loader requires `---`-delimited frontmatter with at least `name` and
-    // `description`; the source bodies usually have a claude-style
-    // frontmatter with just `description`, which we extract and re-emit in
-    // the canonical codex shape. Team-* commands are gated identically to
-    // the claude path.
+    // Codex: each bundled command ships as a SKILL under
+    // `.codex/skills/<name>/SKILL.md`. A codex-native override (spawn_agent
+    // semantics + correct `.codex/skills/rails/` layout) wins; otherwise the
+    // claude body is ported with frontmatter re-emitted in codex shape.
     let count = 0
+    const codexOverrides = path.join(input.scriptDir, 'templates', 'codex-skills')
     for (const entry of listDir(commandsSrc)) {
       const name = path.basename(entry)
       if (!name.endsWith('.md')) continue
       if (name === 'setup.md') continue
       if (!input.agentTeams && /^team-/.test(name)) continue
       const skillName = name.replace(/\.md$/, '')
-      writeCodexSkillFromCommand({
-        src: entry,
-        dest: path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md'),
-        name: skillName,
-      })
+      const destDir = path.join(input.repoRoot, input.providerDir, 'skills', skillName)
+      // A codex-native override (written for spawn_agent semantics + the
+      // correct `.codex/skills/rails/` layout) wins over the claude port.
+      // This is the ONLY codex command-placement pass in full tier, so
+      // without the override check full-tier codex users get the claude
+      // body — e.g. enrich's obsolete `.codex/agents/*.toml` model.
+      const overrideSkill = path.join(codexOverrides, skillName, 'SKILL.md')
+      if (pathExists(overrideSkill)) {
+        copyDir(path.join(codexOverrides, skillName), destDir)
+      } else {
+        writeCodexSkillFromCommand({
+          src: entry,
+          dest: path.join(destDir, 'SKILL.md'),
+          name: skillName,
+        })
+      }
       count++
     }
     input.copiedIncrement(count)
     return
   }
 
-  // Claude: all commands land under <providerDir>/commands/specrails/.
+  // Claude: all bundled commands land under <providerDir>/commands/specrails/.
   const destDir = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails')
   let count = 0
   for (const entry of listDir(commandsSrc)) {
     const name = path.basename(entry)
     if (!name.endsWith('.md')) continue
     if (name === 'setup.md') continue
-    // Agent Teams gating — skip team-* commands unless explicitly opted in.
     if (!input.agentTeams && /^team-/.test(name)) continue
     copyFile(entry, path.join(destDir, name))
     count++
@@ -331,6 +386,37 @@ function writeCodexSkillFromCommand(args: {
     .replace(/\/specrails:([\w-]+)/g, '$$$1')
     .replace(/\/sr:([\w-]+)/g, '$$$1')
   writeFileLf(args.dest, frontmatter + translated)
+}
+
+/**
+ * Generate a Claude skill (`SKILL.md`) from a slash-command body. The
+ * command is the single source of truth; we strip any command-level
+ * frontmatter and re-emit the canonical skill frontmatter (name +
+ * description + license + compatibility + metadata) followed by the body
+ * verbatim. Used by placeSkills so the `sr-*` skills can never drift from
+ * their `templates/commands/specrails/<command>.md` counterpart.
+ */
+function writeClaudeSkillFromCommand(args: {
+  src: string
+  dest: string
+  name: string
+  description: string
+}): void {
+  if (!pathExists(args.src)) return
+  const { body } = stripFrontmatter(readTextFile(args.src))
+  const frontmatter = [
+    '---',
+    `name: ${args.name}`,
+    `description: ${JSON.stringify(args.description)}`,
+    'license: MIT',
+    'compatibility: "Requires the specrails-core installation in this repository."',
+    'metadata:',
+    '  author: specrails',
+    '  version: "1.0"',
+    '---',
+    '',
+  ].join('\n')
+  writeFileLf(args.dest, frontmatter + body)
 }
 
 /**
@@ -582,12 +668,12 @@ function applyCodexSettings(input: ScaffoldInput): number {
   let written = 0
 
   // config.toml — model name interpolated from install-config (preset
-  // default `gpt-5.4-mini`). Static for v1; future revisions may surface
+  // default `gpt-5.5-mini`). Static for v1; future revisions may surface
   // reasoning_effort etc.
   const configTomlSrc = path.join(settingsSrc, 'codex-config.toml')
   if (pathExists(configTomlSrc)) {
     const dest = path.join(input.repoRoot, input.providerDir, 'config.toml')
-    const rendered = readTextFile(configTomlSrc).replace(/\{\{MODEL_NAME\}\}/g, 'gpt-5.4-mini')
+    const rendered = readTextFile(configTomlSrc).replace(/\{\{MODEL_NAME\}\}/g, 'gpt-5.5-mini')
     writeFileLf(dest, rendered)
     written++
   }
@@ -660,152 +746,87 @@ function upsertAgentsMdManagedBlock(existing: string, managedBlock: string): str
   return existing + sep + managedBlock + '\n'
 }
 
-// Copy each `sr-*` subfolder from `.specrails/setup-templates/skills/`
-// (and the `rails/sr-*` subtree, which holds the canonical pipeline rail
-// agents in SKILL.md format) into `<providerDir>/skills/`. Skills are
-// full directories (SKILL.md + optional assets), so the whole folder is
-// copied. Quick tier excludes VPC-dependent skills; full tier copies all.
+// Place skills under `<providerDir>/skills/`.
 //
-// For codex projects, every copied `.md` file gets a post-copy textual
-// translation so the body reads natively on codex:
-//   .claude/                  → .codex/
-//   /specrails:<name>         → $<name>
-//   /sr:<name>                → $<name>
-//   /opsx:<name>              → $openspec-<name>
-// The source templates stay canonical (claude-flavoured); the rewrite is
-// applied only to the codex-side copies.
+// CLAUDE: the top-level `sr-*` skills (sr-implement, sr-why, …) are GENERATED
+// from their canonical slash-command body (`templates/commands/specrails/
+// <command>.md`) — the command is the single source of truth, so the skill can
+// never drift from it. Quick tier excludes VPC-dependent ones.
+//
+// CODEX: top-level skills are NOT placed — every one has a command counterpart
+// that the command path ports to `.codex/skills/<name>/` (with codex-native
+// overrides), so the codex user invokes `$implement` etc. A claude-shaped
+// `$sr-implement` port would be redundant AND broken (its `Skill()` /
+// `subagent_type` calls have no codex equivalent). Codex DOES get the rails
+// subtree below, sourced from `templates/codex-skills/rails/`.
 function placeSkills(input: ScaffoldInput): SkillsPlacement {
-  const setupSkills = path.join(input.repoRoot, '.specrails', 'setup-templates', 'skills')
   const destBase = path.join(input.repoRoot, input.providerDir, 'skills')
   const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
 
-  if (!isDir(setupSkills)) return result
-  mkdirp(destBase)
-
-  // Top-level sr-* skills (sr-implement, sr-batch-implement, sr-why, etc.).
-  for (const entry of listDir(setupSkills)) {
-    if (!isDir(entry)) continue
-    const skillId = path.basename(entry)
-    // The `rails/` subtree is descended below — skip it at the top level.
-    if (skillId === 'rails') continue
-    if (input.tier === 'quick' && QUICK_EXCLUDED_SKILLS.has(skillId)) {
-      result.skipped++
-      continue
+  // Top-level skills — Claude only, generated from the canonical command body.
+  if (input.provider !== 'codex') {
+    const commandsSrc = path.join(input.repoRoot, '.specrails', 'setup-templates', 'commands', 'specrails')
+    const skillEntries = Object.entries(SKILL_FROM_COMMAND) as Array<
+      [string, { command: string; description: string }]
+    >
+    for (const [skillName, spec] of skillEntries) {
+      if (input.tier === 'quick' && QUICK_EXCLUDED_SKILLS.has(skillName)) {
+        result.skipped++
+        continue
+      }
+      const src = path.join(commandsSrc, `${spec.command}.md`)
+      if (!pathExists(src)) continue
+      writeClaudeSkillFromCommand({
+        src,
+        dest: path.join(destBase, skillName, 'SKILL.md'),
+        name: skillName,
+        description: spec.description,
+      })
+      result.placed++
+      result.filesCopied++
     }
-    const dest = path.join(destBase, skillId)
-    copyDir(entry, dest)
-    if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
-    result.placed++
-    result.filesCopied += countFiles(dest)
   }
 
-  // Rail skills (sr-architect, sr-developer, sr-reviewer, sr-merge-resolver, etc.).
-  // These ship as SKILL.md siblings of the claude `.claude/agents/sr-*.md`
-  // counterparts so codex projects can invoke the pipeline via skills
-  // (codex doesn't honour Claude's `.claude/agents/` convention).
-  // Only the three CORE_AGENTS are placed by default; sr-merge-resolver and
-  // other optional rails are placed only when selectedAgents includes them.
+  // Rail skills are a CODEX-ONLY concern. Codex doesn't honour Claude's
+  // `.claude/agents/` convention, so each agent role ships as a codex-native
+  // SKILL.md under `templates/codex-skills/rails/<name>/` that the codex
+  // orchestrator invokes via spawn_agent / $-mention. On Claude the pipeline
+  // launches `.claude/agents/sr-*.md` directly via `subagent_type`, so no
+  // claude-shape rail skill is placed (the former templates/skills/rails/
+  // copies were vestigial — unused on Claude, always overridden on codex,
+  // and shipped with unsubstituted placeholders — and were removed).
   //
-  // Codex-native overrides at `templates/codex-skills/rails/<name>/` win
-  // over the upstream ported copy when present — used to ship skill
-  // bodies written for codex's spawn_agent semantics (no
-  // `subagent_type:`, role conveyed via $-mention from the orchestrator).
-  const railsDir = path.join(setupSkills, 'rails')
+  // Only the three CORE_AGENTS are placed by default; sr-merge-resolver and
+  // every layer specialist are placed only when selectedAgents includes them.
   const codexRailsOverridesDir = input.provider === 'codex'
     ? path.join(input.scriptDir, 'templates', 'codex-skills', 'rails')
     : null
-  if (isDir(railsDir) || (codexRailsOverridesDir && isDir(codexRailsOverridesDir))) {
+  if (codexRailsOverridesDir && isDir(codexRailsOverridesDir)) {
     const destRails = path.join(destBase, 'rails')
     mkdirp(destRails)
-    const placedIds = new Set<string>()
 
-    // Honour the wizard's agent selection on codex projects, same as
-    // claude. If the wizard wrote `agents.selected: [a, b, ...]` to the
-    // install-config, install only the rails whose id is in that list
-    // OR is a core dependency. Without a selection (fresh install with no
-    // install-config), default to the three core agents only — consistent
-    // with the claude placeQuickTierArtefacts behavior.
+    // Honour the wizard's agent selection. Without a selection (fresh install
+    // with no install-config), default to the three core agents only.
     const selectedAgents = input.selectedAgents
       ? new Set([...input.selectedAgents, ...CORE_AGENTS])
       : new Set([...CORE_AGENTS])
-    const shouldPlace = (skillId: string): boolean => {
-      if (selectedAgents === null) return true
-      return selectedAgents.has(skillId)
-    }
 
-    if (isDir(railsDir)) {
-      for (const entry of listDir(railsDir)) {
-        if (!isDir(entry)) continue
-        const skillId = path.basename(entry)
-        if (!shouldPlace(skillId)) {
-          result.skipped++
-          continue
-        }
-        const dest = path.join(destRails, skillId)
-        const overrideSrc = codexRailsOverridesDir
-          ? path.join(codexRailsOverridesDir, skillId)
-          : null
-        if (overrideSrc && isDir(overrideSrc) && pathExists(path.join(overrideSrc, 'SKILL.md'))) {
-          copyDir(overrideSrc, dest)
-        } else {
-          copyDir(entry, dest)
-          if (input.provider === 'codex') translateCodexMarkdownInTree(dest)
-        }
-        placedIds.add(skillId)
-        result.placed++
-        result.filesCopied += countFiles(dest)
+    for (const entry of listDir(codexRailsOverridesDir)) {
+      if (!isDir(entry)) continue
+      const skillId = path.basename(entry)
+      if (!selectedAgents.has(skillId)) {
+        result.skipped++
+        continue
       }
-    }
-
-    // Codex-only rails that have no upstream counterpart (frontend/
-    // backend developers, layer reviewers, product, test writer, doc
-    // sync). Same selectedAgents gate applies.
-    if (input.provider === 'codex' && codexRailsOverridesDir && isDir(codexRailsOverridesDir)) {
-      for (const entry of listDir(codexRailsOverridesDir)) {
-        if (!isDir(entry)) continue
-        const skillId = path.basename(entry)
-        if (placedIds.has(skillId)) continue
-        if (!shouldPlace(skillId)) {
-          result.skipped++
-          continue
-        }
-        if (!pathExists(path.join(entry, 'SKILL.md'))) continue
-        const dest = path.join(destRails, skillId)
-        copyDir(entry, dest)
-        placedIds.add(skillId)
-        result.placed++
-        result.filesCopied += countFiles(dest)
-      }
+      if (!pathExists(path.join(entry, 'SKILL.md'))) continue
+      const dest = path.join(destRails, skillId)
+      copyDir(entry, dest)
+      result.placed++
+      result.filesCopied += countFiles(dest)
     }
   }
 
   return result
-}
-
-/**
- * Walk a directory and rewrite every `.md` file in place with the
- * claude→codex translation map. Used after copying an upstream skill
- * directory onto a codex project so the body refers to `.codex/` and
- * codex's `$skill` mention syntax instead of `.claude/` and
- * `/specrails:` slash commands.
- */
-function translateCodexMarkdownInTree(dir: string): void {
-  if (!isDir(dir)) return
-  for (const entry of listDir(dir)) {
-    if (isDir(entry)) {
-      translateCodexMarkdownInTree(entry)
-      continue
-    }
-    if (!entry.endsWith('.md')) continue
-    const raw = readTextFile(entry)
-    const translated = raw
-      .replace(/\.claude\//g, '.codex/')
-      .replace(/`\/specrails:([\w-]+)`/g, '`$$$1`')
-      .replace(/`\/sr:([\w-]+)`/g, '`$$$1`')
-      .replace(/\/specrails:([\w-]+)/g, '$$$1')
-      .replace(/\/sr:([\w-]+)/g, '$$$1')
-    if (translated !== raw) writeFileLf(entry, translated)
-  }
 }
 
 /**

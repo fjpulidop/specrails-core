@@ -520,11 +520,11 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(false)
 
       const configToml = require('node:fs').readFileSync(path.join(repoRoot, '.codex', 'config.toml'), 'utf8')
-      // {{MODEL_NAME}} should be substituted with gpt-5.4-mini (default)
-      expect(configToml).toContain('gpt-5.4-mini')
+      // {{MODEL_NAME}} should be substituted with gpt-5.5-mini (default)
+      expect(configToml).toContain('gpt-5.5-mini')
       expect(configToml).not.toContain('{{MODEL_NAME}}')
       // Top-level `model = "..."` schema, not `[model] / name = ...`
-      expect(configToml).toMatch(/^model\s*=\s*"gpt-5\.4-mini"/m)
+      expect(configToml).toMatch(/^model\s*=\s*"gpt-5\.5-mini"/m)
 
       const agentsMd = require('node:fs').readFileSync(path.join(repoRoot, 'AGENTS.md'), 'utf8')
       expect(agentsMd).toContain('<!-- specrails-managed:start -->')
@@ -553,18 +553,21 @@ describe('scaffold', () => {
   })
 
   describe('rail skill parity', () => {
-    it('every rail in templates/agents/ has a matching SKILL.md under templates/skills/rails/', () => {
-      // Walks the live (non-fixture) templates directory in the installed
-      // package to enforce: if a Claude rail .md exists, its codex skill
-      // SKILL.md must exist with the same name. Prevents silent drift.
+    it('every core agent has a codex-native rail under templates/codex-skills/rails/', () => {
+      // Codex cannot load Claude's .claude/agents/ convention, so each core
+      // agent must have a codex-native rail SKILL.md it can invoke via
+      // spawn_agent / $-mention. (The old claude-shape templates/skills/rails/
+      // copies were vestigial — unused on Claude, overridden on codex, and
+      // shipped with unsubstituted placeholders — so they were removed; the
+      // Claude path uses templates/agents/ directly.)
       const fs = require('node:fs')
       const repoRoot = path.resolve(__dirname, '..', '..', '..')
-      const railIds = ['sr-architect', 'sr-developer', 'sr-reviewer', 'sr-merge-resolver']
+      const railIds = ['sr-architect', 'sr-developer', 'sr-reviewer']
       for (const id of railIds) {
         const claudePath = path.join(repoRoot, 'templates', 'agents', id + '.md')
-        const skillPath = path.join(repoRoot, 'templates', 'skills', 'rails', id, 'SKILL.md')
+        const codexPath = path.join(repoRoot, 'templates', 'codex-skills', 'rails', id, 'SKILL.md')
         expect(fs.existsSync(claudePath), `${claudePath} missing`).toBe(true)
-        expect(fs.existsSync(skillPath), `${skillPath} missing — port the rail to SKILL.md format`).toBe(true)
+        expect(fs.existsSync(codexPath), `${codexPath} missing — every core agent needs a codex-native rail`).toBe(true)
       }
     })
   })
