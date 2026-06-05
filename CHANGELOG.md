@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.6.5](https://github.com/fjpulidop/specrails-core/compare/v4.6.4...v4.6.5) (2026-06-05)
+
+
+### Code Refactoring
+
+* **templates:** migrate skills templates to commands ([#282](https://github.com/fjpulidop/specrails-core/issues/282)) ([b5fa366](https://github.com/fjpulidop/specrails-core/commit/b5fa366caaa701924f7d5ad7f31242e068ab3ac6))
+
 ## [4.6.4](https://github.com/fjpulidop/specrails-core/compare/v4.6.3...v4.6.4) (2026-06-01)
 
 
