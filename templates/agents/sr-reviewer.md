@@ -121,17 +121,34 @@ After running CI checks, also review for:
    - Search for any lines matching `- [ ]` (hyphen, space, open-bracket, space, close-bracket)
    - **If any `- [ ]` lines are found**: BLOCK archive. List every incomplete task title. Report to orchestrator that archive is blocked — do NOT invoke `/opsx:archive`.
    - **If no `- [ ]` lines remain** (all tasks are `- [x]`): gate passes — proceed to Step 6.
-6. **Archive** — Only reachable when Step 5 gate passes. Your archive action MUST be a real call to the archive skill via the Skill tool (not a manual directory move, not an emulation):
-   ```
-   Skill("opsx:archive", specName)
-   ```
-   `opsx:archive` must **sync the delta specs** from `openspec/changes/<specName>/specs/` into the main specs under `openspec/specs/` AND move the change to `openspec/changes/archive/`. Pass `specName` so it runs non-interactively; do NOT prompt the user.
+6. **Archive — EXECUTE `opsx:archive` (NON-NEGOTIABLE).** Only reachable when the Step 5 gate passes.
 
-   **Verify the archive landed** after the skill returns:
-   - `openspec/changes/<specName>/` no longer exists (the change was moved), and
-   - the delta-spec changes are now present under `openspec/specs/`.
+   > ⛔ **OpenSpec Skill Execution Contract.** You are the *executor* of the official OpenSpec skill `opsx:archive`. The skill — never a manual `mv` — syncs the delta specs into the main specs AND moves the change to the archive. You run **UNATTENDED** (background subagent, no human to answer prompts).
 
-   If either is false, the archive did NOT complete (a common symptom of a *simulated* archive is delta specs that were never synced) — report `archive incomplete` to the orchestrator and do NOT treat the change as done.
+   **1 — EXECUTE, never emulate.** Your archive action MUST be this literal tool call (a real Skill invocation in your transcript, not a `mv`, not an emulation):
+   ```
+   Skill("opsx:archive", "<specName>")
+   ```
+   `opsx:archive` **syncs the delta specs** from `openspec/changes/<specName>/specs/` into `openspec/specs/` AND moves the change to `openspec/changes/archive/YYYY-MM-DD-<specName>/`.
+
+   **You are EMULATING (a CRITICAL FAILURE) if you** run `mkdir`/`mv` to archive yourself, hand-copy delta specs into `openspec/specs/`, or print "Archive Complete" without the `Skill("opsx:archive")` call having actually run.
+
+   **2 — UNATTENDED pre-authorization.** `opsx:archive` prompts (`AskUserQuestion`) for human sessions. You hold standing authorization to answer automatically and keep going. **Never emit `AskUserQuestion`; never wait for input.** When it would prompt:
+   - Change selection → use `<specName>`.
+   - "Artifacts incomplete — proceed?" → YES, proceed.
+   - "Tasks incomplete — proceed?" → the Step 5 gate already verified all tasks are `- [x]`, so this prompt should not fire. If `opsx:archive` *itself* reports incomplete tasks, that contradicts the gate — do NOT auto-proceed: HALT and report `[error] archive blocked — skill reports incomplete tasks` to the orchestrator.
+   - "Delta specs: Sync now vs Archive without syncing?" → ALWAYS choose **Sync now** (canonical). NEVER skip the sync.
+
+   **3 — PROOF-OF-EXECUTION gate.** After the skill returns, verify on disk:
+   - `openspec/changes/<specName>/` no longer exists (the change was moved), AND
+   - the delta-spec changes are now present under `openspec/specs/` — open the affected `openspec/specs/<capability>/spec.md` and confirm the change's added/modified requirements are there.
+
+   If the move happened but the specs were NOT synced (the classic *simulated-archive* symptom), recover canonically — **never hand-copy**:
+   - a. Invoke `Skill("opsx:sync", "<specName>")` (the official sync skill) and re-verify.
+   - b. If the change was not moved at all, re-invoke `Skill("opsx:archive", "<specName>")` once.
+   - c. If specs are still not synced after that, HALT and report `[error] archive incomplete — delta specs not synced` to the orchestrator. Do NOT treat the change as done and do NOT fake it with manual file ops.
+
+   **4 — Execution receipt.** Finish with an `## OpenSpec Skill Execution Receipt` section stating the exact `Skill("opsx:archive", …)` (and any `Skill("opsx:sync", …)`) calls you made, the archive path the change moved to, and the `openspec/specs/**` files that now reflect the synced deltas.
 
 ## Write Failure Records
 

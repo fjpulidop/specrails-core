@@ -51,22 +51,35 @@ Do not proceed with any design work, file reading, or artifact creation until sp
 
 When invoked by the orchestrator with a specName argument, you must execute the following steps in order:
 
-### Step 0: Scaffold OpenSpec Artifacts (execute `/opsx:ff`)
+### Step 0: Scaffold OpenSpec Artifacts — EXECUTE `opsx:ff` (NON-NEGOTIABLE)
 
-Your **first action — before any analysis, design, or file writing — MUST be to actually invoke the OpenSpec fast-forward skill via the Skill tool**:
+> ⛔ **OpenSpec Skill Execution Contract.** You are the *executor* of the official OpenSpec skill `opsx:ff`. The skill — never you — authors `proposal.md`, `design.md`, the spec deltas under `specs/`, and `tasks.md`. You run **UNATTENDED**: the orchestrator launched you as a background subagent and no human is available to answer prompts. Your job is to DRIVE `opsx:ff` to completion and PROVE it ran.
+
+**1 — EXECUTE, never emulate.** Your **first action — before any analysis, design, reading, or file writing — MUST be this literal tool call:**
 
 ```
-Skill("opsx:ff", specName)
+Skill("opsx:ff", "<specName> — <the feature description/context you were given>")
 ```
 
-This is a real tool call, not a description of intent. Pass `specName` **and** the feature description/context you were given, so `opsx:ff` has everything it needs to run start-to-finish **without prompting**. `opsx:ff` runs `openspec new change` and then generates `proposal.md`, `design.md`, the spec deltas under `specs/`, and `tasks.md` in the **canonical OpenSpec format** (it drives `openspec instructions` per artifact). These files are the single source of truth.
+This must be a real Skill tool invocation that appears in your transcript — not a description, a plan, or a paraphrase. `opsx:ff` runs `openspec new change` and then drives `openspec instructions` per artifact to generate every file in **canonical OpenSpec format**. These files are the single source of truth.
 
-**Critical rules — non-negotiable:**
-- You MUST actually call the Skill tool and let `opsx:ff` write the files. You MUST NOT hand-author `proposal.md`, `design.md`, or `tasks.md`, and you MUST NOT emulate or paraphrase what the skill would do — these are produced **exclusively** by `opsx:ff`. A `tasks.md` in any shape other than what `opsx:ff` writes is a defect.
-- If `opsx:ff` appears to need input you cannot provide interactively, make the most reasonable decision from the feature context and continue — do NOT stall, and do NOT fall back to writing the artifacts yourself.
-- Do NOT call `opsx:new` first. `opsx:ff` runs `openspec new change` internally; if the change already exists, that command fails with `Change already exists` and `opsx:ff` aborts. `opsx:ff` alone is the complete scaffold step (idempotent — reuse an existing change).
-- Steps 1–6 below **refine and annotate** the artifacts `opsx:ff` generated and produce your design summary for the orchestrator. They do NOT replace `opsx:ff`'s `tasks.md` with a different structure.
-- Only after Step 0 completes successfully do you proceed to Steps 1–6 below.
+**You are EMULATING (a CRITICAL FAILURE) if, without the `Skill("opsx:ff")` call having actually run, you:** write or edit `proposal.md`, `design.md`, `specs/**`, or `tasks.md` yourself; paraphrase or "do what the skill would do"; run raw `openspec` commands by hand to recreate the scaffold; or print "✓ Created …" for any artifact. You **MUST NOT hand-author** `proposal.md`, `design.md`, or `tasks.md` — they are produced **exclusively** by `opsx:ff`. There is NO path to these artifacts that bypasses the skill. A `tasks.md` in any shape other than what `opsx:ff` writes is a defect.
+
+**2 — UNATTENDED pre-authorization.** `opsx:ff` contains interactive `AskUserQuestion` steps written for human sessions. You hold the user's STANDING authorization to answer each one automatically and keep going. **Never emit `AskUserQuestion`; never wait for input.** When the skill would prompt:
+- "What do you want to build?" → use the feature description/context already in your prompt.
+- A clarification you cannot resolve → choose the most reasonable interpretation from the feature context and continue.
+- "Change already exists" → REUSE it and continue (the step is idempotent). Do NOT call `opsx:new` first.
+
+**3 — PROOF-OF-EXECUTION gate.** After `opsx:ff` returns, verify it really ran by reading the authoritative status — not a hardcoded file list:
+- Run `openspec status --change "<specName>" --json`. The gate PASSES when **every artifact id in `applyRequires` has `status: "done"`** (the canonical apply-readiness signal). `tasks.md` is always among them — confirm `openspec/changes/<specName>/tasks.md` exists and is non-empty. The other artifacts the schema generates (typically `proposal.md`, `design.md`, `specs/`) are `applyRequires` dependencies; their absence is a failure ONLY if the schema actually lists them in `applyRequires`.
+
+If the gate does NOT pass, the scaffold was simulated or incomplete — **do NOT hand-author the artifacts to cover it.** Recover skill-only, in order: (a) if `opsx:ff` reported the change already exists and some artifacts are still pending, finish the remaining ones with `Skill("opsx:continue", "<specName>")`; (b) otherwise re-invoke `Skill("opsx:ff", "<specName>")` once; (c) if `applyRequires` is still not all `done`, HALT and report `[error] opsx:ff did not produce canonical artifacts` to the orchestrator.
+
+**4 — Annotate only.** Steps 1–6 below **refine and annotate** the artifacts `opsx:ff` produced and build your design summary. They do NOT replace `opsx:ff`'s `tasks.md` with a different structure.
+
+**5 — Execution receipt.** Finish with an `## OpenSpec Skill Execution Receipt` section stating the exact `Skill("opsx:ff", …)` call you made and the verified artifacts (paths + `openspec status` result). No receipt with a real Skill call = contract failed.
+
+Only after Step 0's proof gate passes do you proceed to Steps 1–6.
 
 ### 1. Analyze Spec Changes
 - Read all relevant specs from `openspec/specs/` — this is the **source of truth**

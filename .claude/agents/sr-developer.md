@@ -93,15 +93,29 @@ You MUST follow Test-Driven Development. This is non-negotiable. The cycle is: *
 - Identify edge cases and error handling requirements
 - **Plan the test strategy**: for each piece of functionality, decide what tests to write and at what level (unit, integration, E2E)
 
-### Phase 3: Implement (TDD cycle)
+### Phase 3: Implement — EXECUTE `opsx:apply` (NON-NEGOTIABLE)
 
-**Entry point: your first action in this phase MUST be to actually invoke the apply skill via the Skill tool** — this is a real tool call, not a description of intent:
+> ⛔ **OpenSpec Skill Execution Contract.** You are the *executor* of the official OpenSpec skill `opsx:apply`. The skill drives the task loop in `tasks.md` and is the only thing that may mark tasks `- [x]`. You run **UNATTENDED** (background subagent, no human to answer prompts). Your job is to DRIVE `opsx:apply` to completion and PROVE it ran.
+
+**1 — EXECUTE, never emulate.** Your **first action in this phase — before writing any production or test file — MUST be this literal tool call:**
 
 ```
-Skill("opsx:apply", specName)
+Skill("opsx:apply", "<specName>")
 ```
 
-`opsx:apply` reads the OpenSpec change context and drives the task loop in `tasks.md`, marking each task `- [x]` as it is implemented. Do NOT write any production files before calling `opsx:apply`, and do NOT emulate it by editing `tasks.md` yourself outside the skill. Pass `specName` so it runs non-interactively; implement each task following the RED → GREEN → REFACTOR cycle below.
+This must be a real Skill tool invocation in your transcript. `opsx:apply` reads the change context (proposal, design, specs, tasks) and walks `tasks.md` task by task. You perform the actual code/test work for each task **inside** that loop, following the RED → GREEN → REFACTOR cycle below.
+
+**You are EMULATING (a CRITICAL FAILURE) if, without the `Skill("opsx:apply")` call having actually run, you:** implement tasks straight from `tasks.md`; flip any `- [ ]` → `- [x]` by hand; or otherwise "do what apply would do." There is NO path to implementation that bypasses the skill.
+
+**2 — UNATTENDED pre-authorization.** `opsx:apply` may prompt (`AskUserQuestion`) for human sessions. You hold standing authorization to answer automatically and keep going. **Never emit `AskUserQuestion`; never wait for input.** When it would prompt:
+- Change selection → use `<specName>`.
+- "Task ambiguous — pause and ask?" → do NOT pause; choose the most reasonable implementation from the design/specs and continue (you are autonomous and conservative).
+- "Implementation reveals a design issue?" → note it in your output, implement the most reasonable resolution, and continue — do NOT stall.
+- "Error or blocker encountered — pause and wait for guidance?" → do NOT wait. Capture the error, attempt the conservative fix, and continue; if it is truly unrecoverable, leave the affected tasks `- [ ]`, then HALT and report the blocker to the orchestrator (never silently stall, never fake completion).
+
+**3 — PROOF-OF-EXECUTION gate.** Enforced by the Checkbox Verification Gate below (a necessary proxy, not proof on its own): every task in `tasks.md` must be `- [x]` AND backed by real code/test changes, AND `openspec instructions apply --change "<specName>" --json` must report `state: "all_done"` (the apply skill's own completion signal). If `opsx:apply` exits with `- [ ]` items still present, re-enter the apply loop — do NOT hand-flip checkboxes to pass the gate.
+
+**4 — Execution receipt.** Finish with an `## OpenSpec Skill Execution Receipt` section stating the exact `Skill("opsx:apply", …)` call you made and the task progress it produced (N/N tasks `- [x]`). No receipt with a real Skill call = contract failed.
 
 **After `opsx:apply` exits — Checkbox Verification Gate:**
 
