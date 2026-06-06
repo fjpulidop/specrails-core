@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.0](https://github.com/fjpulidop/specrails-core/compare/v4.6.6...v4.7.0) (2026-06-06)
+
+
+### Features
+
+* **agents:** force unattended execution of official opsx skills ([#286](https://github.com/fjpulidop/specrails-core/issues/286)) ([f76f099](https://github.com/fjpulidop/specrails-core/commit/f76f0997b221d97701517486f0a03b7a8970ee3f))
+
 ## [4.6.6](https://github.com/fjpulidop/specrails-core/compare/v4.6.5...v4.6.6) (2026-06-05)
 
 
