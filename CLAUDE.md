@@ -23,7 +23,7 @@ specrails-core/
 ├── src/
 │   └── installer/             # TypeScript installer (compiled → dist/)
 │       ├── cli.ts             # main() + arg parser
-│       ├── commands/          # init / update / doctor / perf-check
+│       ├── commands/          # init / update / doctor
 │       ├── phases/            # prereqs, provider-detect, scaffold, manifest, install-config
 │       └── util/              # logger, exec, fs, git, prompts, template, errors, paths
 ├── dist/                       # tsc output (npm-published, gitignored)
@@ -105,6 +105,8 @@ Profile resolution at Phase -1 (highest wins):
 3. Legacy fallback
 
 Schema: `schemas/profile.v1.json` (shipped in the npm package). Validator error messages MUST name the offending field. Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) are required in every valid profile.
+
+The schema's `$id` (`https://raw.githubusercontent.com/fjpulidop/specrails-core/main/schemas/profile.v1.json`) is the **canonical** identity of the v1 profile schema — specrails-core owns it. Downstream tools that vendor a copy (e.g. specrails-hub) MUST give any diverging copy a distinct `$id`; two schemas sharing this `$id` are asserted to be byte-equivalent.
 
 ### Reserved paths (contract with downstream tools)
 

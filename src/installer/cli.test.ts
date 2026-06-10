@@ -66,8 +66,4 @@ describe('cli.main', () => {
   it('unknown subcommand exits 1', async () => {
     expect(await main(['bogus'])).toBe(1)
   })
-
-  it('perf-check returns 0 (no runtime perf paths in core)', async () => {
-    expect(await main(['perf-check'])).toBe(0)
-  })
 })

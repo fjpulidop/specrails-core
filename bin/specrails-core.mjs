@@ -2,7 +2,7 @@
 /**
  * specrails-core CLI — thin ESM dispatcher.
  *
- * All installer subcommands (init, update, doctor, perf-check) execute
+ * All installer subcommands (init, update, doctor) execute
  * in-process via the Node installer under dist/installer/. This file
  * only keeps logic that is local to the dispatcher:
  *   - `profile validate` / `profile show` — schema validation via ajv.
@@ -50,7 +50,6 @@ const KNOWN_SUBCOMMANDS = new Set([
   'init',
   'update',
   'doctor',
-  'perf-check',
   'enrich',
   'version',
   'profile',
@@ -59,7 +58,7 @@ const KNOWN_SUBCOMMANDS = new Set([
 
 if (!KNOWN_SUBCOMMANDS.has(subcommand)) {
   console.error(`Unknown command: ${subcommand}\n`)
-  console.error('Available commands: init, update, doctor, perf-check, enrich, version, profile, help')
+  console.error('Available commands: init, update, doctor, enrich, version, profile, help')
   process.exit(1)
 }
 
@@ -176,7 +175,7 @@ if (subcommand === 'init') {
   process.exit(0)
 }
 
-// ─── update / doctor / perf-check — direct dispatch to Node CLI ──────────────
+// ─── update / doctor — direct dispatch to Node CLI ───────────────────────────
 
 await runNodeCli([subcommand, ...subargs])
 process.exit(0)
@@ -192,7 +191,6 @@ Usage:
   specrails-core init       [--root-dir <path>] [--yes|-y] [--no-tui]  Install into a repository
   specrails-core update     [--only <component>] [--dry-run]           Update an existing installation
   specrails-core doctor                                                 Run health checks
-  specrails-core perf-check [--files <list>]                            Performance regression check (CI)
   specrails-core enrich     [--from-config <path>]                      Run /specrails:enrich via Claude CLI
   specrails-core profile    <validate|show> [<path>]                    Validate or pretty-print a profile JSON
   specrails-core version                                                Show installed version

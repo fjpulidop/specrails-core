@@ -20,6 +20,22 @@ jobs:
       - name: Scan for secrets
         run: gitleaks detect --source . --redact --exit-code 1
 
+  # Typecheck + build are platform-independent — run each exactly once
+  # here instead of in every test matrix cell. No test consumes dist/
+  # (vitest transpiles src/ via esbuild), so the matrix below only runs
+  # vitest.
+  typecheck-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
   # Cross-platform Node test matrix. Runs on macOS, Linux, and Windows;
   # covers Node 20 (current LTS) and Node 22 (next LTS) per
   # package.json#engines.
@@ -35,11 +51,8 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: ${{ matrix.node }}
-      # `npm install` (not `npm ci`) — package-lock.json is intentionally
-      # gitignored in this repo (library convention), so `npm ci` would fail.
-      - run: npm install --no-audit --no-fund
-      - run: npm run typecheck
-      - run: npm run build
+          cache: npm
+      - run: npm ci
       - run: npx vitest run
 
   coverage:
@@ -50,10 +63,8 @@ jobs:
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f  # v6.3.0
         with:
           node-version: 20
-      # `npm install` (not `npm ci`) — package-lock.json is intentionally
-      # gitignored in this repo (library convention), so `npm ci` would fail.
-      - run: npm install --no-audit --no-fund
-      - run: npm run build
+          cache: npm
+      - run: npm ci
       - name: Run tests with coverage
         run: npx vitest run --coverage
       - name: Upload coverage report
