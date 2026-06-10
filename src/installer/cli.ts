@@ -15,7 +15,6 @@ import { fileURLToPath } from 'node:url'
 
 import { runDoctor, type DoctorFlags } from './commands/doctor.js'
 import { runInit, type InitFlags } from './commands/init.js'
-import { runPerfCheck, type PerfCheckFlags } from './commands/perf-check.js'
 import { runUpdate, type UpdateFlags } from './commands/update.js'
 import { isInstallerError } from './util/errors.js'
 import { fatal } from './util/logger.js'
@@ -87,7 +86,6 @@ function usageText(): string {
     '  init           Install specrails into a repository',
     '  update         Update an existing specrails installation',
     '  doctor         Diagnose the health of an existing installation',
-    '  perf-check     Run the agent-workflow micro-benchmark',
     '  help           Show this help message',
     '  version        Print the installed version',
     '',
@@ -139,9 +137,6 @@ async function dispatch(
       const result = await runDoctor(flags as DoctorFlags)
       return result.failed === 0 ? 0 : 1
     }
-    case 'perf-check':
-      await runPerfCheck(flags as PerfCheckFlags)
-      return 0
     case 'help':
     case '':
       process.stdout.write(usageText())

@@ -23,7 +23,7 @@ specrails-core/
 ├── src/
 │   └── installer/             # TypeScript installer (compiled → dist/)
 │       ├── cli.ts             # main() + arg parser
-│       ├── commands/          # init / update / doctor / perf-check
+│       ├── commands/          # init / update / doctor
 │       ├── phases/            # prereqs, provider-detect, scaffold, manifest, install-config
 │       └── util/              # logger, exec, fs, git, prompts, template, errors, paths
 ├── dist/                       # tsc output (npm-published, gitignored)
