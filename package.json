@@ -58,9 +58,6 @@
     "test:coverage": "vitest run --coverage",
     "prepack": "npm run build"
   },
-  "specrails": {
-    "openspecVersion": "1.2.0"
-  },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
     "ajv": "^8.18.0",
