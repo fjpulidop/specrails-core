@@ -25,14 +25,13 @@ jobs:
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
+          cache: npm
 
       # Install devDependencies so the `prepack` lifecycle hook can
       # compile src/ → dist/ via `tsc`. Without this, `npm publish`
       # invokes prepack with typescript missing and aborts.
-      # `npm ci` is not usable because package-lock.json is gitignored
-      # by repo convention.
       - if: ${{ steps.release.outputs.release_created }}
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - if: ${{ steps.release.outputs.release_created }}
         run: npm publish --provenance --access public
