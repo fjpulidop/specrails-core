@@ -53,10 +53,9 @@
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.test.json --noEmit",
-    "test": "npm run typecheck && npm run build && vitest run",
+    "test": "npm run typecheck && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "prepare": "npm run build",
     "prepack": "npm run build"
   },
   "specrails": {
