@@ -106,6 +106,8 @@ Profile resolution at Phase -1 (highest wins):
 
 Schema: `schemas/profile.v1.json` (shipped in the npm package). Validator error messages MUST name the offending field. Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) are required in every valid profile.
 
+The schema's `$id` (`https://raw.githubusercontent.com/fjpulidop/specrails-core/main/schemas/profile.v1.json`) is the **canonical** identity of the v1 profile schema — specrails-core owns it. Downstream tools that vendor a copy (e.g. specrails-hub) MUST give any diverging copy a distinct `$id`; two schemas sharing this `$id` are asserted to be byte-equivalent.
+
 ### Reserved paths (contract with downstream tools)
 
 The following paths are **reserved** — the installer (`init` / `update`) MUST NEVER create, modify, or delete files inside them:
