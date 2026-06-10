@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.1](https://github.com/fjpulidop/specrails-core/compare/v4.7.0...v4.7.1) (2026-06-10)
+
+
+### Bug Fixes
+
+* audit H1 quick wins — single-build CI + committed lockfile, ajv runtime dep, drop dead perf-check ([#290](https://github.com/fjpulidop/specrails-core/issues/290)) ([b0e2392](https://github.com/fjpulidop/specrails-core/commit/b0e2392c697f32cfef6109af1a2821e5f322d7e0))
+
 ## [4.7.0](https://github.com/fjpulidop/specrails-core/compare/v4.6.6...v4.7.0) (2026-06-06)
 
 
