@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.7.2](https://github.com/fjpulidop/specrails-core/compare/v4.7.1...v4.7.2) (2026-06-12)
+
+
+### Bug Fixes
+
+* rename specrails-hub references to specrails-desktop ([#292](https://github.com/fjpulidop/specrails-core/issues/292)) ([e040f87](https://github.com/fjpulidop/specrails-core/commit/e040f87b7e494c0a1730c3d08e67d8614fad7e1e))
+
 ## [4.7.1](https://github.com/fjpulidop/specrails-core/compare/v4.7.0...v4.7.1) (2026-06-10)
 
 
