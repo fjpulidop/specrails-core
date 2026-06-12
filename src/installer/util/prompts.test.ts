@@ -6,7 +6,7 @@ import { chooseOne, confirmYesNo, text } from './prompts.js'
 /**
  * We cannot reliably simulate interactive TTY input inside vitest.
  * These tests lock down the non-interactive contract — which is the
- * path specrails-hub uses when it drives the installer headlessly.
+ * path specrails-desktop uses when it drives the installer headlessly.
  */
 
 describe('prompts (non-TTY behaviour)', () => {

@@ -67,7 +67,7 @@ Agent discovery runs in one of two modes: **profile mode** (a profile JSON is ac
 
 A profile is active when either condition holds:
 
-1. The environment variable `SPECRAILS_PROFILE_PATH` is set AND points to a readable file. Tools like `specrails-hub` set this to a job-scoped snapshot.
+1. The environment variable `SPECRAILS_PROFILE_PATH` is set AND points to a readable file. Tools like `specrails-desktop` set this to a job-scoped snapshot.
 2. The file `.specrails/profiles/project-default.json` exists and is readable.
 
 If condition 1 holds, use `$SPECRAILS_PROFILE_PATH` as the profile path. Otherwise, if condition 2 holds, use `.specrails/profiles/project-default.json`. Otherwise, fall through to **legacy mode**.
@@ -158,7 +158,7 @@ Also store per-agent model overrides and the orchestrator model for use in later
 
 ```bash
 # ORCHESTRATOR_MODEL is informational; the caller is responsible for spawning
-# the orchestrator with this model (e.g. specrails-hub reads this field directly).
+# the orchestrator with this model (e.g. specrails-desktop reads this field directly).
 ORCHESTRATOR_MODEL="$(jq -r '.orchestrator.model' <<<"$PROFILE")"
 
 # Per-agent model overrides keyed by agent id.
@@ -182,7 +182,7 @@ Claude Code's Agent tool determines a subagent's model from the `model:` line in
 This rewrite is safe because:
 - Multi-feature runs execute in **isolated git worktrees** (`isolation: worktree`), so each rail mutates its own copy of `.claude/agents/` without cross-rail contention.
 - Single-feature runs are sequential within a single checkout.
-- The hub writes a job-scoped snapshot of the profile and spawns `claude` with `$SPECRAILS_PROFILE_PATH` pointing at it; the frontmatter rewrite follows the snapshot, never the catalog.
+- The desktop app writes a job-scoped snapshot of the profile and spawns `claude` with `$SPECRAILS_PROFILE_PATH` pointing at it; the frontmatter rewrite follows the snapshot, never the catalog.
 
 ```bash
 for id in "${!AGENT_MODEL[@]}"; do

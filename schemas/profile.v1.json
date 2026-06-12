@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/fjpulidop/specrails-core/main/schemas/profile.v1.json",
   "title": "specrails agent profile (v1)",
-  "description": "Declarative configuration for the specrails implement pipeline. Describes which agents participate, which models they run with, and how tasks are routed to specialists. Consumed by `implement.md` and produced by tools like specrails-hub.",
+  "description": "Declarative configuration for the specrails implement pipeline. Describes which agents participate, which models they run with, and how tasks are routed to specialists. Consumed by `implement.md` and produced by tools like specrails-desktop.",
   "type": "object",
   "required": ["schemaVersion", "name", "orchestrator", "agents", "routing"],
   "additionalProperties": false,

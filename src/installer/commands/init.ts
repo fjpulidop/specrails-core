@@ -135,9 +135,10 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     step('Installation complete')
     info('Quick tier: agents + rules were placed directly; enrich not required.')
   }
-  // Terminal sentinel for programmatic consumers (specrails-hub's setup
+  // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
-  // checkpoint). Keep the spelling stable.
+  // checkpoint). The sentinel line below is FROZEN — the downstream setup
+  // wizard regex-matches it byte-for-byte; never change its spelling.
   ok('init complete')
 
   return {

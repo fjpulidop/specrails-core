@@ -32,7 +32,7 @@ Two ways:
   don't propose duplicates).
 - A representative slice of the source code (5-10 files,
   drawn from the relevant theme).
-- The hub's own `openspec/specs/` if relevant
+- The desktop app's own `openspec/specs/` if relevant
   (cross-component changes).
 
 ### 2. Identify gaps

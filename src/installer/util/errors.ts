@@ -1,7 +1,7 @@
 /**
  * Typed error hierarchy for the installer. Each subclass carries an
  * `exitCode` which the CLI dispatcher translates to the process exit
- * code so callers (shells, CI, specrails-hub wizard) can distinguish
+ * code so callers (shells, CI, specrails-desktop wizard) can distinguish
  * failure modes without string-parsing stdout.
  *
  * Exit-code ranges:

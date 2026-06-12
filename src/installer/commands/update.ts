@@ -99,7 +99,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   if (scope === 'web-manager') {
     warn(
       '--only=web-manager is deprecated. The standalone web-manager has been retired; ' +
-        'specrails-hub is the supported dashboard. Skipping with no changes.',
+        'specrails-desktop is the supported dashboard. Skipping with no changes.',
     )
     return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier, agentTeams }
   }

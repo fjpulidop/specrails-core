@@ -37,7 +37,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
 ## Known limitations
 
-- **PATH refresh after installing new tools.** Windows GUI shells (Explorer, launcher-started apps) do not re-read PATH until logout/login. If you install `claude.cmd` and launch specrails-hub immediately, the hub's sidecar may not see it. Restart the app after changes to the Env Vars dialog, or launch from a fresh PowerShell.
+- **PATH refresh after installing new tools.** Windows GUI shells (Explorer, launcher-started apps) do not re-read PATH until logout/login. If you install `claude.cmd` and launch specrails-desktop immediately, the desktop app's sidecar may not see it. Restart the app after changes to the Env Vars dialog, or launch from a fresh PowerShell.
 - **CRLF checkouts.** If you clone specrails-core with `core.autocrlf=true`, the repo's `.gitattributes` forces LF on every text file at checkout so the Node installer writes byte-identical artefacts across platforms. Running `git add --renormalize .` once after cloning fixes any pre-existing CRLF contamination.
 - **ARM64.** The x64 Node binary runs under Windows 11's native x64 emulation. All native dependencies we use (`better-sqlite3`, `node-pty`, etc.) resolve to their x64 prebuilts; performance hit is ~10-20% vs native ARM64 but fully functional.
 

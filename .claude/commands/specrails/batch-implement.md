@@ -192,7 +192,7 @@ For each wave `W`:
 2. For each feature batch of size ≤ `CONCURRENCY` within the wave:
    - For every ref in the batch, determine the profile spawn env:
      - If `PROFILE_MAP` contains an entry for this ref, set `SPECRAILS_PROFILE_PATH=<abs path to .specrails/profiles/<mapped-name>.json>` for this invocation only.
-     - Otherwise, inherit whatever `$SPECRAILS_PROFILE_PATH` was set by the caller (e.g. specrails-hub), or leave unset so the rail falls back to `.specrails/profiles/project-default.json` or legacy mode.
+     - Otherwise, inherit whatever `$SPECRAILS_PROFILE_PATH` was set by the caller (e.g. specrails-desktop), or leave unset so the rail falls back to `.specrails/profiles/project-default.json` or legacy mode.
    - Invoke `/specrails:implement` with the feature refs and forwarded flags:
      ```
      SPECRAILS_PROFILE_PATH=<resolved-per-rail-path> /specrails:implement <ref> [--dry-run]

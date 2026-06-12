@@ -139,7 +139,7 @@ export interface ScaffoldResult {
 
 /**
  * Returns true iff any of the provider directories already contains
- * content. The hub-driven path skips the "merge existing?" prompt and
+ * content. The desktop-app-driven path skips the "merge existing?" prompt and
  * assumes `--yes`; the CLI dispatcher (bin/specrails-core.cjs) should
  * have prompted before entering this phase.
  */
@@ -486,7 +486,7 @@ interface QuickPlacement {
  * Source is setup-templates/ (not scriptDir/templates/) so the pipeline
  * is: scriptDir/templates/ → setup-templates/ (earlier scaffold step)
  * → <providerDir>/ (this function). The intermediate hop mirrors the
- * retired bash installer and lets downstream consumers (specrails-hub's
+ * retired bash installer and lets downstream consumers (specrails-desktop's
  * deployTemplates, /specrails:enrich, update flow) read from a single
  * canonical staging dir.
  */

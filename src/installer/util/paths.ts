@@ -3,15 +3,15 @@ import path from 'node:path'
 /**
  * Paths the installer MUST NOT create, modify, or delete. These hold
  * user / team state that survives re-runs (profile JSON authored by
- * specrails-hub, custom agents authored by the user). Breaking this
+ * specrails-desktop, custom agents authored by the user). Breaking this
  * contract silently destroys user work.
  *
  * Audited by vitest spec `reserved-paths.test.ts`.
  */
 export const RESERVED_PATHS = [
   /**
-   * .specrails/profiles/** — project + hub-authored profile JSON.
-   * specrails-hub writes profile files here and expects them preserved
+   * .specrails/profiles/** — project + desktop-app-authored profile JSON.
+   * specrails-desktop writes profile files here and expects them preserved
    * across specrails-core updates.
    */
   '.specrails/profiles/',
