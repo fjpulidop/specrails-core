@@ -12,7 +12,7 @@ import { initRepo } from '../util/git.js'
 /**
  * End-to-end audit: the installer (init AND update) must NEVER mutate
  * the two reserved regions:
- *   - .specrails/profiles/**        (hub / team profile JSON)
+ *   - .specrails/profiles/**        (desktop app / team profile JSON)
  *   - .claude/agents/custom-*.md    (user-authored custom agents)
  *
  * Ports the intent of the retired tests/test-profiles.sh into vitest

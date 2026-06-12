@@ -2,11 +2,11 @@
 
 Interactive wizard to configure the full agent workflow system for this repository. Analyzes the codebase, discovers target users, generates VPC personas, and creates all agents, commands, rules, and configuration adapted to this project. Supports config-driven mode for direct installation from a pre-built config file.
 
-**Prerequisites:** Ensure this repo was initialized with `npx specrails-core@latest init` (or via specrails-hub) so `.specrails/setup-templates/` exists.
+**Prerequisites:** Ensure this repo was initialized with `npx specrails-core@latest init` (or via specrails-desktop) so `.specrails/setup-templates/` exists.
 
-### Hub Checkpoint Protocol
+### Desktop App Checkpoint Protocol
 
-When running inside specrails-hub, emit checkpoint markers at key transitions so the hub `CheckpointTracker` can display progress. Each checkpoint is a single line printed to stdout:
+When running inside specrails-desktop, emit checkpoint markers at key transitions so the desktop app `CheckpointTracker` can display progress. Each checkpoint is a single line printed to stdout:
 
 ```
 [checkpoint:phase_1_analysis] Codebase analysis complete
@@ -16,7 +16,7 @@ When running inside specrails-hub, emit checkpoint markers at key transitions so
 [checkpoint:phase_5_cleanup] Cleanup and summary complete
 ```
 
-The hub parses these via `detectCheckpointFromText()` regex patterns. Always emit checkpoints at the end of each phase, even in `--from-config` and `--quick` modes.
+The desktop app parses these via `detectCheckpointFromText()` regex patterns. Always emit checkpoints at the end of each phase, even in `--from-config` and `--quick` modes.
 
 ---
 
@@ -890,7 +890,7 @@ Local tickets are always read-write — there is no "read only" mode since the f
 **Labels:** Freeform strings following the `area:*` and `effort:*` convention
 **Source values:** `manual`, `get-backlog-specs`, `propose-spec`
 
-**Advisory file locking protocol** (CLI agents and hub server must both follow this):
+**Advisory file locking protocol** (CLI agents and desktop app server must both follow this):
 
 The `revision` counter in the JSON root enables optimistic concurrency — increment it on **every** write. The lock file prevents concurrent corruption:
 
@@ -903,7 +903,7 @@ The `revision` counter in the JSON root enables optimistic concurrency — incre
 4. **Release lock:** Delete `.specrails/local-tickets.json.lock`
 5. **Always increment `revision`** by 1 and update `last_updated` on every successful write
 
-The hub server uses `proper-lockfile` (or equivalent) to honor the same protocol via the `.lock` file path.
+The desktop app server uses `proper-lockfile` (or equivalent) to honor the same protocol via the `.lock` file path.
 
 #### If GitHub Issues
 

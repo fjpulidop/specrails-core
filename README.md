@@ -201,7 +201,7 @@ When running the pipeline, the active profile is resolved in this order:
 2. `<cwd>/.specrails/profiles/project-default.json`
 3. No profile — legacy behavior (identical to pre-4.1.0)
 
-Tools such as [specrails-hub](https://github.com/fjpulidop/specrails-hub) set `$SPECRAILS_PROFILE_PATH` to a job-scoped snapshot so concurrent rails can run independent profiles.
+Tools such as [specrails-desktop](https://github.com/fjpulidop/specrails-desktop) set `$SPECRAILS_PROFILE_PATH` to a job-scoped snapshot so concurrent rails can run independent profiles.
 
 ### Schema
 
@@ -232,10 +232,10 @@ Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) MUST appear in `
 
 The following paths are **reserved** — `specrails-core update` will never create, modify, or delete anything inside them:
 
-- `.specrails/profiles/**` — profile JSON files (yours and hub-authored).
+- `.specrails/profiles/**` — profile JSON files (yours and desktop-authored).
 - `.claude/agents/custom-*.md` — your custom agents. Use the `custom-` prefix to opt in to this protection.
 
-This contract is what lets you safely hand-author (or let specrails-hub author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under update's control. Audited by `src/installer/__tests__/reserved-paths.test.ts` on every CI run.
+This contract is what lets you safely hand-author (or let specrails-desktop author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under update's control. Audited by `src/installer/__tests__/reserved-paths.test.ts` on every CI run.
 
 ---
 
@@ -342,7 +342,7 @@ Yes. Everything runs locally through Claude Code. No external services beyond th
 
 ## Related
 
-- **[specrails-hub](https://github.com/fjpulidop/specrails-hub)** — desktop dashboard that visualises specrails pipelines (macOS, open source).
+- **[specrails-desktop](https://github.com/fjpulidop/specrails-desktop)** — desktop dashboard that visualises specrails pipelines (macOS, open source).
 - **[specrails.dev](https://specrails.dev)** — landing page and documentation.
 
 ---

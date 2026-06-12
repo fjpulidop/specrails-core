@@ -7,7 +7,7 @@ import { readBytes, writeFileLf } from '../util/fs.js'
 
 /**
  * Shape of the `.specrails/specrails-manifest.json` file the installer
- * writes at install time. Consumers (specrails-hub's compat check,
+ * writes at install time. Consumers (specrails-desktop's compat check,
  * the `doctor` command, update.sh) parse it to detect template drift.
  */
 export interface SpecrailsManifest {

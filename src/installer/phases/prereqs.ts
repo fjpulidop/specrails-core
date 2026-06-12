@@ -68,7 +68,7 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
   }
 
   // 1.1 Git repository — auto-init when --yes, otherwise assume caller
-  //     resolved the prompt upstream (bin/specrails-core.cjs / hub TUI).
+  //     resolved the prompt upstream (bin/specrails-core.cjs / desktop app TUI).
   if (!(await isGitRepo(options.repoRoot))) {
     if (!options.autoYes) {
       throw new PrerequisiteError(
