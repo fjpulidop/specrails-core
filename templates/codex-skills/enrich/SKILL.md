@@ -21,7 +21,7 @@ it doesn't run the rail pipeline.
   generation + rail customisation + AGENTS.md refresh).
 - `$enrich --from-config` — read parameters from
   `.specrails/install-config.yaml` instead of asking. Used by
-  the hub during the install wizard's full-tier path.
+  the desktop app during the install wizard's full-tier path.
 - `$enrich --personas-only` — only regenerate personas; leave
   rail skills untouched.
 
