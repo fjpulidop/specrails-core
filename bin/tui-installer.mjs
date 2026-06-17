@@ -72,7 +72,10 @@ const DEFAULT_SELECTED = new Set([
   ...CORE_AGENTS,
 ]);
 
-// ─── Model presets ────────────────────────────────────────────────────────────
+// ─── Model presets (Claude only — see PROVIDER_DEFAULT_MODEL) ────────────────────
+// Claude has real cost/quality tiers (sonnet/haiku/opus). Codex and gemini are
+// single-model in the scaffold (it hardcodes the per-agent model and ignores the
+// install-config preset), so these presets apply to Claude only.
 
 const MODEL_PRESETS = {
   balanced: {
@@ -90,6 +93,16 @@ const MODEL_PRESETS = {
     defaults:    'sonnet',
     overrides:   { 'sr-architect': 'opus', 'sr-product-manager': 'opus' },
   },
+};
+
+// Per-provider default agent model. For codex/gemini the scaffold hardcodes this
+// (the install-config model is advisory), so the TUI writes the provider's real
+// model instead of a Claude-flavoured preset. Keep in sync with scaffold.ts
+// (GEMINI_DEFAULT_MODEL / the codex config.toml model).
+const PROVIDER_DEFAULT_MODEL = {
+  claude: 'sonnet',
+  codex:  'gpt-5.5-mini',
+  gemini: 'gemini-3.5-flash',
 };
 
 // ─── Provider registry ─────────────────────────────────────────────────────────
@@ -199,7 +212,7 @@ function writeDefaultConfig(specrailsDir, provider) {
     selectedAgents: defaultSelected,
     excludedAgents: defaultExcluded,
     modelPreset:    'balanced',
-    modelDefaults:  'sonnet',
+    modelDefaults:  PROVIDER_DEFAULT_MODEL[provider] ?? 'sonnet',
     modelOverrides: {},
     agentTeams:     false,
   });
@@ -398,15 +411,23 @@ async function run() {
   clearScreen();
   console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length}\n`);
 
-  const modelPreset = await select({
-    message: 'Model configuration:',
-    choices: Object.entries(MODEL_PRESETS).map(([key, val]) => ({
-      value:       key,
-      name:        `${key.padEnd(10)} ${val.label}`,
-    })),
-  });
-
-  const { defaults: modelDefaults, overrides: modelOverrides } = MODEL_PRESETS[modelPreset];
+  // Claude exposes real model tiers; codex/gemini are single-model in the scaffold,
+  // so skip the (Claude-flavoured) preset picker for them and use the fixed model.
+  let modelPreset = 'balanced';
+  let modelDefaults = PROVIDER_DEFAULT_MODEL[provider] ?? 'sonnet';
+  let modelOverrides = {};
+  if (provider === 'claude') {
+    modelPreset = await select({
+      message: 'Model configuration:',
+      choices: Object.entries(MODEL_PRESETS).map(([key, val]) => ({
+        value:       key,
+        name:        `${key.padEnd(10)} ${val.label}`,
+      })),
+    });
+    ({ defaults: modelDefaults, overrides: modelOverrides } = MODEL_PRESETS[modelPreset]);
+  } else {
+    console.log(`  → Model: ${modelDefaults}  (${provider} uses one model for all agents)\n`);
+  }
 
   // ── Step 5: Agent Teams (Claude only) ──────────────────────────────────────
 
