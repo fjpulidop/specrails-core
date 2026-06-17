@@ -35,13 +35,18 @@ const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst
  */
 const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content']
 
-/** Per-role gemini model (claude templates all use `sonnet`; mirror the top tier). */
+/**
+ * Per-role gemini model. Defaults to `gemini-3.5-flash` — the stable flagship
+ * (June 2026): strong agentic/coding, high quota, and unlike `gemini-2.5-pro`
+ * it is NOT removed from the free tier (the old default produced 429
+ * "exhausted capacity" errors on free/limited keys).
+ */
 const GEMINI_MODEL_BY_AGENT: Record<string, string> = {
-  'sr-architect': 'gemini-2.5-pro',
-  'sr-developer': 'gemini-2.5-pro',
-  'sr-reviewer': 'gemini-2.5-pro',
+  'sr-architect': 'gemini-3.5-flash',
+  'sr-developer': 'gemini-3.5-flash',
+  'sr-reviewer': 'gemini-3.5-flash',
 }
-const GEMINI_DEFAULT_MODEL = 'gemini-2.5-pro'
+const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash'
 /**
  * Skills excluded from the quick tier because they depend on
  * VPC-only agents (sr-product-manager, sr-product-analyst).
