@@ -196,7 +196,8 @@ function resolveScope(only: string | boolean | undefined): OnlyComponent {
 async function resolveExistingProvider(repoRoot: string): Promise<Provider> {
   if (pathExists(path.join(repoRoot, '.claude'))) return 'claude'
   if (pathExists(path.join(repoRoot, '.codex'))) return 'codex'
-  // Neither present — fall back to resolving via CLI availability.
+  if (pathExists(path.join(repoRoot, '.gemini'))) return 'gemini'
+  // None present — fall back to resolving via CLI availability.
   const avail = await detectAvailability()
   try {
     return await resolveProvider(avail, { skipPrereqs: true })

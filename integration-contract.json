@@ -43,7 +43,7 @@
     "version": 1,
     "fields": {
       "version": "number — schema version, currently 1",
-      "provider": "string — claude | codex | auto",
+      "provider": "string — claude | codex | gemini | auto",
       "tier": "string — full | quick",
       "agents.selected": "string[] — agent names to install",
       "agents.excluded": "string[] — agent names to skip",

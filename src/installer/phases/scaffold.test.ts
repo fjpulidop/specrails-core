@@ -130,21 +130,90 @@ describe('scaffold', () => {
       expect(isDir(path.join(repoRoot, '.specrails', 'setup-templates', 'rules'))).toBe(true)
     })
 
-    it('throws a clear error for the gemini provider (rails scaffold not implemented yet)', () => {
+    function setupGeminiFakeSource(scriptDir: string): void {
+      setupRichFakeSource(scriptDir)
+      writeFileLf(
+        path.join(scriptDir, 'templates', 'gemini-commands', 'implement.toml'),
+        "description = \"Implementation Pipeline\"\nprompt = '''GEMINI_IMPLEMENT_SENTINEL invoke_agent sr-architect'''\n",
+      )
+      writeFileLf(
+        path.join(scriptDir, 'templates', 'gemini-commands', 'batch-implement.toml'),
+        "description = \"Batch\"\nprompt = '''GEMINI_BATCH_SENTINEL'''\n",
+      )
+      writeFileLf(
+        path.join(scriptDir, 'templates', 'settings', 'gemini-settings.json'),
+        '{\n  "experimental": { "enableAgents": true }\n}\n',
+      )
+    }
+
+    function scaffoldGemini(scriptDir: string, repoRoot: string): void {
+      scaffoldInstallation({
+        scriptDir,
+        repoRoot,
+        provider: 'gemini',
+        providerDir: '.gemini',
+        agentTeams: false,
+        tier: 'quick',
+      })
+    }
+
+    it('emits the gemini artifact tree (agents .md + commands .toml + settings + GEMINI.md)', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo-gemini')
-      setupFakeSource(scriptDir)
+      setupGeminiFakeSource(scriptDir)
+      scaffoldGemini(scriptDir, repoRoot)
 
-      expect(() =>
-        scaffoldInstallation({
-          scriptDir,
-          repoRoot,
-          provider: 'gemini',
-          providerDir: '.gemini',
-          agentTeams: false,
-          tier: 'full',
-        }),
-      ).toThrow(/Gemini provider scaffold is not implemented yet/)
+      // Agents: .gemini/agents/sr-*.md with gemini frontmatter (model + tools), no claude color/memory keys.
+      const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
+      expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
+      expect(arch).toContain('model: gemini-2.5-pro')
+      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content]')
+      expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
+      // VPC-dependent agent excluded from the quick tier.
+      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-product-manager.md'))).toBe(false)
+
+      // Commands: hand-authored orchestrator override copied verbatim; others transformed to TOML.
+      const impl = readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'implement.toml'))
+      expect(impl).toContain('GEMINI_IMPLEMENT_SENTINEL')
+      const why = readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'why.toml'))
+      expect(why.startsWith('description = ')).toBe(true)
+      expect(why).toContain("prompt = '''")
+      expect(why).toContain('/specrails:why')
+
+      // Settings + GEMINI.md.
+      const settings = JSON.parse(readTextFile(path.join(repoRoot, '.gemini', 'settings.json')))
+      expect(settings.experimental.enableAgents).toBe(true)
+      const gmd = readTextFile(path.join(repoRoot, 'GEMINI.md'))
+      expect(gmd).toContain('specrails-managed:start')
+      expect(gmd).toContain('.gemini/')
+      expect(gmd).toContain('.specrails/local-tickets.json')
+      // No throw, no codex/claude leakage.
+      expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(false)
+    })
+
+    it('deep-merges .gemini/settings.json (preserves user keys) and upserts GEMINI.md', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-gemini-merge')
+      setupGeminiFakeSource(scriptDir)
+      // Pre-seed a user settings.json + a user-authored GEMINI.md.
+      writeFileLf(
+        path.join(repoRoot, '.gemini', 'settings.json'),
+        '{\n  "theme": "GitHub",\n  "experimental": { "vimMode": true }\n}\n',
+      )
+      writeFileLf(path.join(repoRoot, 'GEMINI.md'), '# My notes\nkeep this\n')
+
+      scaffoldGemini(scriptDir, repoRoot)
+
+      const settings = JSON.parse(readTextFile(path.join(repoRoot, '.gemini', 'settings.json')))
+      expect(settings.theme).toBe('GitHub') // user key survives
+      expect(settings.experimental.vimMode).toBe(true) // nested user key survives
+      expect(settings.experimental.enableAgents).toBe(true) // ours added
+      const gmd = readTextFile(path.join(repoRoot, 'GEMINI.md'))
+      expect(gmd).toContain('# My notes') // user content preserved
+      expect(gmd).toContain('keep this')
+      expect(gmd).toContain('specrails-managed:start') // managed block appended
     })
 
     it('copies templates into setup-templates/', () => {

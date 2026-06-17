@@ -26,6 +26,22 @@ export const CORE_AGENTS = new Set([
  * /specrails:enrich persona pass to function correctly.
  */
 const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst'])
+
+/**
+ * Gemini built-in tool ids granted to every `.gemini/agents/sr-*.md` subagent.
+ * (Validated headless in the desktop spike — read/write/shell/glob/grep.) Because
+ * gemini TOML commands cannot carry per-command tool/model routing, the tool +
+ * model gating migrates into the subagent frontmatter.
+ */
+const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content']
+
+/** Per-role gemini model (claude templates all use `sonnet`; mirror the top tier). */
+const GEMINI_MODEL_BY_AGENT: Record<string, string> = {
+  'sr-architect': 'gemini-2.5-pro',
+  'sr-developer': 'gemini-2.5-pro',
+  'sr-reviewer': 'gemini-2.5-pro',
+}
+const GEMINI_DEFAULT_MODEL = 'gemini-2.5-pro'
 /**
  * Skills excluded from the quick tier because they depend on
  * VPC-only agents (sr-product-manager, sr-product-analyst).
@@ -161,19 +177,6 @@ export function detectExistingSetup(input: Pick<ScaffoldInput, 'repoRoot' | 'pro
  * .gitignore. Returns a summary for logging / tests.
  */
 export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
-  // Gemini target is in progress: the type/detection/validation layer + OpenSpec
-  // (`openspec init --tools gemini`) already support gemini, but the specrails
-  // rails artifact emission (`.gemini/commands/*.toml` + `.gemini/agents/sr-*.md`
-  // + GEMINI.md/settings) is not implemented yet. Fail loudly here rather than
-  // fall through the Claude branch and write Claude-format files into `.gemini/`.
-  if (input.provider === 'gemini') {
-    throw new Error(
-      'The Gemini provider scaffold is not implemented yet. ' +
-        'Gemini support currently covers detection + OpenSpec (`openspec init --tools gemini`); ' +
-        'the specrails rails commands/agents for Gemini are coming in a follow-up.',
-    )
-  }
-
   const createdDirs: string[] = []
   let copiedFiles = 0
 
@@ -191,6 +194,11 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     mk(path.join(input.repoRoot, input.providerDir, 'skills', 'enrich'))
     mk(path.join(input.repoRoot, input.providerDir, 'skills', 'doctor'))
     mk(path.join(input.repoRoot, input.providerDir, 'skills', 'rails'))
+  } else if (input.provider === 'gemini') {
+    // Gemini: TOML commands under .gemini/commands/specrails/ + native
+    // subagents under .gemini/agents/. No skills/ tree.
+    mk(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails'))
+    mk(path.join(input.repoRoot, input.providerDir, 'agents'))
   } else {
     mk(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails'))
     mk(path.join(input.repoRoot, input.providerDir, 'skills'))
@@ -205,7 +213,9 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   mk(path.join(setupTemplates, 'settings'))
 
   // --- .gitignore hygiene ---
-  ensureGitignore(input.repoRoot, ['.claude/agent-memory/', '.specrails/'])
+  const gitignoreEntries = ['.claude/agent-memory/', '.specrails/']
+  if (input.provider === 'gemini') gitignoreEntries.push('.gemini/agent-memory/')
+  ensureGitignore(input.repoRoot, gitignoreEntries)
 
   // --- Copy bundled templates into setup-templates/ ---
   const templatesSrc = path.join(input.scriptDir, 'templates')
@@ -248,8 +258,10 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     const skills = placeSkills(input)
     copiedFiles += skills.filesCopied
     const skillSkipNote = skills.skipped > 0 ? ` (skipped ${skills.skipped} VPC-dependent)` : ''
+    const skillsLabel = input.provider === 'gemini' ? 'agent' : 'skill'
+    const skillsSubdir = input.provider === 'gemini' ? 'agents' : 'skills'
     info(
-      `Placed ${skills.placed} skill(s) into ${input.providerDir}/skills/${skillSkipNote}`,
+      `Placed ${skills.placed} ${skillsLabel}(s) into ${input.providerDir}/${skillsSubdir}/${skillSkipNote}`,
     )
   }
 
@@ -260,11 +272,18 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     if (written > 0) {
       info(`Codex provider: wrote ${written} setting file(s) (config.toml, AGENTS.md)`)
     }
+  } else if (input.provider === 'gemini') {
+    const written = applyGeminiSettings(input)
+    copiedFiles += written
+    if (written > 0) {
+      info(`Gemini provider: wrote ${written} setting file(s) (settings.json, GEMINI.md)`)
+    }
   }
 
   // --- Full-tier hint: enrich is required to generate VPC artefacts ---
   if (input.tier === 'full') {
-    const cliName = input.provider === 'codex' ? 'Codex CLI' : 'Claude Code'
+    const cliName =
+      input.provider === 'codex' ? 'Codex CLI' : input.provider === 'gemini' ? 'Gemini CLI' : 'Claude Code'
     info(
       `Full tier staged. Run \`/specrails:enrich\` in ${cliName} to generate ` +
         'VPC personas and adapt agents (including sr-product-manager and ' +
@@ -317,6 +336,26 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
           name: skillName,
         })
       }
+      count++
+    }
+    input.copiedIncrement(count)
+    return
+  }
+
+  if (input.provider === 'gemini') {
+    // Gemini: each bundled command becomes a TOML custom command under
+    // .gemini/commands/specrails/<name>.toml.
+    const destDir = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails')
+    let count = 0
+    for (const entry of listDir(commandsSrc)) {
+      const name = path.basename(entry)
+      if (!name.endsWith('.md')) continue
+      if (name === 'setup.md') continue
+      if (!input.agentTeams && /^team-/.test(name)) continue
+      writeGeminiCommandFromCommand({
+        src: entry,
+        dest: path.join(destDir, `${name.replace(/\.md$/, '')}.toml`),
+      })
       count++
     }
     input.copiedIncrement(count)
@@ -456,6 +495,179 @@ function stripFrontmatter(raw: string): { body: string; description?: string } {
   return { body, description }
 }
 
+/**
+ * Convert a claude slash-command markdown file into a gemini custom command TOML
+ * (`.gemini/commands/specrails/<name>.toml`). Gemini commands carry ONLY
+ * `prompt` + `description` (no per-command tool/model keys — that routing lives
+ * in the subagent frontmatter). Keeps gemini's native `/specrails:<name>` slash
+ * form (unlike codex's `$name`); only `.claude/` paths are rewritten.
+ */
+function writeGeminiCommandFromCommand(args: { src: string; dest: string; description?: string }): void {
+  if (!pathExists(args.src)) return
+  const { body, description: srcDescription } = stripFrontmatter(readTextFile(args.src))
+  const name = path.basename(args.dest).replace(/\.toml$/, '')
+  const description = args.description ?? srcDescription ?? `specrails ${name} command`
+  const translatedBody = body.replace(/\.claude\//g, '.gemini/')
+  // TOML literal multiline strings ('''…''') need no escaping — unless the body
+  // itself contains ''', in which case fall back to a basic escaped string.
+  let promptToml: string
+  if (translatedBody.includes("'''")) {
+    const escaped = translatedBody.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')
+    promptToml = `prompt = "${escaped}"\n`
+  } else {
+    promptToml = `prompt = '''\n${translatedBody}\n'''\n`
+  }
+  writeFileLf(args.dest, `description = ${JSON.stringify(description)}\n${promptToml}`)
+}
+
+/**
+ * Emit a gemini subagent (`.gemini/agents/<id>.md`) from a claude persona
+ * template. Re-emits gemini YAML frontmatter (name/description/model/tools),
+ * dropping claude `color:`/`memory:`; the persona body is reused, `.claude/`
+ * paths rewritten and `{{MEMORY_PATH}}` pointed at `.gemini/agent-memory/`.
+ */
+function writeGeminiAgentFromTemplate(args: {
+  repoRoot: string
+  src: string
+  agentId: string
+  placeholders: Record<string, string>
+}): void {
+  if (!pathExists(args.src)) return
+  const { body, description } = stripFrontmatter(readTextFile(args.src))
+  const model = GEMINI_MODEL_BY_AGENT[args.agentId] ?? GEMINI_DEFAULT_MODEL
+  const frontmatter = [
+    '---',
+    `name: ${args.agentId}`,
+    `description: ${JSON.stringify(description ?? args.agentId)}`,
+    `model: ${model}`,
+    `tools: [${GEMINI_AGENT_TOOLS.join(', ')}]`,
+    '---',
+    '',
+  ].join('\n')
+  const renderedBody = renderPlaceholders(body, {
+    ...args.placeholders,
+    MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
+  }).replace(/\.claude\//g, '.gemini/')
+  writeFileLf(path.join(args.repoRoot, '.gemini', 'agents', `${args.agentId}.md`), frontmatter + renderedBody)
+  mkdirp(path.join(args.repoRoot, '.gemini', 'agent-memory', args.agentId))
+}
+
+/**
+ * Place the gemini subagents under `.gemini/agents/` from the staged persona
+ * templates (both tiers). Honours the agent selection; defaults to CORE_AGENTS.
+ */
+function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
+  const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
+  const agentsSrc = path.join(input.repoRoot, '.specrails', 'setup-templates', 'agents')
+  if (!isDir(agentsSrc)) return result
+  mkdirp(path.join(input.repoRoot, '.gemini', 'agents'))
+  const selectedAgents = input.selectedAgents
+    ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+    : new Set([...CORE_AGENTS])
+  const placeholders = {
+    PROJECT_NAME: path.basename(input.repoRoot),
+    SECURITY_EXEMPTIONS_PATH: '.gemini/security-exemptions.yaml',
+    PERSONA_DIR: '.gemini/agents/personas/',
+  }
+  for (const src of listDir(agentsSrc)) {
+    const name = path.basename(src)
+    if (!name.endsWith('.md')) continue
+    const agentId = name.slice(0, -3)
+    if (!selectedAgents.has(agentId)) continue
+    if (QUICK_EXCLUDED_AGENTS.has(agentId)) {
+      result.skipped++
+      continue
+    }
+    writeGeminiAgentFromTemplate({ repoRoot: input.repoRoot, src, agentId, placeholders })
+    result.placed++
+    result.filesCopied++
+  }
+  return result
+}
+
+/** Recursive JSON object merge; source wins on scalars/arrays. */
+function deepMergeJson(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...target }
+  for (const [k, v] of Object.entries(source)) {
+    const cur = out[k]
+    if (v && typeof v === 'object' && !Array.isArray(v) && cur && typeof cur === 'object' && !Array.isArray(cur)) {
+      out[k] = deepMergeJson(cur as Record<string, unknown>, v as Record<string, unknown>)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
+}
+
+/**
+ * Gemini provider settings: `.gemini/settings.json` (deep-merged so user keys
+ * survive — adds `experimental.enableAgents`) and `GEMINI.md` (sentinel-block
+ * upsert, identical mechanism to codex AGENTS.md). Returns files written.
+ */
+function applyGeminiSettings(input: ScaffoldInput): number {
+  let written = 0
+  const settingsSrc = path.join(input.scriptDir, 'templates', 'settings', 'gemini-settings.json')
+  if (pathExists(settingsSrc)) {
+    const dest = path.join(input.repoRoot, input.providerDir, 'settings.json')
+    const template = JSON.parse(readTextFile(settingsSrc)) as Record<string, unknown>
+    if (pathExists(dest)) {
+      try {
+        const existing = JSON.parse(readTextFile(dest)) as Record<string, unknown>
+        writeFileLf(dest, JSON.stringify(deepMergeJson(existing, template), null, 2) + '\n')
+        written++
+      } catch (err) {
+        warn(`existing ${dest} is not valid JSON — leaving it untouched: ${(err as Error).message}`)
+      }
+    } else {
+      writeFileLf(dest, JSON.stringify(template, null, 2) + '\n')
+      written++
+    }
+  }
+
+  const geminiMdPath = path.join(input.repoRoot, 'GEMINI.md')
+  const content = renderInitialGeminiMd(input.repoRoot)
+  if (!pathExists(geminiMdPath)) {
+    writeFileLf(geminiMdPath, content)
+    written++
+  } else {
+    const existing = readTextFile(geminiMdPath)
+    const next = upsertAgentsMdManagedBlock(existing, extractManagedBlock(content))
+    if (next !== existing) {
+      writeFileLf(geminiMdPath, next)
+      written++
+    }
+  }
+  return written
+}
+
+function renderInitialGeminiMd(repoRoot: string): string {
+  const projectName = path.basename(repoRoot)
+  return [
+    AGENTS_MD_START,
+    '',
+    `# ${projectName} — agent instructions`,
+    '',
+    'This project uses the **specrails** agent workflow under `.gemini/`.',
+    'See `.gemini/commands/specrails/` for the slash commands and `.gemini/agents/`',
+    'for the `sr-*` subagents available to gemini sessions in this repository.',
+    '',
+    '## Conventions',
+    '',
+    '- Read specs from `.specrails/local-tickets.json` when implementing',
+    '  numbered tickets (`#42`, `#71` etc.).',
+    '- Prefer the `/specrails:*` commands (implement, batch-implement, …) over',
+    '  ad-hoc edits when one covers the task.',
+    '- Agent execution is enabled via `.gemini/settings.json`',
+    '  (`experimental.enableAgents: true`).',
+    '',
+    AGENTS_MD_END,
+    '',
+  ].join('\n')
+}
+
 function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider' | 'providerDir'>): void {
   const legacyPaths = [
     path.join(input.repoRoot, '.specrails', 'bin', 'doctor.sh'),
@@ -469,6 +681,11 @@ function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider'
     // legacy install before settling on the canonical `.codex/skills/`.
     legacyPaths.push(path.join(input.repoRoot, '.agents'))
     legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'skills', 'setup'))
+  } else if (input.provider === 'gemini') {
+    // Prune a stale WIP skills/ tree + any setup command leftovers.
+    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'skills'))
+    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'setup.toml'))
+    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', 'setup.toml'))
   } else {
     legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'setup.md'))
     legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', 'setup.md'))
@@ -547,6 +764,35 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
           dest,
           name: skillName,
         })
+        commandsPlaced++
+      }
+    }
+    return { agents: 0, commands: commandsPlaced, rules: 0, skippedAgents: 0 }
+  }
+
+  if (input.provider === 'gemini') {
+    // Gemini: port the slash-command catalogue to .gemini/commands/specrails/
+    // <name>.toml. Hand-authored orchestrator overrides (implement,
+    // batch-implement) under templates/gemini-commands/ win verbatim. Agents
+    // are placed by placeSkills → placeGeminiAgents (both tiers).
+    const geminiSetupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+    const commandsSrc = path.join(geminiSetupTemplates, 'commands', 'specrails')
+    const overridesSrc = path.join(input.scriptDir, 'templates', 'gemini-commands')
+    let commandsPlaced = 0
+    if (isDir(commandsSrc)) {
+      for (const src of listDir(commandsSrc)) {
+        const name = path.basename(src)
+        if (!name.endsWith('.md')) continue
+        if (name === 'setup.md') continue
+        if (!input.agentTeams && /^team-/.test(name)) continue
+        const cmdName = name.slice(0, -3)
+        const dest = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', `${cmdName}.toml`)
+        const overrideToml = path.join(overridesSrc, `${cmdName}.toml`)
+        if (pathExists(overrideToml)) {
+          copyFile(overrideToml, dest)
+        } else {
+          writeGeminiCommandFromCommand({ src, dest })
+        }
         commandsPlaced++
       }
     }
@@ -777,7 +1023,7 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
   const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
 
   // Top-level skills — Claude only, generated from the canonical command body.
-  if (input.provider !== 'codex') {
+  if (input.provider === 'claude') {
     const commandsSrc = path.join(input.repoRoot, '.specrails', 'setup-templates', 'commands', 'specrails')
     const skillEntries = Object.entries(SKILL_FROM_COMMAND) as Array<
       [string, { command: string; description: string }]
@@ -837,6 +1083,14 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       result.placed++
       result.filesCopied += countFiles(dest)
     }
+  }
+
+  // Gemini: place the `sr-*` subagents under .gemini/agents/ (both tiers).
+  if (input.provider === 'gemini') {
+    const g = placeGeminiAgents(input)
+    result.placed += g.placed
+    result.skipped += g.skipped
+    result.filesCopied += g.filesCopied
   }
 
   return result
