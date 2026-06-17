@@ -92,30 +92,41 @@ const MODEL_PRESETS = {
   },
 };
 
+// ─── Provider registry ─────────────────────────────────────────────────────────
+// Single source of truth for the AI CLIs the TUI can target. Add a provider here
+// and it flows through detection, the --provider flag, and the interactive picker.
+const PROVIDERS = [
+  { id: 'claude', label: 'Claude Code (recommended)', versionCmd: 'claude --version', installLabel: 'Claude Code', installUrl: 'https://claude.ai/download' },
+  { id: 'codex',  label: 'Codex (OpenAI)',            versionCmd: 'codex --version',  installLabel: 'Codex CLI',   installUrl: 'https://developers.openai.com/codex' },
+  { id: 'gemini', label: 'Gemini CLI (Google)',       versionCmd: 'gemini --version', installLabel: 'Gemini CLI',  installUrl: 'https://github.com/google-gemini/gemini-cli' },
+];
+const VALID_PROVIDER_IDS = new Set(PROVIDERS.map(p => p.id));
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function detectProvider() {
-  let hasClaude = false;
-  let hasCodex  = false;
-  try { execSync('claude --version', { stdio: 'ignore' }); hasClaude = true; } catch { /* not installed */ }
-  try { execSync('codex --version',  { stdio: 'ignore' }); hasCodex  = true; } catch { /* not installed */ }
-  return { hasClaude, hasCodex };
+// Returns the set of provider ids whose CLI responds to `<bin> --version`.
+function detectInstalledProviders() {
+  const installed = new Set();
+  for (const p of PROVIDERS) {
+    try { execSync(p.versionCmd, { stdio: 'ignore' }); installed.add(p.id); } catch { /* not installed */ }
+  }
+  return installed;
 }
 
-// Parse `--provider <id>` or `--provider=<id>` from process.argv. Returns
-// 'claude' | 'codex' | null. Unknown values warn-then-null so the TUI
-// falls back to interactive selection.
+// Parse `--provider <id>` or `--provider=<id>` from process.argv. Returns a valid
+// provider id or null (unknown values warn-then-null so the TUI falls back to the
+// interactive picker).
 function parseProviderArg() {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--provider' && args[i + 1]) {
       const v = args[i + 1].trim().toLowerCase();
-      return v === 'claude' || v === 'codex' ? v : null;
+      return VALID_PROVIDER_IDS.has(v) ? v : null;
     }
     if (a.startsWith('--provider=')) {
       const v = a.slice('--provider='.length).trim().toLowerCase();
-      return v === 'claude' || v === 'codex' ? v : null;
+      return VALID_PROVIDER_IDS.has(v) ? v : null;
     }
   }
   return null;
@@ -251,36 +262,29 @@ async function run() {
   // Honours an explicit --provider <id> argv flag when present; otherwise
   // picks claude → codex → first-detected. Errors only when none detected.
   if (autoYes) {
-    const { hasClaude, hasCodex } = detectProvider();
+    const installed = detectInstalledProviders();
     const argvProvider = parseProviderArg();
     let provider;
     if (argvProvider) {
-      if (argvProvider === 'claude' && !hasClaude) {
+      if (!installed.has(argvProvider)) {
+        const p = PROVIDERS.find(x => x.id === argvProvider);
         console.error('');
-        console.error('  ⚠  --provider claude requested but Claude Code is not installed.');
-        console.error('     Install: https://claude.ai/download');
-        console.error('');
-        process.exit(1);
-      }
-      if (argvProvider === 'codex' && !hasCodex) {
-        console.error('');
-        console.error('  ⚠  --provider codex requested but Codex CLI is not installed.');
-        console.error('     Install: https://developers.openai.com/codex');
+        console.error(`  ⚠  --provider ${argvProvider} requested but ${p.installLabel} is not installed.`);
+        console.error(`     Install: ${p.installUrl}`);
         console.error('');
         process.exit(1);
       }
       provider = argvProvider;
-    } else if (hasClaude) {
-      provider = 'claude';
-    } else if (hasCodex) {
-      provider = 'codex';
     } else {
-      console.error('');
-      console.error('  ⚠  Neither Claude Code nor Codex CLI detected on PATH.');
-      console.error('     Install Claude: https://claude.ai/download');
-      console.error('     Install Codex:  https://developers.openai.com/codex');
-      console.error('');
-      process.exit(1);
+      // No flag: pick the first installed provider in registry order.
+      provider = PROVIDERS.find(p => installed.has(p.id))?.id;
+      if (!provider) {
+        console.error('');
+        console.error('  ⚠  No supported AI CLI detected on PATH (Claude Code, Codex, or Gemini CLI).');
+        for (const p of PROVIDERS) console.error(`     Install ${p.installLabel}: ${p.installUrl}`);
+        console.error('');
+        process.exit(1);
+      }
     }
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
@@ -312,40 +316,37 @@ async function run() {
 
   // ── Step 1: Provider ────────────────────────────────────────────────────────
 
-  const { hasClaude, hasCodex } = detectProvider();
+  const installed = detectInstalledProviders();
   const argvProvider = parseProviderArg();
   let provider;
 
   if (argvProvider) {
-    if (argvProvider === 'claude' && !hasClaude) {
+    if (!installed.has(argvProvider)) {
       exitFullscreen();
-      console.error('\n  ⚠  --provider claude requested but Claude Code is not installed.\n     Install: https://claude.ai/download\n');
-      process.exit(1);
-    }
-    if (argvProvider === 'codex' && !hasCodex) {
-      exitFullscreen();
-      console.error('\n  ⚠  --provider codex requested but Codex CLI is not installed.\n     Install: https://developers.openai.com/codex\n');
+      const p = PROVIDERS.find(x => x.id === argvProvider);
+      console.error(`\n  ⚠  --provider ${argvProvider} requested but ${p.installLabel} is not installed.\n     Install: ${p.installUrl}\n`);
       process.exit(1);
     }
     provider = argvProvider;
     console.log(`  → Provider: ${provider} (from --provider flag)\n`);
-  } else if (hasClaude && hasCodex) {
-    provider = await select({
-      message: 'Which AI provider will you use?',
-      choices: [
-        { value: 'claude', name: 'Claude Code (recommended)' },
-        { value: 'codex',  name: 'Codex (OpenAI)' },
-      ],
-    });
-  } else if (hasCodex) {
-    provider = 'codex';
-    console.log('  → Provider: codex (auto-detected — Claude Code not found)\n');
-  } else if (hasClaude) {
-    provider = 'claude';
-    console.log('  → Provider: claude (auto-detected)\n');
   } else {
-    provider = 'claude';
-    console.log('  → Provider: claude (default — neither claude nor codex CLI found)\n');
+    const detected = PROVIDERS.filter(p => installed.has(p.id));
+    if (detected.length > 1) {
+      provider = await select({
+        message: 'Which AI provider will you use?',
+        choices: detected.map(p => ({ value: p.id, name: p.label })),
+      });
+    } else if (detected.length === 1) {
+      provider = detected[0].id;
+      console.log(`  → Provider: ${provider} (auto-detected)\n`);
+    } else {
+      // None detected — still offer the full list (a CLI may work despite a
+      // failed --version probe, e.g. a PATH quirk).
+      provider = await select({
+        message: 'No AI CLI detected on PATH — which will you use?',
+        choices: PROVIDERS.map(p => ({ value: p.id, name: p.label })),
+      });
+    }
   }
 
   // ── Step 2: Installation tier ───────────────────────────────────────────────
