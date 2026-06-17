@@ -166,7 +166,7 @@ describe('scaffold', () => {
       // Agents: .gemini/agents/sr-*.md with gemini frontmatter (model + tools), no claude color/memory keys.
       const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
       expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
-      expect(arch).toContain('model: gemini-2.5-pro')
+      expect(arch).toContain('model: gemini-3.5-flash')
       expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content]')
       expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
