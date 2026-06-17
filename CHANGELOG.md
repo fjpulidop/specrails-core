@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.0](https://github.com/fjpulidop/specrails-core/compare/v4.7.2...v4.8.0) (2026-06-17)
+
+
+### Features
+
+* **installer:** Gemini provider target — foundation (detection + OpenSpec) ([#299](https://github.com/fjpulidop/specrails-core/issues/299)) ([8f730f8](https://github.com/fjpulidop/specrails-core/commit/8f730f8b0ca4eb04115af7da9172d3c76502eaed))
+
 ## [4.7.2](https://github.com/fjpulidop/specrails-core/compare/v4.7.1...v4.7.2) (2026-06-12)
 
 
