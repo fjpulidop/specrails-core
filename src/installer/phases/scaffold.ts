@@ -92,23 +92,15 @@ const GEMINI_MODEL_BY_AGENT: Record<string, string> = {
 }
 const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash'
 
-/**
- * Per-role gemini subagent turn budget, emitted as the `max_turns` frontmatter
- * key (gemini's `localAgentSchema` is `.strict()` — the key MUST be snake-case
- * `max_turns`, NOT `maxTurns`/`runConfig`, or the agent fails to load). Gemini's
- * built-in `DEFAULT_MAX_TURNS` is 30, which the implementer agents blow on a
- * non-trivial change (the sr-developer hit it repeatedly on a real run, forcing
- * the orchestrator to babysit). Implementers get a larger budget; the
- * skill-driven architect/reviewer get a moderate bump.
- */
-const GEMINI_MAXTURNS_BY_AGENT: Record<string, number> = {
-  'sr-architect': 40,
-  'sr-developer': 60,
-  'sr-frontend-developer': 60,
-  'sr-backend-developer': 60,
-  'sr-reviewer': 40,
-}
-const GEMINI_DEFAULT_MAXTURNS = 40
+// NOTE: do NOT emit a `max_turns` (or `maxTurns`/`runConfig`) key in the gemini
+// agent frontmatter. Although gemini's documented agent schema lists `max_turns`,
+// the 0.46 runtime loader REJECTS a `.gemini/agents/*.md` file that carries it —
+// the agent silently fails to register and `invoke_agent` reports "Subagent
+// '<name>' not found", so the orchestrator falls back to a generic agent and the
+// specialised personas never run. Verified empirically (two identical agents,
+// one with `max_turns: 40` → not found, one without → loads). The 30-turn default
+// cap is instead absorbed by the implement.toml MAX_TURNS → re-delegate/resume
+// contract. Re-introduce only if a future gemini build is reconfirmed to accept it.
 
 /**
  * Skills excluded from the quick tier because they depend on
@@ -603,14 +595,12 @@ function writeGeminiAgentFromTemplate(args: {
   if (!pathExists(args.src)) return
   const { body, description } = stripFrontmatter(readTextFile(args.src))
   const model = GEMINI_MODEL_BY_AGENT[args.agentId] ?? GEMINI_DEFAULT_MODEL
-  const maxTurns = GEMINI_MAXTURNS_BY_AGENT[args.agentId] ?? GEMINI_DEFAULT_MAXTURNS
   const frontmatter = [
     '---',
     `name: ${args.agentId}`,
     `description: ${JSON.stringify(description ?? args.agentId)}`,
     `model: ${model}`,
     `tools: [${GEMINI_AGENT_TOOLS.join(', ')}]`,
-    `max_turns: ${maxTurns}`,
     '---',
     '',
   ].join('\n')
