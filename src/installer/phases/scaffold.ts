@@ -161,6 +161,19 @@ export function detectExistingSetup(input: Pick<ScaffoldInput, 'repoRoot' | 'pro
  * .gitignore. Returns a summary for logging / tests.
  */
 export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
+  // Gemini target is in progress: the type/detection/validation layer + OpenSpec
+  // (`openspec init --tools gemini`) already support gemini, but the specrails
+  // rails artifact emission (`.gemini/commands/*.toml` + `.gemini/agents/sr-*.md`
+  // + GEMINI.md/settings) is not implemented yet. Fail loudly here rather than
+  // fall through the Claude branch and write Claude-format files into `.gemini/`.
+  if (input.provider === 'gemini') {
+    throw new Error(
+      'The Gemini provider scaffold is not implemented yet. ' +
+        'Gemini support currently covers detection + OpenSpec (`openspec init --tools gemini`); ' +
+        'the specrails rails commands/agents for Gemini are coming in a follow-up.',
+    )
+  }
+
   const createdDirs: string[] = []
   let copiedFiles = 0
 

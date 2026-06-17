@@ -149,7 +149,7 @@ describe('runInit', () => {
     await initRepo(repoRoot)
     await expect(
       runInit({ 'root-dir': repoRoot, yes: true, provider: 'turbofake' as never }),
-    ).rejects.toThrow(/must be 'claude' or 'codex'/)
+    ).rejects.toThrow(/must be 'claude', 'codex', or 'gemini'/)
   })
 
   // Uses a POSIX shell script as a fake openspec binary, pointed at via

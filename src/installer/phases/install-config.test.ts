@@ -51,6 +51,15 @@ describe('install-config', () => {
       expect(result.agents.selected).toEqual(['sr-architect'])
     })
 
+    it('accepts gemini as a valid provider', () => {
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'gemini',
+        agents: { selected: ['sr-architect'] },
+      })
+      expect(result.provider).toBe('gemini')
+    })
+
     it('accepts an optional agent_teams, tier, and preset', () => {
       const result = validateInstallConfig({
         version: 1,

@@ -6,11 +6,9 @@ import { FilesystemError, InstallerError } from '../util/errors.js'
 import { pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 
 /**
- * Provider identifier. `codex` is gated — the CLI rejects it with a
- * "coming soon" error message — but the type exists so we can carry
- * the same validation diagnostics the bash installer emitted.
+ * Provider identifier. Kept in lock-step with `provider-detect.ts` `Provider`.
  */
-export type Provider = 'claude' | 'codex'
+export type Provider = 'claude' | 'codex' | 'gemini'
 
 /** Install tier selected at install time. */
 export type Tier = 'full' | 'quick'
@@ -93,8 +91,8 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
 
   if (doc.provider === undefined) {
     errors.push(`missing required 'provider' field`)
-  } else if (doc.provider !== 'claude' && doc.provider !== 'codex') {
-    errors.push(`unsupported provider '${String(doc.provider)}' (expected: claude or codex)`)
+  } else if (doc.provider !== 'claude' && doc.provider !== 'codex' && doc.provider !== 'gemini') {
+    errors.push(`unsupported provider '${String(doc.provider)}' (expected: claude, codex, or gemini)`)
   }
 
   if (doc.tier !== undefined && doc.tier !== 'full' && doc.tier !== 'quick') {

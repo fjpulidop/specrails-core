@@ -130,6 +130,23 @@ describe('scaffold', () => {
       expect(isDir(path.join(repoRoot, '.specrails', 'setup-templates', 'rules'))).toBe(true)
     })
 
+    it('throws a clear error for the gemini provider (rails scaffold not implemented yet)', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-gemini')
+      setupFakeSource(scriptDir)
+
+      expect(() =>
+        scaffoldInstallation({
+          scriptDir,
+          repoRoot,
+          provider: 'gemini',
+          providerDir: '.gemini',
+          agentTeams: false,
+          tier: 'full',
+        }),
+      ).toThrow(/Gemini provider scaffold is not implemented yet/)
+    })
+
     it('copies templates into setup-templates/', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')

@@ -49,4 +49,22 @@ describe('provider-detect.derivedPaths', () => {
   it('Codex uses .codex + AGENTS.md', () => {
     expect(derivedPaths('codex')).toEqual({ providerDir: '.codex', instructionsFile: 'AGENTS.md' })
   })
+
+  it('Gemini uses .gemini + GEMINI.md', () => {
+    expect(derivedPaths('gemini')).toEqual({ providerDir: '.gemini', instructionsFile: 'GEMINI.md' })
+  })
+})
+
+describe('provider-detect.resolveProvider — gemini', () => {
+  it('uses explicit gemini flag unconditionally', async () => {
+    expect(await resolveProvider({ claude: false, codex: false }, { explicit: 'gemini' })).toBe('gemini')
+  })
+
+  it('returns gemini when only gemini is installed', async () => {
+    expect(await resolveProvider({ claude: false, codex: false, gemini: true })).toBe('gemini')
+  })
+
+  it('still prefers claude over gemini when both are installed', async () => {
+    expect(await resolveProvider({ claude: true, codex: false, gemini: true })).toBe('claude')
+  })
 })

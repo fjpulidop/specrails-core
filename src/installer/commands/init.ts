@@ -83,9 +83,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
       info(`install-config.yaml not found at ${resolved} — falling back to auto-detection`)
     }
   } else if (typeof flags.provider === 'string') {
-    if (flags.provider !== 'claude' && flags.provider !== 'codex') {
+    if (flags.provider !== 'claude' && flags.provider !== 'codex' && flags.provider !== 'gemini') {
       throw new InstallerError(
-        `--provider value must be 'claude' or 'codex', got: ${flags.provider}`,
+        `--provider value must be 'claude', 'codex', or 'gemini', got: ${flags.provider}`,
         40,
       )
     }
