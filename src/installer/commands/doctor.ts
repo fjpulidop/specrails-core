@@ -93,7 +93,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   } else {
     addFail(
       `${instructionsFile}: missing`,
-      provider === 'codex'
+      provider !== 'claude'
         ? 'Run specrails-core init to regenerate the provider instructions.'
         : 'Run /specrails:enrich inside Claude Code to regenerate.',
     )
@@ -157,6 +157,7 @@ async function resolveCommandPath(cmd: string): Promise<string | null> {
 }
 
 function resolveInstalledProvider(projectRoot: string): Provider {
+  if (isDir(path.join(projectRoot, '.gemini'))) return 'gemini'
   if (isDir(path.join(projectRoot, '.codex'))) return 'codex'
   return 'claude'
 }

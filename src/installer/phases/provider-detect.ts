@@ -12,17 +12,19 @@ import { pathExists, readTextFile } from '../util/fs.js'
  * user has only codex installed.
  */
 
-export type Provider = 'claude' | 'codex'
+export type Provider = 'claude' | 'codex' | 'gemini'
 
 export interface ProviderAvailability {
   claude: boolean
   codex: boolean
+  /** Optional so callers/tests predating Gemini still typecheck; absent = false. */
+  gemini?: boolean
 }
 
 export interface ProviderDerivedPaths {
-  /** Root directory inside the user's repo: `.claude` for Claude, `.codex` for Codex. */
+  /** Root directory inside the user's repo: `.claude` / `.codex` / `.gemini`. */
   providerDir: string
-  /** Top-level instructions file: `CLAUDE.md` for Claude, `AGENTS.md` for Codex. */
+  /** Top-level instructions file: `CLAUDE.md` / `AGENTS.md` / `GEMINI.md`. */
   instructionsFile: string
 }
 
@@ -31,8 +33,12 @@ export interface ProviderDerivedPaths {
  * `which` on POSIX via the cross-platform commandExists helper.
  */
 export async function detectAvailability(): Promise<ProviderAvailability> {
-  const [claude, codex] = await Promise.all([commandExists('claude'), commandExists('codex')])
-  return { claude, codex }
+  const [claude, codex, gemini] = await Promise.all([
+    commandExists('claude'),
+    commandExists('codex'),
+    commandExists('gemini'),
+  ])
+  return { claude, codex, gemini }
 }
 
 /**
@@ -64,18 +70,20 @@ export async function resolveProvider(
 ): Promise<Provider> {
   if (options.explicit === 'codex') return 'codex'
   if (options.explicit === 'claude') return 'claude'
+  if (options.explicit === 'gemini') return 'gemini'
 
-  // Both installed: prefer Claude (the historical default) so existing
-  // projects don't get re-bootstrapped onto a different provider when the
-  // user just runs `npx specrails-core init` without `--provider`. Users
-  // who want codex pass --provider codex or set it in install-config.yaml.
-  if (availability.claude && availability.codex) return 'claude'
+  // No multi-provider auto-pick beyond the historical Claude-first default: when
+  // several CLIs are installed and no provider was requested, prefer Claude so
+  // existing projects don't get re-bootstrapped onto a different provider. Users
+  // pick codex/gemini via --provider or install-config.yaml.
   if (availability.claude) return 'claude'
   if (availability.codex) return 'codex'
+  if (availability.gemini) return 'gemini'
   if (options.skipPrereqs) return 'claude'
   throw new ProviderError(
-    'No AI CLI found. Install Claude Code (https://claude.ai/download) or ' +
-      'Codex CLI (https://developers.openai.com/codex) before running specrails-core init.',
+    'No AI CLI found. Install Claude Code (https://claude.ai/download), ' +
+      'Codex CLI (https://developers.openai.com/codex), or ' +
+      'Gemini CLI (https://github.com/google-gemini/gemini-cli) before running specrails-core init.',
   )
 }
 
@@ -87,6 +95,9 @@ export async function resolveProvider(
 export function derivedPaths(provider: Provider): ProviderDerivedPaths {
   if (provider === 'codex') {
     return { providerDir: '.codex', instructionsFile: 'AGENTS.md' }
+  }
+  if (provider === 'gemini') {
+    return { providerDir: '.gemini', instructionsFile: 'GEMINI.md' }
   }
   return { providerDir: '.claude', instructionsFile: 'CLAUDE.md' }
 }
