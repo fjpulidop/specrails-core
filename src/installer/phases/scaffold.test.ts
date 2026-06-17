@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { isDir, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
-import { detectExistingSetup, scaffoldInstallation } from './scaffold.js'
+import { detectExistingSetup, scaffoldInstallation, translateOpsxSkillCallsForGemini } from './scaffold.js'
 
 function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
@@ -167,7 +167,7 @@ describe('scaffold', () => {
       const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
       expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
       expect(arch).toContain('model: gemini-3.5-flash')
-      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content]')
+      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content, activate_skill]')
       expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
@@ -191,6 +191,34 @@ describe('scaffold', () => {
       expect(gmd).toContain('.specrails/local-tickets.json')
       // No throw, no codex/claude leakage.
       expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(false)
+    })
+
+    it('grants activate_skill + rewrites Claude Skill("opsx:*") calls in gemini agents', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-gemini-skill')
+      setupGeminiFakeSource(scriptDir)
+      // Author the architect template in Claude form (the shared source of truth
+      // across providers) — exactly the syntax the real templates use.
+      writeFileLf(
+        path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
+        [
+          '# arch',
+          'First call: Skill("opsx:ff", "<specName> — desc")',
+          'Recover with Skill("opsx:continue", "<specName>") or re-run Skill("opsx:ff").',
+          'Receipt: the exact Skill("opsx:ff", …) call.',
+        ].join('\n') + '\n',
+      )
+      scaffoldGemini(scriptDir, repoRoot)
+
+      const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
+      // activate_skill granted in the tools frontmatter (else the agent halts with
+      // "the required `Skill` tool is not available").
+      expect(arch).toContain(', activate_skill]')
+      // Every Skill("opsx:*") call form rewritten to gemini's activate_skill;
+      // NO Claude Skill( call survives in the generated body.
+      expect(arch).toContain('activate_skill(name="openspec-ff-change")')
+      expect(arch).toContain('activate_skill(name="openspec-continue-change")')
+      expect(arch).not.toContain('Skill("opsx:')
     })
 
     it('deep-merges .gemini/settings.json (preserves user keys) and upserts GEMINI.md', () => {
@@ -656,5 +684,39 @@ describe('scaffold', () => {
         expect(fs.existsSync(codexPath), `${codexPath} missing — every core agent needs a codex-native rail`).toBe(true)
       }
     })
+  })
+})
+
+describe('translateOpsxSkillCallsForGemini', () => {
+  it('maps each opsx skill id to its gemini activate_skill name', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff")')).toBe('activate_skill(name="openspec-ff-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply")')).toBe('activate_skill(name="openspec-apply-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:archive")')).toBe('activate_skill(name="openspec-archive-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue")')).toBe('activate_skill(name="openspec-continue-change")')
+    // Non-uniform names — the reason the map must be explicit, not a regex suffix.
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:sync")')).toBe('activate_skill(name="openspec-sync-specs")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:explore")')).toBe('activate_skill(name="openspec-explore")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bulk-archive")')).toBe('activate_skill(name="openspec-bulk-archive-change")')
+  })
+
+  it('drops positional skill input and the ellipsis placeholder', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff", "<specName> — desc")')).toBe('activate_skill(name="openspec-ff-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply", …)')).toBe('activate_skill(name="openspec-apply-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue", "<specName>")')).toBe('activate_skill(name="openspec-continue-change")')
+  })
+
+  it('rewrites multiple calls in one body and preserves surrounding prose', () => {
+    const body = 'Run Skill("opsx:ff") then later Skill("opsx:apply", "<x>") to finish.'
+    expect(translateOpsxSkillCallsForGemini(body)).toBe(
+      'Run activate_skill(name="openspec-ff-change") then later activate_skill(name="openspec-apply-change") to finish.',
+    )
+  })
+
+  it('leaves unknown opsx ids untouched (no name="undefined")', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bogus")')).toBe('Skill("opsx:bogus")')
+  })
+
+  it('is a no-op for bodies without Skill calls', () => {
+    expect(translateOpsxSkillCallsForGemini('just prose about the skill')).toBe('just prose about the skill')
   })
 })

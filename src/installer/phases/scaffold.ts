@@ -32,8 +32,52 @@ const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst
  * (Validated headless in the desktop spike — read/write/shell/glob/grep.) Because
  * gemini TOML commands cannot carry per-command tool/model routing, the tool +
  * model gating migrates into the subagent frontmatter.
+ *
+ * `activate_skill` is mandatory: the architect/developer/reviewer personas open
+ * with a NON-NEGOTIABLE OpenSpec skill call (`opsx:ff`/`apply`/`archive`). Gemini
+ * exposes skills through the `activate_skill` tool — without it in the tools list
+ * the agent halts with "the required `Skill` tool is not available" and the only
+ * way the pipeline ever completed was the orchestrator hand-patching the agent
+ * file mid-run. See `translateOpsxSkillCallsForGemini` for the body half.
  */
-const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content']
+const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content', 'activate_skill']
+
+/**
+ * Claude `Skill("opsx:<id>")` → Gemini `activate_skill(name="<skill>")` id map.
+ * The agent persona templates are authored in Claude form (the shared source of
+ * truth across providers); Gemini invokes the same OpenSpec workflow skills under
+ * a different tool name and skill-directory names. The mapping is NOT a uniform
+ * `-change` suffix (`sync` → `*-sync-specs`, `explore`/`onboard` have none), so it
+ * must be explicit. Keys mirror the skill directories scaffolded under
+ * `.gemini/skills/openspec-*`.
+ */
+const OPSX_TO_GEMINI_SKILL: Record<string, string> = {
+  ff: 'openspec-ff-change',
+  new: 'openspec-new-change',
+  apply: 'openspec-apply-change',
+  continue: 'openspec-continue-change',
+  archive: 'openspec-archive-change',
+  'bulk-archive': 'openspec-bulk-archive-change',
+  sync: 'openspec-sync-specs',
+  verify: 'openspec-verify-change',
+  explore: 'openspec-explore',
+  onboard: 'openspec-onboard',
+}
+
+/**
+ * Rewrite every literal `Skill("opsx:<id>"[, …])` call in a Claude-authored agent
+ * body into the Gemini `activate_skill(name="…")` form. Positional skill input
+ * (e.g. `"<specName>"`) is dropped because `activate_skill` takes only `name` and
+ * the surrounding persona prose already carries the context. Unknown ids are left
+ * untouched (better a visible stale ref than a silent `name="undefined"`). This
+ * runs ONLY on the gemini render path; Claude/Codex keep the `Skill(...)` form.
+ */
+export function translateOpsxSkillCallsForGemini(body: string): string {
+  return body.replace(/Skill\("opsx:([a-z-]+)"(?:\s*,[^)]*)?\)/g, (match, id: string) => {
+    const skill = OPSX_TO_GEMINI_SKILL[id]
+    return skill ? `activate_skill(name="${skill}")` : match
+  })
+}
 
 /**
  * Per-role gemini model. Defaults to `gemini-3.5-flash` — the stable flagship
@@ -549,10 +593,12 @@ function writeGeminiAgentFromTemplate(args: {
     '---',
     '',
   ].join('\n')
-  const renderedBody = renderPlaceholders(body, {
-    ...args.placeholders,
-    MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
-  }).replace(/\.claude\//g, '.gemini/')
+  const renderedBody = translateOpsxSkillCallsForGemini(
+    renderPlaceholders(body, {
+      ...args.placeholders,
+      MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
+    }).replace(/\.claude\//g, '.gemini/'),
+  )
   writeFileLf(path.join(args.repoRoot, '.gemini', 'agents', `${args.agentId}.md`), frontmatter + renderedBody)
   mkdirp(path.join(args.repoRoot, '.gemini', 'agent-memory', args.agentId))
 }
