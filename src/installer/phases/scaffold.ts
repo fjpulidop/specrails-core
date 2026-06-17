@@ -91,6 +91,25 @@ const GEMINI_MODEL_BY_AGENT: Record<string, string> = {
   'sr-reviewer': 'gemini-3.5-flash',
 }
 const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash'
+
+/**
+ * Per-role gemini subagent turn budget, emitted as the `max_turns` frontmatter
+ * key (gemini's `localAgentSchema` is `.strict()` — the key MUST be snake-case
+ * `max_turns`, NOT `maxTurns`/`runConfig`, or the agent fails to load). Gemini's
+ * built-in `DEFAULT_MAX_TURNS` is 30, which the implementer agents blow on a
+ * non-trivial change (the sr-developer hit it repeatedly on a real run, forcing
+ * the orchestrator to babysit). Implementers get a larger budget; the
+ * skill-driven architect/reviewer get a moderate bump.
+ */
+const GEMINI_MAXTURNS_BY_AGENT: Record<string, number> = {
+  'sr-architect': 40,
+  'sr-developer': 60,
+  'sr-frontend-developer': 60,
+  'sr-backend-developer': 60,
+  'sr-reviewer': 40,
+}
+const GEMINI_DEFAULT_MAXTURNS = 40
+
 /**
  * Skills excluded from the quick tier because they depend on
  * VPC-only agents (sr-product-manager, sr-product-analyst).
@@ -584,12 +603,14 @@ function writeGeminiAgentFromTemplate(args: {
   if (!pathExists(args.src)) return
   const { body, description } = stripFrontmatter(readTextFile(args.src))
   const model = GEMINI_MODEL_BY_AGENT[args.agentId] ?? GEMINI_DEFAULT_MODEL
+  const maxTurns = GEMINI_MAXTURNS_BY_AGENT[args.agentId] ?? GEMINI_DEFAULT_MAXTURNS
   const frontmatter = [
     '---',
     `name: ${args.agentId}`,
     `description: ${JSON.stringify(description ?? args.agentId)}`,
     `model: ${model}`,
     `tools: [${GEMINI_AGENT_TOOLS.join(', ')}]`,
+    `max_turns: ${maxTurns}`,
     '---',
     '',
   ].join('\n')

@@ -168,8 +168,14 @@ describe('scaffold', () => {
       expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
       expect(arch).toContain('model: gemini-3.5-flash')
       expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content, activate_skill]')
+      // max_turns raises gemini's too-low DEFAULT_MAX_TURNS (30). snake_case key —
+      // gemini's localAgentSchema is .strict() and rejects `maxTurns`.
+      expect(arch).toContain('max_turns: 40')
       expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
+      // Implementer gets a larger turn budget than the skill-driven roles.
+      const dev = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))
+      expect(dev).toContain('max_turns: 60')
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
       // VPC-dependent agent excluded from the quick tier.
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-product-manager.md'))).toBe(false)

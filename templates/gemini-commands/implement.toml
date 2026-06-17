@@ -19,13 +19,25 @@ multi-ticket flow — reply telling the user to use
 
 Each phase MUST be a real `invoke_agent` call to the named subagent
 (`sr-architect`, `sr-developer`, `sr-reviewer`) — these are available to you as
-tools. You are FORBIDDEN from doing a phase's work inline "to save time" or
-"because the ticket looks small". If your final report says "implemented this
-myself" anywhere, you violated this contract. Subagents are flat: they do their
-phase and report back to you; you sequence them.
+tools. You are FORBIDDEN from doing a phase's work inline — not "to save time",
+not "because the ticket looks small", and ESPECIALLY not "because the subagent
+ran out of turns". If your final report says you implemented code, fixed a test,
+renamed a file, or archived the change yourself, you violated this contract.
+Subagents are flat: they do their phase and report back to you; you sequence them.
 
-A `clean` run is NOT finished until the OpenSpec change is **archived**
-(`openspec archive`) — that is a hard obligation, not an optional epilogue.
+### How to read a subagent's outcome — apply to EVERY `invoke_agent`
+
+- **done** — it finished its phase. Continue.
+- **`BLOCKED: <reason>`** — a hard stop it cannot resolve. STOP the pipeline and
+  report the reason verbatim. Do not improvise around it.
+- **`MAX_TURNS`** / "reached max turns limit" — it ran out of turns with work
+  UNFINISHED. This is NOT a failure and NOT your cue to finish the work yourself.
+  Re-`invoke_agent` the SAME subagent to RESUME (it picks up from its memory +
+  the on-disk state). Repeat up to **5×** per phase. Only if it still has not
+  finished after 5 resumes do you STOP and report `BLOCKED: <agent> exceeded its
+  turn budget`.
+
+The change is archived BY THE REVIEWER as part of a passing review — never by you.
 
 ## Pipeline
 
@@ -35,19 +47,34 @@ A `clean` run is NOT finished until the OpenSpec change is **archived**
 1. **DESIGN — `invoke_agent` `sr-architect`.** Pass it the ticket/description.
    It creates an OpenSpec change (proposal + spec deltas + tasks) under
    `openspec/changes/<id>/` and validates it (`openspec validate <id> --strict`).
-   Wait for it to report back. If it returns `BLOCKED: <reason>`, stop and report.
+   Apply the outcome rules above.
 
 2. **APPLY — `invoke_agent` `sr-developer`.** Only after the architect reports
    back. It implements the tasks in TDD order and checks them off in `tasks.md`.
-   Wait for it. If it returns `BLOCKED: <reason>`, stop and report.
+   Apply the outcome rules — on `MAX_TURNS`, re-invoke to RESUME until every task
+   is checked off. Do NOT write, fix, rename, or run code or tests yourself, even
+   when doing it inline would be faster — that is the developer's job.
 
 3. **REVIEW — `invoke_agent` `sr-reviewer`.** Only after the developer reports
-   back. It validates the change, runs the project checks, and confirms the
-   implementation matches the spec. Wait for its verdict.
+   back. It validates the change, runs the project checks, confirms the spec is
+   met, and — on a pass — archives the change. Read its verdict:
+   - **PASS / approved** → it archives as part of its phase; go to step 4.
+   - **CHANGES REQUESTED / fail / rejected** → do NOT archive. Re-`invoke_agent`
+     `sr-developer`, handing it the reviewer's EXACT findings, to fix them; then
+     re-`invoke_agent` `sr-reviewer`. Repeat this fix↔review loop up to **3×**.
+   - Otherwise apply the outcome rules (`BLOCKED` → stop; `MAX_TURNS` → resume
+     the reviewer).
+   If the reviewer has still not passed after 3 fix rounds, STOP and report
+   `BLOCKED: review not passing — <outstanding findings>`. You are FORBIDDEN from
+   running `openspec archive` (or moving files) to get past a failing, missing,
+   or ambiguous review: the reviewer's PASS is the ONLY gate to archive.
 
-4. **ARCHIVE.** When the reviewer passes, ensure the change is archived
-   (`openspec archive <id> -y`) so it lands under `openspec/changes/archive/`.
+4. **ARCHIVE (verify only).** Confirm the change moved under
+   `openspec/changes/archive/`. If the reviewer PASSED but the change was somehow
+   not archived, re-`invoke_agent` `sr-reviewer` to complete it. Never archive by
+   hand to substitute for the reviewer.
 
 5. **Close the ticket.** Update `.specrails/local-tickets.json` (status `done`)
-   unless this was a free-form run. Report concisely: ticket, change id, verdict.
+   unless this was a free-form run. Report concisely: ticket, change id, final
+   verdict, and how many resume/fix loops ran.
 '''
