@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.2](https://github.com/fjpulidop/specrails-core/compare/v4.8.1...v4.8.2) (2026-06-18)
+
+
+### Bug Fixes
+
+* **installer:** make Gemini rails work end-to-end (skills, headless agent loading, TUI, orchestration gates) ([#303](https://github.com/fjpulidop/specrails-core/issues/303)) ([a7544d9](https://github.com/fjpulidop/specrails-core/commit/a7544d97462314c5348ecbb1507a3afce23489e0))
+
 ## [4.8.1](https://github.com/fjpulidop/specrails-core/compare/v4.8.0...v4.8.1) (2026-06-17)
 
 
