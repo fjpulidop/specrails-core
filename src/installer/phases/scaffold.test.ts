@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -5,7 +6,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { isDir, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
-import { detectExistingSetup, scaffoldInstallation, translateOpsxSkillCallsForGemini } from './scaffold.js'
+import {
+  detectExistingSetup,
+  scaffoldInstallation,
+  translateOpsxSkillCallsForGemini,
+  writeGeminiAgentAcknowledgments,
+} from './scaffold.js'
 
 function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
@@ -79,12 +85,19 @@ function setupRichFakeSource(scriptDir: string): void {
 
 describe('scaffold', () => {
   let tmpDir: string
+  let originalHome: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-scaffold-test-'))
+    // Redirect HOME so the gemini agent pre-acknowledgment (writes
+    // ~/.gemini/acknowledgments/agents.json) never touches the real home dir.
+    originalHome = process.env.HOME
+    process.env.HOME = path.join(tmpDir, 'fake-home')
   })
 
   afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME
+    else process.env.HOME = originalHome
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -179,6 +192,17 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
       // VPC-dependent agent excluded from the quick tier.
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-product-manager.md'))).toBe(false)
+
+      // Pre-acknowledgment so the agents load in headless `gemini -p` (else they
+      // need an interactive "Acknowledge and Enable" prompt and invoke_agent fails).
+      const ackPath = path.join(process.env.HOME!, '.gemini', 'acknowledgments', 'agents.json')
+      expect(pathExists(ackPath)).toBe(true)
+      const ack = JSON.parse(readTextFile(ackPath)) as Record<string, Record<string, string>>
+      expect(Object.keys(ack[repoRoot])).toEqual(expect.arrayContaining(['sr-architect', 'sr-developer', 'sr-reviewer']))
+      const expectedHash = createHash('sha256')
+        .update(readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md')))
+        .digest('hex')
+      expect(ack[repoRoot]['sr-architect']).toBe(expectedHash)
 
       // Commands: hand-authored orchestrator override copied verbatim; others transformed to TOML.
       const impl = readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'implement.toml'))
@@ -724,5 +748,73 @@ describe('translateOpsxSkillCallsForGemini', () => {
 
   it('is a no-op for bodies without Skill calls', () => {
     expect(translateOpsxSkillCallsForGemini('just prose about the skill')).toBe('just prose about the skill')
+  })
+})
+
+describe('writeGeminiAgentAcknowledgments', () => {
+  let tmpDir: string
+  let originalHome: string | undefined
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-ack-test-'))
+    originalHome = process.env.HOME
+    process.env.HOME = path.join(tmpDir, 'home')
+  })
+  afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME
+    else process.env.HOME = originalHome
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  })
+
+  const ackFile = () => path.join(process.env.HOME!, '.gemini', 'acknowledgments', 'agents.json')
+  const writeAgent = (repoRoot: string, id: string, content: string) =>
+    writeFileLf(path.join(repoRoot, '.gemini', 'agents', `${id}.md`), content)
+  const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+
+  it('writes sha256-of-file-content per agent under the project-root key', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-architect', '---\nname: sr-architect\n---\nbody\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-architect'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-architect']).toBe(sha('---\nname: sr-architect\n---\nbody\n'))
+  })
+
+  it('merges — preserves other projects and earlier agents across calls', () => {
+    const repoA = path.join(tmpDir, 'repoA')
+    const repoB = path.join(tmpDir, 'repoB')
+    writeAgent(repoA, 'sr-architect', 'A-arch\n')
+    writeAgent(repoB, 'sr-developer', 'B-dev\n')
+    writeGeminiAgentAcknowledgments(repoA, ['sr-architect'])
+    writeGeminiAgentAcknowledgments(repoB, ['sr-developer'])
+    writeAgent(repoA, 'sr-reviewer', 'A-rev\n')
+    writeGeminiAgentAcknowledgments(repoA, ['sr-reviewer'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repoB]['sr-developer']).toBe(sha('B-dev\n')) // other project survives
+    expect(ack[repoA]['sr-architect']).toBe(sha('A-arch\n')) // earlier agent survives
+    expect(ack[repoA]['sr-reviewer']).toBe(sha('A-rev\n'))
+  })
+
+  it('is a no-op when no agent ids are given', () => {
+    writeGeminiAgentAcknowledgments(path.join(tmpDir, 'repo'), [])
+    expect(pathExists(ackFile())).toBe(false)
+  })
+
+  it('recovers from a corrupt existing ack file', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-reviewer', 'rev\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // creates dir + file
+    writeFileLf(ackFile(), 'not json{{{')
+    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // must not throw
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-reviewer']).toBe(sha('rev\n'))
+  })
+
+  it('skips agent ids whose file is missing', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-architect', 'arch\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-architect', 'ghost'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-architect']).toBe(sha('arch\n'))
+    expect(ack[repo]['ghost']).toBeUndefined()
   })
 })

@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { copyDir, copyFile, isDir, listDir, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
@@ -631,6 +633,7 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
     SECURITY_EXEMPTIONS_PATH: '.gemini/security-exemptions.yaml',
     PERSONA_DIR: '.gemini/agents/personas/',
   }
+  const placedIds: string[] = []
   for (const src of listDir(agentsSrc)) {
     const name = path.basename(src)
     if (!name.endsWith('.md')) continue
@@ -641,10 +644,58 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
       continue
     }
     writeGeminiAgentFromTemplate({ repoRoot: input.repoRoot, src, agentId, placeholders })
+    placedIds.push(agentId)
     result.placed++
     result.filesCopied++
   }
+  try {
+    writeGeminiAgentAcknowledgments(input.repoRoot, placedIds)
+  } catch (err) {
+    warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
+  }
   return result
+}
+
+/**
+ * Pre-acknowledge the generated gemini subagents so they load in HEADLESS
+ * (`gemini -p`) runs. gemini 0.46+ DISCOVERS `.gemini/agents/*.md` but only
+ * ENABLES a project's custom agents after the interactive "New Agents Discovered
+ * → Acknowledge and Enable" prompt — which never fires headless, so
+ * `invoke_agent sr-architect` returns "Subagent not found" and the implement
+ * orchestrator silently falls back to a generic agent (the specialised personas
+ * never run, the pipeline degrades). The acknowledgment is a user-global file
+ * `~/.gemini/acknowledgments/agents.json` shaped
+ * `{ [projectRoot]: { [agentName]: <sha256-hex of the agent .md file> } }`
+ * (hash algorithm verified empirically against gemini 0.47 = sha256 of the full
+ * file). Writing it at install time makes the freshly-generated agents trusted
+ * with no prompt, for both `gemini` CLI and the desktop's headless spawns. The
+ * file is MERGED — other projects' and other agents' entries are preserved.
+ * Best-effort: any failure is swallowed by the caller (agents still work once
+ * acknowledged interactively).
+ */
+export function writeGeminiAgentAcknowledgments(repoRoot: string, agentIds: string[]): void {
+  if (agentIds.length === 0) return
+  const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
+  let store: Record<string, Record<string, string>> = {}
+  if (pathExists(ackPath)) {
+    try {
+      const parsed = JSON.parse(readTextFile(ackPath)) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        store = parsed as Record<string, Record<string, string>>
+      }
+    } catch {
+      // Corrupt/unreadable file — start fresh rather than crash the install.
+    }
+  }
+  const projectEntry: Record<string, string> = { ...(store[repoRoot] ?? {}) }
+  for (const agentId of agentIds) {
+    const agentFile = path.join(repoRoot, '.gemini', 'agents', `${agentId}.md`)
+    if (!pathExists(agentFile)) continue
+    projectEntry[agentId] = createHash('sha256').update(readTextFile(agentFile)).digest('hex')
+  }
+  store[repoRoot] = projectEntry
+  mkdirp(path.dirname(ackPath))
+  writeFileLf(ackPath, `${JSON.stringify(store, null, 2)}\n`)
 }
 
 /** Recursive JSON object merge; source wins on scalars/arrays. */
