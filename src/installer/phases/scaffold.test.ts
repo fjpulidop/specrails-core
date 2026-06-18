@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -5,7 +6,12 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { isDir, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
-import { detectExistingSetup, scaffoldInstallation } from './scaffold.js'
+import {
+  detectExistingSetup,
+  scaffoldInstallation,
+  translateOpsxSkillCallsForGemini,
+  writeGeminiAgentAcknowledgments,
+} from './scaffold.js'
 
 function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
@@ -79,12 +85,26 @@ function setupRichFakeSource(scriptDir: string): void {
 
 describe('scaffold', () => {
   let tmpDir: string
+  let originalHome: string | undefined
+  let originalUserProfile: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-scaffold-test-'))
+    // Redirect the home dir so the gemini agent pre-acknowledgment (writes
+    // ~/.gemini/acknowledgments/agents.json) never touches the real home dir.
+    // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
+    originalHome = process.env.HOME
+    originalUserProfile = process.env.USERPROFILE
+    const fakeHome = path.join(tmpDir, 'fake-home')
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
   })
 
   afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME
+    else process.env.HOME = originalHome
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = originalUserProfile
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -167,12 +187,29 @@ describe('scaffold', () => {
       const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
       expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
       expect(arch).toContain('model: gemini-3.5-flash')
-      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content]')
+      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content, activate_skill]')
+      // Regression guard: a `max_turns`/`maxTurns` frontmatter key makes gemini 0.46
+      // silently drop the agent (`invoke_agent` → "Subagent not found"). Verified
+      // empirically. It must NEVER be emitted, no matter the documented schema.
+      expect(arch).not.toMatch(/max_?turns/i)
       expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
+      const dev = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))
+      expect(dev).not.toMatch(/max_?turns/i)
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
       // VPC-dependent agent excluded from the quick tier.
       expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-product-manager.md'))).toBe(false)
+
+      // Pre-acknowledgment so the agents load in headless `gemini -p` (else they
+      // need an interactive "Acknowledge and Enable" prompt and invoke_agent fails).
+      const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
+      expect(pathExists(ackPath)).toBe(true)
+      const ack = JSON.parse(readTextFile(ackPath)) as Record<string, Record<string, string>>
+      expect(Object.keys(ack[repoRoot])).toEqual(expect.arrayContaining(['sr-architect', 'sr-developer', 'sr-reviewer']))
+      const expectedHash = createHash('sha256')
+        .update(readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md')))
+        .digest('hex')
+      expect(ack[repoRoot]['sr-architect']).toBe(expectedHash)
 
       // Commands: hand-authored orchestrator override copied verbatim; others transformed to TOML.
       const impl = readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'implement.toml'))
@@ -191,6 +228,34 @@ describe('scaffold', () => {
       expect(gmd).toContain('.specrails/local-tickets.json')
       // No throw, no codex/claude leakage.
       expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(false)
+    })
+
+    it('grants activate_skill + rewrites Claude Skill("opsx:*") calls in gemini agents', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-gemini-skill')
+      setupGeminiFakeSource(scriptDir)
+      // Author the architect template in Claude form (the shared source of truth
+      // across providers) — exactly the syntax the real templates use.
+      writeFileLf(
+        path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
+        [
+          '# arch',
+          'First call: Skill("opsx:ff", "<specName> — desc")',
+          'Recover with Skill("opsx:continue", "<specName>") or re-run Skill("opsx:ff").',
+          'Receipt: the exact Skill("opsx:ff", …) call.',
+        ].join('\n') + '\n',
+      )
+      scaffoldGemini(scriptDir, repoRoot)
+
+      const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
+      // activate_skill granted in the tools frontmatter (else the agent halts with
+      // "the required `Skill` tool is not available").
+      expect(arch).toContain(', activate_skill]')
+      // Every Skill("opsx:*") call form rewritten to gemini's activate_skill;
+      // NO Claude Skill( call survives in the generated body.
+      expect(arch).toContain('activate_skill(name="openspec-ff-change")')
+      expect(arch).toContain('activate_skill(name="openspec-continue-change")')
+      expect(arch).not.toContain('Skill("opsx:')
     })
 
     it('deep-merges .gemini/settings.json (preserves user keys) and upserts GEMINI.md', () => {
@@ -656,5 +721,114 @@ describe('scaffold', () => {
         expect(fs.existsSync(codexPath), `${codexPath} missing — every core agent needs a codex-native rail`).toBe(true)
       }
     })
+  })
+})
+
+describe('translateOpsxSkillCallsForGemini', () => {
+  it('maps each opsx skill id to its gemini activate_skill name', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff")')).toBe('activate_skill(name="openspec-ff-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply")')).toBe('activate_skill(name="openspec-apply-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:archive")')).toBe('activate_skill(name="openspec-archive-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue")')).toBe('activate_skill(name="openspec-continue-change")')
+    // Non-uniform names — the reason the map must be explicit, not a regex suffix.
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:sync")')).toBe('activate_skill(name="openspec-sync-specs")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:explore")')).toBe('activate_skill(name="openspec-explore")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bulk-archive")')).toBe('activate_skill(name="openspec-bulk-archive-change")')
+  })
+
+  it('drops positional skill input and the ellipsis placeholder', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff", "<specName> — desc")')).toBe('activate_skill(name="openspec-ff-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply", …)')).toBe('activate_skill(name="openspec-apply-change")')
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue", "<specName>")')).toBe('activate_skill(name="openspec-continue-change")')
+  })
+
+  it('rewrites multiple calls in one body and preserves surrounding prose', () => {
+    const body = 'Run Skill("opsx:ff") then later Skill("opsx:apply", "<x>") to finish.'
+    expect(translateOpsxSkillCallsForGemini(body)).toBe(
+      'Run activate_skill(name="openspec-ff-change") then later activate_skill(name="openspec-apply-change") to finish.',
+    )
+  })
+
+  it('leaves unknown opsx ids untouched (no name="undefined")', () => {
+    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bogus")')).toBe('Skill("opsx:bogus")')
+  })
+
+  it('is a no-op for bodies without Skill calls', () => {
+    expect(translateOpsxSkillCallsForGemini('just prose about the skill')).toBe('just prose about the skill')
+  })
+})
+
+describe('writeGeminiAgentAcknowledgments', () => {
+  let tmpDir: string
+  let originalHome: string | undefined
+  let originalUserProfile: string | undefined
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-ack-test-'))
+    // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
+    originalHome = process.env.HOME
+    originalUserProfile = process.env.USERPROFILE
+    const fakeHome = path.join(tmpDir, 'home')
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
+  })
+  afterEach(() => {
+    if (originalHome === undefined) delete process.env.HOME
+    else process.env.HOME = originalHome
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = originalUserProfile
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  })
+
+  const ackFile = () => path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
+  const writeAgent = (repoRoot: string, id: string, content: string) =>
+    writeFileLf(path.join(repoRoot, '.gemini', 'agents', `${id}.md`), content)
+  const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+
+  it('writes sha256-of-file-content per agent under the project-root key', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-architect', '---\nname: sr-architect\n---\nbody\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-architect'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-architect']).toBe(sha('---\nname: sr-architect\n---\nbody\n'))
+  })
+
+  it('merges — preserves other projects and earlier agents across calls', () => {
+    const repoA = path.join(tmpDir, 'repoA')
+    const repoB = path.join(tmpDir, 'repoB')
+    writeAgent(repoA, 'sr-architect', 'A-arch\n')
+    writeAgent(repoB, 'sr-developer', 'B-dev\n')
+    writeGeminiAgentAcknowledgments(repoA, ['sr-architect'])
+    writeGeminiAgentAcknowledgments(repoB, ['sr-developer'])
+    writeAgent(repoA, 'sr-reviewer', 'A-rev\n')
+    writeGeminiAgentAcknowledgments(repoA, ['sr-reviewer'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repoB]['sr-developer']).toBe(sha('B-dev\n')) // other project survives
+    expect(ack[repoA]['sr-architect']).toBe(sha('A-arch\n')) // earlier agent survives
+    expect(ack[repoA]['sr-reviewer']).toBe(sha('A-rev\n'))
+  })
+
+  it('is a no-op when no agent ids are given', () => {
+    writeGeminiAgentAcknowledgments(path.join(tmpDir, 'repo'), [])
+    expect(pathExists(ackFile())).toBe(false)
+  })
+
+  it('recovers from a corrupt existing ack file', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-reviewer', 'rev\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // creates dir + file
+    writeFileLf(ackFile(), 'not json{{{')
+    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // must not throw
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-reviewer']).toBe(sha('rev\n'))
+  })
+
+  it('skips agent ids whose file is missing', () => {
+    const repo = path.join(tmpDir, 'repo')
+    writeAgent(repo, 'sr-architect', 'arch\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-architect', 'ghost'])
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[repo]['sr-architect']).toBe(sha('arch\n'))
+    expect(ack[repo]['ghost']).toBeUndefined()
   })
 })

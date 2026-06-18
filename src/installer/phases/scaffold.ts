@@ -1,4 +1,6 @@
+import { createHash } from 'node:crypto'
 import { rmSync } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
 import { copyDir, copyFile, isDir, listDir, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
@@ -32,8 +34,52 @@ const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst
  * (Validated headless in the desktop spike — read/write/shell/glob/grep.) Because
  * gemini TOML commands cannot carry per-command tool/model routing, the tool +
  * model gating migrates into the subagent frontmatter.
+ *
+ * `activate_skill` is mandatory: the architect/developer/reviewer personas open
+ * with a NON-NEGOTIABLE OpenSpec skill call (`opsx:ff`/`apply`/`archive`). Gemini
+ * exposes skills through the `activate_skill` tool — without it in the tools list
+ * the agent halts with "the required `Skill` tool is not available" and the only
+ * way the pipeline ever completed was the orchestrator hand-patching the agent
+ * file mid-run. See `translateOpsxSkillCallsForGemini` for the body half.
  */
-const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content']
+const GEMINI_AGENT_TOOLS = ['read_file', 'write_file', 'run_shell_command', 'glob', 'search_file_content', 'activate_skill']
+
+/**
+ * Claude `Skill("opsx:<id>")` → Gemini `activate_skill(name="<skill>")` id map.
+ * The agent persona templates are authored in Claude form (the shared source of
+ * truth across providers); Gemini invokes the same OpenSpec workflow skills under
+ * a different tool name and skill-directory names. The mapping is NOT a uniform
+ * `-change` suffix (`sync` → `*-sync-specs`, `explore`/`onboard` have none), so it
+ * must be explicit. Keys mirror the skill directories scaffolded under
+ * `.gemini/skills/openspec-*`.
+ */
+const OPSX_TO_GEMINI_SKILL: Record<string, string> = {
+  ff: 'openspec-ff-change',
+  new: 'openspec-new-change',
+  apply: 'openspec-apply-change',
+  continue: 'openspec-continue-change',
+  archive: 'openspec-archive-change',
+  'bulk-archive': 'openspec-bulk-archive-change',
+  sync: 'openspec-sync-specs',
+  verify: 'openspec-verify-change',
+  explore: 'openspec-explore',
+  onboard: 'openspec-onboard',
+}
+
+/**
+ * Rewrite every literal `Skill("opsx:<id>"[, …])` call in a Claude-authored agent
+ * body into the Gemini `activate_skill(name="…")` form. Positional skill input
+ * (e.g. `"<specName>"`) is dropped because `activate_skill` takes only `name` and
+ * the surrounding persona prose already carries the context. Unknown ids are left
+ * untouched (better a visible stale ref than a silent `name="undefined"`). This
+ * runs ONLY on the gemini render path; Claude/Codex keep the `Skill(...)` form.
+ */
+export function translateOpsxSkillCallsForGemini(body: string): string {
+  return body.replace(/Skill\("opsx:([a-z-]+)"(?:\s*,[^)]*)?\)/g, (match, id: string) => {
+    const skill = OPSX_TO_GEMINI_SKILL[id]
+    return skill ? `activate_skill(name="${skill}")` : match
+  })
+}
 
 /**
  * Per-role gemini model. Defaults to `gemini-3.5-flash` — the stable flagship
@@ -47,6 +93,17 @@ const GEMINI_MODEL_BY_AGENT: Record<string, string> = {
   'sr-reviewer': 'gemini-3.5-flash',
 }
 const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash'
+
+// NOTE: do NOT emit a `max_turns` (or `maxTurns`/`runConfig`) key in the gemini
+// agent frontmatter. Although gemini's documented agent schema lists `max_turns`,
+// the 0.46 runtime loader REJECTS a `.gemini/agents/*.md` file that carries it —
+// the agent silently fails to register and `invoke_agent` reports "Subagent
+// '<name>' not found", so the orchestrator falls back to a generic agent and the
+// specialised personas never run. Verified empirically (two identical agents,
+// one with `max_turns: 40` → not found, one without → loads). The 30-turn default
+// cap is instead absorbed by the implement.toml MAX_TURNS → re-delegate/resume
+// contract. Re-introduce only if a future gemini build is reconfirmed to accept it.
+
 /**
  * Skills excluded from the quick tier because they depend on
  * VPC-only agents (sr-product-manager, sr-product-analyst).
@@ -549,10 +606,12 @@ function writeGeminiAgentFromTemplate(args: {
     '---',
     '',
   ].join('\n')
-  const renderedBody = renderPlaceholders(body, {
-    ...args.placeholders,
-    MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
-  }).replace(/\.claude\//g, '.gemini/')
+  const renderedBody = translateOpsxSkillCallsForGemini(
+    renderPlaceholders(body, {
+      ...args.placeholders,
+      MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
+    }).replace(/\.claude\//g, '.gemini/'),
+  )
   writeFileLf(path.join(args.repoRoot, '.gemini', 'agents', `${args.agentId}.md`), frontmatter + renderedBody)
   mkdirp(path.join(args.repoRoot, '.gemini', 'agent-memory', args.agentId))
 }
@@ -574,6 +633,7 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
     SECURITY_EXEMPTIONS_PATH: '.gemini/security-exemptions.yaml',
     PERSONA_DIR: '.gemini/agents/personas/',
   }
+  const placedIds: string[] = []
   for (const src of listDir(agentsSrc)) {
     const name = path.basename(src)
     if (!name.endsWith('.md')) continue
@@ -584,10 +644,58 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
       continue
     }
     writeGeminiAgentFromTemplate({ repoRoot: input.repoRoot, src, agentId, placeholders })
+    placedIds.push(agentId)
     result.placed++
     result.filesCopied++
   }
+  try {
+    writeGeminiAgentAcknowledgments(input.repoRoot, placedIds)
+  } catch (err) {
+    warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
+  }
   return result
+}
+
+/**
+ * Pre-acknowledge the generated gemini subagents so they load in HEADLESS
+ * (`gemini -p`) runs. gemini 0.46+ DISCOVERS `.gemini/agents/*.md` but only
+ * ENABLES a project's custom agents after the interactive "New Agents Discovered
+ * → Acknowledge and Enable" prompt — which never fires headless, so
+ * `invoke_agent sr-architect` returns "Subagent not found" and the implement
+ * orchestrator silently falls back to a generic agent (the specialised personas
+ * never run, the pipeline degrades). The acknowledgment is a user-global file
+ * `~/.gemini/acknowledgments/agents.json` shaped
+ * `{ [projectRoot]: { [agentName]: <sha256-hex of the agent .md file> } }`
+ * (hash algorithm verified empirically against gemini 0.47 = sha256 of the full
+ * file). Writing it at install time makes the freshly-generated agents trusted
+ * with no prompt, for both `gemini` CLI and the desktop's headless spawns. The
+ * file is MERGED — other projects' and other agents' entries are preserved.
+ * Best-effort: any failure is swallowed by the caller (agents still work once
+ * acknowledged interactively).
+ */
+export function writeGeminiAgentAcknowledgments(repoRoot: string, agentIds: string[]): void {
+  if (agentIds.length === 0) return
+  const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
+  let store: Record<string, Record<string, string>> = {}
+  if (pathExists(ackPath)) {
+    try {
+      const parsed = JSON.parse(readTextFile(ackPath)) as unknown
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        store = parsed as Record<string, Record<string, string>>
+      }
+    } catch {
+      // Corrupt/unreadable file — start fresh rather than crash the install.
+    }
+  }
+  const projectEntry: Record<string, string> = { ...(store[repoRoot] ?? {}) }
+  for (const agentId of agentIds) {
+    const agentFile = path.join(repoRoot, '.gemini', 'agents', `${agentId}.md`)
+    if (!pathExists(agentFile)) continue
+    projectEntry[agentId] = createHash('sha256').update(readTextFile(agentFile)).digest('hex')
+  }
+  store[repoRoot] = projectEntry
+  mkdirp(path.dirname(ackPath))
+  writeFileLf(ackPath, `${JSON.stringify(store, null, 2)}\n`)
 }
 
 /** Recursive JSON object merge; source wins on scalars/arrays. */
