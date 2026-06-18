@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.8.1](https://github.com/fjpulidop/specrails-core/compare/v4.8.0...v4.8.1) (2026-06-17)
+
+
+### Bug Fixes
+
+* **installer:** default Gemini scaffold model to gemini-3.5-flash ([#301](https://github.com/fjpulidop/specrails-core/issues/301)) ([be22ed7](https://github.com/fjpulidop/specrails-core/commit/be22ed70924c59cecabd7e76c3d987f4de9527f9))
+
 ## [4.8.0](https://github.com/fjpulidop/specrails-core/compare/v4.7.2...v4.8.0) (2026-06-17)
 
 
