@@ -86,18 +86,25 @@ function setupRichFakeSource(scriptDir: string): void {
 describe('scaffold', () => {
   let tmpDir: string
   let originalHome: string | undefined
+  let originalUserProfile: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-scaffold-test-'))
-    // Redirect HOME so the gemini agent pre-acknowledgment (writes
+    // Redirect the home dir so the gemini agent pre-acknowledgment (writes
     // ~/.gemini/acknowledgments/agents.json) never touches the real home dir.
+    // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
     originalHome = process.env.HOME
-    process.env.HOME = path.join(tmpDir, 'fake-home')
+    originalUserProfile = process.env.USERPROFILE
+    const fakeHome = path.join(tmpDir, 'fake-home')
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
   })
 
   afterEach(() => {
     if (originalHome === undefined) delete process.env.HOME
     else process.env.HOME = originalHome
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = originalUserProfile
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -195,7 +202,7 @@ describe('scaffold', () => {
 
       // Pre-acknowledgment so the agents load in headless `gemini -p` (else they
       // need an interactive "Acknowledge and Enable" prompt and invoke_agent fails).
-      const ackPath = path.join(process.env.HOME!, '.gemini', 'acknowledgments', 'agents.json')
+      const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
       expect(pathExists(ackPath)).toBe(true)
       const ack = JSON.parse(readTextFile(ackPath)) as Record<string, Record<string, string>>
       expect(Object.keys(ack[repoRoot])).toEqual(expect.arrayContaining(['sr-architect', 'sr-developer', 'sr-reviewer']))
@@ -754,19 +761,26 @@ describe('translateOpsxSkillCallsForGemini', () => {
 describe('writeGeminiAgentAcknowledgments', () => {
   let tmpDir: string
   let originalHome: string | undefined
+  let originalUserProfile: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-ack-test-'))
+    // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
     originalHome = process.env.HOME
-    process.env.HOME = path.join(tmpDir, 'home')
+    originalUserProfile = process.env.USERPROFILE
+    const fakeHome = path.join(tmpDir, 'home')
+    process.env.HOME = fakeHome
+    process.env.USERPROFILE = fakeHome
   })
   afterEach(() => {
     if (originalHome === undefined) delete process.env.HOME
     else process.env.HOME = originalHome
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE
+    else process.env.USERPROFILE = originalUserProfile
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
-  const ackFile = () => path.join(process.env.HOME!, '.gemini', 'acknowledgments', 'agents.json')
+  const ackFile = () => path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
   const writeAgent = (repoRoot: string, id: string, content: string) =>
     writeFileLf(path.join(repoRoot, '.gemini', 'agents', `${id}.md`), content)
   const sha = (s: string) => createHash('sha256').update(s).digest('hex')
