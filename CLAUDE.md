@@ -51,8 +51,18 @@ npm test                                 # typecheck + build + vitest run
 npm run test:watch                       # vitest in watch mode
 npm run test:coverage                    # vitest with v8 coverage
 node bin/specrails-core.mjs <subcommand> # Run the CLI from a source checkout
-grep -r '{{[A-Z_]*}}' .claude/agents/    # Sanity-check generated files for unsubstituted placeholders
+npm run dogfood                          # Materialize specrails on THIS repo (relocates to $HOME — see below)
 ```
+
+The repo's `.claude/` is **not committed** (gitignored, like `.specrails/`). Under
+relocate-artifacts, `init` writes a project's agents/commands/etc. to
+`$HOME/.specrails/projects/<slug>/workspace`, never the repo — so an in-repo
+`.claude/` would only drift from `templates/` (the source of truth). To dogfood
+locally run `npm run dogfood`; the only tracked `.claude/` files are the bespoke
+dev-convention rules under `.claude/rules/` (`agents.md`, `shell.md`,
+`templates.md`) that have no template source. Sanity-check generated files for
+unsubstituted placeholders after a dogfood with
+`grep -r '{{[A-Z_]*}}' "$HOME/.specrails/projects/specrails-core/workspace/.claude/agents/"`.
 
 ## Environment
 
