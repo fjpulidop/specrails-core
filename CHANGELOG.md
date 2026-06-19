@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.9.0](https://github.com/fjpulidop/specrails-core/compare/v4.8.2...v4.9.0) (2026-06-19)
+
+
+### Features
+
+* relocate artifacts to $HOME + install framework once (bundled) ([#305](https://github.com/fjpulidop/specrails-core/issues/305)) ([cabaaa2](https://github.com/fjpulidop/specrails-core/commit/cabaaa23ff6efdf938eef591c8e92fecc771cc61))
+
 ## [4.8.2](https://github.com/fjpulidop/specrails-core/compare/v4.8.1...v4.8.2) (2026-06-18)
 
 
