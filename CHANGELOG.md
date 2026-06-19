@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.9.1](https://github.com/fjpulidop/specrails-core/compare/v4.9.0...v4.9.1) (2026-06-19)
+
+
+### Bug Fixes
+
+* **update:** add --provider flag so multi-provider workspaces update the right provider ([#309](https://github.com/fjpulidop/specrails-core/issues/309)) ([e560006](https://github.com/fjpulidop/specrails-core/commit/e5600066b824ea826ca52aa761c1fa1cc6124109))
+
+
+### Miscellaneous
+
+* gitignore the dogfood .claude/ (drifts under relocate-artifacts) ([#310](https://github.com/fjpulidop/specrails-core/issues/310)) ([d18e456](https://github.com/fjpulidop/specrails-core/commit/d18e456b07bbf2dad86e81c8dc69883ec9394f7d))
+
 ## [4.9.0](https://github.com/fjpulidop/specrails-core/compare/v4.8.2...v4.9.0) (2026-06-19)
 
 
