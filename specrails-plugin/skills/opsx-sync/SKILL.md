@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Sync delta specs from a change to main specs.
 
 This is an **agent-driven** operation - you will read delta specs and directly edit main specs to apply the changes. This allows intelligent merging (e.g., adding a scenario without copying the entire requirement).

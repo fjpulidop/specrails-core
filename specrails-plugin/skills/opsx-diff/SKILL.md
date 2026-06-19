@@ -8,6 +8,14 @@ metadata:
   version: "1.0"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Visualize spec changes for this project (read name from CLAUDE.md or package.json): compare the current specs against a named OpenSpec change to show exactly what behavioral requirements are being added, modified, or removed.
 
 **Input:** $ARGUMENTS — accepts:
@@ -35,7 +43,7 @@ Parse `$ARGUMENTS` to set runtime variables.
 4. If `CHANGE_NAME` is empty after parsing:
    - Run:
      ```bash
-     openspec list --json
+     (cd "${SPECRAILS_REPO_DIR:-.}" && openspec list --json)
      ```
    - If the result shows available changes, use the **AskUserQuestion tool** (open-ended, show the list) to ask which change to diff.
    - If no changes exist, print:

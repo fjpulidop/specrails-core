@@ -8,7 +8,10 @@ import { copyDir, isDir, pathExists, readTextFile } from '../util/fs.js'
 import { loadInstallConfig, resolveConfigPath, type Tier } from '../phases/install-config.js'
 import { buildManifest, writeManifestFiles, type SpecrailsManifest } from '../phases/manifest.js'
 import { derivedPaths, detectAvailability, resolveProvider, type Provider } from '../phases/provider-detect.js'
-import { scaffoldInstallation } from '../phases/scaffold.js'
+import { assembleProjectWorkspace } from '../phases/scaffold.js'
+import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
+
+import { ensureFramework } from './init.js'
 
 /**
  * Components recognised by the `--only <component>` flag. Mirrors the
@@ -76,21 +79,37 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   // Read install-config.yaml so the user's original choices (tier,
   // agent_teams) survive the update. Flag overrides win when present;
   // missing config falls back to defaults (tier=full, agent_teams=false).
-  const config = loadInstallConfig(resolveConfigPath(repoRoot))
+  // ─── Relocate-always: resolve where artifacts live ───────────────────
+  // All Specrails artifacts (incl. the specrails-version marker, manifest,
+  // install-config) live under `artifactRoot` (the $HOME workspace), never the
+  // repo. On update the registry entry already exists (created by init), so the
+  // `providers` hint is ignored; we resolve first, then read the install.
+  const { artifactRoot, codeRoot } = resolveArtifacts(repoRoot, {
+    allocate: true,
+    allocator: 'core-standalone',
+    home: process.env.SPECRAILS_REGISTRY_HOME,
+    coreVersion: currentVersion,
+  })
+
+  // install-config.yaml is a USER-authored file that lives in the repo (the user
+  // can't know the relocated workspace path), so it is read from repoRoot — NOT
+  // the artifactRoot. Falls back to a workspace copy if present (none today).
+  const config =
+    loadInstallConfig(resolveConfigPath(repoRoot)) ?? loadInstallConfig(resolveConfigPath(artifactRoot))
   const tier: Tier = config?.tier ?? 'full'
   const agentTeams = flags['agent-teams'] === true || config?.agent_teams === true
   const selectedAgents = config?.agents.selected
 
-  const marker = path.join(repoRoot, '.specrails', 'specrails-version')
+  const marker = path.join(artifactRoot, '.specrails', 'specrails-version')
   if (!pathExists(marker)) {
     throw new PrerequisiteError(
       `No existing specrails install detected at ${repoRoot}. Run \`npx specrails-core init\` first.`,
     )
   }
-  const previousVersion = readExistingVersion(repoRoot)
+  const previousVersion = readExistingVersion(artifactRoot)
 
   step('Update: resolving provider from existing install')
-  const provider = await resolveExistingProvider(repoRoot)
+  const provider = await resolveExistingProvider(artifactRoot)
   const { providerDir } = derivedPaths(provider)
   ok(`Detected provider: ${provider} (${providerDir})`)
 
@@ -119,34 +138,45 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   step(`Update: refreshing scaffold [scope=${scope}] (${previousVersion ?? '?'} → ${currentVersion})`)
 
   if (scope === 'all' || scope === 'core') {
-    scaffoldInstallation({
+    // Bundled-framework update: re-materialize the framework to the (possibly
+    // new) version dir, atomically swap `current`, then RE-ASSEMBLE the
+    // workspace (re-link the static subtrees at the new `current` + re-seed the
+    // project layer). `assembleProjectWorkspace` rewrites the manifest itself.
+    const fwDir = frameworkRoot(process.env.SPECRAILS_REGISTRY_HOME)
+    ensureFramework({
       scriptDir,
-      repoRoot,
+      frameworkDir: fwDir,
       provider,
       providerDir,
+      version: currentVersion,
       agentTeams,
       selectedAgents,
-      // tier read from install-config.yaml above. If the user installed
-      // with --quick, we re-apply the quick-tier direct placement
-      // (agents + commands into <providerDir> with placeholder substitution
-      // and VPC exclusion) instead of leaving the live agents/ stale.
-      tier,
     })
-  } else if (scope === 'rules') {
-    rescaffoldComponent('rules', { scriptDir, repoRoot })
-  } else if (scope === 'agents') {
-    rescaffoldComponent('agents', { scriptDir, repoRoot })
-  }
+    assembleProjectWorkspace({
+      workspace: artifactRoot,
+      frameworkDir: fwDir,
+      provider,
+      providerDir,
+      version: currentVersion,
+      codeRoot,
+      scriptDir,
+      selectedAgents,
+      agentTeams,
+    })
+    ok(`Re-linked ${providerDir}/ at framework ${currentVersion} + rewrote manifest`)
+  } else if (scope === 'rules' || scope === 'agents') {
+    rescaffoldComponent(scope, { scriptDir, artifactRoot })
 
-  step('Update: rewriting manifest')
-  const manifest: SpecrailsManifest = buildManifest({
-    scriptDir,
-    repoRoot,
-    version: currentVersion,
-  })
-  const { manifestPath, versionPath } = writeManifestFiles(repoRoot, manifest)
-  ok(`Wrote ${path.relative(repoRoot, manifestPath)}`)
-  ok(`Wrote ${path.relative(repoRoot, versionPath)}`)
+    step('Update: rewriting manifest')
+    const manifest: SpecrailsManifest = buildManifest({
+      scriptDir,
+      repoRoot: artifactRoot,
+      version: currentVersion,
+    })
+    const { manifestPath, versionPath } = writeManifestFiles(artifactRoot, manifest)
+    ok(`Wrote ${path.relative(artifactRoot, manifestPath)}`)
+    ok(`Wrote ${path.relative(artifactRoot, versionPath)}`)
+  }
 
   step('Update complete')
   info(`specrails-core ${previousVersion ?? '?'} → ${currentVersion}`)
@@ -164,14 +194,14 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
  */
 function rescaffoldComponent(
   component: 'rules' | 'agents',
-  args: { scriptDir: string; repoRoot: string },
+  args: { scriptDir: string; artifactRoot: string },
 ): void {
   const src = path.join(args.scriptDir, 'templates', component)
   if (!isDir(src)) {
     warn(`templates/${component} not found at ${src} — nothing to update`)
     return
   }
-  const stagingDest = path.join(args.repoRoot, '.specrails', 'setup-templates', component)
+  const stagingDest = path.join(args.artifactRoot, '.specrails', 'setup-templates', component)
   copyDir(src, stagingDest, {
     filter: (_s, rel) => !rel.includes('node_modules') && !rel.endsWith('package-lock.json'),
   })
@@ -193,10 +223,10 @@ function resolveScope(only: string | boolean | undefined): OnlyComponent {
   return normalised as OnlyComponent
 }
 
-async function resolveExistingProvider(repoRoot: string): Promise<Provider> {
-  if (pathExists(path.join(repoRoot, '.claude'))) return 'claude'
-  if (pathExists(path.join(repoRoot, '.codex'))) return 'codex'
-  if (pathExists(path.join(repoRoot, '.gemini'))) return 'gemini'
+async function resolveExistingProvider(artifactRoot: string): Promise<Provider> {
+  if (pathExists(path.join(artifactRoot, '.claude'))) return 'claude'
+  if (pathExists(path.join(artifactRoot, '.codex'))) return 'codex'
+  if (pathExists(path.join(artifactRoot, '.gemini'))) return 'gemini'
   // None present — fall back to resolving via CLI availability.
   const avail = await detectAvailability()
   try {
@@ -204,14 +234,14 @@ async function resolveExistingProvider(repoRoot: string): Promise<Provider> {
   } catch (err) {
     if (err instanceof InstallerError) throw err
     throw new InstallerError(
-      `could not determine provider of existing install at ${repoRoot}`,
+      `could not determine provider of existing install at ${artifactRoot}`,
       40,
     )
   }
 }
 
-function readExistingVersion(repoRoot: string): string | null {
-  const p = path.join(repoRoot, '.specrails', 'specrails-version')
+function readExistingVersion(artifactRoot: string): string | null {
+  const p = path.join(artifactRoot, '.specrails', 'specrails-version')
   if (!pathExists(p)) return null
   try {
     return readTextFile(p).trim() || null

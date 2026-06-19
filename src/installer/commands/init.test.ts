@@ -1,11 +1,12 @@
-import { chmodSync, mkdtempSync, rmSync } from 'node:fs'
+import { chmodSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { mkdirp, pathExists, writeFileLf } from '../util/fs.js'
+import { isDir, isSymlink, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
+import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 import { runInit } from './init.js'
 
 /**
@@ -14,7 +15,14 @@ import { runInit } from './init.js'
  * SPECRAILS_SKIP_PREREQS escape hatch lets us skip the
  * claude-auth / npm checks which would otherwise require an
  * installed Claude CLI in the test environment.
+ *
+ * Platform-aware: per-FILE agent links are symlinks on POSIX but COPIES on
+ * Windows (Windows file-symlinks need admin/Dev-Mode). So the framework agent
+ * assertion checks placement + content (holds for symlink OR copy); the stronger
+ * `isSymbolicLink()` check is guarded POSIX-only so coverage isn't weakened.
  */
+
+const IS_WIN = process.platform === 'win32'
 
 async function setupFakeScriptDir(scriptDir: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '4.2.0' })}\n`)
@@ -29,6 +37,7 @@ async function setupFakeScriptDir(scriptDir: string): Promise<void> {
 
 describe('runInit', () => {
   let tmpDir: string
+  let registryHome: string
   let prevSkipPrereqs: string | undefined
   let prevSkipOpenSpecInit: string | undefined
   let prevCwd: string
@@ -36,16 +45,22 @@ describe('runInit', () => {
   let prevScriptDirOverride: string | undefined
   let prevPath: string | undefined
   let prevOpenSpecBin: string | undefined
+  let prevRegistryHome: string | undefined
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-init-test-'))
+    // Relocate-always: point the registry/workspace $HOME at a fresh tmp so
+    // artifacts land there, NOT in the real ~/.specrails.
+    registryHome = mkdtempSync(path.join(os.tmpdir(), 'specrails-init-home-'))
     prevSkipPrereqs = process.env.SPECRAILS_SKIP_PREREQS
     prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
     prevPath = process.env.PATH
     prevOpenSpecBin = process.env.SPECRAILS_OPENSPEC_BIN
+    prevRegistryHome = process.env.SPECRAILS_REGISTRY_HOME
     process.env.SPECRAILS_SKIP_PREREQS = '1'
     process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
+    process.env.SPECRAILS_REGISTRY_HOME = registryHome
     prevCwd = process.cwd()
   })
 
@@ -61,8 +76,40 @@ describe('runInit', () => {
     else process.env.PATH = prevPath
     if (prevOpenSpecBin === undefined) delete process.env.SPECRAILS_OPENSPEC_BIN
     else process.env.SPECRAILS_OPENSPEC_BIN = prevOpenSpecBin
+    if (prevRegistryHome === undefined) delete process.env.SPECRAILS_REGISTRY_HOME
+    else process.env.SPECRAILS_REGISTRY_HOME = prevRegistryHome
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    rmSync(registryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
+
+  /** Resolve the relocated artifact workspace for a repo (readers pass allocate:false). */
+  function workspaceFor(repoRoot: string): string {
+    return resolveArtifacts(repoRoot, { allocate: false, home: registryHome }).artifactRoot
+  }
+
+  /** The versioned framework store (`<home>/.specrails/framework`). */
+  function frameworkFor(): string {
+    return frameworkRoot(registryHome)
+  }
+
+  /**
+   * Assert the repo-immutability invariant: after a relocate-always install the
+   * repo contains NO Specrails-owned artifact (only openspec/** if it ran).
+   */
+  function assertRepoHasNoSpecrailsArtifacts(repoRoot: string): void {
+    for (const name of [
+      '.specrails',
+      '.claude',
+      '.codex',
+      '.gemini',
+      'CLAUDE.md',
+      'AGENTS.md',
+      'GEMINI.md',
+      '.mcp.json',
+    ]) {
+      expect(pathExists(path.join(repoRoot, name)), `repo must not contain ${name}`).toBe(false)
+    }
+  }
 
   it('installs into a fresh git repo on the quick tier', async () => {
     const scriptDir = path.join(tmpDir, 'core')
@@ -83,11 +130,44 @@ describe('runInit', () => {
     expect(result.tier).toBe('quick')
     expect(result.repoRoot).toBe(repoRoot)
 
-    // .specrails/specrails-version file is written from runInit's
-    // script-dir lookup (the in-repo specrails-core — not the fake one).
-    // We only assert that the per-repo skeleton was created.
-    expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'agents'))).toBe(true)
+    // Bundled-framework: the static framework is materialized ONCE under
+    // `<home>/.specrails/framework/<version>/<providerDir>/`; the workspace
+    // providerDir subtrees are SYMLINKS to `framework/current/...`.
+    const fw = frameworkFor()
+    const fwClaude = path.join(fw, '4.2.0', '.claude')
+    expect(isDir(path.join(fwClaude, 'commands', 'specrails')), 'framework commands materialized').toBe(true)
+    expect(pathExists(path.join(fw, '4.2.0', '.specrails', 'setup-templates', 'agents')), 'setup-templates in framework').toBe(true)
+    // `current` points at the version dir.
+    expect(realpathSync(path.join(fw, 'current'))).toBe(realpathSync(path.join(fw, '4.2.0')))
+
+    // The workspace providerDir subtrees resolve THROUGH the framework copy.
+    const ws = workspaceFor(repoRoot)
+    expect(pathExists(path.join(ws, '.claude', 'commands', 'specrails'))).toBe(true)
+    // `commands/` is a whole-dir link (symlink on POSIX, junction on Windows) →
+    // resolves into the framework on both. The realpath check holds for both link
+    // kinds; the stronger symlink assertion is POSIX-only.
+    if (!IS_WIN) expect(isSymlink(path.join(ws, '.claude', 'commands'))).toBe(true)
+    expect(realpathSync(path.join(ws, '.claude', 'commands'))).toBe(
+      realpathSync(path.join(fwClaude, 'commands')),
+    )
+    // `agents/` is a REAL dir of per-file links (so custom-*.md can coexist);
+    // each framework agent is PLACED with matching content (symlink on POSIX,
+    // copy on Windows). The stronger symlink check is POSIX-only.
+    expect(isDir(path.join(ws, '.claude', 'agents'))).toBe(true)
+    expect(isSymlink(path.join(ws, '.claude', 'agents'))).toBe(false)
+    const wsArch = path.join(ws, '.claude', 'agents', 'sr-architect.md')
+    expect(pathExists(wsArch)).toBe(true)
+    expect(readTextFile(wsArch)).toBe(readTextFile(path.join(fwClaude, 'agents', 'sr-architect.md')))
+    if (!IS_WIN) expect(lstatSync(wsArch).isSymbolicLink()).toBe(true)
+    // `agent-memory/` is a REAL writable dir — NEVER a link into the framework.
+    expect(isDir(path.join(ws, '.claude', 'agent-memory', 'sr-architect'))).toBe(true)
+    expect(isSymlink(path.join(ws, '.claude', 'agent-memory'))).toBe(false)
+    // The workspace records the framework version it consumes.
+    expect(readFileSync(path.join(ws, '.specrails', 'specrails-version'), 'utf8').trim()).toBe('4.2.0')
+    // setup-templates is NOT copied per-workspace anymore (it lives in framework).
+    expect(pathExists(path.join(ws, '.specrails', 'setup-templates'))).toBe(false)
+    // Repo-immutability invariant.
+    assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
   it('reads provider + tier from install-config.yaml when --from-config is passed', async () => {
@@ -119,11 +199,17 @@ describe('runInit', () => {
 
     expect(result.tier).toBe('quick')
     expect(result.agentTeams).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
+    const ws = workspaceFor(repoRoot)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
     // sr-merge-resolver is optional — not placed unless it appears in agents.selected
-    expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
+    // NOTE: this test pre-creates repo/.specrails/install-config.yaml (a USER
+    // file), so the repo-immutability invariant is asserted in the other tests.
+    // Here we only assert the installer wrote NO provider artifacts into the repo.
+    expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
+    expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates'))).toBe(false)
   })
 
   it('accepts --provider codex and produces a codex install (.codex/ + AGENTS.md)', async () => {
@@ -132,15 +218,18 @@ describe('runInit', () => {
     await initRepo(repoRoot)
     const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true })
     expect(result.provider).toBe('codex')
-    // Provider-derived layout: .codex/ + AGENTS.md
-    expect(pathExists(path.join(repoRoot, '.codex'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(true)
+    const ws = workspaceFor(repoRoot)
+    // Provider-derived layout: .codex/ + AGENTS.md — under the workspace.
+    expect(pathExists(path.join(ws, '.codex'))).toBe(true)
+    expect(pathExists(path.join(ws, 'AGENTS.md'))).toBe(true)
     // codex-config.toml written by applyCodexSettings (no rules.star —
     // codex 0.128.0+ keeps sandbox policy inside config.toml itself).
-    expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
-    expect(pathExists(path.join(repoRoot, '.codex', 'rules.star'))).toBe(false)
+    expect(pathExists(path.join(ws, '.codex', 'config.toml'))).toBe(true)
+    expect(pathExists(path.join(ws, '.codex', 'rules.star'))).toBe(false)
     // .claude/ is NOT created on codex projects
-    expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
+    expect(pathExists(path.join(ws, '.claude'))).toBe(false)
+    // Repo-immutability: nothing Specrails-owned in the repo.
+    assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
   it('rejects --provider with an unknown value', async () => {

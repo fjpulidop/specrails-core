@@ -11,9 +11,17 @@
 
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { runDoctor, type DoctorFlags } from './commands/doctor.js'
+import {
+  runAssemble,
+  runInstallFramework,
+  runSwapCurrent,
+  type AssembleFlags,
+  type InstallFrameworkFlags,
+  type SwapCurrentFlags,
+} from './commands/framework.js'
 import { runInit, type InitFlags } from './commands/init.js'
 import { runUpdate, type UpdateFlags } from './commands/update.js'
 import { isInstallerError } from './util/errors.js'
@@ -83,11 +91,14 @@ function usageText(): string {
     '  specrails-core <command> [options]',
     '',
     'Commands:',
-    '  init           Install specrails into a repository',
-    '  update         Update an existing specrails installation',
-    '  doctor         Diagnose the health of an existing installation',
-    '  help           Show this help message',
-    '  version        Print the installed version',
+    '  init                Install specrails into a repository',
+    '  update              Update an existing specrails installation',
+    '  doctor              Diagnose the health of an existing installation',
+    '  install-framework   Materialize the versioned framework (offline)',
+    '  swap-current        Point framework/current at a version (offline)',
+    '  assemble            Symlink the framework into a workspace (offline)',
+    '  help                Show this help message',
+    '  version             Print the installed version',
     '',
     'Global options:',
     '  -h, --help     Show this help',
@@ -137,6 +148,15 @@ async function dispatch(
       const result = await runDoctor(flags as DoctorFlags)
       return result.failed === 0 ? 0 : 1
     }
+    case 'install-framework':
+      await runInstallFramework(flags as InstallFrameworkFlags)
+      return 0
+    case 'swap-current':
+      await runSwapCurrent(flags as SwapCurrentFlags)
+      return 0
+    case 'assemble':
+      await runAssemble(flags as AssembleFlags)
+      return 0
     case 'help':
     case '':
       process.stdout.write(usageText())
@@ -174,4 +194,31 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
     fatal(e.message || 'unexpected error', e.stack)
     return 1
   }
+}
+
+/**
+ * Auto-run guard: when this module is executed DIRECTLY as a script
+ * (`node dist/installer/cli.js <subcommand>`), run `main()` and propagate its
+ * exit code. specrails-desktop's bundled-core path (server/framework-manager.ts)
+ * spawns `node <core>/dist/installer/cli.js install-framework|assemble …` and
+ * relies on this — the legacy bin dispatcher (bin/specrails-core.mjs) imports
+ * `main` and is unaffected (it never executes this file as argv[1]).
+ *
+ * Comparing `import.meta.url` against `process.argv[1]` keeps the guard inert on
+ * import (so unit tests that `import { main }` never trigger a process.exit).
+ */
+const isDirectRun = (() => {
+  try {
+    const entry = process.argv[1]
+    if (!entry) return false
+    return import.meta.url === pathToFileURL(entry).href
+  } catch {
+    return false
+  }
+})()
+
+if (isDirectRun) {
+  void main().then((code) => {
+    process.exitCode = code
+  })
 }

@@ -19,6 +19,8 @@ Resume a failed `/specrails:implement` run for **{{PROJECT_NAME}}**. Reads pipel
 
 **MANDATORY: Follow this pipeline exactly. Do NOT skip phases or re-run phases that already succeeded. Read all context from the pipeline state file — do not rely on memory. Do not re-implement anything yourself; delegate to the same agents used by `/specrails:implement`.**
 
+**Repository location.** Your working directory may NOT be the user's source repository. Repo-resident things — `openspec/**`, source, `.git`, the GitHub remote — live under **`${SPECRAILS_REPO_DIR:-.}`** (set by the spawner; unset ⇒ `.` ⇒ byte-identical to a classic in-repo run). The pipeline-state file itself is **run-state**, read from `.claude/pipeline-state/` relative to the working directory — do NOT prefix it. The `openspec_artifacts` value stored in that file is a repo-relative path (`openspec/changes/<name>/`); prefix it with `${SPECRAILS_REPO_DIR:-.}/` when you read those files on disk. All git/PR operations are delegated to `/specrails:implement` Phase 4c, which already runs them against the repo.
+
 **Input:** $ARGUMENTS — accepted forms:
 
 1. `<feature-name>` — kebab-case feature name matching a `.claude/pipeline-state/<feature-name>.json` file
@@ -214,7 +216,7 @@ Wait for all architects to complete.
 Before launching, verify architect artifacts exist:
 
 ```bash
-ls <OPENSPEC_ARTIFACTS>tasks.md <OPENSPEC_ARTIFACTS>context-bundle.md
+ls "${SPECRAILS_REPO_DIR:-.}/<OPENSPEC_ARTIFACTS>tasks.md" "${SPECRAILS_REPO_DIR:-.}/<OPENSPEC_ARTIFACTS>context-bundle.md"
 ```
 
 If missing and `RESUME_PHASE=developer`: print:

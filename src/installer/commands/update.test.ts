@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { PrerequisiteError } from '../util/errors.js'
 import { mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
+import { resolveArtifacts } from '../util/registry.js'
 import { runUpdate } from './update.js'
 
 async function setupFakeScriptDir(scriptDir: string, version: string): Promise<void> {
@@ -17,33 +18,55 @@ async function setupFakeScriptDir(scriptDir: string, version: string): Promise<v
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
-async function simulateExistingInstall(repoRoot: string, version: string): Promise<void> {
-  mkdirp(repoRoot)
-  await initRepo(repoRoot)
-  writeFileLf(path.join(repoRoot, '.specrails', 'specrails-version'), `${version}\n`)
-  writeFileLf(
-    path.join(repoRoot, '.specrails', 'specrails-manifest.json'),
-    JSON.stringify({ version, installed_at: '2026-01-01T00:00:00Z', artifacts: {} }, null, 2),
-  )
-  mkdirp(path.join(repoRoot, '.claude', 'commands', 'specrails'))
-}
-
 describe('runUpdate', () => {
   let tmpDir: string
+  let registryHome: string
   let prevCwd: string
   let prevScriptDirOverride: string | undefined
+  let prevRegistryHome: string | undefined
+
+  /** Resolve the relocated artifact workspace for a repo (allocate so update finds it). */
+  function workspaceFor(repoRoot: string): string {
+    return resolveArtifacts(repoRoot, {
+      allocate: true,
+      home: registryHome,
+      providers: ['claude'],
+    }).artifactRoot
+  }
+
+  /**
+   * Simulate a prior relocate-always install: allocate the registry entry and
+   * write the marker + manifest into the resolved WORKSPACE (not the repo).
+   */
+  async function simulateExistingInstall(repoRoot: string, version: string): Promise<void> {
+    mkdirp(repoRoot)
+    await initRepo(repoRoot)
+    const ws = workspaceFor(repoRoot)
+    writeFileLf(path.join(ws, '.specrails', 'specrails-version'), `${version}\n`)
+    writeFileLf(
+      path.join(ws, '.specrails', 'specrails-manifest.json'),
+      JSON.stringify({ version, installed_at: '2026-01-01T00:00:00Z', artifacts: {} }, null, 2),
+    )
+    mkdirp(path.join(ws, '.claude', 'commands', 'specrails'))
+  }
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-update-test-'))
+    registryHome = mkdtempSync(path.join(os.tmpdir(), 'specrails-update-home-'))
     prevCwd = process.cwd()
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
+    prevRegistryHome = process.env.SPECRAILS_REGISTRY_HOME
+    process.env.SPECRAILS_REGISTRY_HOME = registryHome
   })
 
   afterEach(() => {
     process.chdir(prevCwd)
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
+    if (prevRegistryHome === undefined) delete process.env.SPECRAILS_REGISTRY_HOME
+    else process.env.SPECRAILS_REGISTRY_HOME = prevRegistryHome
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    rmSync(registryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('refuses to run when no prior install is present', async () => {
@@ -66,8 +89,9 @@ describe('runUpdate', () => {
     expect(result.currentVersion).toBe('5.0.0')
     expect(result.provider).toBe('claude')
 
-    // specrails-version file was rewritten to the new version.
-    const newVersion = readTextFile(path.join(repoRoot, '.specrails', 'specrails-version')).trim()
+    // specrails-version file was rewritten to the new version (in the workspace).
+    const ws = workspaceFor(repoRoot)
+    const newVersion = readTextFile(path.join(ws, '.specrails', 'specrails-version')).trim()
     expect(newVersion).toBe('5.0.0')
   })
 
@@ -81,8 +105,9 @@ describe('runUpdate', () => {
     const result = await runUpdate({ 'root-dir': repoRoot, 'dry-run': true })
     expect(result.dryRun).toBe(true)
 
-    // specrails-version file is unchanged.
-    const stillOld = readTextFile(path.join(repoRoot, '.specrails', 'specrails-version')).trim()
+    // specrails-version file is unchanged (in the workspace).
+    const ws = workspaceFor(repoRoot)
+    const stillOld = readTextFile(path.join(ws, '.specrails', 'specrails-version')).trim()
     expect(stillOld).toBe('4.2.0')
   })
 
@@ -93,12 +118,14 @@ describe('runUpdate', () => {
     await simulateExistingInstall(repoRoot, '4.2.0')
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
+    // Reserved regions live under the relocated workspace now.
+    const ws = workspaceFor(repoRoot)
     writeFileLf(
-      path.join(repoRoot, '.specrails', 'profiles', 'team.json'),
+      path.join(ws, '.specrails', 'profiles', 'team.json'),
       '{"name":"team-profile"}',
     )
     writeFileLf(
-      path.join(repoRoot, '.claude', 'agents', 'custom-reviewer.md'),
+      path.join(ws, '.claude', 'agents', 'custom-reviewer.md'),
       'custom reviewer content',
     )
 
@@ -106,10 +133,10 @@ describe('runUpdate', () => {
 
     // Reserved files remain byte-identical.
     expect(
-      readTextFile(path.join(repoRoot, '.specrails', 'profiles', 'team.json')),
+      readTextFile(path.join(ws, '.specrails', 'profiles', 'team.json')),
     ).toBe('{"name":"team-profile"}')
     expect(
-      readTextFile(path.join(repoRoot, '.claude', 'agents', 'custom-reviewer.md')),
+      readTextFile(path.join(ws, '.claude', 'agents', 'custom-reviewer.md')),
     ).toBe('custom reviewer content')
   })
 
@@ -134,9 +161,10 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot })
       expect(result.tier).toBe('quick')
-      // Quick-tier placement happened: bundled agents are in .claude/agents/
+      // Quick-tier placement happened: bundled agents are in <ws>/.claude/agents/
       // (not just under setup-templates/).
-      expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+      const ws = workspaceFor(repoRoot)
+      expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     })
 
     it('reads agent_teams=true from install-config.yaml and keeps team-* commands', async () => {
@@ -162,7 +190,7 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot })
       expect(result.agentTeams).toBe(true)
-      const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
+      const cmdsDir = path.join(workspaceFor(repoRoot), '.claude', 'commands', 'specrails')
       expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(true)
       expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(true)
     })
@@ -224,11 +252,12 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot, only: 'rules' })
       expect(result.scope).toBe('rules')
-      // Rules staging is populated.
-      expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'rules', 'general.md'))).toBe(true)
+      const ws = workspaceFor(repoRoot)
+      // Rules staging is populated (under the workspace).
+      expect(pathExists(path.join(ws, '.specrails', 'setup-templates', 'rules', 'general.md'))).toBe(true)
       // Manifest still bumped to current version.
       const manifest = JSON.parse(
-        readTextFile(path.join(repoRoot, '.specrails', 'specrails-manifest.json')),
+        readTextFile(path.join(ws, '.specrails', 'specrails-manifest.json')),
       )
       expect(manifest.version).toBe('5.0.0')
     })
@@ -242,7 +271,7 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot, only: 'agents' })
       expect(result.scope).toBe('agents')
-      expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'agents', 'sr-architect.md'))).toBe(true)
+      expect(pathExists(path.join(workspaceFor(repoRoot), '.specrails', 'setup-templates', 'agents', 'sr-architect.md'))).toBe(true)
     })
 
     it('--only=web-manager warns and exits without writing (deprecated)', async () => {
@@ -254,8 +283,8 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot, only: 'web-manager' })
       expect(result.scope).toBe('web-manager')
-      // specrails-version unchanged.
-      expect(readTextFile(path.join(repoRoot, '.specrails', 'specrails-version')).trim()).toBe('4.2.0')
+      // specrails-version unchanged (in the workspace).
+      expect(readTextFile(path.join(workspaceFor(repoRoot), '.specrails', 'specrails-version')).trim()).toBe('4.2.0')
     })
 
     it('--only=core re-applies the full bundled template layer', async () => {
@@ -267,8 +296,8 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot, only: 'core' })
       expect(result.scope).toBe('core')
-      // Bundled commands present (full scaffold ran).
-      expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(true)
+      // Bundled commands present (full scaffold ran) — under the workspace.
+      expect(pathExists(path.join(workspaceFor(repoRoot), '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(true)
     })
 
     it('unknown --only value falls back to scope=all with a warning', async () => {
@@ -292,13 +321,14 @@ describe('runUpdate', () => {
 
     await runUpdate({ 'root-dir': repoRoot })
 
+    const ws = workspaceFor(repoRoot)
     const manifest = JSON.parse(
-      readTextFile(path.join(repoRoot, '.specrails', 'specrails-manifest.json')),
+      readTextFile(path.join(ws, '.specrails', 'specrails-manifest.json')),
     )
     expect(manifest.version).toBe('5.0.0')
     // Artifacts map contains entries for bundled commands.
     expect(manifest.artifacts['commands/specrails/enrich.md']).toBeDefined()
-    expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(
+    expect(pathExists(path.join(ws, '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(
       true,
     )
   })

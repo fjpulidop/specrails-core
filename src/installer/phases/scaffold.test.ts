@@ -111,21 +111,21 @@ describe('scaffold', () => {
   describe('detectExistingSetup', () => {
     it('returns false on a clean repo', () => {
       expect(
-        detectExistingSetup({ repoRoot: tmpDir, providerDir: '.claude' }),
+        detectExistingSetup({ artifactRoot: tmpDir, codeRoot: tmpDir, providerDir: '.claude' }),
       ).toBe(false)
     })
 
     it('returns true when .claude/agents/ has content', () => {
       writeFileLf(path.join(tmpDir, '.claude', 'agents', 'foo.md'), '')
       expect(
-        detectExistingSetup({ repoRoot: tmpDir, providerDir: '.claude' }),
+        detectExistingSetup({ artifactRoot: tmpDir, codeRoot: tmpDir, providerDir: '.claude' }),
       ).toBe(true)
     })
 
     it('returns true when openspec/ exists with content', () => {
       writeFileLf(path.join(tmpDir, 'openspec', 'specs', 'x.md'), '')
       expect(
-        detectExistingSetup({ repoRoot: tmpDir, providerDir: '.claude' }),
+        detectExistingSetup({ artifactRoot: tmpDir, codeRoot: tmpDir, providerDir: '.claude' }),
       ).toBe(true)
     })
   })
@@ -138,7 +138,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -169,7 +170,8 @@ describe('scaffold', () => {
     function scaffoldGemini(scriptDir: string, repoRoot: string): void {
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'gemini',
         providerDir: '.gemini',
         agentTeams: false,
@@ -288,7 +290,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -312,7 +315,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -344,7 +348,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -374,7 +379,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -393,7 +399,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: true,
@@ -412,7 +419,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -431,7 +439,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -455,7 +464,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -486,7 +496,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -511,7 +522,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -529,7 +541,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -556,7 +569,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -575,7 +589,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: true,
@@ -594,7 +609,8 @@ describe('scaffold', () => {
 
         scaffoldInstallation({
           scriptDir,
-          repoRoot,
+          artifactRoot: repoRoot,
+          codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
           agentTeams: false,
@@ -617,7 +633,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
         agentTeams: false,
@@ -637,7 +654,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
         agentTeams: false,
@@ -657,7 +675,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
         agentTeams: false,
@@ -690,7 +709,8 @@ describe('scaffold', () => {
 
       scaffoldInstallation({
         scriptDir,
-        repoRoot,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
         agentTeams: false,
@@ -830,5 +850,19 @@ describe('writeGeminiAgentAcknowledgments', () => {
     const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
     expect(ack[repo]['sr-architect']).toBe(sha('arch\n'))
     expect(ack[repo]['ghost']).toBeUndefined()
+  })
+
+  it('keys the ack on the WORKSPACE (agentsBaseDir) under relocation, not the repo', () => {
+    // Under relocation, gemini runs with cwd=<workspace>, so the ack store must be
+    // keyed on the workspace providerDir base (3rd arg) — NOT the repo root —
+    // otherwise headless `gemini -p` looks up `store[<workspace>]` and finds
+    // nothing. The agent files are hashed from the workspace too.
+    const repo = path.join(tmpDir, 'repo')
+    const workspace = path.join(tmpDir, 'workspace')
+    writeAgent(workspace, 'sr-architect', 'ws-arch\n')
+    writeGeminiAgentAcknowledgments(repo, ['sr-architect'], workspace)
+    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
+    expect(ack[workspace]['sr-architect']).toBe(sha('ws-arch\n'))
+    expect(ack[repo]).toBeUndefined() // repo is NOT the key under relocation
   })
 })

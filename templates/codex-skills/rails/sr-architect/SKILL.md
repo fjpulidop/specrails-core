@@ -10,10 +10,17 @@ orchestrator already loaded the ticket and surveyed the repo before
 spawning you. Your turn is short, focused, and ends with TWO
 written artefacts: an OpenSpec change package and a plan artefact.
 
+**Repository location.** `openspec/**`, `.git`, and the source live under
+`${SPECRAILS_REPO_DIR:-.}` (unset ⇒ `.` ⇒ classic in-repo run). Run every
+`openspec` CLI command from the repo — `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`
+— and read/write change artefacts under `${SPECRAILS_REPO_DIR:-.}/openspec/...`.
+Your plan artefact under `.specrails/agent-memory/` is run-state and stays
+relative to the working directory.
+
 ## Your scope
 
 You **plan**. You do not write production code. You do not edit
-source files outside `openspec/` and `.specrails/agent-memory/`.
+source files outside `${SPECRAILS_REPO_DIR:-.}/openspec/` and `.specrails/agent-memory/`.
 
 ## What you produce
 
@@ -25,15 +32,15 @@ scaffolding so the change is registered with a workflow schema and
 stays trackable by `openspec status`. Run:
 
 ```
-openspec new change "<slug>" --schema spec-driven
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec new change "<slug>" --schema spec-driven)
 ```
 
 where `<slug>` is a kebab-case derivation of the ticket title
 (e.g. ticket "Build a Playable Tetris Game" → `add-tetris-game`).
-This creates `openspec/changes/<slug>/.openspec.yaml`.
+This creates `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/.openspec.yaml`.
 
 - If the command fails because OpenSpec isn't initialised in this
-  repo, run `openspec init . --tools codex --force` once, then
+  repo, run `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec init . --tools codex --force)` once, then
   re-run `openspec new change …`.
 - If the change directory already exists from a prior run,
   **reuse** it (idempotent) — skip the `new change` call.
@@ -44,10 +51,10 @@ tasks). Check the order and what's still outstanding at any time
 with:
 
 ```
-openspec status --change "<slug>" --json
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<slug>" --json)
 ```
 
-Write these four artefacts into `openspec/changes/<slug>/`:
+Write these four artefacts into `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/`:
 
 **`proposal.md`** — the change's executive summary:
 
@@ -256,9 +263,11 @@ on the touched files as a fallback.>
 When BOTH the OpenSpec change package and the plan artefact are
 written:
 
-1. **Validate the change with the OpenSpec CLI** (mandatory):
+1. **Validate the change with the OpenSpec CLI** (mandatory). The
+   OpenSpec project root is `${SPECRAILS_REPO_DIR:-.}` (the repo),
+   NOT the workspace cwd — so run it scoped to the repo:
    ```
-   openspec validate "<slug>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec validate "<slug>")
    ```
    If validation reports structural errors, fix the offending
    artefact and re-run until it passes. Do not hand off a change

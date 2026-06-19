@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Guide the user through their first complete OpenSpec workflow cycle. This is a teaching experience—you'll do real work in their codebase while explaining each step.
 
 ---
@@ -18,7 +26,7 @@ Guide the user through their first complete OpenSpec workflow cycle. This is a t
 Before starting, check if OpenSpec is initialized:
 
 ```bash
-openspec status --json 2>&1 || echo "NOT_INITIALIZED"
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --json) 2>&1 || echo "NOT_INITIALIZED"
 ```
 
 **If not initialized:**
@@ -168,7 +176,7 @@ Let me create one for our task.
 
 **DO:** Create the change with a derived kebab-case name:
 ```bash
-openspec new change "<derived-name>"
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec new change "<derived-name>")
 ```
 
 **SHOW:**
@@ -237,7 +245,7 @@ Does this capture the intent? I can adjust before we save it.
 
 After approval, save the proposal:
 ```bash
-openspec instructions proposal --change "<name>" --json
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec instructions proposal --change "<name>" --json)
 ```
 Then write the content to `openspec/changes/<name>/proposal.md`.
 
@@ -423,7 +431,7 @@ Archived changes become your project's decision history—you can always find th
 
 **DO:**
 ```bash
-openspec archive "<name>"
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec archive "<name>")
 ```
 
 **SHOW:**

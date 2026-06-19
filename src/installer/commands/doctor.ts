@@ -8,6 +8,7 @@ import { isDir, isFile, listDir, mkdirp } from '../util/fs.js'
 
 import { assertClaudeAuthenticated } from '../phases/provider-detect.js'
 import { derivedPaths, type Provider } from '../phases/provider-detect.js'
+import { resolveArtifacts } from '../util/registry.js'
 
 /**
  * `npx specrails-core doctor` — health check for a specrails install.
@@ -32,6 +33,15 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
     typeof flags['root-dir'] === 'string' ? flags['root-dir'] : process.cwd(),
   )
 
+  // Relocate-always: Specrails artifacts (provider dir, agent files, instructions
+  // file) live under `artifactRoot`. Git stays in the repo (codeRoot). Readers
+  // pass allocate:false → falls back to the in-repo legacy layout when there is
+  // no registry entry (so a never-installed / legacy repo still reports cleanly).
+  const { artifactRoot, codeRoot } = resolveArtifacts(projectRoot, {
+    allocate: false,
+    home: process.env.SPECRAILS_REGISTRY_HOME,
+  })
+
   rawOut('\nspecrails doctor\n\n')
 
   const results: DoctorResult['results'] = []
@@ -41,7 +51,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   const addFail = (message: string, fix: string): void => {
     results.push({ kind: 'fail', message, fix })
   }
-  const provider = resolveInstalledProvider(projectRoot)
+  const provider = resolveInstalledProvider(artifactRoot)
   const { providerDir, instructionsFile } = derivedPaths(provider)
 
   // Check 1: Claude Code CLI
@@ -66,7 +76,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   }
 
   // Check 3: Agent files present in the active provider directory.
-  const agentsDir = path.join(projectRoot, providerDir, 'agents')
+  const agentsDir = path.join(artifactRoot, providerDir, 'agents')
   if (isDir(agentsDir)) {
     const agentFiles = findInstalledAgentFiles(agentsDir, provider)
     if (agentFiles.length >= 1) {
@@ -88,7 +98,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   }
 
   // Check 4: provider instructions file present
-  if (isFile(path.join(projectRoot, instructionsFile))) {
+  if (isFile(path.join(artifactRoot, instructionsFile))) {
     addPass(`${instructionsFile}: present`)
   } else {
     addFail(
@@ -99,8 +109,8 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
     )
   }
 
-  // Check 5: Git initialized
-  if (isDir(path.join(projectRoot, '.git'))) {
+  // Check 5: Git initialized (in the repo — codeRoot, not the artifact root)
+  if (isDir(path.join(codeRoot, '.git'))) {
     addPass('Git: initialized')
   } else {
     addFail('Git: not a git repository', 'Initialize with: git init')

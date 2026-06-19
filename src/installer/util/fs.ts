@@ -2,10 +2,17 @@ import { Buffer } from 'node:buffer'
 import {
   cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
   readdirSync,
+  readlinkSync,
+  realpathSync,
+  renameSync,
+  rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import path from 'node:path'
@@ -165,5 +172,143 @@ export function isDir(p: string): boolean {
     return statSync(p).isDirectory()
   } catch {
     return false
+  }
+}
+
+/**
+ * True when `p` itself is a symbolic link (does NOT follow the link). Used by
+ * the bundled-framework assembly to detect (and re-create) the per-workspace
+ * provider subtree links. Returns false for a real dir/file or a missing path.
+ */
+export function isSymlink(p: string): boolean {
+  try {
+    return lstatSync(p).isSymbolicLink()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolve a path through symlinks to its real on-disk location, falling back to
+ * the resolved-but-unreal path when the target does not exist yet (mirrors
+ * registry.ts's `realpathSafe`).
+ */
+export function realpathSafe(p: string): string {
+  try {
+    return realpathSync(p)
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+/**
+ * Remove a file, directory, or symlink at `p` if present. For a symlink the
+ * link itself is removed (the target is never followed/deleted). Best-effort:
+ * a missing path is a no-op. Used before (re-)creating a workspace link.
+ */
+export function removePath(p: string): void {
+  try {
+    const st = lstatSync(p)
+    if (st.isSymbolicLink() || st.isFile()) {
+      unlinkSync(p)
+    } else {
+      rmSync(p, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
+    }
+  } catch {
+    /* nothing there — no-op */
+  }
+}
+
+/**
+ * Ensure `<linkPath>` resolves to `<target>` via a symbolic link, with the same
+ * junction→symlink→copy fallback dance specrails-desktop uses for the project
+ * link (`workspace-manager.ts ensureProjectLink`).
+ *
+ *   1. POSIX: a plain `symlinkSync(target, linkPath, type)`.
+ *   2. Windows: try a junction (dirs) / file symlink first, then a plain symlink.
+ *   3. Both failed (e.g. unprivileged Windows): COPY the target subtree verbatim.
+ *
+ * Returns the mechanism used so the caller can record it (copy-fallback loses the
+ * O(1) `current`-swap update path; the caller may warn). Idempotent: when the
+ * link already points at `target` it is left untouched and `'symlink'` returned.
+ */
+export function symlinkOrCopy(target: string, linkPath: string): 'symlink' | 'junction' | 'copy' {
+  const targetIsDir = isDir(target)
+
+  // Idempotency: an existing correct symlink is left alone.
+  if (isSymlink(linkPath)) {
+    try {
+      const current = readlinkSync(linkPath)
+      const resolved = path.isAbsolute(current) ? current : path.resolve(path.dirname(linkPath), current)
+      if (realpathSafe(resolved) === realpathSafe(target)) return 'symlink'
+    } catch {
+      /* unreadable link — fall through to recreate */
+    }
+  }
+
+  removePath(linkPath)
+  mkdirp(path.dirname(linkPath))
+
+  if (process.platform === 'win32') {
+    if (targetIsDir) {
+      // Directory junctions do NOT require admin/Developer Mode on Windows, so
+      // try one. (A failure falls through to copy.)
+      try {
+        symlinkSync(target, linkPath, 'junction')
+        return 'junction'
+      } catch {
+        /* fall through to copy */
+      }
+    } else {
+      // A FILE symlink on Windows needs admin or Developer Mode and otherwise
+      // throws EPERM — noisy and almost always a failure on a user's machine.
+      // Skip the symlink attempt entirely and COPY the file directly. (The
+      // framework's stale-copy cleanup removes such copied agents on a version
+      // swap.) Dir junctions above are unaffected.
+      copyFile(target, linkPath)
+      return 'copy'
+    }
+  } else {
+    try {
+      symlinkSync(target, linkPath, targetIsDir ? 'dir' : 'file')
+      return 'symlink'
+    } catch {
+      /* fall through to copy */
+    }
+  }
+
+  // Final fallback: copy the subtree (Windows without symlink privilege).
+  if (targetIsDir) {
+    copyDir(target, linkPath)
+  } else {
+    copyFile(target, linkPath)
+  }
+  return 'copy'
+}
+
+/**
+ * Atomically repoint `<linkPath>` at `<target>`: create a sibling temp link,
+ * then `renameSync` over the destination (rename of a symlink is atomic on
+ * POSIX; on Windows the temp+rename pattern still avoids a torn intermediate
+ * state). Used for the `framework/current` indirection swap.
+ */
+export function atomicSymlinkSwap(target: string, linkPath: string): void {
+  mkdirp(path.dirname(linkPath))
+  const tmp = path.join(path.dirname(linkPath), `.${path.basename(linkPath)}.tmp-${process.pid}`)
+  removePath(tmp)
+  const type = isDir(target) ? (process.platform === 'win32' ? 'junction' : 'dir') : 'file'
+  try {
+    symlinkSync(target, tmp, type)
+  } catch {
+    // Windows without symlink privilege: fall back to a non-atomic recreate.
+    removePath(linkPath)
+    symlinkOrCopy(target, linkPath)
+    return
+  }
+  try {
+    renameSync(tmp, linkPath)
+  } catch {
+    removePath(linkPath)
+    renameSync(tmp, linkPath)
   }
 }

@@ -15,9 +15,12 @@ instead.
 ## Your scope
 
 Same TDD contract as `$sr-developer` — read the architect's
-plan, walk `openspec/changes/<slug>/tasks.md` in order, write
+plan, walk `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/tasks.md` in order, write
 the failing test first, then the production code, then re-run.
 Tick boxes only after observing the expected runner state.
+(openspec + the source files named in `tasks.md` live under
+`${SPECRAILS_REPO_DIR:-.}` — unset ⇒ `.` ⇒ classic in-repo run; edit each
+source file as `${SPECRAILS_REPO_DIR:-.}/<path>`.)
 
 What's different: you bias the test surface toward UI.
 

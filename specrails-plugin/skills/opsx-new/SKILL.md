@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Start a new change using the experimental artifact-driven approach.
 
 **Input**: The user's request should include a change name (kebab-case) OR a description of what they want to build.
@@ -36,14 +44,14 @@ Start a new change using the experimental artifact-driven approach.
 
 3. **Create the change directory**
    ```bash
-   openspec new change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec new change "<name>")
    ```
    Add `--schema <name>` only if the user requested a specific workflow.
    This creates a scaffolded change at `openspec/changes/<name>/` with the selected schema.
 
 4. **Show the artifact status**
    ```bash
-   openspec status --change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<name>")
    ```
    This shows which artifacts need to be created and which are ready (dependencies satisfied).
 
@@ -51,7 +59,7 @@ Start a new change using the experimental artifact-driven approach.
    The first artifact depends on the schema (e.g., `proposal` for spec-driven).
    Check the status output to find the first artifact with status "ready".
    ```bash
-   openspec instructions <first-artifact-id> --change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec instructions <first-artifact-id> --change "<name>")
    ```
    This outputs the template and context for creating the first artifact.
 

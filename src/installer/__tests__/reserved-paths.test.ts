@@ -8,6 +8,7 @@ import { runInit } from '../commands/init.js'
 import { runUpdate } from '../commands/update.js'
 import { mkdirp, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
+import { resolveArtifacts } from '../util/registry.js'
 
 /**
  * End-to-end audit: the installer (init AND update) must NEVER mutate
@@ -34,17 +35,20 @@ interface ReservedFixtures {
   customAgent: { abs: string; contents: string }
 }
 
-function sprinkleReservedFixtures(repoRoot: string): ReservedFixtures {
+// The reserved regions now live under the relocated artifact workspace
+// (`artifactRoot`), not the repo. The preservation contract is unchanged —
+// only the base directory moved.
+function sprinkleReservedFixtures(artifactRoot: string): ReservedFixtures {
   const profileJson = {
-    abs: path.join(repoRoot, '.specrails', 'profiles', 'team.json'),
+    abs: path.join(artifactRoot, '.specrails', 'profiles', 'team.json'),
     contents: JSON.stringify({ name: 'team', owner: 'alice' }, null, 2) + '\n',
   }
   const profileInNested = {
-    abs: path.join(repoRoot, '.specrails', 'profiles', 'env', 'prod.json'),
+    abs: path.join(artifactRoot, '.specrails', 'profiles', 'env', 'prod.json'),
     contents: JSON.stringify({ env: 'prod' }) + '\n',
   }
   const customAgent = {
-    abs: path.join(repoRoot, '.claude', 'agents', 'custom-reviewer.md'),
+    abs: path.join(artifactRoot, '.claude', 'agents', 'custom-reviewer.md'),
     contents: '# custom reviewer\nuser-authored content\n',
   }
   writeFileLf(profileJson.abs, profileJson.contents)
@@ -61,21 +65,35 @@ function assertReservedUntouched(fx: ReservedFixtures): void {
 
 describe('reserved paths audit', () => {
   let tmpDir: string
+  let registryHome: string
   let prevSkipPrereqs: string | undefined
   let prevSkipOpenSpecInit: string | undefined
   let prevScriptDirOverride: string | undefined
+  let prevRegistryHome: string | undefined
   let prevCwd: string
+
+  /** The relocated artifact workspace where reserved regions live. */
+  function workspaceFor(repoRoot: string): string {
+    return resolveArtifacts(repoRoot, {
+      allocate: true,
+      home: registryHome,
+      providers: ['claude'],
+    }).artifactRoot
+  }
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-reserved-test-'))
+    registryHome = mkdtempSync(path.join(os.tmpdir(), 'specrails-reserved-home-'))
     prevCwd = process.cwd()
     prevSkipPrereqs = process.env.SPECRAILS_SKIP_PREREQS
     prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
+    prevRegistryHome = process.env.SPECRAILS_REGISTRY_HOME
     process.env.SPECRAILS_SKIP_PREREQS = '1'
     // Reserved-paths audit doesn't depend on OpenSpec; skip the npx
     // fetch so the test stays fast and Windows CI doesn't time out.
     process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
+    process.env.SPECRAILS_REGISTRY_HOME = registryHome
   })
 
   afterEach(() => {
@@ -86,7 +104,10 @@ describe('reserved paths audit', () => {
     else process.env.SPECRAILS_SKIP_OPENSPEC_INIT = prevSkipOpenSpecInit
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
+    if (prevRegistryHome === undefined) delete process.env.SPECRAILS_REGISTRY_HOME
+    else process.env.SPECRAILS_REGISTRY_HOME = prevRegistryHome
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    rmSync(registryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('init preserves profile JSON and custom-* agents when they pre-exist', async () => {
@@ -97,7 +118,7 @@ describe('reserved paths audit', () => {
     await initRepo(repoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
-    const fx = sprinkleReservedFixtures(repoRoot)
+    const fx = sprinkleReservedFixtures(workspaceFor(repoRoot))
 
     await runInit({
       'root-dir': repoRoot,
@@ -117,15 +138,16 @@ describe('reserved paths audit', () => {
     await initRepo(repoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
-    // Simulate a prior install with specrails-version + old manifest.
-    writeFileLf(path.join(repoRoot, '.specrails', 'specrails-version'), '4.0.0\n')
+    // Simulate a prior relocate-always install: marker + manifest in the workspace.
+    const ws = workspaceFor(repoRoot)
+    writeFileLf(path.join(ws, '.specrails', 'specrails-version'), '4.0.0\n')
     writeFileLf(
-      path.join(repoRoot, '.specrails', 'specrails-manifest.json'),
+      path.join(ws, '.specrails', 'specrails-manifest.json'),
       JSON.stringify({ version: '4.0.0', installed_at: '2026-01-01T00:00:00Z', artifacts: {} }),
     )
-    mkdirp(path.join(repoRoot, '.claude', 'commands', 'specrails'))
+    mkdirp(path.join(ws, '.claude', 'commands', 'specrails'))
 
-    const fx = sprinkleReservedFixtures(repoRoot)
+    const fx = sprinkleReservedFixtures(ws)
 
     await runUpdate({ 'root-dir': repoRoot })
 
@@ -140,7 +162,7 @@ describe('reserved paths audit', () => {
     await initRepo(repoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
-    const fx = sprinkleReservedFixtures(repoRoot)
+    const fx = sprinkleReservedFixtures(workspaceFor(repoRoot))
 
     await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     assertReservedUntouched(fx)

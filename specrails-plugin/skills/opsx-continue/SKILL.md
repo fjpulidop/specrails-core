@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Continue working on a change by creating the next artifact.
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.
@@ -31,7 +39,7 @@ Continue working on a change by creating the next artifact.
 
 2. **Check current status**
    ```bash
-   openspec status --change "<name>" --json
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<name>" --json)
    ```
    Parse the JSON to understand current state. The response includes:
    - `schemaName`: The workflow schema being used (e.g., "spec-driven")
@@ -54,7 +62,7 @@ Continue working on a change by creating the next artifact.
    - Pick the FIRST artifact with `status: "ready"` from the status output
    - Get its instructions:
      ```bash
-     openspec instructions <artifact-id> --change "<name>" --json
+     (cd "${SPECRAILS_REPO_DIR:-.}" && openspec instructions <artifact-id> --change "<name>" --json)
      ```
    - Parse the JSON. The key fields are:
      - `context`: Project background (constraints for you - do NOT include in output)
@@ -79,7 +87,7 @@ Continue working on a change by creating the next artifact.
 
 4. **After creating an artifact, show progress**
    ```bash
-   openspec status --change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<name>")
    ```
 
 **Output**
