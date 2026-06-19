@@ -1,5 +1,17 @@
 # Changelog
 
+## [4.10.0](https://github.com/fjpulidop/specrails-core/compare/v4.9.1...v4.10.0) (2026-06-19)
+
+
+### Features
+
+* **init:** install in-repo by default; relocate only for desktop/--relocate (re-land [#313](https://github.com/fjpulidop/specrails-core/issues/313)) ([#316](https://github.com/fjpulidop/specrails-core/issues/316)) ([b60fbb1](https://github.com/fjpulidop/specrails-core/commit/b60fbb165e7179d0cdd02743961e5a2adc0ac521))
+
+
+### Miscellaneous
+
+* remove the team-agents feature (agent_teams + team-* commands) ([#312](https://github.com/fjpulidop/specrails-core/issues/312)) ([24a416d](https://github.com/fjpulidop/specrails-core/commit/24a416ddec0ba139abf8bc27a7bca50abb1b0648))
+
 ## [4.9.1](https://github.com/fjpulidop/specrails-core/compare/v4.9.0...v4.9.1) (2026-06-19)
 
 
