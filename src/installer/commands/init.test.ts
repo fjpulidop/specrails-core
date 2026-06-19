@@ -119,11 +119,14 @@ describe('runInit', () => {
     await initRepo(repoRoot)
 
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+    // `--relocate` keeps the $HOME-workspace symlink layout this test asserts;
+    // standalone in-repo placement is exercised by the dedicated in-repo test.
     const result = await runInit({
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
       quick: true,
+      relocate: true,
     })
 
     expect(result.provider).toBe('claude')
@@ -194,6 +197,7 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       'from-config': true,
+      relocate: true,
     })
 
     expect(result.tier).toBe('quick')
@@ -214,7 +218,7 @@ describe('runInit', () => {
     const repoRoot = path.join(tmpDir, 'repo-codex')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
-    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true })
+    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true, relocate: true })
     expect(result.provider).toBe('codex')
     const ws = workspaceFor(repoRoot)
     // Provider-derived layout: .codex/ + AGENTS.md — under the workspace.
@@ -237,6 +241,104 @@ describe('runInit', () => {
     await expect(
       runInit({ 'root-dir': repoRoot, yes: true, provider: 'turbofake' as never }),
     ).rejects.toThrow(/must be 'claude', 'codex', or 'gemini'/)
+  })
+
+  it('installs IN-REPO by default (no --relocate, no pre-existing registry entry): real files, not symlinks', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo-inrepo')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    // No registry entry exists for this repo and no --relocate is passed → the
+    // standalone in-repo layout: artifacts land in the repo as REAL files so a
+    // user's `claude` running in the repo finds them.
+    const result = await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'claude',
+      quick: true,
+    })
+    expect(result.provider).toBe('claude')
+
+    // The repo received the framework agents as REAL regular files — NOT symlinks
+    // into $HOME/.specrails/framework.
+    const repoArch = path.join(repoRoot, '.claude', 'agents', 'sr-architect.md')
+    expect(pathExists(repoArch), 'repo has sr-architect.md').toBe(true)
+    expect(lstatSync(repoArch).isSymbolicLink(), 'sr-architect.md is NOT a symlink').toBe(false)
+    expect(lstatSync(repoArch).isFile(), 'sr-architect.md is a regular file').toBe(true)
+    expect(readTextFile(repoArch).length, 'sr-architect.md has content').toBeGreaterThan(0)
+
+    // Whole-dir subtrees (commands) are also REAL dirs, not symlinks, in-repo.
+    const repoCommands = path.join(repoRoot, '.claude', 'commands', 'specrails')
+    expect(isDir(repoCommands)).toBe(true)
+    expect(isSymlink(path.join(repoRoot, '.claude', 'commands'))).toBe(false)
+
+    // The in-repo marker: the specrails-version file lives in the repo's
+    // .specrails/, not in a relocated $HOME workspace.
+    expect(pathExists(path.join(repoRoot, '.specrails', 'specrails-version'))).toBe(true)
+    expect(
+      readFileSync(path.join(repoRoot, '.specrails', 'specrails-version'), 'utf8').trim(),
+    ).toBe('4.2.0')
+
+    // agent-memory is a REAL writable dir either way (never linked).
+    expect(isDir(path.join(repoRoot, '.claude', 'agent-memory', 'sr-architect'))).toBe(true)
+
+    // No relocated workspace was allocated for this repo: the resolver falls back
+    // to the in-repo layout (artifactRoot === the repo's canonical realpath).
+    expect(workspaceFor(repoRoot)).toBe(realpathSync(repoRoot))
+  })
+
+  it('relocates to the $HOME workspace with --relocate (repo stays pristine)', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo-relocate')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'claude',
+      quick: true,
+      relocate: true,
+    })
+
+    // The repo got NOTHING Specrails-owned — it stays pristine.
+    assertRepoHasNoSpecrailsArtifacts(repoRoot)
+
+    // The relocated $HOME workspace (under SPECRAILS_REGISTRY_HOME) holds the
+    // agents instead.
+    const ws = workspaceFor(repoRoot)
+    expect(ws).not.toBe(repoRoot)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+    expect(pathExists(path.join(ws, '.specrails', 'specrails-version'))).toBe(true)
+  })
+
+  it('relocates when SPECRAILS_RELOCATE=1 is set (env opt-in)', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo-relocate-env')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    const prevRelocate = process.env.SPECRAILS_RELOCATE
+    process.env.SPECRAILS_RELOCATE = '1'
+    try {
+      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude', quick: true })
+    } finally {
+      if (prevRelocate === undefined) delete process.env.SPECRAILS_RELOCATE
+      else process.env.SPECRAILS_RELOCATE = prevRelocate
+    }
+
+    // Repo pristine; artifacts in the relocated workspace.
+    assertRepoHasNoSpecrailsArtifacts(repoRoot)
+    const ws = workspaceFor(repoRoot)
+    expect(ws).not.toBe(repoRoot)
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
   })
 
   // Uses a POSIX shell script as a fake openspec binary, pointed at via

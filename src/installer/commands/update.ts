@@ -58,6 +58,13 @@ export interface UpdateFlags {
    * `--provider <name>` to update one specific provider. Mirrors `init`.
    */
   provider?: string | boolean
+  /**
+   * Relocate artifacts to the $HOME workspace (symlinked) instead of in-repo.
+   * Mirrors `init --relocate`: standalone updates resolve in-repo by default,
+   * desktop relocates (its registry entry already exists, so `allocate:false`
+   * still resolves the relocated entry). Also honoured via `SPECRAILS_RELOCATE=1`.
+   */
+  relocate?: boolean
 }
 
 export interface UpdateResult {
@@ -84,13 +91,16 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   // Read install-config.yaml so the user's original choices (tier) survive
   // the update. Flag overrides win when present; missing config falls back to
   // defaults (tier=full).
-  // ─── Relocate-always: resolve where artifacts live ───────────────────
-  // All Specrails artifacts (incl. the specrails-version marker, manifest,
-  // install-config) live under `artifactRoot` (the $HOME workspace), never the
-  // repo. On update the registry entry already exists (created by init), so the
-  // `providers` hint is ignored; we resolve first, then read the install.
+  // ─── Resolve where artifacts live: in-repo (default) vs relocated ─────
+  // Mirrors init: standalone updates resolve IN-REPO by default (`allocate:false`
+  // + no registry entry ⇒ `artifactRoot === codeRoot === repoRoot`); desktop and
+  // `--relocate`/`SPECRAILS_RELOCATE=1` users resolve the relocated $HOME
+  // workspace (desktop's registry entry already exists, so even `allocate:false`
+  // returns it). All Specrails artifacts (the specrails-version marker, manifest,
+  // install-config) live under `artifactRoot`.
+  const relocate = flags.relocate === true || process.env.SPECRAILS_RELOCATE === '1'
   const { artifactRoot, codeRoot } = resolveArtifacts(repoRoot, {
-    allocate: true,
+    allocate: relocate,
     allocator: 'core-standalone',
     home: process.env.SPECRAILS_REGISTRY_HOME,
     coreVersion: currentVersion,
@@ -180,6 +190,8 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       codeRoot,
       scriptDir,
       selectedAgents,
+      // In-repo updates COPY real files; relocated workspaces symlink.
+      copyStatics: artifactRoot === codeRoot,
     })
     ok(`Re-linked ${providerDir}/ at framework ${currentVersion} + rewrote manifest`)
   } else if (scope === 'rules' || scope === 'agents') {
