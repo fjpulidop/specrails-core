@@ -231,6 +231,46 @@ describe('runUpdate', () => {
     })
   })
 
+  describe('--provider override (multi-provider)', () => {
+    it('updates the FORCED provider even when .claude exists (auto-detect would pick claude)', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      // Multi-provider workspace: both .claude (created by simulateExistingInstall)
+      // and .gemini are present. Auto-detection returns claude (.claude first).
+      mkdirp(path.join(workspaceFor(repoRoot), '.gemini', 'commands', 'specrails'))
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot, provider: 'gemini' })
+      expect(result.provider).toBe('gemini')
+    })
+
+    it('auto-detects (claude first) when --provider is omitted — backward compatible', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      mkdirp(path.join(workspaceFor(repoRoot), '.gemini', 'commands', 'specrails'))
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      const result = await runUpdate({ 'root-dir': repoRoot })
+      expect(result.provider).toBe('claude')
+    })
+
+    it('rejects an invalid --provider value', async () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      await setupFakeScriptDir(scriptDir, '5.0.0')
+      await simulateExistingInstall(repoRoot, '4.2.0')
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+      await expect(
+        runUpdate({ 'root-dir': repoRoot, provider: 'bogus' }),
+      ).rejects.toThrow(/--provider value must be 'claude', 'codex', or 'gemini'/)
+    })
+  })
+
   describe('--only flag', () => {
     it('defaults to scope=all when --only is omitted', async () => {
       const scriptDir = path.join(tmpDir, 'core')
