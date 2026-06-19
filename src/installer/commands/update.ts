@@ -51,6 +51,14 @@ export interface UpdateFlags {
   'dry-run'?: boolean
   yes?: boolean
   'agent-teams'?: boolean
+  /**
+   * Force the provider to update. Without it, the provider is auto-detected
+   * from the existing install (`.claude` > `.codex` > `.gemini`), which on a
+   * MULTI-PROVIDER workspace always picks `.claude` first — so codex/gemini
+   * could never be updated. specrails-desktop (and standalone users) pass
+   * `--provider <name>` to update one specific provider. Mirrors `init`.
+   */
+  provider?: string | boolean
 }
 
 export interface UpdateResult {
@@ -108,8 +116,24 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   }
   const previousVersion = readExistingVersion(artifactRoot)
 
-  step('Update: resolving provider from existing install')
-  const provider = await resolveExistingProvider(artifactRoot)
+  // Provider can be FORCED via --provider (e.g. specrails-desktop updating one
+  // provider on a multi-provider workspace, where auto-detection would always
+  // resolve `.claude` first and never reach codex/gemini). Absent ⇒ auto-detect
+  // from the existing install — byte-identical single-provider behaviour.
+  let provider: Provider
+  if (typeof flags.provider === 'string') {
+    if (flags.provider !== 'claude' && flags.provider !== 'codex' && flags.provider !== 'gemini') {
+      throw new InstallerError(
+        `--provider value must be 'claude', 'codex', or 'gemini', got: ${flags.provider}`,
+        40,
+      )
+    }
+    provider = flags.provider as Provider
+    step(`Update: using requested provider ${provider}`)
+  } else {
+    step('Update: resolving provider from existing install')
+    provider = await resolveExistingProvider(artifactRoot)
+  }
   const { providerDir } = derivedPaths(provider)
   ok(`Detected provider: ${provider} (${providerDir})`)
 
