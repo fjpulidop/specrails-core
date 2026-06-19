@@ -58,14 +58,18 @@ The change is archived BY THE REVIEWER as part of a passing review — never by 
 
 ## Pipeline
 
-0. **Bootstrap.** Confirm `pwd` is the git repo root and load the ticket from
-   `.specrails/local-tickets.json` (or use the free-form description). Then go
-   STRAIGHT to phase 1 — do not analyse, design, scaffold, or write anything
-   yourself; the architect does that.
+0. **Bootstrap.** The source repo (with `openspec/**` and `.git`) lives at
+   `${SPECRAILS_REPO_DIR:-.}` — when `SPECRAILS_REPO_DIR` is unset it defaults to
+   `.`, i.e. your current directory is the repo (classic behaviour). Confirm the
+   repo root with `git -C "${SPECRAILS_REPO_DIR:-.}" rev-parse --show-toplevel`,
+   then load the ticket from `.specrails/local-tickets.json` (run-state — relative
+   to the working directory, NOT the repo). Then go STRAIGHT to phase 1 — do not
+   analyse, design, scaffold, or write anything yourself; the architect does that.
 
 1. **DESIGN — `invoke_agent` `sr-architect`.** Pass it the ticket/description.
    It creates an OpenSpec change (proposal + spec deltas + tasks) under
-   `openspec/changes/<id>/` and validates it (`openspec validate <id> --strict`).
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<id>/` and validates it
+   (`openspec validate <id> --strict`).
    Apply the outcome rules above.
 
 2. **APPLY — `invoke_agent` `sr-developer`.** Only after the architect reports
@@ -89,7 +93,7 @@ The change is archived BY THE REVIEWER as part of a passing review — never by 
    or ambiguous review: the reviewer's PASS is the ONLY gate to archive.
 
 4. **ARCHIVE (verify only).** Confirm the change moved under
-   `openspec/changes/archive/`. If the reviewer PASSED but the change was somehow
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/archive/`. If the reviewer PASSED but the change was somehow
    not archived, re-`invoke_agent` `sr-reviewer` to complete it. Never archive by
    hand to substitute for the reviewer.
 

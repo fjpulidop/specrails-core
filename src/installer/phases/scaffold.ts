@@ -3,9 +3,23 @@ import { rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { copyDir, copyFile, isDir, listDir, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
+import {
+  atomicSymlinkSwap,
+  copyDir,
+  copyFile,
+  isDir,
+  isSymlink,
+  listDir,
+  mkdirp,
+  pathExists,
+  readTextFile,
+  removePath,
+  symlinkOrCopy,
+  writeFileLf,
+} from '../util/fs.js'
 import { info, ok, warn } from '../util/logger.js'
 
+import { buildManifest, writeManifestFiles } from './manifest.js'
 import type { Provider } from './provider-detect.js'
 
 /**
@@ -195,8 +209,18 @@ const EXPLANATION_AUTHORS = new Set(['sr-architect', 'sr-reviewer'])
 export interface ScaffoldInput {
   /** Absolute path to the specrails-core package (installed via npx). */
   scriptDir: string
-  /** Absolute path to the user's repo root. */
-  repoRoot: string
+  /**
+   * Absolute path to the relocated artifact root — where every Specrails-managed
+   * artifact (.specrails/.claude/.codex/.gemini/CLAUDE.md/AGENTS.md/GEMINI.md/.mcp.json)
+   * is written. Under relocate-always this is the `$HOME` workspace, NOT the repo.
+   */
+  artifactRoot: string
+  /**
+   * Absolute path to the user's repo root — the ONLY thing that stays in-repo is
+   * `openspec/**` (installed by init.ts) and git/worktree ops. Used solely by
+   * `detectExistingSetup`'s openspec probe and the gitignore no-op guard.
+   */
+  codeRoot: string
   /** Resolved provider from prereqs. */
   provider: Provider
   /** Derived directory name (`.claude` or `.codex`). */
@@ -207,6 +231,23 @@ export interface ScaffoldInput {
   tier: 'full' | 'quick'
   /** Optional explicit allow-list used by config-driven quick installs. */
   selectedAgents?: string[]
+  /**
+   * When false, the static-placement helpers do NOT create the per-workspace
+   * mutable seeds (agent-memory dirs, gemini headless acknowledgments). Used by
+   * `installFramework` so the SHARED framework copy stays purely provider-static
+   * — the project layer is seeded separately by `assembleProjectWorkspace`.
+   * Defaults to true (legacy in-place behaviour for `scaffoldInstallation`).
+   */
+  seedProjectDirs?: boolean
+  /**
+   * When true, place EVERY agent template (the full superset) regardless of
+   * `selectedAgents` and `QUICK_EXCLUDED_AGENTS`. Used by `installFramework` so
+   * the SHARED framework store is a superset that ANY project's selection can
+   * link from — per-project agent filtering then happens at the workspace LINK
+   * step (`linkAgentFiles`), not at materialization. Defaults to false (legacy
+   * selection-honouring placement for in-place `scaffoldInstallation`).
+   */
+  materializeAllAgents?: boolean
 }
 
 export interface ScaffoldResult {
@@ -216,17 +257,34 @@ export interface ScaffoldResult {
 }
 
 /**
+ * Provider-static subtrees inside a providerDir that are SHARED via symlink from
+ * the framework copy into each workspace. `agent-memory/` is deliberately absent
+ * — it is mutable per-workspace state seeded as a real dir, never linked.
+ *
+ * The root instruction file (`CLAUDE.md`/`AGENTS.md`/`GEMINI.md`) and the codex
+ * `config.toml` / gemini `settings.json` carry the project name / a deep-merge
+ * with the user's file, so they are SEEDED per-workspace (not linked) by
+ * `assembleProjectWorkspace`.
+ */
+const LINKED_PROVIDER_SUBTREES: Record<Provider, string[]> = {
+  claude: ['agents', 'commands', 'skills', 'rules'],
+  codex: ['skills'],
+  gemini: ['agents', 'commands'],
+}
+
+/**
  * Returns true iff any of the provider directories already contains
  * content. The desktop-app-driven path skips the "merge existing?" prompt and
  * assumes `--yes`; the CLI dispatcher (bin/specrails-core.cjs) should
  * have prompted before entering this phase.
  */
-export function detectExistingSetup(input: Pick<ScaffoldInput, 'repoRoot' | 'providerDir'>): boolean {
+export function detectExistingSetup(input: Pick<ScaffoldInput, 'artifactRoot' | 'codeRoot' | 'providerDir'>): boolean {
   const roots = [
-    path.join(input.repoRoot, input.providerDir, 'agents'),
-    path.join(input.repoRoot, input.providerDir, 'commands'),
-    path.join(input.repoRoot, input.providerDir, 'rules'),
-    path.join(input.repoRoot, 'openspec'),
+    path.join(input.artifactRoot, input.providerDir, 'agents'),
+    path.join(input.artifactRoot, input.providerDir, 'commands'),
+    path.join(input.artifactRoot, input.providerDir, 'rules'),
+    // openspec stays in the repo (codeRoot), not the relocated artifact root.
+    path.join(input.codeRoot, 'openspec'),
   ]
   for (const r of roots) {
     if (isDir(r) && listDir(r).length > 0) return true
@@ -248,24 +306,24 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   }
 
   // --- Directory skeleton ---
-  mk(path.join(input.repoRoot, input.providerDir))
+  mk(path.join(input.artifactRoot, input.providerDir))
   if (input.provider === 'codex') {
     // Codex skills live under <providerDir>/skills/ (e.g. .codex/skills/).
     // The pre-§18 code wrote to `.agents/skills/` which codex doesn't read;
     // that was a placeholder name from the gated state.
-    mk(path.join(input.repoRoot, input.providerDir, 'skills', 'enrich'))
-    mk(path.join(input.repoRoot, input.providerDir, 'skills', 'doctor'))
-    mk(path.join(input.repoRoot, input.providerDir, 'skills', 'rails'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'enrich'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'doctor'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'rails'))
   } else if (input.provider === 'gemini') {
     // Gemini: TOML commands under .gemini/commands/specrails/ + native
     // subagents under .gemini/agents/. No skills/ tree.
-    mk(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails'))
-    mk(path.join(input.repoRoot, input.providerDir, 'agents'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'agents'))
   } else {
-    mk(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails'))
-    mk(path.join(input.repoRoot, input.providerDir, 'skills'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'skills'))
   }
-  const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+  const setupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
   mk(path.join(setupTemplates, 'agents'))
   mk(path.join(setupTemplates, 'commands'))
   mk(path.join(setupTemplates, 'skills'))
@@ -275,9 +333,15 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   mk(path.join(setupTemplates, 'settings'))
 
   // --- .gitignore hygiene ---
-  const gitignoreEntries = ['.claude/agent-memory/', '.specrails/']
-  if (input.provider === 'gemini') gitignoreEntries.push('.gemini/agent-memory/')
-  ensureGitignore(input.repoRoot, gitignoreEntries)
+  // Under relocate-always (artifactRoot !== codeRoot) NOTHING Specrails-owned
+  // lands in the repo, so there is nothing to ignore — the gitignore step is a
+  // guarded no-op. It only runs in the legacy in-repo layout where the two roots
+  // coincide.
+  if (input.artifactRoot === input.codeRoot) {
+    const gitignoreEntries = ['.claude/agent-memory/', '.specrails/']
+    if (input.provider === 'gemini') gitignoreEntries.push('.gemini/agent-memory/')
+    ensureGitignore(input.codeRoot, gitignoreEntries)
+  }
 
   // --- Copy bundled templates into setup-templates/ ---
   const templatesSrc = path.join(input.scriptDir, 'templates')
@@ -357,12 +421,453 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
 
   return {
     existingSetup: detectExistingSetup({
-      repoRoot: input.repoRoot,
+      artifactRoot: input.artifactRoot,
+      codeRoot: input.codeRoot,
       providerDir: input.providerDir,
     }),
     createdDirs,
     copiedFiles,
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Bundled-framework split: installFramework + ensureCurrentSymlink +
+// assembleProjectWorkspace. The provider-INVARIANT subtree is materialized ONCE
+// under `<frameworkDir>/<version>/<providerDir>/` and every workspace SYMLINKS
+// it; the per-workspace PROJECT layer (agent-memory, manifest, gemini acks,
+// settings/instructions files) is seeded as real writable files.
+// ───────────────────────────────────────────────────────────────────────────
+
+export interface InstallFrameworkInput {
+  /** Absolute path to the specrails-core package (templates/ + commands/). */
+  scriptDir: string
+  /** Root of the versioned framework store, e.g. `<home>/.specrails/framework`. */
+  frameworkDir: string
+  /** Provider whose static subtree is being materialized. */
+  provider: Provider
+  /** Derived provider dir (`.claude`/`.codex`/`.gemini`). */
+  providerDir: string
+  /** Framework version (the `<version>/` segment). */
+  version: string
+  /** Install Agent Teams commands (team-review / team-debug). */
+  agentTeams?: boolean
+  /** Optional explicit agent allow-list (kept for parity with scaffold). */
+  selectedAgents?: string[]
+}
+
+export interface InstallFrameworkResult {
+  /** `<frameworkDir>/<version>/<providerDir>` — root of the static subtree. */
+  providerFrameworkDir: string
+  /** `<frameworkDir>/<version>` — the version root (also holds setup-templates/). */
+  versionDir: string
+  /** True when a fresh materialization happened; false when the idempotent skip fired. */
+  materialized: boolean
+}
+
+/** Path to the per-version, per-provider materialization marker (manifest hash). */
+function frameworkStampPath(versionDir: string, providerDir: string): string {
+  // Store the stamp OUTSIDE the providerDir so it never leaks into the linked
+  // subtree. `.stamp-<providerDir>.json` is provider-keyed.
+  return path.join(versionDir, `.framework-stamp${providerDir}.json`)
+}
+
+/**
+ * Materialize the provider-INVARIANT framework subtree ONCE into
+ * `<frameworkDir>/<version>/<providerDir>/` (+ `<version>/setup-templates/`).
+ * Idempotent: when the providerDir already exists with a matching stamp it is a
+ * no-op (the second workspace assemble re-uses the same copy). Writes NO
+ * per-workspace state (no agent-memory, no acks, no project-named instruction
+ * files) — those are seeded by `assembleProjectWorkspace`.
+ */
+export function installFramework(input: InstallFrameworkInput): InstallFrameworkResult {
+  const versionDir = path.join(input.frameworkDir, input.version)
+  const providerFrameworkDir = path.join(versionDir, input.providerDir)
+  const stampPath = frameworkStampPath(versionDir, input.providerDir)
+
+  // Idempotency: existing materialization with a matching stamp → skip.
+  if (isDir(providerFrameworkDir) && pathExists(stampPath)) {
+    return { providerFrameworkDir, versionDir, materialized: false }
+  }
+
+  // Reuse scaffoldInstallation's static-placement helpers by pointing
+  // `artifactRoot` at the version dir. `seedProjectDirs: false` keeps the copy
+  // free of per-workspace mutable state. The `codeRoot` is irrelevant to the
+  // STATIC subtree (the project-named instruction files are skipped below), so
+  // we hand it the framework dir to satisfy the contract — and we DELETE any
+  // project-named instruction file the settings helpers wrote.
+  // The SHARED framework store is always the FULL SUPERSET — EVERY agent and the
+  // team commands — so a SECOND project with a DIFFERENT agent selection links
+  // its specialists from the same materialized copy instead of inheriting the
+  // first project's narrower set. Per-project filtering moves to the workspace
+  // LINK step (`linkAgentFiles` via `assembleProjectWorkspace`). `selectedAgents`
+  // / `agentTeams` on the input are intentionally IGNORED here.
+  const staticInput: ScaffoldInput = {
+    scriptDir: input.scriptDir,
+    artifactRoot: versionDir,
+    codeRoot: versionDir,
+    provider: input.provider,
+    providerDir: input.providerDir,
+    agentTeams: true,
+    tier: 'quick',
+    selectedAgents: undefined,
+    materializeAllAgents: true,
+    seedProjectDirs: false,
+  }
+  scaffoldInstallation(staticInput)
+
+  // The settings helpers also emit a project-named root instruction file
+  // (AGENTS.md/GEMINI.md/CLAUDE.md) + (for codex) config.toml / (gemini)
+  // settings.json. The instruction file is per-project → strip it from the
+  // shared copy; the settings file IS provider-invariant and stays as a
+  // link target inside the providerDir.
+  for (const f of ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']) {
+    rmSync(path.join(versionDir, f), { force: true })
+  }
+
+  writeFileLf(
+    stampPath,
+    `${JSON.stringify({ version: input.version, provider: input.provider, at: new Date().toISOString() }, null, 2)}\n`,
+  )
+  return { providerFrameworkDir, versionDir, materialized: true }
+}
+
+/**
+ * Atomically point `<frameworkDir>/current` at `<version>` so every workspace's
+ * provider links resolve through `current/...` and an update is a single swap.
+ */
+export function ensureCurrentSymlink(frameworkDir: string, version: string): void {
+  const currentPath = path.join(frameworkDir, 'current')
+  const versionDir = path.join(frameworkDir, version)
+  mkdirp(frameworkDir)
+  atomicSymlinkSwap(versionDir, currentPath)
+}
+
+export interface AssembleProjectWorkspaceInput {
+  /** The per-project workspace artifact root (= resolveArtifacts artifactRoot). */
+  workspace: string
+  /** Root of the versioned framework store (the parent of `current/`). */
+  frameworkDir: string
+  /** Provider whose subtrees are linked into the workspace. */
+  provider: Provider
+  /** Derived provider dir (`.claude`/`.codex`/`.gemini`). */
+  providerDir: string
+  /** Framework version (used for the manifest record). */
+  version: string
+  /** The user's real repo (drives PROJECT_NAME + gemini ack keying). */
+  codeRoot: string
+  /** specrails-core package dir (for the manifest hash sources). */
+  scriptDir: string
+  /**
+   * Optional agent allow-list. Drives BOTH which framework agents are LINKED
+   * into the workspace (`linkAgentFiles`) AND which agent-memory dirs are seeded.
+   * Undefined = the CORE trio only (the lean default). The SHARED framework store
+   * is always the full superset; this is where per-project filtering happens.
+   */
+  selectedAgents?: string[]
+  /**
+   * Install the Agent Teams commands (`team-review` / `team-debug`) into the
+   * workspace. The shared framework store always materializes them; when false
+   * the workspace links commands/skills PER-FILE excluding the `team-*` entries.
+   * Defaults to false (lean install — matches the legacy in-place behaviour).
+   */
+  agentTeams?: boolean
+}
+
+export interface AssembleProjectWorkspaceResult {
+  /** Per-linked-subtree mechanism, for diagnostics (copy-fallback loses O(1) swap). */
+  links: Record<string, 'symlink' | 'junction' | 'copy'>
+  /** Agent ids whose memory dirs were seeded as real writable dirs. */
+  seededMemoryAgents: string[]
+}
+
+/**
+ * Assemble a project workspace with NO network and NO re-materialization: (a)
+ * SYMLINK the static providerDir subtrees from `<frameworkDir>/current/
+ * <providerDir>/` into `<workspace>/<providerDir>/`, then (b) seed the PROJECT
+ * layer as real writable files (agent-memory dirs, the manifest, project-named
+ * instruction/settings files, gemini headless acks re-hashed against the LINKED
+ * files). `agent-memory/` is NEVER linked.
+ */
+export function assembleProjectWorkspace(
+  input: AssembleProjectWorkspaceInput,
+): AssembleProjectWorkspaceResult {
+  const currentProviderDir = path.join(input.frameworkDir, 'current', input.providerDir)
+  const workspaceProviderDir = path.join(input.workspace, input.providerDir)
+  mkdirp(workspaceProviderDir)
+
+  // (a) Link the static subtrees that exist in the framework copy.
+  //
+  // `agents/` is linked PER-FILE (a real workspace dir holding one symlink per
+  // framework agent) so the workspace can also carry user/desktop `custom-*.md`
+  // agents — a RESERVED region the installer must never touch. Every other
+  // subtree (`commands/`, `skills/`, `rules/`) holds no user files and is linked
+  // as a whole directory (cheapest, single inode).
+  // Per-project AGENT selection: link only the selected framework agents (∪ the
+  // CORE trio, minus the quick-excluded product agents) — the shared store holds
+  // the full superset, so a project's narrower pick links a SUBSET. Undefined ⇒
+  // CORE trio only. `custom-*.md` is always preserved (reserved path).
+  const selectedAgentSet = input.selectedAgents
+    ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+    : new Set([...CORE_AGENTS])
+  const agentTeams = input.agentTeams ?? false
+
+  const links: Record<string, 'symlink' | 'junction' | 'copy'> = {}
+  for (const sub of LINKED_PROVIDER_SUBTREES[input.provider]) {
+    const target = path.join(currentProviderDir, sub)
+    if (!pathExists(target)) continue
+    const dest = path.join(workspaceProviderDir, sub)
+    if (sub === 'agents') {
+      links[sub] = linkAgentFiles(target, dest, selectedAgentSet)
+    } else if (!agentTeams && subtreeHasTeamEntries(target)) {
+      // Lean install AND the superset store actually carries `team-*` entries:
+      // link this subtree PER-FILE, excluding the team commands/skills. The
+      // common case (no team-* in the store) keeps the cheap whole-dir symlink
+      // below — preserving the single-inode contract.
+      links[sub] = linkSubtreeExcludingTeams(target, dest)
+    } else {
+      links[sub] = symlinkOrCopy(target, dest)
+    }
+  }
+
+  // Link the provider-invariant settings file (codex config.toml / gemini
+  // settings.json) when the framework has one and the user has not authored a
+  // local override in the workspace.
+  const settingsFile =
+    input.provider === 'codex' ? 'config.toml' : input.provider === 'gemini' ? 'settings.json' : null
+  if (settingsFile) {
+    const settingsTarget = path.join(currentProviderDir, settingsFile)
+    const settingsLink = path.join(workspaceProviderDir, settingsFile)
+    if (pathExists(settingsTarget) && !pathExists(settingsLink)) {
+      links[settingsFile] = symlinkOrCopy(settingsTarget, settingsLink)
+    }
+  }
+
+  // (b) Seed the PROJECT layer (real writable files / dirs).
+  const seededMemoryAgents = seedProjectLayer(input, currentProviderDir)
+
+  // Manifest: record the consumed framework version. `buildManifest` hashes the
+  // package's templates/ + commands (provenance), written under the workspace.
+  const manifest = buildManifest({
+    scriptDir: input.scriptDir,
+    repoRoot: input.workspace,
+    version: input.version,
+  })
+  writeManifestFiles(input.workspace, manifest)
+
+  return { links, seededMemoryAgents }
+}
+
+/**
+ * Seed the per-workspace PROJECT layer: real agent-memory dirs (+ explanations/),
+ * the project-named instruction file, and — for gemini — the headless
+ * acknowledgments re-hashed against the LINKED agent files. Returns the agent
+ * ids whose memory dirs were created.
+ */
+function seedProjectLayer(input: AssembleProjectWorkspaceInput, currentProviderDir: string): string[] {
+  const selected = input.selectedAgents
+    ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+    : new Set([...CORE_AGENTS])
+  // Discover which agents the framework actually placed (so memory dirs match
+  // the linked agent set), intersected with the selection.
+  const agentsLinkDir = path.join(currentProviderDir, 'agents')
+  const placedAgentIds: string[] = []
+  if (isDir(agentsLinkDir)) {
+    for (const entry of listDir(agentsLinkDir)) {
+      const name = path.basename(entry)
+      if (!name.endsWith('.md')) continue
+      const id = name.slice(0, -3)
+      if (selected.has(id) && !QUICK_EXCLUDED_AGENTS.has(id)) placedAgentIds.push(id)
+    }
+  }
+
+  const seededMemoryAgents: string[] = []
+  if (input.provider === 'claude') {
+    for (const id of placedAgentIds) {
+      mkdirp(path.join(input.workspace, '.claude', 'agent-memory', id))
+      seededMemoryAgents.push(id)
+      if (EXPLANATION_AUTHORS.has(id)) {
+        mkdirp(path.join(input.workspace, '.claude', 'agent-memory', 'explanations'))
+      }
+    }
+  } else if (input.provider === 'gemini') {
+    for (const id of placedAgentIds) {
+      mkdirp(path.join(input.workspace, '.gemini', 'agent-memory', id))
+      seededMemoryAgents.push(id)
+    }
+  }
+
+  // Project-named instruction file (codex AGENTS.md / gemini GEMINI.md). Reuse
+  // the same sentinel-upsert helpers via the settings appliers, scoped so they
+  // ONLY emit the instruction file (the settings file is already linked above).
+  if (input.provider === 'codex') {
+    seedInstructionFile(
+      path.join(input.workspace, 'AGENTS.md'),
+      renderInitialAgentsMd(input.codeRoot),
+    )
+  } else if (input.provider === 'gemini') {
+    seedInstructionFile(
+      path.join(input.workspace, 'GEMINI.md'),
+      renderInitialGeminiMd(input.codeRoot),
+    )
+    // Gemini headless acks: hash the LINKED agent files (read through the
+    // symlink) keyed on the real repo so `gemini -p` trusts them with no prompt.
+    try {
+      writeGeminiAgentAcknowledgments(input.codeRoot, placedAgentIds, input.workspace)
+    } catch (err) {
+      warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
+    }
+  }
+
+  return seededMemoryAgents
+}
+
+/**
+ * Per-file link the framework `agents/` into a REAL workspace `agents/` dir.
+ * Keeps `custom-*.md` (and any other user-authored file that the framework does
+ * NOT provide) byte-untouched — the reserved-paths contract — while pointing
+ * every SELECTED framework-owned agent at the shared read-only copy.
+ *
+ * `selectedIds` is the per-project agent allow-list (already unioned with the
+ * CORE trio by the caller). Only framework agents whose id is in it AND not in
+ * `QUICK_EXCLUDED_AGENTS` are linked — the shared framework store is the full
+ * superset, so this is where per-project filtering lands. `undefined` ⇒ link
+ * every framework agent (used by the legacy callers / parity tests).
+ *
+ * Returns the dominant mechanism used across the linked files (`copy` if any
+ * file fell back to copy — the normal case on Windows without Developer Mode).
+ */
+function linkAgentFiles(
+  frameworkAgentsDir: string,
+  workspaceAgentsDir: string,
+  selectedIds?: Set<string>,
+): 'symlink' | 'junction' | 'copy' {
+  mkdirp(workspaceAgentsDir)
+  // Names the framework currently PROVIDES (regardless of selection) — used to
+  // distinguish a framework-owned file from a user `custom-*.md` during cleanup.
+  const frameworkProvided = new Set<string>()
+  // Names actually LINKED this pass (the selected subset).
+  const linkedNames = new Set<string>()
+  let mechanism: 'symlink' | 'junction' | 'copy' = 'symlink'
+  for (const src of listDir(frameworkAgentsDir)) {
+    const name = path.basename(src)
+    if (!name.endsWith('.md')) continue
+    frameworkProvided.add(name)
+    const id = name.slice(0, -3)
+    if (selectedIds && (!selectedIds.has(id) || QUICK_EXCLUDED_AGENTS.has(id))) continue
+    linkedNames.add(name)
+    const m = symlinkOrCopy(src, path.join(workspaceAgentsDir, name))
+    if (m === 'copy') mechanism = 'copy'
+    else if (m === 'junction' && mechanism !== 'copy') mechanism = 'junction'
+  }
+  // Drop STALE framework artifacts in the workspace agents dir — both prior-
+  // version symlinks AND copy-fallback files (Windows) that are no longer linked
+  // this pass (a dropped agent, or one deselected). NEVER remove a user file:
+  // `custom-*.md` and agent-memory are reserved. The discriminator is "the
+  // framework owns this name (it's currently provided OR it was a previous
+  // framework link/copy that the framework no longer provides)" — we approximate
+  // it as: remove any entry NOT in `linkedNames` that is either a symlink (old
+  // framework link) OR a NON-custom framework-shaped file the framework once
+  // provided. `custom-*.md` is always skipped.
+  for (const existing of listDir(workspaceAgentsDir)) {
+    const name = path.basename(existing)
+    if (linkedNames.has(name)) continue
+    if (name.startsWith('custom-')) continue // reserved user agent — never touch
+    if (isSymlink(existing)) {
+      // A prior framework symlink no longer selected/provided → stale, drop it.
+      removePath(existing)
+      continue
+    }
+    // A copy-fallback framework file (Windows): a non-symlink `.md` that the
+    // framework provides (or provided) but is not a user custom agent. Remove it
+    // so a version swap or a deselect cleans up the copied agent. Files the
+    // framework never provided (genuine user agents) are left untouched.
+    if (name.endsWith('.md') && (frameworkProvided.has(name) || isFrameworkAgentName(name))) {
+      removePath(existing)
+    }
+  }
+  return mechanism
+}
+
+/**
+ * True when `name` (an `<id>.md`) matches a framework-owned agent id (`sr-*`).
+ * Used to identify a stale COPY-fallback framework agent on Windows that the
+ * current framework version no longer provides, so it can be cleaned up on a
+ * version swap. `custom-*.md` (handled by the caller) and any non-`sr-` user
+ * file are deliberately excluded.
+ */
+function isFrameworkAgentName(name: string): boolean {
+  return /^sr-[a-z0-9-]+\.md$/.test(name)
+}
+
+/**
+ * True when a framework subtree (`commands`/`skills`) contains any `team-*`
+ * entry (a `team-*.md` file or a `team-*` skill dir), recursively. Gates the
+ * per-file team-excluding link path: when no team entries exist the workspace
+ * keeps the cheap whole-dir symlink. Recurses into real subdirs (e.g.
+ * `.claude/commands/specrails/`).
+ */
+function subtreeHasTeamEntries(subtreeDir: string): boolean {
+  for (const entry of listDir(subtreeDir)) {
+    const name = path.basename(entry)
+    if (/^team-/.test(name) || /^team-/.test(name.replace(/\.md$/, ''))) return true
+    if (isDir(entry) && !isSymlink(entry) && subtreeHasTeamEntries(entry)) return true
+  }
+  return false
+}
+
+/**
+ * Link a whole framework subtree (`commands`/`skills`) into the workspace
+ * PER-FILE, EXCLUDING the Agent-Teams `team-*` entries. Used when `agentTeams`
+ * is off and the shared framework store (always the superset) carries the team
+ * commands the lean install must not surface. Recurses into subdirs (e.g.
+ * `.claude/commands/specrails/`). Returns the dominant mechanism.
+ */
+function linkSubtreeExcludingTeams(
+  frameworkSubtreeDir: string,
+  workspaceSubtreeDir: string,
+): 'symlink' | 'junction' | 'copy' {
+  mkdirp(workspaceSubtreeDir)
+  let mechanism: 'symlink' | 'junction' | 'copy' = 'symlink'
+  const bump = (m: 'symlink' | 'junction' | 'copy') => {
+    if (m === 'copy') mechanism = 'copy'
+    else if (m === 'junction' && mechanism !== 'copy') mechanism = 'junction'
+  }
+  const linkedNames = new Set<string>()
+  for (const src of listDir(frameworkSubtreeDir)) {
+    const name = path.basename(src)
+    // Exclude team commands/skills whether they ship as `team-*.md` files or
+    // `team-*/` skill dirs.
+    if (/^team-/.test(name) || /^team-/.test(name.replace(/\.md$/, ''))) continue
+    linkedNames.add(name)
+    const dest = path.join(workspaceSubtreeDir, name)
+    if (isDir(src) && !isSymlink(src)) {
+      // Recurse: a real framework subdir is mirrored as a real workspace subdir
+      // so a future agentTeams=false re-link can prune team-* inside it too.
+      bump(linkSubtreeExcludingTeams(src, dest))
+    } else {
+      bump(symlinkOrCopy(src, dest))
+    }
+  }
+  // Drop stale framework entries (including team-* left from a prior agentTeams
+  // run) that are no longer linked. Only symlinks/copied framework files — there
+  // are no user files under commands/skills.
+  for (const existing of listDir(workspaceSubtreeDir)) {
+    const name = path.basename(existing)
+    if (linkedNames.has(name)) continue
+    removePath(existing)
+  }
+  return mechanism
+}
+
+/** Write or sentinel-upsert a project instruction file (AGENTS.md/GEMINI.md). */
+function seedInstructionFile(filePath: string, content: string): void {
+  if (!pathExists(filePath)) {
+    writeFileLf(filePath, content)
+    return
+  }
+  const existing = readTextFile(filePath)
+  const next = upsertAgentsMdManagedBlock(existing, extractManagedBlock(content))
+  if (next !== existing) writeFileLf(filePath, next)
 }
 
 function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: number) => void }): void {
@@ -382,7 +887,7 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
       if (name === 'setup.md') continue
       if (!input.agentTeams && /^team-/.test(name)) continue
       const skillName = name.replace(/\.md$/, '')
-      const destDir = path.join(input.repoRoot, input.providerDir, 'skills', skillName)
+      const destDir = path.join(input.artifactRoot, input.providerDir, 'skills', skillName)
       // A codex-native override (written for spawn_agent semantics + the
       // correct `.codex/skills/rails/` layout) wins over the claude port.
       // This is the ONLY codex command-placement pass in full tier, so
@@ -407,7 +912,7 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   if (input.provider === 'gemini') {
     // Gemini: each bundled command becomes a TOML custom command under
     // .gemini/commands/specrails/<name>.toml.
-    const destDir = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails')
+    const destDir = path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails')
     let count = 0
     for (const entry of listDir(commandsSrc)) {
       const name = path.basename(entry)
@@ -425,7 +930,7 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
   }
 
   // Claude: all bundled commands land under <providerDir>/commands/specrails/.
-  const destDir = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails')
+  const destDir = path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails')
   let count = 0
   for (const entry of listDir(commandsSrc)) {
     const name = path.basename(entry)
@@ -589,10 +1094,12 @@ function writeGeminiCommandFromCommand(args: { src: string; dest: string; descri
  * paths rewritten and `{{MEMORY_PATH}}` pointed at `.gemini/agent-memory/`.
  */
 function writeGeminiAgentFromTemplate(args: {
-  repoRoot: string
+  artifactRoot: string
   src: string
   agentId: string
   placeholders: Record<string, string>
+  /** When false, skip the per-workspace agent-memory mkdir (framework path). */
+  seedProjectDirs?: boolean
 }): void {
   if (!pathExists(args.src)) return
   const { body, description } = stripFrontmatter(readTextFile(args.src))
@@ -612,8 +1119,10 @@ function writeGeminiAgentFromTemplate(args: {
       MEMORY_PATH: `.gemini/agent-memory/${args.agentId}/`,
     }).replace(/\.claude\//g, '.gemini/'),
   )
-  writeFileLf(path.join(args.repoRoot, '.gemini', 'agents', `${args.agentId}.md`), frontmatter + renderedBody)
-  mkdirp(path.join(args.repoRoot, '.gemini', 'agent-memory', args.agentId))
+  writeFileLf(path.join(args.artifactRoot, '.gemini', 'agents', `${args.agentId}.md`), frontmatter + renderedBody)
+  if (args.seedProjectDirs !== false) {
+    mkdirp(path.join(args.artifactRoot, '.gemini', 'agent-memory', args.agentId))
+  }
 }
 
 /**
@@ -622,14 +1131,14 @@ function writeGeminiAgentFromTemplate(args: {
  */
 function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
   const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
-  const agentsSrc = path.join(input.repoRoot, '.specrails', 'setup-templates', 'agents')
+  const agentsSrc = path.join(input.artifactRoot, '.specrails', 'setup-templates', 'agents')
   if (!isDir(agentsSrc)) return result
-  mkdirp(path.join(input.repoRoot, '.gemini', 'agents'))
+  mkdirp(path.join(input.artifactRoot, '.gemini', 'agents'))
   const selectedAgents = input.selectedAgents
     ? new Set([...input.selectedAgents, ...CORE_AGENTS])
     : new Set([...CORE_AGENTS])
   const placeholders = {
-    PROJECT_NAME: path.basename(input.repoRoot),
+    PROJECT_NAME: path.basename(input.codeRoot),
     SECURITY_EXEMPTIONS_PATH: '.gemini/security-exemptions.yaml',
     PERSONA_DIR: '.gemini/agents/personas/',
   }
@@ -638,20 +1147,35 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
     const name = path.basename(src)
     if (!name.endsWith('.md')) continue
     const agentId = name.slice(0, -3)
-    if (!selectedAgents.has(agentId)) continue
-    if (QUICK_EXCLUDED_AGENTS.has(agentId)) {
+    // Superset materialization (installFramework) places EVERY agent; per-project
+    // filtering happens at the workspace LINK step (linkAgentFiles).
+    if (!input.materializeAllAgents && !selectedAgents.has(agentId)) continue
+    if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(agentId)) {
       result.skipped++
       continue
     }
-    writeGeminiAgentFromTemplate({ repoRoot: input.repoRoot, src, agentId, placeholders })
+    writeGeminiAgentFromTemplate({
+      artifactRoot: input.artifactRoot,
+      src,
+      agentId,
+      placeholders,
+      seedProjectDirs: input.seedProjectDirs,
+    })
     placedIds.push(agentId)
     result.placed++
     result.filesCopied++
   }
-  try {
-    writeGeminiAgentAcknowledgments(input.repoRoot, placedIds)
-  } catch (err) {
-    warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
+  // The pre-acknowledgment is a PER-WORKSPACE seed (keyed on codeRoot, hashing the
+  // workspace's linked agent files). It is skipped when materializing the shared
+  // framework — `assembleProjectWorkspace` re-writes it against the LINKED files.
+  if (input.seedProjectDirs !== false) {
+    try {
+      // Key the acknowledgment on the real repo (codeRoot) so gemini matches the
+      // project, but hash the agent files from the relocated artifactRoot.
+      writeGeminiAgentAcknowledgments(input.codeRoot, placedIds, input.artifactRoot)
+    } catch (err) {
+      warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
+    }
   }
   return result
 }
@@ -673,7 +1197,11 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
  * Best-effort: any failure is swallowed by the caller (agents still work once
  * acknowledged interactively).
  */
-export function writeGeminiAgentAcknowledgments(repoRoot: string, agentIds: string[]): void {
+export function writeGeminiAgentAcknowledgments(
+  repoRoot: string,
+  agentIds: string[],
+  agentsBaseDir: string = repoRoot,
+): void {
   if (agentIds.length === 0) return
   const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
   let store: Record<string, Record<string, string>> = {}
@@ -687,13 +1215,23 @@ export function writeGeminiAgentAcknowledgments(repoRoot: string, agentIds: stri
       // Corrupt/unreadable file — start fresh rather than crash the install.
     }
   }
-  const projectEntry: Record<string, string> = { ...(store[repoRoot] ?? {}) }
+  // The store is KEYED on `agentsBaseDir` — the directory gemini ACTUALLY runs
+  // in when it resolves the project's agents. Under relocation the linked agents
+  // live in the WORKSPACE (rails spawn with cwd=workspace), so the ack must be
+  // keyed on the workspace providerDir base, not the repo; otherwise headless
+  // `gemini -p` looks up `store[<workspace>]`, finds nothing, and the specialised
+  // personas never load. The agent FILES are hashed from `agentsBaseDir` too
+  // (read through the workspace symlinks ⇒ framework file content). When
+  // `agentsBaseDir` defaults to `repoRoot` (legacy in-repo layout, 2-arg call)
+  // the key is byte-identical to before.
+  const ackKey = agentsBaseDir
+  const projectEntry: Record<string, string> = { ...(store[ackKey] ?? {}) }
   for (const agentId of agentIds) {
-    const agentFile = path.join(repoRoot, '.gemini', 'agents', `${agentId}.md`)
+    const agentFile = path.join(agentsBaseDir, '.gemini', 'agents', `${agentId}.md`)
     if (!pathExists(agentFile)) continue
     projectEntry[agentId] = createHash('sha256').update(readTextFile(agentFile)).digest('hex')
   }
-  store[repoRoot] = projectEntry
+  store[ackKey] = projectEntry
   mkdirp(path.dirname(ackPath))
   writeFileLf(ackPath, `${JSON.stringify(store, null, 2)}\n`)
 }
@@ -724,7 +1262,7 @@ function applyGeminiSettings(input: ScaffoldInput): number {
   let written = 0
   const settingsSrc = path.join(input.scriptDir, 'templates', 'settings', 'gemini-settings.json')
   if (pathExists(settingsSrc)) {
-    const dest = path.join(input.repoRoot, input.providerDir, 'settings.json')
+    const dest = path.join(input.artifactRoot, input.providerDir, 'settings.json')
     const template = JSON.parse(readTextFile(settingsSrc)) as Record<string, unknown>
     if (pathExists(dest)) {
       try {
@@ -740,8 +1278,10 @@ function applyGeminiSettings(input: ScaffoldInput): number {
     }
   }
 
-  const geminiMdPath = path.join(input.repoRoot, 'GEMINI.md')
-  const content = renderInitialGeminiMd(input.repoRoot)
+  const geminiMdPath = path.join(input.artifactRoot, 'GEMINI.md')
+  // Project name in the rendered body derives from the real repo (codeRoot),
+  // while the file itself lands under the relocated artifactRoot.
+  const content = renderInitialGeminiMd(input.codeRoot)
   if (!pathExists(geminiMdPath)) {
     writeFileLf(geminiMdPath, content)
     written++
@@ -781,32 +1321,44 @@ function renderInitialGeminiMd(repoRoot: string): string {
   ].join('\n')
 }
 
-function pruneLegacyArtifacts(input: Pick<ScaffoldInput, 'repoRoot' | 'provider' | 'providerDir'>): void {
+function pruneLegacyArtifacts(
+  input: Pick<ScaffoldInput, 'artifactRoot' | 'codeRoot' | 'provider' | 'providerDir'>,
+): void {
   const legacyPaths = [
-    path.join(input.repoRoot, '.specrails', 'bin', 'doctor.sh'),
-    path.join(input.repoRoot, '.specrails', 'setup-templates', '.provider-detection.json'),
-    path.join(input.repoRoot, '.specrails', 'setup-templates', 'settings', 'integration-contract.json'),
-    path.join(input.repoRoot, '.specrails-version'),
+    path.join(input.artifactRoot, '.specrails', 'bin', 'doctor.sh'),
+    path.join(input.artifactRoot, '.specrails', 'setup-templates', '.provider-detection.json'),
+    path.join(input.artifactRoot, '.specrails', 'setup-templates', 'settings', 'integration-contract.json'),
+    path.join(input.artifactRoot, '.specrails-version'),
   ]
 
   if (input.provider === 'codex') {
     // Pre-§18 layout used `.agents/skills/` — prune any leftovers from a
     // legacy install before settling on the canonical `.codex/skills/`.
-    legacyPaths.push(path.join(input.repoRoot, '.agents'))
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'skills', 'setup'))
+    legacyPaths.push(path.join(input.artifactRoot, '.agents'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'skills', 'setup'))
   } else if (input.provider === 'gemini') {
     // Prune a stale WIP skills/ tree + any setup command leftovers.
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'skills'))
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'setup.toml'))
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', 'setup.toml'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'skills'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'setup.toml'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', 'setup.toml'))
   } else {
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'setup.md'))
-    legacyPaths.push(path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', 'setup.md'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'setup.md'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', 'setup.md'))
   }
 
+  // Safety invariant: every prune target MUST live inside artifactRoot. Under
+  // relocate-always artifactRoot is the $HOME workspace, so this guarantees the
+  // installer never rmSync's anything inside the user's repo (codeRoot).
+  const artifactRootResolved = path.resolve(input.artifactRoot)
   for (const target of legacyPaths) {
+    const resolved = path.resolve(target)
+    const rel = path.relative(artifactRootResolved, resolved)
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+      warn(`refusing to prune ${target} — outside artifactRoot ${input.artifactRoot}`)
+      continue
+    }
     try {
-      rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
+      rmSync(resolved, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 })
     } catch (err) {
       warn(`failed to prune legacy artifact ${target}: ${(err as Error).message}`)
     }
@@ -842,7 +1394,7 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   // command surface (`propose-spec`, `explore-spec`, `retry`, …) as
   // claude.
   if (input.provider === 'codex') {
-    const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+    const setupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
     const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')
     // Codex-native skill overrides live at `templates/codex-skills/<name>/`.
     // When one exists for a given slash-command name (e.g. `implement`), the
@@ -859,7 +1411,7 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
         if (name === 'setup.md') continue
         if (!input.agentTeams && /^team-/.test(name)) continue
         const skillName = name.slice(0, -3)
-        const dest = path.join(input.repoRoot, input.providerDir, 'skills', skillName, 'SKILL.md')
+        const dest = path.join(input.artifactRoot, input.providerDir, 'skills', skillName, 'SKILL.md')
 
         // If a codex-native override exists, ship it verbatim and skip the
         // ported claude body entirely. Mirrors a directory copy in case the
@@ -888,7 +1440,7 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
     // <name>.toml. Hand-authored orchestrator overrides (implement,
     // batch-implement) under templates/gemini-commands/ win verbatim. Agents
     // are placed by placeSkills → placeGeminiAgents (both tiers).
-    const geminiSetupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
+    const geminiSetupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
     const commandsSrc = path.join(geminiSetupTemplates, 'commands', 'specrails')
     const overridesSrc = path.join(input.scriptDir, 'templates', 'gemini-commands')
     let commandsPlaced = 0
@@ -899,7 +1451,7 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
         if (name === 'setup.md') continue
         if (!input.agentTeams && /^team-/.test(name)) continue
         const cmdName = name.slice(0, -3)
-        const dest = path.join(input.repoRoot, input.providerDir, 'commands', 'specrails', `${cmdName}.toml`)
+        const dest = path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', `${cmdName}.toml`)
         const overrideToml = path.join(overridesSrc, `${cmdName}.toml`)
         if (pathExists(overrideToml)) {
           copyFile(overrideToml, dest)
@@ -912,9 +1464,10 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
     return { agents: 0, commands: commandsPlaced, rules: 0, skippedAgents: 0 }
   }
 
-  const setupTemplates = path.join(input.repoRoot, '.specrails', 'setup-templates')
-  const projectName = path.basename(input.repoRoot)
-  const providerDirAbs = path.join(input.repoRoot, input.providerDir)
+  const setupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
+  // PROJECT_NAME is the real repo's basename, not the relocated workspace dir.
+  const projectName = path.basename(input.codeRoot)
+  const providerDirAbs = path.join(input.artifactRoot, input.providerDir)
 
   const placeholders = {
     PROJECT_NAME: projectName,
@@ -941,9 +1494,12 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
       const name = path.basename(src)
       if (!name.endsWith('.md')) continue
       const agentId = name.slice(0, -3)
-      if (selectedAgents && !selectedAgents.has(agentId)) continue
+      // Superset materialization (installFramework) places EVERY agent so any
+      // project's selection can later link from the shared store; per-project
+      // filtering happens at the workspace LINK step, not here.
+      if (!input.materializeAllAgents && selectedAgents && !selectedAgents.has(agentId)) continue
 
-      if (QUICK_EXCLUDED_AGENTS.has(agentId)) {
+      if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(agentId)) {
         agentsSkipped++
         continue
       }
@@ -957,12 +1513,16 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
       agentsPlaced++
       installedAgentNames.add(agentId)
 
-      // Per-agent memory directory. Created even when empty so
-      // the first run of the agent doesn't error on ENOENT.
-      mkdirp(path.join(input.repoRoot, '.claude', 'agent-memory', agentId))
-
-      if (EXPLANATION_AUTHORS.has(agentId)) {
-        mkdirp(path.join(input.repoRoot, '.claude', 'agent-memory', 'explanations'))
+      // Per-agent memory directory. Created even when empty so the first run of
+      // the agent doesn't error on ENOENT. Skipped when materializing the SHARED
+      // framework (`seedProjectDirs === false`): agent-memory is per-workspace
+      // mutable state seeded later by `seedProjectLayer`, NEVER part of the
+      // read-only framework copy that workspaces symlink.
+      if (input.seedProjectDirs !== false) {
+        mkdirp(path.join(input.artifactRoot, '.claude', 'agent-memory', agentId))
+        if (EXPLANATION_AUTHORS.has(agentId)) {
+          mkdirp(path.join(input.artifactRoot, '.claude', 'agent-memory', 'explanations'))
+        }
       }
     }
   }
@@ -1044,7 +1604,7 @@ function applyCodexSettings(input: ScaffoldInput): number {
   // reasoning_effort etc.
   const configTomlSrc = path.join(settingsSrc, 'codex-config.toml')
   if (pathExists(configTomlSrc)) {
-    const dest = path.join(input.repoRoot, input.providerDir, 'config.toml')
+    const dest = path.join(input.artifactRoot, input.providerDir, 'config.toml')
     const rendered = readTextFile(configTomlSrc).replace(/\{\{MODEL_NAME\}\}/g, 'gpt-5.5-mini')
     writeFileLf(dest, rendered)
     written++
@@ -1053,8 +1613,8 @@ function applyCodexSettings(input: ScaffoldInput): number {
   // AGENTS.md — top-level instructions file the codex CLI loads on startup.
   // Written with a sentinel block so update + enrich passes can refresh the
   // managed content while preserving anything the user added outside it.
-  const agentsMdPath = path.join(input.repoRoot, 'AGENTS.md')
-  const agentsMdContent = renderInitialAgentsMd(input.repoRoot)
+  const agentsMdPath = path.join(input.artifactRoot, 'AGENTS.md')
+  const agentsMdContent = renderInitialAgentsMd(input.codeRoot)
   if (!pathExists(agentsMdPath)) {
     writeFileLf(agentsMdPath, agentsMdContent)
     written++
@@ -1132,12 +1692,12 @@ function upsertAgentsMdManagedBlock(existing: string, managedBlock: string): str
 // `subagent_type` calls have no codex equivalent). Codex DOES get the rails
 // subtree below, sourced from `templates/codex-skills/rails/`.
 function placeSkills(input: ScaffoldInput): SkillsPlacement {
-  const destBase = path.join(input.repoRoot, input.providerDir, 'skills')
+  const destBase = path.join(input.artifactRoot, input.providerDir, 'skills')
   const result: SkillsPlacement = { placed: 0, skipped: 0, filesCopied: 0 }
 
   // Top-level skills — Claude only, generated from the canonical command body.
   if (input.provider === 'claude') {
-    const commandsSrc = path.join(input.repoRoot, '.specrails', 'setup-templates', 'commands', 'specrails')
+    const commandsSrc = path.join(input.artifactRoot, '.specrails', 'setup-templates', 'commands', 'specrails')
     const skillEntries = Object.entries(SKILL_FROM_COMMAND) as Array<
       [string, { command: string; description: string }]
     >

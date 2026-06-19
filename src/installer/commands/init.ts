@@ -12,10 +12,14 @@ import {
   loadInstallConfig,
   resolveConfigPath,
 } from '../phases/install-config.js'
-import { buildManifest, writeManifestFiles } from '../phases/manifest.js'
 import { checkPrerequisites } from '../phases/prereqs.js'
 import { derivedPaths } from '../phases/provider-detect.js'
-import { scaffoldInstallation } from '../phases/scaffold.js'
+import {
+  assembleProjectWorkspace,
+  ensureCurrentSymlink,
+  installFramework,
+} from '../phases/scaffold.js'
+import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 
 /**
  * `npx specrails-core init` entry point.
@@ -105,27 +109,53 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     skipPrereqs,
   })
 
+  // ─── Relocate-always: resolve where artifacts live ───────────────────
+  // EVERY Specrails artifact lands under `artifactRoot` (the $HOME workspace),
+  // never in the repo. The ONLY in-repo writes are `openspec/**` (below) and
+  // git/worktree ops. `codeRoot` is always the repo.
+  const { artifactRoot, codeRoot } = resolveArtifacts(repoRoot, {
+    allocate: true,
+    allocator: 'core-standalone',
+    home: process.env.SPECRAILS_REGISTRY_HOME,
+    providers: [prereqs.provider],
+    coreVersion: version,
+  })
+
   // ─── Phase 2 + 3 ──────────────────────────────────────────────────────
+  // Bundled-framework flow: materialize the provider-INVARIANT framework ONCE
+  // under `<home>/.specrails/framework/<version>/<providerDir>/`, point `current`
+  // at it, then SYMLINK that copy into the workspace and seed the project layer
+  // (agent-memory, manifest, instruction files, gemini acks). The framework
+  // source for standalone npx is the package's templates/+commands/ (scriptDir).
   step('Phase 2 & 3: Installing specrails artifacts')
   const { providerDir } = derivedPaths(prereqs.provider)
-  scaffoldInstallation({
+  const fwDir = frameworkRoot(process.env.SPECRAILS_REGISTRY_HOME)
+
+  ensureFramework({
     scriptDir,
-    repoRoot,
+    frameworkDir: fwDir,
     provider: prereqs.provider,
     providerDir,
+    version,
     agentTeams: agentTeamsHint,
-    tier: tierHint ?? 'full',
     selectedAgents: selectedAgentsHint,
   })
 
-  // ─── Phase 3b — manifest ──────────────────────────────────────────────
-  step('Phase 3b: Writing manifest')
-  const manifest = buildManifest({ scriptDir, repoRoot, version })
-  const { manifestPath, versionPath } = writeManifestFiles(repoRoot, manifest)
-  ok(`Wrote ${path.relative(repoRoot, manifestPath)}`)
-  ok(`Wrote ${path.relative(repoRoot, versionPath)}`)
+  assembleProjectWorkspace({
+    workspace: artifactRoot,
+    frameworkDir: fwDir,
+    provider: prereqs.provider,
+    providerDir,
+    version,
+    codeRoot,
+    scriptDir,
+    selectedAgents: selectedAgentsHint,
+    agentTeams: agentTeamsHint,
+  })
+  ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
 
-  await installOpenSpecProject(repoRoot, prereqs.provider)
+  // openspec STAYS in the repo (codeRoot) — unchanged behaviour.
+  await installOpenSpecProject(codeRoot, prereqs.provider)
 
   const tier: Tier = tierHint ?? 'full'
   if (tier === 'full') {
@@ -146,6 +176,53 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     provider: prereqs.provider,
     tier,
     agentTeams: agentTeamsHint,
+  }
+}
+
+export interface EnsureFrameworkInput {
+  scriptDir: string
+  frameworkDir: string
+  provider: Provider
+  providerDir: string
+  version: string
+  agentTeams?: boolean
+  selectedAgents?: string[]
+  /**
+   * When false, MATERIALIZE the provider subtree but do NOT swap
+   * `<frameworkDir>/current` to point at `<version>`. The caller is responsible
+   * for the single `ensureCurrentSymlink(frameworkDir, version)` swap AFTER all
+   * providers have been materialized. This prevents a multi-provider install
+   * from leaving `current` pointed at a version dir that is missing a provider
+   * whose materialization later failed. Defaults to true (swap — the standalone
+   * single-provider `init` path is byte-identical to before).
+   */
+  swapCurrent?: boolean
+}
+
+/**
+ * Materialize the framework for `(version, provider)` if absent and (by default)
+ * point `<frameworkDir>/current` at that version. Idempotent — `installFramework`
+ * skips re-materialization when the providerDir already exists with a matching
+ * stamp, so a second project (or a repeat init) reuses the SAME framework copy.
+ * Shared by `runInit` and `runUpdate`.
+ *
+ * Pass `swapCurrent: false` to materialize WITHOUT swapping `current` — the
+ * multi-provider "materialize-all-then-swap-once" pattern desktop consumes:
+ *   for (const p of providers) ensureFramework({ ..., provider: p, swapCurrent: false })
+ *   ensureCurrentSymlink(frameworkDir, version) // single atomic swap at the end
+ */
+export function ensureFramework(input: EnsureFrameworkInput): void {
+  installFramework({
+    scriptDir: input.scriptDir,
+    frameworkDir: input.frameworkDir,
+    provider: input.provider,
+    providerDir: input.providerDir,
+    version: input.version,
+    agentTeams: input.agentTeams,
+    selectedAgents: input.selectedAgents,
+  })
+  if (input.swapCurrent !== false) {
+    ensureCurrentSymlink(input.frameworkDir, input.version)
   }
 }
 
@@ -190,32 +267,64 @@ function readPinnedVersion(scriptDir: string, key: string, fallback: string): st
   }
 }
 
+/**
+ * Resolve the `{bin, args}` to invoke `openspec init` for a project, honouring
+ * two optional env overrides (both default unset → `npx @fission-ai/openspec`):
+ *
+ *  - `SPECRAILS_OPENSPEC_BIN`  — path to the openspec CLI entry (a `.js` node
+ *    script when bundled by the desktop app, OR a real executable in tests).
+ *  - `SPECRAILS_OPENSPEC_NODE` — path to a node executable. Set ONLY by the
+ *    desktop bundled-offline path: Tauri strips exec bits from bundled
+ *    resources and the bundled openspec is a node CLI (not a runnable binary),
+ *    so it must be invoked as `node <cli> init …` rather than executed directly.
+ *
+ * Three invocation forms:
+ *  1. NODE + BIN set → `runCommand(node, [cli, 'init', '--tools', provider, repoRoot])`
+ *     (bundled offline — Tauri-stripped node CLI).
+ *  2. BIN set only   → `runCommand(cli, ['init', '--tools', provider, repoRoot])`
+ *     (a real executable: legacy override / test fake binary on PATH).
+ *  3. neither set    → `runCommand('npx', ['--yes', '-p', '@fission-ai/openspec@<pinned>', '--', 'openspec', 'init', …])`
+ *     (default online path — users never need a global install).
+ */
+export function buildOpenSpecInvocation(
+  repoRoot: string,
+  provider: Provider,
+  env: NodeJS.ProcessEnv = process.env,
+  pinnedVersion: string = readPinnedVersion(resolveScriptDir(), 'openspec', '1.4.1'),
+): { bin: string; args: string[] } {
+  const bin = env.SPECRAILS_OPENSPEC_BIN
+  const node = env.SPECRAILS_OPENSPEC_NODE
+  const initArgs = ['init', '--tools', provider, repoRoot]
+
+  if (bin && node) {
+    // Form 1: bundled offline — run the node CLI through the given node exe.
+    return { bin: node, args: [bin, ...initArgs] }
+  }
+  if (bin) {
+    // Form 2: a real executable (legacy override / test fixture).
+    return { bin, args: initArgs }
+  }
+  // Form 3: default — npx so users never need a global install.
+  return {
+    bin: 'npx',
+    args: [
+      '--yes',
+      '-p',
+      `@fission-ai/openspec@${pinnedVersion}`,
+      '--',
+      'openspec',
+      ...initArgs,
+    ],
+  }
+}
+
 async function installOpenSpecProject(repoRoot: string, provider: Provider): Promise<void> {
   if (process.env.SPECRAILS_SKIP_OPENSPEC_INIT === '1') {
     info('Skipping OpenSpec project init (SPECRAILS_SKIP_OPENSPEC_INIT=1)')
     return
   }
 
-  // Tests can point this at a fake binary on PATH to avoid hitting npm.
-  // Default: invoke through npx so users never need a global install.
-  const override = process.env.SPECRAILS_OPENSPEC_BIN
-  const pinnedVersion = readPinnedVersion(resolveScriptDir(), 'openspec', '1.3.1')
-  const { bin, args } = override
-    ? { bin: override, args: ['init', '--tools', provider, repoRoot] }
-    : {
-        bin: 'npx',
-        args: [
-          '--yes',
-          '-p',
-          `@fission-ai/openspec@${pinnedVersion}`,
-          '--',
-          'openspec',
-          'init',
-          '--tools',
-          provider,
-          repoRoot,
-        ],
-      }
+  const { bin, args } = buildOpenSpecInvocation(repoRoot, provider)
 
   step('Phase 3c: Installing OpenSpec')
   try {

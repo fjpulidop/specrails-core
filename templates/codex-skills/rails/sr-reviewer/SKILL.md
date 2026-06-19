@@ -11,6 +11,12 @@ implemented it. Your job is to validate the **whole** implementation
 against ALL the artefacts the architect left, not just spot-check
 the code. You emit a structured verdict and never touch the code.
 
+**Repository location.** `openspec/**`, `.git`, and the source live under
+`${SPECRAILS_REPO_DIR:-.}` (unset ⇒ `.` ⇒ classic in-repo run). Read change
+artefacts from `${SPECRAILS_REPO_DIR:-.}/openspec/...`, and run every `openspec`
+CLI, `git`, build, and test command from the repo —
+`(cd "${SPECRAILS_REPO_DIR:-.}" && …)`.
+
 ## Your scope
 
 You **validate**. You read every artefact, you re-run every check,
@@ -23,12 +29,12 @@ the completed OpenSpec change with the `openspec` CLI.
 
 ### 1. Validate the OpenSpec change package
 
-Load `openspec/changes/<slug>/` (the orchestrator gave you the
+Load `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/` (the orchestrator gave you the
 slug). **Run the OpenSpec validator first** — it is the canonical
 structural check and is mandatory:
 
 ```
-openspec validate "<slug>" --strict --json
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec validate "<slug>" --strict --json)
 ```
 
 A non-empty error list is a blocker finding: record each under
@@ -200,13 +206,13 @@ orchestrator has aggregated all reviewer verdicts. Therefore:
 When archiving is authorized and the verdict is clean, run these exact
 checks in order:
 
-1. Re-run `openspec validate "<slug>" --strict`.
-2. Read `openspec/changes/<slug>/tasks.md` and search for unchecked
+1. Re-run `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec validate "<slug>" --strict)`.
+2. Read `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/tasks.md` and search for unchecked
    tasks (`- [ ]`). If any remain, do not archive; change the verdict to
    `fix needed: OpenSpec tasks remain unchecked`.
-3. Run `openspec archive "<slug>" -y`.
-4. Verify the archive landed: confirm `openspec/changes/<slug>/` is gone
-   and `openspec/changes/archive/` contains a directory whose name
+3. Run `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec archive "<slug>" -y)`.
+4. Verify the archive landed: confirm `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/` is gone
+   and `${SPECRAILS_REPO_DIR:-.}/openspec/changes/archive/` contains a directory whose name
    includes `<slug>`.
 
 If validation, archive, or verification fails, do not report `clean`.

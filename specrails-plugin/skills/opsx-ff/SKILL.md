@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Fast-forward through artifact creation - generate everything needed to start implementation in one go.
 
 **Input**: The user's request should include a change name (kebab-case) OR a description of what they want to build.
@@ -26,13 +34,13 @@ Fast-forward through artifact creation - generate everything needed to start imp
 
 2. **Create the change directory**
    ```bash
-   openspec new change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec new change "<name>")
    ```
    This creates a scaffolded change at `openspec/changes/<name>/`.
 
 3. **Get the artifact build order**
    ```bash
-   openspec status --change "<name>" --json
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<name>" --json)
    ```
    Parse the JSON to get:
    - `applyRequires`: array of artifact IDs needed before implementation (e.g., `["tasks"]`)
@@ -47,7 +55,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
    a. **For each artifact that is `ready` (dependencies satisfied)**:
       - Get instructions:
         ```bash
-        openspec instructions <artifact-id> --change "<name>" --json
+        (cd "${SPECRAILS_REPO_DIR:-.}" && openspec instructions <artifact-id> --change "<name>" --json)
         ```
       - The instructions JSON includes:
         - `context`: Project background (constraints for you - do NOT include in output)
@@ -72,7 +80,7 @@ Fast-forward through artifact creation - generate everything needed to start imp
 
 5. **Show final status**
    ```bash
-   openspec status --change "<name>"
+   (cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<name>")
    ```
 
 **Output**

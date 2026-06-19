@@ -25,14 +25,16 @@ Two ways:
 
 ### 1. Read the existing artefacts
 
-- `README.md` (project intent and surface).
-- `openspec/specs/` (existing specs — what the product
+  (Repo-resident reads live under `${SPECRAILS_REPO_DIR:-.}` — unset ⇒ `.` ⇒
+  classic in-repo run.)
+- `${SPECRAILS_REPO_DIR:-.}/README.md` (project intent and surface).
+- `${SPECRAILS_REPO_DIR:-.}/openspec/specs/` (existing specs — what the product
   contract is today).
-- `.specrails/local-tickets.json` (existing backlog —
-  don't propose duplicates).
-- A representative slice of the source code (5-10 files,
-  drawn from the relevant theme).
-- The desktop app's own `openspec/specs/` if relevant
+- `.specrails/local-tickets.json` (existing backlog — run-state, relative to
+  the working directory — don't propose duplicates).
+- A representative slice of the source code (5-10 files under
+  `${SPECRAILS_REPO_DIR:-.}`, drawn from the relevant theme).
+- The desktop app's own `${SPECRAILS_REPO_DIR:-.}/openspec/specs/` if relevant
   (cross-component changes).
 
 ### 2. Identify gaps

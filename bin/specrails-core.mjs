@@ -50,6 +50,8 @@ const KNOWN_SUBCOMMANDS = new Set([
   'init',
   'update',
   'doctor',
+  'install-framework',
+  'assemble',
   'enrich',
   'version',
   'profile',
@@ -58,7 +60,9 @@ const KNOWN_SUBCOMMANDS = new Set([
 
 if (!KNOWN_SUBCOMMANDS.has(subcommand)) {
   console.error(`Unknown command: ${subcommand}\n`)
-  console.error('Available commands: init, update, doctor, enrich, version, profile, help')
+  console.error(
+    'Available commands: init, update, doctor, install-framework, assemble, enrich, version, profile, help',
+  )
   process.exit(1)
 }
 

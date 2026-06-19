@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Archive a completed change in the experimental workflow.
 
 **Input**: Optionally specify a change name. If omitted, check if it can be inferred from conversation context. If vague or ambiguous you MUST prompt for available changes.

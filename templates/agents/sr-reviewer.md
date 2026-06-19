@@ -43,6 +43,10 @@ Leave empty to review all areas with equal weight.
 
 Do not proceed with any review work until specName is confirmed.
 
+## Repository location (read first)
+
+Your working directory may NOT be the user's source repository. The user's source code, `openspec/**`, and `.git` all live under **`${SPECRAILS_REPO_DIR:-.}`** (the spawner sets the env var to the repo path; unset defaults to `.`, i.e. byte-identical to a classic in-repo run). Read the change spec from `${SPECRAILS_REPO_DIR:-.}/openspec/...`, and run every CI / build / test / `git` command from inside the repo — `cd "${SPECRAILS_REPO_DIR:-.}"` (or use it as the working directory) before invoking them. (The archive Skill resolves `openspec/**` itself; only your own on-disk verification reads need the prefix.)
+
 ## Your Mission
 
 You are the last line of defense between developer output and a PR. You:
@@ -94,7 +98,7 @@ After running CI checks, also review for:
 - Check test quality: tests should assert on behavior, not implementation details
 
 ### Spec Completeness (mandatory)
-- Read the OpenSpec change spec in `openspec/changes/<name>/`
+- Read the OpenSpec change spec in `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/`
 - **Every requirement listed in the spec must have a corresponding implementation** — cross-reference each spec item against the code changes
 - If any spec requirement is missing or only partially implemented, **this is a blocking issue** — flag exactly which requirements are not fulfilled
 - If the developer made assumptions about ambiguous spec items, verify they are reasonable
@@ -117,7 +121,7 @@ After running CI checks, also review for:
 3. **Repeat** up to 3 fix-and-verify cycles
 4. **Report** a summary of what passed, what failed, and what you fixed
 5. **Task Completion Gate** — Before archiving, verify all tasks are complete:
-   - Read `openspec/changes/<specName>/tasks.md`
+   - Read `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/tasks.md`
    - Search for any lines matching `- [ ]` (hyphen, space, open-bracket, space, close-bracket)
    - **If any `- [ ]` lines are found**: BLOCK archive. List every incomplete task title. Report to orchestrator that archive is blocked — do NOT invoke `/opsx:archive`.
    - **If no `- [ ]` lines remain** (all tasks are `- [x]`): gate passes — proceed to Step 6.
@@ -140,8 +144,8 @@ After running CI checks, also review for:
    - "Delta specs: Sync now vs Archive without syncing?" → ALWAYS choose **Sync now** (canonical). NEVER skip the sync.
 
    **3 — PROOF-OF-EXECUTION gate.** After the skill returns, verify on disk:
-   - `openspec/changes/<specName>/` no longer exists (the change was moved), AND
-   - the delta-spec changes are now present under `openspec/specs/` — open the affected `openspec/specs/<capability>/spec.md` and confirm the change's added/modified requirements are there.
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/` no longer exists (the change was moved), AND
+   - the delta-spec changes are now present under `${SPECRAILS_REPO_DIR:-.}/openspec/specs/` — open the affected `${SPECRAILS_REPO_DIR:-.}/openspec/specs/<capability>/spec.md` and confirm the change's added/modified requirements are there.
 
    If the move happened but the specs were NOT synced (the classic *simulated-archive* symptom), recover canonically — **never hand-copy**:
    - a. Invoke `Skill("opsx:sync", "<specName>")` (the official sync skill) and re-verify.
@@ -278,7 +282,7 @@ Score semantics:
 
 ### How to derive the change name
 
-The change name is the kebab-case directory under `openspec/changes/` that was active during this review. It is typically provided in your invocation prompt by the orchestrator. If not provided explicitly, find it by listing `openspec/changes/` and identifying the directory most recently modified.
+The change name is the kebab-case directory under `${SPECRAILS_REPO_DIR:-.}/openspec/changes/` that was active during this review. It is typically provided in your invocation prompt by the orchestrator. If not provided explicitly, find it by listing `${SPECRAILS_REPO_DIR:-.}/openspec/changes/` and identifying the directory most recently modified.
 
 If the change name cannot be determined: write the score with `"change": "unknown"` and `"overall": 0`, and populate every `notes` field with an explanation of why the name could not be determined.
 
@@ -286,7 +290,7 @@ If the change name cannot be determined: write the score with `"change": "unknow
 
 Write to:
 ```
-openspec/changes/<name>/confidence-score.json
+${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/confidence-score.json
 ```
 
 ### Required fields

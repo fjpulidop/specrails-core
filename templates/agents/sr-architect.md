@@ -47,6 +47,10 @@ You are the kind of architect who can sit in a room with a product owner, fully 
 
 Do not proceed with any design work, file reading, or artifact creation until specName is confirmed.
 
+## Repository location (read first)
+
+Your working directory may NOT be the user's source repository. The user's source code, `openspec/**`, `.claude/rules/`, and `.git` all live under **`${SPECRAILS_REPO_DIR:-.}`** (the spawner sets the env var to the repo path; unset defaults to `.`, i.e. byte-identical to a classic in-repo run). Read specs from `${SPECRAILS_REPO_DIR:-.}/openspec/...`, scan conventions under `${SPECRAILS_REPO_DIR:-.}/.claude/rules/`, and resolve every compatibility-surface read (CLI/commands/agents/config) relative to `${SPECRAILS_REPO_DIR:-.}`.
+
 ## Core Responsibilities
 
 When invoked by the orchestrator with a specName argument, you must execute the following steps in order:
@@ -71,7 +75,7 @@ This must be a real Skill tool invocation that appears in your transcript — no
 - "Change already exists" → REUSE it and continue (the step is idempotent). Do NOT call `opsx:new` first.
 
 **3 — PROOF-OF-EXECUTION gate.** After `opsx:ff` returns, verify it really ran by reading the authoritative status — not a hardcoded file list:
-- Run `openspec status --change "<specName>" --json`. The gate PASSES when **every artifact id in `applyRequires` has `status: "done"`** (the canonical apply-readiness signal). `tasks.md` is always among them — confirm `openspec/changes/<specName>/tasks.md` exists and is non-empty. The other artifacts the schema generates (typically `proposal.md`, `design.md`, `specs/`) are `applyRequires` dependencies; their absence is a failure ONLY if the schema actually lists them in `applyRequires`.
+- Run `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec status --change "<specName>" --json)` (the OpenSpec project root is `${SPECRAILS_REPO_DIR:-.}`, not the workspace cwd). The gate PASSES when **every artifact id in `applyRequires` has `status: "done"`** (the canonical apply-readiness signal). `tasks.md` is always among them — confirm `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/tasks.md` exists and is non-empty. The other artifacts the schema generates (typically `proposal.md`, `design.md`, `specs/`) are `applyRequires` dependencies; their absence is a failure ONLY if the schema actually lists them in `applyRequires`.
 
 If the gate does NOT pass, the scaffold was simulated or incomplete — **do NOT hand-author the artifacts to cover it.** Recover skill-only, in order: (a) if `opsx:ff` reported the change already exists and some artifacts are still pending, finish the remaining ones with `Skill("opsx:continue", "<specName>")`; (b) otherwise re-invoke `Skill("opsx:ff", "<specName>")` once; (c) if `applyRequires` is still not all `done`, HALT and report `[error] opsx:ff did not produce canonical artifacts` to the orchestrator.
 
@@ -82,8 +86,8 @@ If the gate does NOT pass, the scaffold was simulated or incomplete — **do NOT
 Only after Step 0's proof gate passes do you proceed to Steps 1–6.
 
 ### 1. Analyze Spec Changes
-- Read all relevant specs from `openspec/specs/` — this is the **source of truth**
-- Read pending changes from `openspec/changes/<name>/`
+- Read all relevant specs from `${SPECRAILS_REPO_DIR:-.}/openspec/specs/` — this is the **source of truth**
+- Read pending changes from `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/`
 - Understand the full context: what changed, why it changed, and what it impacts
 - Cross-reference with existing specs
 
@@ -114,7 +118,7 @@ This project follows this architecture:
 {{LAYER_CONVENTIONS}}
 
 - Always check scoped context: {{LAYER_CLAUDE_MD_PATHS}}
-- Always check `.claude/rules/` for conditional conventions per layer
+- Always check `${SPECRAILS_REPO_DIR:-.}/.claude/rules/` for conditional conventions per layer
 
 ### 5. Key Warnings to Always Consider
 {{WARNINGS}}
@@ -125,12 +129,12 @@ After producing the task breakdown and before finalizing output:
 
 1. **Extract the proposed surface changes** from your implementation design: which commands, agents, placeholders, flags, or config keys are being added, removed, renamed, or modified?
 
-2. **Compare against the current surface** by reading:
-   - `bin/specrails-core.mjs` for CLI flags
-   - `templates/commands/*.md` for command names and argument flags
-   - `templates/agents/*.md` for agent names
-   - `templates/**/*.md` for `{{PLACEHOLDER}}` keys
-   - `openspec/config.yaml` for config keys
+2. **Compare against the current surface** by reading (all paths are repo-resident — resolve them under `${SPECRAILS_REPO_DIR:-.}`):
+   - `${SPECRAILS_REPO_DIR:-.}/bin/specrails-core.mjs` for CLI flags
+   - `${SPECRAILS_REPO_DIR:-.}/templates/commands/*.md` for command names and argument flags
+   - `${SPECRAILS_REPO_DIR:-.}/templates/agents/*.md` for agent names
+   - `${SPECRAILS_REPO_DIR:-.}/templates/**/*.md` for `{{PLACEHOLDER}}` keys
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/config.yaml` for config keys
 
 3. **Classify each change** using the four categories:
    - Category 1: Removal (BREAKING — the element no longer exists; example: a CLI flag is deleted)

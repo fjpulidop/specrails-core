@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CORE_AGENTS, scaffoldInstallation } from '../phases/scaffold.js'
 import { listDir, mkdirp, pathExists, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
+import { resolveArtifacts } from '../util/registry.js'
 
 /**
  * Tests for the CORE_AGENTS constant and the default agent-selection
@@ -120,7 +121,8 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 
     scaffoldInstallation({
       scriptDir,
-      repoRoot: testRepoRoot,
+      artifactRoot: testRepoRoot,
+      codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
       agentTeams: false,
@@ -144,7 +146,8 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 
     scaffoldInstallation({
       scriptDir,
-      repoRoot: testRepoRoot,
+      artifactRoot: testRepoRoot,
+      codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
       agentTeams: false,
@@ -171,7 +174,8 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 
     scaffoldInstallation({
       scriptDir,
-      repoRoot: testRepoRoot,
+      artifactRoot: testRepoRoot,
+      codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
       agentTeams: false,
@@ -190,19 +194,32 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 
 describe('update — optional-agent preservation', () => {
   let tmpDir: string
+  let registryHome: string
   let prevSkipPrereqs: string | undefined
   let prevSkipOpenSpecInit: string | undefined
   let prevScriptDirOverride: string | undefined
+  let prevRegistryHome: string | undefined
   let prevCwd: string
+
+  function workspaceFor(repoRoot: string): string {
+    return resolveArtifacts(repoRoot, {
+      allocate: true,
+      home: registryHome,
+      providers: ['claude'],
+    }).artifactRoot
+  }
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-update-test-'))
+    registryHome = mkdtempSync(path.join(os.tmpdir(), 'specrails-update-home-'))
     prevCwd = process.cwd()
     prevSkipPrereqs = process.env.SPECRAILS_SKIP_PREREQS
     prevSkipOpenSpecInit = process.env.SPECRAILS_SKIP_OPENSPEC_INIT
     prevScriptDirOverride = process.env.SPECRAILS_CORE_SCRIPT_DIR
+    prevRegistryHome = process.env.SPECRAILS_REGISTRY_HOME
     process.env.SPECRAILS_SKIP_PREREQS = '1'
     process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '1'
+    process.env.SPECRAILS_REGISTRY_HOME = registryHome
   })
 
   afterEach(() => {
@@ -213,7 +230,10 @@ describe('update — optional-agent preservation', () => {
     else process.env.SPECRAILS_SKIP_OPENSPEC_INIT = prevSkipOpenSpecInit
     if (prevScriptDirOverride === undefined) delete process.env.SPECRAILS_CORE_SCRIPT_DIR
     else process.env.SPECRAILS_CORE_SCRIPT_DIR = prevScriptDirOverride
+    if (prevRegistryHome === undefined) delete process.env.SPECRAILS_REGISTRY_HOME
+    else process.env.SPECRAILS_REGISTRY_HOME = prevRegistryHome
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+    rmSync(registryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
   it('re-places a previously-selected optional agent (sr-test-writer) on update', async () => {
@@ -228,15 +248,16 @@ describe('update — optional-agent preservation', () => {
     await initRepo(testRepoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
-    // Simulate an existing install
-    writeFileLf(path.join(testRepoRoot, '.specrails', 'specrails-version'), '4.0.0\n')
+    // Simulate an existing relocate-always install: marker/manifest in workspace.
+    const ws = workspaceFor(testRepoRoot)
+    writeFileLf(path.join(ws, '.specrails', 'specrails-version'), '4.0.0\n')
     writeFileLf(
-      path.join(testRepoRoot, '.specrails', 'specrails-manifest.json'),
+      path.join(ws, '.specrails', 'specrails-manifest.json'),
       JSON.stringify({ version: '4.0.0', installed_at: '2026-01-01T00:00:00Z', artifacts: {} }),
     )
-    mkdirp(path.join(testRepoRoot, '.claude', 'commands', 'specrails'))
+    mkdirp(path.join(ws, '.claude', 'commands', 'specrails'))
 
-    // Write install-config.yaml that includes sr-test-writer as selected
+    // install-config.yaml is a USER file → stays in the repo (read from repoRoot).
     const installConfigYaml = [
       'version: 1',
       'provider: claude',
@@ -258,7 +279,7 @@ describe('update — optional-agent preservation', () => {
 
     await runUpdate({ 'root-dir': testRepoRoot })
 
-    const placed = placedAgentIds(testRepoRoot)
+    const placed = placedAgentIds(ws)
     // Optional agent that was in install-config must be re-placed
     expect(placed).toContain('sr-test-writer')
     // Core agents always placed

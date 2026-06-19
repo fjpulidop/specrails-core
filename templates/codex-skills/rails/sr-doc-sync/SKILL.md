@@ -29,8 +29,9 @@ Two ways:
   specrails-managed:start -->` … `<!--
   specrails-managed:end -->` block. Outside that block
   is user-authored; don't touch it.
-- `docs/` (any markdown files).
-- `openspec/specs/<capability>/spec.md` (capabilities
+- `${SPECRAILS_REPO_DIR:-.}/docs/` (any markdown files; repo-resident — unset
+  `SPECRAILS_REPO_DIR` ⇒ `.` ⇒ classic in-repo run).
+- `${SPECRAILS_REPO_DIR:-.}/openspec/specs/<capability>/spec.md` (capabilities
   documentation — drift here is the most serious; this
   is the contract).
 - Inline JSDoc / TSDoc / Python docstrings on exported

@@ -9,6 +9,14 @@ metadata:
   generatedBy: "1.1.1"
 ---
 
+> **OpenSpec project root.** The `openspec/` directory lives in the REPO, not
+> the workspace this skill is driven from. The repo root is `${SPECRAILS_REPO_DIR:-.}`
+> (a default-unset env var: when unset it resolves to `.`, i.e. the current
+> directory, so a classic in-repo run is unchanged). Run EVERY `openspec`
+> command against that root — wrap each invocation as
+> `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec …)`. Treat `${SPECRAILS_REPO_DIR:-.}`
+> as the OpenSpec project root for any path the CLI prints or you read/write.
+
 Enter explore mode. Think deeply. Visualize freely. Follow the conversation wherever it goes.
 
 **IMPORTANT: Explore mode is for thinking, not implementing.** You may read files, search code, and investigate the codebase, but you must NEVER write code or implement features. If the user asks you to implement something, remind them to exit explore mode first (e.g., start a change with `/opsx:new` or `/opsx:ff`). You MAY create OpenSpec artifacts (proposals, designs, specs) if the user asks—that's capturing thinking, not implementing.
@@ -83,7 +91,7 @@ You have full context of the OpenSpec system. Use it naturally, don't force it.
 
 At the start, quickly check what exists:
 ```bash
-openspec list --json
+(cd "${SPECRAILS_REPO_DIR:-.}" && openspec list --json)
 ```
 
 This tells you:

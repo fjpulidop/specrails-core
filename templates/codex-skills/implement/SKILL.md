@@ -12,6 +12,14 @@ verdicts, and close the ticket. The role instructions live in
 their own skills — your message to each spawn invokes the right
 role via `$skill_name`.
 
+**Repository location.** Your working directory may NOT be the source repo.
+`openspec/**`, `.git`, and the source live under `${SPECRAILS_REPO_DIR:-.}`
+(unset ⇒ `.` ⇒ classic in-repo run). Run every `openspec`/`git` CLI command
+from the repo — `(cd "${SPECRAILS_REPO_DIR:-.}" && …)` — and read change
+artefacts under `${SPECRAILS_REPO_DIR:-.}/openspec/...`. The ticket store
+`.specrails/local-tickets.json` is run-state and stays relative to the working
+directory.
+
 **This is explicit permission to use `spawn_agent`.** The user
 wants the multi-agent split. Do not collapse the work into a
 single turn.
@@ -94,9 +102,10 @@ the combo and you'll burn a turn on the retry.
 
 ### 0. Bootstrap + agent discovery
 
-1. Confirm `pwd` matches `git rev-parse --show-toplevel`. If not,
-   `cd` to the root.
-2. Load the ticket (skip for free-form invocations):
+1. Confirm the repo root with `git -C "${SPECRAILS_REPO_DIR:-.}" rev-parse --show-toplevel`
+   (the source repo is `${SPECRAILS_REPO_DIR:-.}`; unset ⇒ `.`).
+2. Load the ticket (skip for free-form invocations) — the ticket store is
+   run-state, relative to the working directory:
    `jq '.tickets["<ID>"]' .specrails/local-tickets.json`
 3. **List the installed rail skills**:
    `ls .codex/skills/rails/`
@@ -318,15 +327,15 @@ performs the lifecycle close:
 
 The reviewer rail's archive-only mode must run these checks:
 
-1. Re-confirm every task box in `openspec/changes/<slug>/tasks.md`
+1. Re-confirm every task box in `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/tasks.md`
    is ticked (`- [x]`) and the change validates:
-   `openspec validate "<slug>" --strict`.
-2. Archive it: `openspec archive "<slug>" -y` — this updates the
-   main specs and moves the change to `openspec/changes/archive/`.
+   `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec validate "<slug>" --strict)`.
+2. Archive it: `(cd "${SPECRAILS_REPO_DIR:-.}" && openspec archive "<slug>" -y)` — this updates the
+   main specs and moves the change to `${SPECRAILS_REPO_DIR:-.}/openspec/changes/archive/`.
 3. **Verify the archive landed — do NOT assume success.** Confirm
-   `openspec/changes/archive/` now contains the slug
-   (`ls -d openspec/changes/archive/*<slug>* 2>/dev/null`) AND that
-   `openspec/changes/<slug>/` is gone. If the archive directory is
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/archive/` now contains the slug
+   (`ls -d "${SPECRAILS_REPO_DIR:-.}"/openspec/changes/archive/*<slug>* 2>/dev/null`) AND that
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/` is gone. If the archive directory is
    absent, archiving FAILED.
 4. If `openspec validate`, `openspec archive`, or the step-3
    verification fails: do NOT mark the ticket `done`. Treat the run

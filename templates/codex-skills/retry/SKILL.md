@@ -13,8 +13,13 @@ You are NOT a separate pipeline. You inspect what `$implement`
 left behind, summarise the current state, and re-invoke
 `$implement` with a hint about what's already in place. The
 implement skill is idempotent — architect reuses an existing
-`openspec/changes/<slug>/`, developer detects ticked tasks and
+`${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/`, developer detects ticked tasks and
 already-correct files, reviewer re-validates from scratch.
+
+**Repository location.** `openspec/**` and `.git` live under
+`${SPECRAILS_REPO_DIR:-.}` (unset ⇒ `.` ⇒ classic in-repo run); inspect change
+artefacts there. The ticket store and `.specrails/agent-memory/` are run-state,
+relative to the working directory.
 
 ## How the user invokes you
 
@@ -25,8 +30,8 @@ already-correct files, reviewer re-validates from scratch.
 
 ### 0. Locate the prior run's artefacts
 
-1. Confirm `pwd` matches the git root.
-2. Load the ticket:
+1. Confirm the repo root with `git -C "${SPECRAILS_REPO_DIR:-.}" rev-parse --show-toplevel`.
+2. Load the ticket (run-state, relative to the working directory):
    `jq '.tickets["<ID>"]' .specrails/local-tickets.json`. If
    the ticket doesn't exist, stop and report.
 3. Inspect what's already on disk for this ticket:
@@ -34,11 +39,11 @@ already-correct files, reviewer re-validates from scratch.
      `.specrails/agent-memory/explanations/` named
      `*-architect-ticket-<ID>.md`. List the latest.
    - **OpenSpec change package**: any
-     `openspec/changes/<slug>/` whose proposal.md mentions
+     `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/` whose proposal.md mentions
      the ticket title or whose tasks.md has tasks scoped to
      the ticket. Find the slug.
    - **tasks.md progress**: count `[x]` vs `[ ]` boxes in
-     `openspec/changes/<slug>/tasks.md`.
+     `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/tasks.md`.
    - **Reviewer verdict**: latest matching
      `*-reviewer-ticket-<ID>.confidence-score.json`. Read
      the issues list and overall score.

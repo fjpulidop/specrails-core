@@ -5,6 +5,9 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     environment: 'node',
     globals: false,
+    // Safety net: pin SPECRAILS_REGISTRY_HOME to a throwaway tmp dir so no test
+    // can write the relocation registry/workspace into the real ~/.specrails.
+    setupFiles: ['src/installer/__tests__/vitest-setup.ts'],
     // Windows runners under load take 25-40s for git + scaffold
     // integration tests and trip the 20s ceiling, leaving subprocesses
     // holding files open which cascades into EBUSY rmdir failures

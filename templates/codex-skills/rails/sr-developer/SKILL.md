@@ -5,6 +5,15 @@ license: MIT
 compatibility: "Codex-native. Designed to run as a full-history sub-agent fork of the implement orchestrator."
 ---
 
+**Repository location.** Your working directory may NOT be the source
+repo. `openspec/**` and the source files named in `tasks.md` (repo-relative
+paths like `src/foo.ts`) live under `${SPECRAILS_REPO_DIR:-.}` — unset ⇒ `.`
+⇒ byte-identical to a classic in-repo run. Read openspec from
+`${SPECRAILS_REPO_DIR:-.}/openspec/...` and edit every source file as
+`${SPECRAILS_REPO_DIR:-.}/<path>`. Run-state you write (`.specrails/agent-memory/`)
+stays relative to the working directory; `.specrails/local-tickets.json` is
+likewise relative (and owned by the orchestrator — you never write it).
+
 You are the **developer** in the specrails implement pipeline. The
 architect produced an OpenSpec change package (proposal + design +
 tasks + spec deltas) and a plan artefact. Your job is to **apply**
@@ -27,14 +36,14 @@ note it in your reply — do not block on the architect.
 1. **Read the inputs**, in this order:
    - `<plan-path>` (the architect's plan artefact under
      `.specrails/agent-memory/explanations/`).
-   - `openspec/changes/<slug>/proposal.md` — the why + what.
-   - `openspec/changes/<slug>/design.md` — the deep design.
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/proposal.md` — the why + what.
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/design.md` — the deep design.
      Read **every section**, especially "Architecture", "Data
      shapes", "State & lifecycle", "Public API / surface",
      "Trade-offs" (so you know what NOT to revisit), and "Open
      questions".
-   - `openspec/changes/<slug>/tasks.md` — your execution checklist.
-   - `openspec/changes/<slug>/specs/<cap>/spec.md` — the
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/tasks.md` — your execution checklist.
+   - `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/specs/<cap>/spec.md` — the
      behavioural contracts the tests must encode.
 
    **About design.md's "Open questions" section** — if the

@@ -14,6 +14,20 @@ Full OpenSpec lifecycle with specialized agents: architect designs, developer im
 
 ---
 
+## Repository location (read first)
+
+Your working directory may NOT be the user's source repository. **Repo-resident** things — the source code, `openspec/**`, `.git`, and the GitHub remote — live under **`${SPECRAILS_REPO_DIR:-.}`**. The spawner sets `SPECRAILS_REPO_DIR` to the repo path; **when it is unset it defaults to `.` (the current directory), making every command below byte-identical to a classic in-repo run.**
+
+Rules used throughout this pipeline:
+- **openspec reads/writes** → `${SPECRAILS_REPO_DIR:-.}/openspec/...`
+- **git commands** → `git -C "${SPECRAILS_REPO_DIR:-.}" ...`
+- **`gh` commands** (issue/PR — they need the repo's remote) → run them from the repo: `(cd "${SPECRAILS_REPO_DIR:-.}" && gh ...)`
+- **worktree merge-back** → the merge *target* side (the main working tree) is `${SPECRAILS_REPO_DIR:-.}/<file>`
+
+**Run-state stays with the working directory** (NOT the repo): `.claude/pipeline-state/`, `.claude/agent-memory/`, `.claude/backlog-cache.json`, and the dry-run cache `.claude/.dry-run/` are all written relative to the current directory. **Profile/agent files** (`.claude/agents/sr-*.md`) are likewise resolved relative to the current directory — do NOT prefix them with `${SPECRAILS_REPO_DIR:-.}`.
+
+---
+
 ## Phase -1: Environment Setup (cloud pre-flight)
 
 **This phase runs BEFORE anything else.** Detect if we're in a cloud/remote environment and ensure all required tools are available.
@@ -353,7 +367,7 @@ If the write fails: print `[backlog-cache] Warning: could not write cache. Confl
 For each resolved issue number, run:
 
 ```bash
-gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
 ```
 
 Build a snapshot object for each issue:
@@ -502,7 +516,7 @@ Otherwise, re-fetch each issue in scope and diff against the Phase 0 snapshot:
 **If `BACKLOG_PROVIDER=github`:** For each issue number in `ISSUE_REFS`:
 
 ```bash
-gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
 ```
 
 If the `gh` command returns non-zero (issue deleted or inaccessible): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`.
@@ -558,7 +572,7 @@ For `body_sha` rows in the table, display only the first 8 characters of each SH
 
 For each chosen idea, launch an **sr-architect** agent (`subagent_type: sr-architect`, `run_in_background: true`).
 
-Each architect creates OpenSpec artifacts in `openspec/changes/<name>/`.
+Each architect creates OpenSpec artifacts in `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/`.
 
 Each agent's prompt should include:
 - Description of the feature
@@ -574,7 +588,7 @@ After all architect agents complete, before launching any developer agent:
 
 #### Step 1: Extract file references
 
-For each `openspec/changes/<name>/tasks.md`, extract all paths listed under `**Files:**` entries (both `Create:` and `Modify:` lines). Normalize paths: strip leading `./`.
+For each `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/tasks.md`, extract all paths listed under `**Files:**` entries (both `Create:` and `Modify:` lines). Normalize paths: strip leading `./`.
 
 #### Step 2: Build the shared-file registry
 
@@ -653,7 +667,7 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 
 #### Choosing the right developer agent
 
-For each feature, read `openspec/changes/<name>/tasks.md` and classify every task by its layer tags and file references.
+For each feature, read `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/tasks.md` and classify every task by its layer tags and file references.
 
 **Step 1 — Classify tasks into layers:**
 
@@ -857,6 +871,8 @@ If a doc-sync agent fails or times out:
 
 #### Merge Algorithm
 
+The merge **target** (the main repo working tree where merged files land) is `<target>` = **`${SPECRAILS_REPO_DIR:-.}`**. Every `<target>/<file>` below therefore resolves to `${SPECRAILS_REPO_DIR:-.}/<file>` so merged code lands in the real repo, not the working directory. (`<worktree-path>` is an absolute git-worktree path supplied by the runtime; `git -C <worktree-path>` already targets it directly.)
+
 Process features in `MERGE_ORDER` sequence. For each feature:
 
 **Step 1: Identify changed files**
@@ -871,7 +887,7 @@ Split into `exclusive_files` (only this feature modifies them) and `shared_files
 
 Copy directly from worktree to target:
 ```bash
-cp <worktree-path>/<file> <target>/<file>
+cp <worktree-path>/<file> "${SPECRAILS_REPO_DIR:-.}"/<file>
 ```
 Log: `Copied (exclusive): <file>`
 
@@ -880,7 +896,7 @@ Log: `Copied (exclusive): <file>`
 For each shared file, choose strategy by file type:
 
 **Strategy A — Markdown section-aware merge** (`.md` files):
-1. Read base: current content of `<target>/<file>`.
+1. Read base: current content of `${SPECRAILS_REPO_DIR:-.}/<file>` (the merge target).
 2. Read incoming: `<worktree-path>/<file>`.
 3. Parse both into sections using `##` heading boundaries (heading line + all content until next `##` or EOF).
 4. Build section maps: `{heading_text: content}` for base and incoming.
@@ -897,7 +913,7 @@ For each shared file, choose strategy by file type:
      >>>>>>> base
      ```
      Log: `CONFLICT: <file> — section "<heading>" requires manual resolution.`
-6. Write merged result to `<target>/<file>`.
+6. Write merged result to `${SPECRAILS_REPO_DIR:-.}/<file>` (the merge target).
 
 **Strategy B — Unified diff sequential apply** (all other file types):
 1. Generate incoming diff against original `main`:
@@ -906,7 +922,7 @@ For each shared file, choose strategy by file type:
    ```
 2. Apply to current target:
    ```bash
-   patch --forward --fuzz=3 <target>/<file> < <diff>
+   patch --forward --fuzz=3 "${SPECRAILS_REPO_DIR:-.}"/<file> < <diff>
    ```
 3. If `patch` succeeds: log `Merged (diff-apply): <file>`.
 4. If `patch` fails: insert conflict markers around rejected hunks. Log: `CONFLICT: <file> — N hunks rejected.`
@@ -949,7 +965,7 @@ If `MERGE_REPORT.requires_resolution` is non-empty:
 
 Build `CONTEXT_BUNDLES` from the features in `MERGE_ORDER`:
 ```
-{ "<feature-a>": "openspec/changes/<feature-a>/context-bundle.md", "<feature-b>": "openspec/changes/<feature-b>/context-bundle.md" }
+{ "<feature-a>": "${SPECRAILS_REPO_DIR:-.}/openspec/changes/<feature-a>/context-bundle.md", "<feature-b>": "${SPECRAILS_REPO_DIR:-.}/openspec/changes/<feature-b>/context-bundle.md" }
 ```
 
 Load merge resolver config from `.claude/merge-resolver-config.json` if it exists. Extract `confidence_threshold` (default: 70) and `mode` (default: `auto`).
@@ -959,7 +975,7 @@ Construct the `sr-merge-resolver` agent prompt with:
 - `CONTEXT_BUNDLES`: the map above
 - `CONFIDENCE_THRESHOLD`: from config or default (70)
 - `RESOLUTION_MODE`: from config or default (`auto`)
-- `REPORT_PATH`: `openspec/changes/<first-feature-in-MERGE_ORDER>/merge-resolution-report.md`
+- `REPORT_PATH`: `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<first-feature-in-MERGE_ORDER>/merge-resolution-report.md`
 
 Launch the **sr-merge-resolver** agent (`subagent_type: sr-merge-resolver`, foreground, `run_in_background: false`). Wait for it to complete.
 
@@ -1107,7 +1123,7 @@ After the generalist reviewer agent completes, evaluate the confidence score bef
 
 #### Step 1 — Read score file
 
-Path: `openspec/changes/<name>/confidence-score.json`
+Path: `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/confidence-score.json`
 
 - If the file does not exist:
   - Set `CONFIDENCE_STATUS=MISSING`
@@ -1213,7 +1229,7 @@ Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json
 
 **If `BACKLOG_PROVIDER=github`:**
 ```bash
-gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt
+(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
 ```
 
 If the cache file is missing or malformed JSON at this point: log `[conflict-check] Warning: cache file missing or unreadable. Skipping diff for this run.` and proceed to Phase 4c (treat as clean).
@@ -1270,13 +1286,15 @@ This phase respects the `GIT_AUTO` and `BACKLOG_WRITE` settings from configurati
 
 #### If `GIT_AUTO=true` (automatic shipping)
 
-1. Create branch from `main`: `git checkout -b feat/<descriptive-name>`
-2. One commit per feature with descriptive messages
-3. If the reviewer modified files, create an additional commit: `fix: resolve CI issues (reviewer)`
-4. Push with `-u` flag: `git push -u origin <branch-name>`
-5. Create PR (if GitHub CLI is available):
+All git operations run against the repo via `git -C "${SPECRAILS_REPO_DIR:-.}"`, and `gh` runs from inside the repo so it can detect the remote.
+
+1. Create branch from `main`: `git -C "${SPECRAILS_REPO_DIR:-.}" checkout -b feat/<descriptive-name>`
+2. One commit per feature with descriptive messages (`git -C "${SPECRAILS_REPO_DIR:-.}" add … && git -C "${SPECRAILS_REPO_DIR:-.}" commit -m …`)
+3. If the reviewer modified files, create an additional commit: `git -C "${SPECRAILS_REPO_DIR:-.}" commit -m "fix: resolve CI issues (reviewer)"`
+4. Push with `-u` flag: `git -C "${SPECRAILS_REPO_DIR:-.}" push -u origin <branch-name>`
+5. Create PR (if GitHub CLI is available), running it from the repo:
    ```bash
-   {{PR_CREATE_CMD}}
+   (cd "${SPECRAILS_REPO_DIR:-.}" && {{PR_CREATE_CMD}})
    ```
    If `gh` is not authenticated, print a compare URL for manual PR creation.
 
@@ -1293,9 +1311,9 @@ All implementation is complete and CI checks pass.
 - [list all modified/created files per feature]
 
 ### Suggested Next Steps
-1. Review the changes: `git diff`
-2. Create a branch: `git checkout -b feat/<name>`
-3. Stage and commit: `git add <files> && git commit -m "feat: ..."`
+1. Review the changes: `git -C "${SPECRAILS_REPO_DIR:-.}" diff`
+2. Create a branch: `git -C "${SPECRAILS_REPO_DIR:-.}" checkout -b feat/<name>`
+3. Stage and commit: `git -C "${SPECRAILS_REPO_DIR:-.}" add <files> && git -C "${SPECRAILS_REPO_DIR:-.}" commit -m "feat: ..."`
 4. Push and create PR manually
 ```
 
@@ -1307,7 +1325,7 @@ All implementation is complete and CI checks pass.
   {{BACKLOG_COMMENT_CMD}}
   ```
   - **Local:** Update the ticket status to `"done"` using `{{BACKLOG_UPDATE_CMD}}` and add a comment: `"Implemented in PR #XX. All acceptance criteria met."` via `{{BACKLOG_COMMENT_CMD}}`. Local tickets are closed directly — there is no auto-close-on-merge mechanism.
-  - **GitHub:** `gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met."` — do NOT close the issue explicitly. Use `Closes #N` in the PR body so GitHub auto-closes on merge.
+  - **GitHub:** `(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met.")` — do NOT close the issue explicitly. Use `Closes #N` in the PR body so GitHub auto-closes on merge.
   - **JIRA:** `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."`
   - For GitHub/JIRA: ensure the PR body includes `Closes #N` for each fully resolved issue (auto-closes on merge)
 - For partially resolved issues/tickets: add a comment noting progress:
