@@ -559,6 +559,18 @@ export interface AssembleProjectWorkspaceInput {
    * is always the full superset; this is where per-project filtering happens.
    */
   selectedAgents?: string[]
+  /**
+   * When true, the static provider subtrees (`agents`/`commands`/`skills`/`rules`)
+   * and the settings file are COPIED as real files from the framework store into
+   * the workspace instead of SYMLINKED. Used by the in-repo standalone install
+   * (`init`/`update` with `artifactRoot === codeRoot`) so the repo gets real,
+   * committable files — a symlink into `$HOME/.specrails/framework` would be
+   * invisible to a standalone user's `claude`/`codex`/`gemini` running in the
+   * repo. The PROJECT layer (agent-memory, manifest, instruction files) is real
+   * either way. Defaults to false (relocated workspaces symlink — the desktop /
+   * `--relocate` path).
+   */
+  copyStatics?: boolean
 }
 
 export interface AssembleProjectWorkspaceResult {
@@ -598,6 +610,10 @@ export function assembleProjectWorkspace(
     ? new Set([...input.selectedAgents, ...CORE_AGENTS])
     : new Set([...CORE_AGENTS])
 
+  // In-repo standalone install COPIES the static subtrees as real files; the
+  // relocated (desktop / --relocate) path symlinks them. Defaults to symlink.
+  const preferCopy = input.copyStatics === true
+
   const links: Record<string, 'symlink' | 'junction' | 'copy'> = {}
   for (const sub of LINKED_PROVIDER_SUBTREES[input.provider]) {
     const target = path.join(currentProviderDir, sub)
@@ -606,10 +622,10 @@ export function assembleProjectWorkspace(
     if (sub === 'agents') {
       // `agents/` is linked PER-FILE so the workspace can carry user/desktop
       // `custom-*.md` agents alongside the framework agents.
-      links[sub] = linkAgentFiles(target, dest, selectedAgentSet)
+      links[sub] = linkAgentFiles(target, dest, selectedAgentSet, preferCopy)
     } else {
       // Every other subtree holds no user files → whole-dir symlink (single inode).
-      links[sub] = symlinkOrCopy(target, dest)
+      links[sub] = symlinkOrCopy(target, dest, preferCopy)
     }
   }
 
@@ -622,7 +638,7 @@ export function assembleProjectWorkspace(
     const settingsTarget = path.join(currentProviderDir, settingsFile)
     const settingsLink = path.join(workspaceProviderDir, settingsFile)
     if (pathExists(settingsTarget) && !pathExists(settingsLink)) {
-      links[settingsFile] = symlinkOrCopy(settingsTarget, settingsLink)
+      links[settingsFile] = symlinkOrCopy(settingsTarget, settingsLink, preferCopy)
     }
   }
 
@@ -717,13 +733,19 @@ function seedProjectLayer(input: AssembleProjectWorkspaceInput, currentProviderD
  * superset, so this is where per-project filtering lands. `undefined` ⇒ link
  * every framework agent (used by the legacy callers / parity tests).
  *
+ * When `preferCopy` is true each agent is COPIED as a real file rather than
+ * symlinked (the in-repo standalone install — so a standalone user's CLI finds
+ * real agent files in the repo, not links into `$HOME`).
+ *
  * Returns the dominant mechanism used across the linked files (`copy` if any
- * file fell back to copy — the normal case on Windows without Developer Mode).
+ * file fell back to copy — the normal case on Windows without Developer Mode, or
+ * always when `preferCopy` is set).
  */
 function linkAgentFiles(
   frameworkAgentsDir: string,
   workspaceAgentsDir: string,
   selectedIds?: Set<string>,
+  preferCopy = false,
 ): 'symlink' | 'junction' | 'copy' {
   mkdirp(workspaceAgentsDir)
   // Names the framework currently PROVIDES (regardless of selection) — used to
@@ -739,7 +761,7 @@ function linkAgentFiles(
     const id = name.slice(0, -3)
     if (selectedIds && (!selectedIds.has(id) || QUICK_EXCLUDED_AGENTS.has(id))) continue
     linkedNames.add(name)
-    const m = symlinkOrCopy(src, path.join(workspaceAgentsDir, name))
+    const m = symlinkOrCopy(src, path.join(workspaceAgentsDir, name), preferCopy)
     if (m === 'copy') mechanism = 'copy'
     else if (m === 'junction' && mechanism !== 'copy') mechanism = 'junction'
   }

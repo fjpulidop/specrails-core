@@ -31,6 +31,14 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
  *   --provider <claude>   Force provider (only `claude` accepted in v1)
  *   --from-config [<p>]   Read provider + tier from install-config.yaml
  *   --quick               Quick tier (direct template placement, skip enrich)
+ *   --relocate            Relocate artifacts to the $HOME workspace (symlinked
+ *                         from the bundled framework) instead of installing them
+ *                         IN-REPO. Default is in-repo so a standalone user's
+ *                         `claude`/`codex`/`gemini` finds the agents/commands in
+ *                         their own repo. specrails-desktop pre-creates a registry
+ *                         entry (so it always relocates regardless of this flag);
+ *                         standalone users opt in with `--relocate` or
+ *                         `SPECRAILS_RELOCATE=1`.
  */
 
 export interface InitFlags {
@@ -39,6 +47,7 @@ export interface InitFlags {
   provider?: string | boolean
   'from-config'?: string | boolean
   quick?: boolean
+  relocate?: boolean
   'hub-json'?: boolean
 }
 
@@ -104,17 +113,27 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     skipPrereqs,
   })
 
-  // ─── Relocate-always: resolve where artifacts live ───────────────────
-  // EVERY Specrails artifact lands under `artifactRoot` (the $HOME workspace),
-  // never in the repo. The ONLY in-repo writes are `openspec/**` (below) and
-  // git/worktree ops. `codeRoot` is always the repo.
+  // ─── Resolve where artifacts live: in-repo (default) vs relocated ─────
+  // Standalone `init` installs IN-REPO by default so a user's CLI finds the
+  // agents/commands in their own repo. Relocation (the $HOME workspace, with the
+  // framework symlinked in) is opt-in via `--relocate` / `SPECRAILS_RELOCATE=1`,
+  // and is what specrails-desktop drives (it pre-creates the registry entry, so
+  // `allocate:false` still resolves an EXISTING relocated entry → relocated).
+  //
+  // `allocate:false` + no existing entry ⇒ legacy in-repo layout where
+  // `artifactRoot === codeRoot === repoRoot`. `allocate:true` (relocate) allocates
+  // a $HOME workspace entry. EVERY Specrails artifact lands under `artifactRoot`;
+  // the ONLY in-repo writes are `openspec/**` (below) and git/worktree ops.
+  const relocate = flags.relocate === true || process.env.SPECRAILS_RELOCATE === '1'
   const { artifactRoot, codeRoot } = resolveArtifacts(repoRoot, {
-    allocate: true,
+    allocate: relocate,
     allocator: 'core-standalone',
     home: process.env.SPECRAILS_REGISTRY_HOME,
     providers: [prereqs.provider],
     coreVersion: version,
   })
+  // In-repo when the resolution did NOT relocate the artifacts out of the repo.
+  const inRepo = artifactRoot === codeRoot
 
   // ─── Phase 2 + 3 ──────────────────────────────────────────────────────
   // Bundled-framework flow: materialize the provider-INVARIANT framework ONCE
@@ -144,8 +163,15 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     codeRoot,
     scriptDir,
     selectedAgents: selectedAgentsHint,
+    // In-repo: COPY the framework statics as real, committable files. Relocated:
+    // symlink from the framework store (O(1) update on a version swap).
+    copyStatics: inRepo,
   })
-  ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
+  if (inRepo) {
+    ok(`Copied ${providerDir}/ from framework ${version} into the repo + seeded project layer`)
+  } else {
+    ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
+  }
 
   // openspec STAYS in the repo (codeRoot) — unchanged behaviour.
   await installOpenSpecProject(codeRoot, prereqs.provider)

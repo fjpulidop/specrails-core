@@ -228,14 +228,27 @@ export function removePath(p: string): void {
  *   2. Windows: try a junction (dirs) / file symlink first, then a plain symlink.
  *   3. Both failed (e.g. unprivileged Windows): COPY the target subtree verbatim.
  *
+ * When `preferCopy` is true the symlink/junction attempts are SKIPPED entirely
+ * and the target is copied directly — used by the in-repo standalone install so
+ * the repo receives real, committable files instead of symlinks pointing into
+ * `$HOME/.specrails/framework`. (An existing correct symlink at `linkPath` is
+ * still honoured idempotently before the copy so a re-run of a relocated install
+ * does not thrash.)
+ *
  * Returns the mechanism used so the caller can record it (copy-fallback loses the
  * O(1) `current`-swap update path; the caller may warn). Idempotent: when the
  * link already points at `target` it is left untouched and `'symlink'` returned.
  */
-export function symlinkOrCopy(target: string, linkPath: string): 'symlink' | 'junction' | 'copy' {
+export function symlinkOrCopy(
+  target: string,
+  linkPath: string,
+  preferCopy = false,
+): 'symlink' | 'junction' | 'copy' {
   const targetIsDir = isDir(target)
 
-  // Idempotency: an existing correct symlink is left alone.
+  // Idempotency: an existing correct symlink is left alone (even when preferCopy
+  // is requested — a relocated workspace that re-runs an in-repo install must not
+  // thrash a link it already created correctly).
   if (isSymlink(linkPath)) {
     try {
       const current = readlinkSync(linkPath)
@@ -248,6 +261,16 @@ export function symlinkOrCopy(target: string, linkPath: string): 'symlink' | 'ju
 
   removePath(linkPath)
   mkdirp(path.dirname(linkPath))
+
+  // In-repo install: skip the symlink/junction dance and copy real files.
+  if (preferCopy) {
+    if (targetIsDir) {
+      copyDir(target, linkPath)
+    } else {
+      copyFile(target, linkPath)
+    }
+    return 'copy'
+  }
 
   if (process.platform === 'win32') {
     if (targetIsDir) {
