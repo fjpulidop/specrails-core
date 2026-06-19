@@ -42,10 +42,6 @@ function setupFakeScriptDir(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-frontend-developer.md'), '# frontend\n')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), '# rules\n')
   writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'), '/specrails:implement\n')
-  // Agent-Teams commands — materialized into the superset store ALWAYS; linked
-  // into a workspace only when agentTeams=true.
-  writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'team-review.md'), '/specrails:team-review\n')
-  writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'team-debug.md'), '/specrails:team-debug\n')
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
@@ -141,26 +137,22 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
   })
 
   describe('installFramework — full superset materialization (fix #3 / fix #4)', () => {
-    it('materializes EVERY agent + the team commands regardless of the input selection', () => {
+    it('materializes EVERY agent regardless of the input selection', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const fwDir = path.join(tmpDir, 'framework')
       setupFakeScriptDir(scriptDir)
 
-      // Caller asks for a NARROW selection + agentTeams off — the SHARED store
-      // must still be the full superset so a later project can link specialists.
+      // Caller asks for a NARROW selection — the SHARED store must still be the
+      // full superset so a later project can link specialists.
       installFramework({
         scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
-        selectedAgents: ['sr-architect'], agentTeams: false,
+        selectedAgents: ['sr-architect'],
       })
 
       const fwAgents = path.join(fwDir, '5.0.0', '.claude', 'agents')
       for (const id of ['sr-architect', 'sr-developer', 'sr-reviewer', 'sr-backend-developer', 'sr-frontend-developer']) {
         expect(pathExists(path.join(fwAgents, `${id}.md`))).toBe(true)
       }
-      // Team commands are in the SHARED store even though agentTeams was false.
-      const fwCmds = path.join(fwDir, '5.0.0', '.claude', 'commands', 'specrails')
-      expect(pathExists(path.join(fwCmds, 'team-review.md'))).toBe(true)
-      expect(pathExists(path.join(fwCmds, 'team-debug.md'))).toBe(true)
     })
 
     it('swapCurrent:false materializes WITHOUT swapping current (multi-provider safety)', () => {
@@ -222,8 +214,6 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       const res = assembleProjectWorkspace({
         workspace: ws, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude',
         version: '5.0.0', codeRoot: repo, scriptDir,
-        // agentTeams:true keeps the whole-dir symlink path (no per-file team prune).
-        agentTeams: true,
       })
 
       // commands/ + rules/ are whole-dir links into framework/current (symlink on
@@ -360,7 +350,7 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       // Project A installs first with a NARROW selection.
       installFramework({
         scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
-        selectedAgents: ['sr-backend-developer'], agentTeams: false,
+        selectedAgents: ['sr-backend-developer'],
       })
       ensureCurrentSymlink(fwDir, '5.0.0')
 
@@ -388,35 +378,6 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
         expect(pathExists(path.join(aAgents, `${id}.md`))).toBe(true)
         expect(pathExists(path.join(bAgents, `${id}.md`))).toBe(true)
       }
-    })
-
-    it('excludes team-* commands when agentTeams is off, includes them when on (fix #3)', () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const fwDir = path.join(tmpDir, 'framework')
-      const wsLean = path.join(tmpDir, 'ws-lean')
-      const wsTeams = path.join(tmpDir, 'ws-teams')
-      setupFakeScriptDir(scriptDir)
-      installFramework({ scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0' })
-      ensureCurrentSymlink(fwDir, '5.0.0')
-
-      assembleProjectWorkspace({
-        workspace: wsLean, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude',
-        version: '5.0.0', codeRoot: path.join(tmpDir, 'repoLean'), scriptDir, agentTeams: false,
-      })
-      assembleProjectWorkspace({
-        workspace: wsTeams, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude',
-        version: '5.0.0', codeRoot: path.join(tmpDir, 'repoTeams'), scriptDir, agentTeams: true,
-      })
-
-      const leanCmds = path.join(wsLean, '.claude', 'commands', 'specrails')
-      const teamsCmds = path.join(wsTeams, '.claude', 'commands', 'specrails')
-      // Lean: implement is present, team-* are NOT surfaced.
-      expect(pathExists(path.join(leanCmds, 'implement.md'))).toBe(true)
-      expect(pathExists(path.join(leanCmds, 'team-review.md'))).toBe(false)
-      expect(pathExists(path.join(leanCmds, 'team-debug.md'))).toBe(false)
-      // agentTeams=true: team-* ARE surfaced (whole-dir symlink).
-      expect(pathExists(path.join(teamsCmds, 'team-review.md'))).toBe(true)
-      expect(pathExists(path.join(teamsCmds, 'team-debug.md'))).toBe(true)
     })
 
     it('removes a stale COPY-fallback framework agent on a version swap, preserving custom-*.md (fix #7)', () => {

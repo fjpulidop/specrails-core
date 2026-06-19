@@ -225,8 +225,6 @@ export interface ScaffoldInput {
   provider: Provider
   /** Derived directory name (`.claude` or `.codex`). */
   providerDir: string
-  /** Whether to install Agent Teams commands (team-review / team-debug). */
-  agentTeams: boolean
   /** Install tier — `quick` triggers the direct-placement path. */
   tier: 'full' | 'quick'
   /** Optional explicit allow-list used by config-driven quick installs. */
@@ -449,8 +447,6 @@ export interface InstallFrameworkInput {
   providerDir: string
   /** Framework version (the `<version>/` segment). */
   version: string
-  /** Install Agent Teams commands (team-review / team-debug). */
-  agentTeams?: boolean
   /** Optional explicit agent allow-list (kept for parity with scaffold). */
   selectedAgents?: string[]
 }
@@ -495,19 +491,18 @@ export function installFramework(input: InstallFrameworkInput): InstallFramework
   // STATIC subtree (the project-named instruction files are skipped below), so
   // we hand it the framework dir to satisfy the contract — and we DELETE any
   // project-named instruction file the settings helpers wrote.
-  // The SHARED framework store is always the FULL SUPERSET — EVERY agent and the
-  // team commands — so a SECOND project with a DIFFERENT agent selection links
-  // its specialists from the same materialized copy instead of inheriting the
-  // first project's narrower set. Per-project filtering moves to the workspace
-  // LINK step (`linkAgentFiles` via `assembleProjectWorkspace`). `selectedAgents`
-  // / `agentTeams` on the input are intentionally IGNORED here.
+  // The SHARED framework store is always the FULL SUPERSET — EVERY agent — so a
+  // SECOND project with a DIFFERENT agent selection links its specialists from
+  // the same materialized copy instead of inheriting the first project's
+  // narrower set. Per-project filtering moves to the workspace LINK step
+  // (`linkAgentFiles` via `assembleProjectWorkspace`). `selectedAgents` on the
+  // input is intentionally IGNORED here.
   const staticInput: ScaffoldInput = {
     scriptDir: input.scriptDir,
     artifactRoot: versionDir,
     codeRoot: versionDir,
     provider: input.provider,
     providerDir: input.providerDir,
-    agentTeams: true,
     tier: 'quick',
     selectedAgents: undefined,
     materializeAllAgents: true,
@@ -564,13 +559,6 @@ export interface AssembleProjectWorkspaceInput {
    * is always the full superset; this is where per-project filtering happens.
    */
   selectedAgents?: string[]
-  /**
-   * Install the Agent Teams commands (`team-review` / `team-debug`) into the
-   * workspace. The shared framework store always materializes them; when false
-   * the workspace links commands/skills PER-FILE excluding the `team-*` entries.
-   * Defaults to false (lean install — matches the legacy in-place behaviour).
-   */
-  agentTeams?: boolean
 }
 
 export interface AssembleProjectWorkspaceResult {
@@ -609,7 +597,6 @@ export function assembleProjectWorkspace(
   const selectedAgentSet = input.selectedAgents
     ? new Set([...input.selectedAgents, ...CORE_AGENTS])
     : new Set([...CORE_AGENTS])
-  const agentTeams = input.agentTeams ?? false
 
   const links: Record<string, 'symlink' | 'junction' | 'copy'> = {}
   for (const sub of LINKED_PROVIDER_SUBTREES[input.provider]) {
@@ -617,14 +604,11 @@ export function assembleProjectWorkspace(
     if (!pathExists(target)) continue
     const dest = path.join(workspaceProviderDir, sub)
     if (sub === 'agents') {
+      // `agents/` is linked PER-FILE so the workspace can carry user/desktop
+      // `custom-*.md` agents alongside the framework agents.
       links[sub] = linkAgentFiles(target, dest, selectedAgentSet)
-    } else if (!agentTeams && subtreeHasTeamEntries(target)) {
-      // Lean install AND the superset store actually carries `team-*` entries:
-      // link this subtree PER-FILE, excluding the team commands/skills. The
-      // common case (no team-* in the store) keeps the cheap whole-dir symlink
-      // below — preserving the single-inode contract.
-      links[sub] = linkSubtreeExcludingTeams(target, dest)
     } else {
+      // Every other subtree holds no user files → whole-dir symlink (single inode).
       links[sub] = symlinkOrCopy(target, dest)
     }
   }
@@ -799,66 +783,6 @@ function isFrameworkAgentName(name: string): boolean {
   return /^sr-[a-z0-9-]+\.md$/.test(name)
 }
 
-/**
- * True when a framework subtree (`commands`/`skills`) contains any `team-*`
- * entry (a `team-*.md` file or a `team-*` skill dir), recursively. Gates the
- * per-file team-excluding link path: when no team entries exist the workspace
- * keeps the cheap whole-dir symlink. Recurses into real subdirs (e.g.
- * `.claude/commands/specrails/`).
- */
-function subtreeHasTeamEntries(subtreeDir: string): boolean {
-  for (const entry of listDir(subtreeDir)) {
-    const name = path.basename(entry)
-    if (/^team-/.test(name) || /^team-/.test(name.replace(/\.md$/, ''))) return true
-    if (isDir(entry) && !isSymlink(entry) && subtreeHasTeamEntries(entry)) return true
-  }
-  return false
-}
-
-/**
- * Link a whole framework subtree (`commands`/`skills`) into the workspace
- * PER-FILE, EXCLUDING the Agent-Teams `team-*` entries. Used when `agentTeams`
- * is off and the shared framework store (always the superset) carries the team
- * commands the lean install must not surface. Recurses into subdirs (e.g.
- * `.claude/commands/specrails/`). Returns the dominant mechanism.
- */
-function linkSubtreeExcludingTeams(
-  frameworkSubtreeDir: string,
-  workspaceSubtreeDir: string,
-): 'symlink' | 'junction' | 'copy' {
-  mkdirp(workspaceSubtreeDir)
-  let mechanism: 'symlink' | 'junction' | 'copy' = 'symlink'
-  const bump = (m: 'symlink' | 'junction' | 'copy') => {
-    if (m === 'copy') mechanism = 'copy'
-    else if (m === 'junction' && mechanism !== 'copy') mechanism = 'junction'
-  }
-  const linkedNames = new Set<string>()
-  for (const src of listDir(frameworkSubtreeDir)) {
-    const name = path.basename(src)
-    // Exclude team commands/skills whether they ship as `team-*.md` files or
-    // `team-*/` skill dirs.
-    if (/^team-/.test(name) || /^team-/.test(name.replace(/\.md$/, ''))) continue
-    linkedNames.add(name)
-    const dest = path.join(workspaceSubtreeDir, name)
-    if (isDir(src) && !isSymlink(src)) {
-      // Recurse: a real framework subdir is mirrored as a real workspace subdir
-      // so a future agentTeams=false re-link can prune team-* inside it too.
-      bump(linkSubtreeExcludingTeams(src, dest))
-    } else {
-      bump(symlinkOrCopy(src, dest))
-    }
-  }
-  // Drop stale framework entries (including team-* left from a prior agentTeams
-  // run) that are no longer linked. Only symlinks/copied framework files — there
-  // are no user files under commands/skills.
-  for (const existing of listDir(workspaceSubtreeDir)) {
-    const name = path.basename(existing)
-    if (linkedNames.has(name)) continue
-    removePath(existing)
-  }
-  return mechanism
-}
-
 /** Write or sentinel-upsert a project instruction file (AGENTS.md/GEMINI.md). */
 function seedInstructionFile(filePath: string, content: string): void {
   if (!pathExists(filePath)) {
@@ -885,7 +809,6 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
       const name = path.basename(entry)
       if (!name.endsWith('.md')) continue
       if (name === 'setup.md') continue
-      if (!input.agentTeams && /^team-/.test(name)) continue
       const skillName = name.replace(/\.md$/, '')
       const destDir = path.join(input.artifactRoot, input.providerDir, 'skills', skillName)
       // A codex-native override (written for spawn_agent semantics + the
@@ -918,7 +841,6 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
       const name = path.basename(entry)
       if (!name.endsWith('.md')) continue
       if (name === 'setup.md') continue
-      if (!input.agentTeams && /^team-/.test(name)) continue
       writeGeminiCommandFromCommand({
         src: entry,
         dest: path.join(destDir, `${name.replace(/\.md$/, '')}.toml`),
@@ -936,7 +858,6 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
     const name = path.basename(entry)
     if (!name.endsWith('.md')) continue
     if (name === 'setup.md') continue
-    if (!input.agentTeams && /^team-/.test(name)) continue
     copyFile(entry, path.join(destDir, name))
     count++
   }
@@ -1409,7 +1330,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
         const name = path.basename(src)
         if (!name.endsWith('.md')) continue
         if (name === 'setup.md') continue
-        if (!input.agentTeams && /^team-/.test(name)) continue
         const skillName = name.slice(0, -3)
         const dest = path.join(input.artifactRoot, input.providerDir, 'skills', skillName, 'SKILL.md')
 
@@ -1449,7 +1369,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
         const name = path.basename(src)
         if (!name.endsWith('.md')) continue
         if (name === 'setup.md') continue
-        if (!input.agentTeams && /^team-/.test(name)) continue
         const cmdName = name.slice(0, -3)
         const dest = path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', `${cmdName}.toml`)
         const overrideToml = path.join(overridesSrc, `${cmdName}.toml`)
@@ -1533,10 +1452,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   for (const dep of COMMAND_AGENT_DEPENDENCIES) {
     const hasAllRequired = dep.requires.every((a) => installedAgentNames.has(a))
     if (!hasAllRequired) excludedCommands.add(dep.command)
-  }
-  if (!input.agentTeams) {
-    excludedCommands.add('team-debug')
-    excludedCommands.add('team-review')
   }
 
   const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')

@@ -24,7 +24,6 @@ export type ModelPreset = 'balanced' | 'budget' | 'max'
 export interface InstallConfig {
   version: 1
   provider: Provider
-  agent_teams?: boolean
   tier?: Tier
   agents: {
     selected: string[]
@@ -130,9 +129,8 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
       selected,
     },
   }
-  if (typeof doc.agent_teams === 'boolean') {
-    result.agent_teams = doc.agent_teams
-  }
+  // NOTE: a legacy `agent_teams` field may still be present in older configs.
+  // It is intentionally ignored (not rejected) for backward compatibility.
   if (doc.tier !== undefined) {
     result.tier = doc.tier as Tier
   }

@@ -167,58 +167,7 @@ describe('runUpdate', () => {
       expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     })
 
-    it('reads agent_teams=true from install-config.yaml and keeps team-* commands', async () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const repoRoot = path.join(tmpDir, 'repo')
-      await setupFakeScriptDir(scriptDir, '5.0.0')
-      // Add team-* commands to the fake script source.
-      writeFileLf(path.join(scriptDir, 'commands', 'team-debug.md'), 'team debug')
-      writeFileLf(path.join(scriptDir, 'commands', 'team-review.md'), 'team review')
-      await simulateExistingInstall(repoRoot, '4.2.0')
-      writeFileLf(
-        path.join(repoRoot, '.specrails', 'install-config.yaml'),
-        [
-          'version: 1',
-          'provider: claude',
-          'agent_teams: true',
-          'agents:',
-          '  selected: [sr-architect]',
-          '',
-        ].join('\n'),
-      )
-      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
-
-      const result = await runUpdate({ 'root-dir': repoRoot })
-      expect(result.agentTeams).toBe(true)
-      const cmdsDir = path.join(workspaceFor(repoRoot), '.claude', 'commands', 'specrails')
-      expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(true)
-      expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(true)
-    })
-
-    it('--agent-teams flag wins over install-config.yaml when set', async () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const repoRoot = path.join(tmpDir, 'repo')
-      await setupFakeScriptDir(scriptDir, '5.0.0')
-      await simulateExistingInstall(repoRoot, '4.2.0')
-      // Config says agent_teams off; flag forces on.
-      writeFileLf(
-        path.join(repoRoot, '.specrails', 'install-config.yaml'),
-        [
-          'version: 1',
-          'provider: claude',
-          'agent_teams: false',
-          'agents:',
-          '  selected: [sr-architect]',
-          '',
-        ].join('\n'),
-      )
-      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
-
-      const result = await runUpdate({ 'root-dir': repoRoot, 'agent-teams': true })
-      expect(result.agentTeams).toBe(true)
-    })
-
-    it('falls back to tier=full + agent_teams=false when no install-config.yaml exists', async () => {
+    it('falls back to tier=full when no install-config.yaml exists', async () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
       await setupFakeScriptDir(scriptDir, '5.0.0')
@@ -227,7 +176,6 @@ describe('runUpdate', () => {
 
       const result = await runUpdate({ 'root-dir': repoRoot })
       expect(result.tier).toBe('full')
-      expect(result.agentTeams).toBe(false)
     })
   })
 

@@ -52,7 +52,6 @@ Parse the YAML and extract:
 - `config.models.preset` — `balanced`, `budget`, or `max` (see Model Presets below)
 - `config.models.defaults.model` — default model override (overrides preset)
 - `config.models.overrides` — per-agent model overrides (highest priority)
-- `config.agent_teams` — boolean; whether to install team-review/team-debug commands
 
 Store all values in variables prefixed `FC_`.
 
@@ -94,7 +93,6 @@ If `FC_tier == "quick"`:
 - Generate only agents in `FC_AGENTS_SELECTED` (skip any not in the list)
 - Apply model resolution (FC1 preset/override logic) to each agent's frontmatter
 - Run all Phase 4 sub-phases (4.1, 4.2, 4.3, 4.4) normally but without interactive prompts
-- If `FC_agent_teams == true`, also install team-review and team-debug commands
 
 **Phase 5 (Normal):** Run Phase 5 cleanup normally.
 

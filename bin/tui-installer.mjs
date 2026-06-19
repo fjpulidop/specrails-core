@@ -196,7 +196,6 @@ function writeInstallConfig(specrailsDir, cfg) {
     `  preset: ${cfg.modelPreset}`,
     `  defaults: { model: ${cfg.modelDefaults} }`,
     `  overrides:${overridesYaml}`,
-    `agent_teams: ${cfg.agentTeams}`,
     '',
   ].join('\n');
 
@@ -214,7 +213,6 @@ function writeDefaultConfig(specrailsDir, provider) {
     modelPreset:    'balanced',
     modelDefaults:  PROVIDER_DEFAULT_MODEL[provider] ?? 'sonnet',
     modelOverrides: {},
-    agentTeams:     false,
   });
 }
 
@@ -429,22 +427,6 @@ async function run() {
     console.log(`  → Model: ${modelDefaults}  (${provider} uses one model for all agents)\n`);
   }
 
-  // ── Step 5: Agent Teams (Claude only) ──────────────────────────────────────
-
-  clearScreen();
-  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}  |  Preset: ${modelPreset}\n`);
-
-  let agentTeams = false;
-  if (provider === 'claude') {
-    agentTeams = await select({
-      message: 'Install Agent Teams commands? (experimental)',
-      choices: [
-        { value: false, name: 'No  — standard single-agent workflow (recommended)' },
-        { value: true,  name: 'Yes — /specrails:team-review and :team-debug  (requires CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1)' },
-      ],
-    });
-  }
-
   // ── Write config & exit fullscreen ──────────────────────────────────────────
 
   exitFullscreen();
@@ -457,7 +439,6 @@ async function run() {
     modelPreset,
     modelDefaults,
     modelOverrides,
-    agentTeams,
   });
 
   console.log(`\n  ✓ Config written to .specrails/install-config.yaml`);

@@ -50,7 +50,6 @@ export interface UpdateFlags {
   only?: string | boolean
   'dry-run'?: boolean
   yes?: boolean
-  'agent-teams'?: boolean
   /**
    * Force the provider to update. Without it, the provider is auto-detected
    * from the existing install (`.claude` > `.codex` > `.gemini`), which on a
@@ -71,8 +70,6 @@ export interface UpdateResult {
   scope: OnlyComponent
   /** Tier honored during this update (read from install-config.yaml when present). */
   tier: Tier
-  /** Whether Agent Teams commands are kept on this update. */
-  agentTeams: boolean
 }
 
 export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
@@ -84,9 +81,9 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   )
   const dryRun = flags['dry-run'] === true
 
-  // Read install-config.yaml so the user's original choices (tier,
-  // agent_teams) survive the update. Flag overrides win when present;
-  // missing config falls back to defaults (tier=full, agent_teams=false).
+  // Read install-config.yaml so the user's original choices (tier) survive
+  // the update. Flag overrides win when present; missing config falls back to
+  // defaults (tier=full).
   // ─── Relocate-always: resolve where artifacts live ───────────────────
   // All Specrails artifacts (incl. the specrails-version marker, manifest,
   // install-config) live under `artifactRoot` (the $HOME workspace), never the
@@ -105,7 +102,6 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   const config =
     loadInstallConfig(resolveConfigPath(repoRoot)) ?? loadInstallConfig(resolveConfigPath(artifactRoot))
   const tier: Tier = config?.tier ?? 'full'
-  const agentTeams = flags['agent-teams'] === true || config?.agent_teams === true
   const selectedAgents = config?.agents.selected
 
   const marker = path.join(artifactRoot, '.specrails', 'specrails-version')
@@ -144,19 +140,19 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       '--only=web-manager is deprecated. The standalone web-manager has been retired; ' +
         'specrails-desktop is the supported dashboard. Skipping with no changes.',
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier, agentTeams }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier }
   }
 
   if (config) {
-    info(`Honouring install-config.yaml: tier=${tier}, agent_teams=${agentTeams}`)
+    info(`Honouring install-config.yaml: tier=${tier}`)
   }
 
   if (dryRun) {
     info(
-      `Dry run: would update [${scope}, tier=${tier}, agent_teams=${agentTeams}] ` +
+      `Dry run: would update [${scope}, tier=${tier}] ` +
         `for ${previousVersion ?? '(unknown)'} → ${currentVersion}.`,
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier, agentTeams }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier }
   }
 
   step(`Update: refreshing scaffold [scope=${scope}] (${previousVersion ?? '?'} → ${currentVersion})`)
@@ -173,7 +169,6 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       provider,
       providerDir,
       version: currentVersion,
-      agentTeams,
       selectedAgents,
     })
     assembleProjectWorkspace({
@@ -185,7 +180,6 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       codeRoot,
       scriptDir,
       selectedAgents,
-      agentTeams,
     })
     ok(`Re-linked ${providerDir}/ at framework ${currentVersion} + rewrote manifest`)
   } else if (scope === 'rules' || scope === 'agents') {
@@ -206,7 +200,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   info(`specrails-core ${previousVersion ?? '?'} → ${currentVersion}`)
   // Terminal sentinel for programmatic consumers (see comment in init.ts).
   ok('update complete')
-  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope, tier, agentTeams }
+  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope, tier }
 }
 
 /**
