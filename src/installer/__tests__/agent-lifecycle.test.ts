@@ -17,10 +17,11 @@ import { describe, expect, it } from 'vitest'
  *   - sr-reviewer:  task gate present; opsx:archive present;
  *                   specName guard present
  *
- * Each invariant is tested against the two live Claude sources that must
- * stay in lockstep:
- *   - the canonical Claude subagent template (templates/agents/)
- *   - the installed Claude subagent file (.claude/agents/)
+ * Each invariant is tested against the canonical Claude subagent template
+ * (templates/agents/) — the source of truth. The generated `.claude/agents/`
+ * dogfood copy is no longer committed (under relocate-artifacts it materializes
+ * under $HOME on install), so there is no in-repo installed copy to lockstep
+ * against here.
  *
  * Codex enforces the equivalent OpenSpec-CLI lifecycle through its own
  * codex-native skills. Because codex reviewers run in PARALLEL and only the
@@ -36,14 +37,9 @@ function readTemplate(name: string): string {
   return readFileSync(path.join(repoRoot, 'templates', 'agents', `${name}.md`), 'utf8')
 }
 
-function readInstalled(name: string): string {
-  return readFileSync(path.join(repoRoot, '.claude', 'agents', `${name}.md`), 'utf8')
-}
-
 describe('sr-architect lifecycle invariants', () => {
   const files = {
     template: readTemplate('sr-architect'),
-    installed: readInstalled('sr-architect'),
   }
 
   for (const [label, content] of Object.entries(files)) {
@@ -95,7 +91,6 @@ describe('sr-architect lifecycle invariants', () => {
 describe('sr-developer lifecycle invariants', () => {
   const files = {
     template: readTemplate('sr-developer'),
-    installed: readInstalled('sr-developer'),
   }
 
   for (const [label, content] of Object.entries(files)) {
@@ -131,7 +126,6 @@ describe('sr-developer lifecycle invariants', () => {
 describe('sr-reviewer lifecycle invariants', () => {
   const files = {
     template: readTemplate('sr-reviewer'),
-    installed: readInstalled('sr-reviewer'),
   }
 
   for (const [label, content] of Object.entries(files)) {
