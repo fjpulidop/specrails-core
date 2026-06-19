@@ -56,6 +56,7 @@
     "test": "npm run typecheck && vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "dogfood": "npm run build && node bin/specrails-core.mjs init --yes",
     "prepack": "npm run build"
   },
   "dependencies": {
