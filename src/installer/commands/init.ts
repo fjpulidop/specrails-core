@@ -31,7 +31,6 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
  *   --provider <claude>   Force provider (only `claude` accepted in v1)
  *   --from-config [<p>]   Read provider + tier from install-config.yaml
  *   --quick               Quick tier (direct template placement, skip enrich)
- *   --agent-teams         Enable Agent Teams commands (team-review, team-debug)
  */
 
 export interface InitFlags {
@@ -40,7 +39,6 @@ export interface InitFlags {
   provider?: string | boolean
   'from-config'?: string | boolean
   quick?: boolean
-  'agent-teams'?: boolean
   'hub-json'?: boolean
 }
 
@@ -48,7 +46,6 @@ export interface InitResult {
   repoRoot: string
   provider: Provider
   tier: Tier
-  agentTeams: boolean
 }
 
 /**
@@ -66,11 +63,10 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   const autoYes = flags.yes === true
   const skipPrereqs = process.env.SPECRAILS_SKIP_PREREQS === '1'
 
-  // --from-config: read provider + tier + agent_teams from yaml.
+  // --from-config: read provider + tier from yaml.
   const fromConfigFlag = flags['from-config']
   let providerHint: Provider | undefined
   let tierHint: Tier | undefined
-  let agentTeamsHint = flags['agent-teams'] === true
   let selectedAgentsHint: string[] | undefined
 
   if (fromConfigFlag !== undefined) {
@@ -80,7 +76,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     if (config) {
       providerHint = config.provider
       tierHint = config.tier
-      if (config.agent_teams) agentTeamsHint = true
       selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
     } else {
@@ -137,7 +132,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     provider: prereqs.provider,
     providerDir,
     version,
-    agentTeams: agentTeamsHint,
     selectedAgents: selectedAgentsHint,
   })
 
@@ -150,7 +144,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     codeRoot,
     scriptDir,
     selectedAgents: selectedAgentsHint,
-    agentTeams: agentTeamsHint,
   })
   ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
 
@@ -175,7 +168,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     repoRoot,
     provider: prereqs.provider,
     tier,
-    agentTeams: agentTeamsHint,
   }
 }
 
@@ -185,7 +177,6 @@ export interface EnsureFrameworkInput {
   provider: Provider
   providerDir: string
   version: string
-  agentTeams?: boolean
   selectedAgents?: string[]
   /**
    * When false, MATERIALIZE the provider subtree but do NOT swap
@@ -218,7 +209,6 @@ export function ensureFramework(input: EnsureFrameworkInput): void {
     provider: input.provider,
     providerDir: input.providerDir,
     version: input.version,
-    agentTeams: input.agentTeams,
     selectedAgents: input.selectedAgents,
   })
   if (input.swapCurrent !== false) {

@@ -287,7 +287,6 @@ agents:
 models:
   preset: balanced      # balanced | budget | max
   overrides: {}         # per-agent overrides: { sr-architect: opus }
-agent_teams: false      # install team-review/team-debug commands
 ```
 
 **Model presets:**

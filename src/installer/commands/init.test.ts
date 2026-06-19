@@ -184,7 +184,6 @@ describe('runInit', () => {
         'version: 1',
         'provider: claude',
         'tier: quick',
-        'agent_teams: true',
         'agents:',
         '  selected: [sr-architect]',
         '',
@@ -198,7 +197,6 @@ describe('runInit', () => {
     })
 
     expect(result.tier).toBe('quick')
-    expect(result.agentTeams).toBe(true)
     const ws = workspaceFor(repoRoot)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)

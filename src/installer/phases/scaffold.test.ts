@@ -26,8 +26,6 @@ function setupFakeSource(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
   writeFileLf(path.join(scriptDir, 'commands', 'setup.md'), 'legacy setup')
-  writeFileLf(path.join(scriptDir, 'commands', 'team-review.md'), 'team review')
-  writeFileLf(path.join(scriptDir, 'commands', 'team-debug.md'), 'team debug')
 }
 
 function setupRichFakeSource(scriptDir: string): void {
@@ -57,7 +55,7 @@ function setupRichFakeSource(scriptDir: string): void {
     '# merge resolver\nmemory: {{MEMORY_PATH}}\n',
   )
 
-  // Commands (incl. product/merge/team variants so we can assert
+  // Commands (incl. product/merge variants so we can assert
   // dependency-driven exclusion).
   const cmds = [
     ['implement.md', '/specrails:implement\nmemory: {{MEMORY_PATH}}\n'],
@@ -66,8 +64,6 @@ function setupRichFakeSource(scriptDir: string): void {
     ['get-backlog-specs.md', '/specrails:get-backlog-specs'],
     ['vpc-drift.md', '/specrails:vpc-drift'],
     ['merge-resolve.md', '/specrails:merge-resolve'],
-    ['team-debug.md', '/specrails:team-debug'],
-    ['team-review.md', '/specrails:team-review'],
     ['unknown-ph.md', 'raw {{UNKNOWN_PLACEHOLDER}} trailing'],
   ] as const
   for (const [name, content] of cmds) {
@@ -142,7 +138,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -174,7 +169,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'gemini',
         providerDir: '.gemini',
-        agentTeams: false,
         tier: 'quick',
       })
     }
@@ -294,7 +288,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -319,7 +312,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -352,7 +344,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -372,46 +363,6 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.specrails-version'))).toBe(false)
     })
 
-    it('skips team-* commands when agentTeams=false', () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const repoRoot = path.join(tmpDir, 'repo')
-      setupFakeSource(scriptDir)
-
-      scaffoldInstallation({
-        scriptDir,
-        artifactRoot: repoRoot,
-        codeRoot: repoRoot,
-        provider: 'claude',
-        providerDir: '.claude',
-        agentTeams: false,
-        tier: 'full',
-      })
-
-      const dest = path.join(repoRoot, '.claude', 'commands', 'specrails')
-      expect(pathExists(path.join(dest, 'team-review.md'))).toBe(false)
-      expect(pathExists(path.join(dest, 'team-debug.md'))).toBe(false)
-    })
-
-    it('includes team-* commands when agentTeams=true', () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const repoRoot = path.join(tmpDir, 'repo')
-      setupFakeSource(scriptDir)
-
-      scaffoldInstallation({
-        scriptDir,
-        artifactRoot: repoRoot,
-        codeRoot: repoRoot,
-        provider: 'claude',
-        providerDir: '.claude',
-        agentTeams: true,
-        tier: 'full',
-      })
-
-      const dest = path.join(repoRoot, '.claude', 'commands', 'specrails')
-      expect(pathExists(path.join(dest, 'team-review.md'))).toBe(true)
-      expect(pathExists(path.join(dest, 'team-debug.md'))).toBe(true)
-    })
-
     it('quick tier places agents + rules directly under <providerDir>', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
@@ -423,7 +374,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'quick',
       })
 
@@ -443,7 +393,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
         })
 
@@ -468,7 +417,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
           selectedAgents: ['sr-architect'],
         })
@@ -500,7 +448,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
         })
 
@@ -526,7 +473,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
         })
 
@@ -545,7 +491,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
         })
 
@@ -562,46 +507,6 @@ describe('scaffold', () => {
         expect(pathExists(path.join(cmdsDir, 'why.md'))).toBe(true)
       })
 
-      it('excludes team-* commands unless agentTeams is true', () => {
-        const scriptDir = path.join(tmpDir, 'core')
-        const repoRoot = path.join(tmpDir, 'repo')
-        setupRichFakeSource(scriptDir)
-
-        scaffoldInstallation({
-          scriptDir,
-          artifactRoot: repoRoot,
-          codeRoot: repoRoot,
-          provider: 'claude',
-          providerDir: '.claude',
-          agentTeams: false,
-          tier: 'quick',
-        })
-
-        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
-        expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(false)
-        expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(false)
-      })
-
-      it('includes team-* commands when agentTeams is true', () => {
-        const scriptDir = path.join(tmpDir, 'core')
-        const repoRoot = path.join(tmpDir, 'repo')
-        setupRichFakeSource(scriptDir)
-
-        scaffoldInstallation({
-          scriptDir,
-          artifactRoot: repoRoot,
-          codeRoot: repoRoot,
-          provider: 'claude',
-          providerDir: '.claude',
-          agentTeams: true,
-          tier: 'quick',
-        })
-
-        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
-        expect(pathExists(path.join(cmdsDir, 'team-debug.md'))).toBe(true)
-        expect(pathExists(path.join(cmdsDir, 'team-review.md'))).toBe(true)
-      })
-
       it('creates per-agent memory directories + shared explanations dir when an arch/reviewer ships', () => {
         const scriptDir = path.join(tmpDir, 'core')
         const repoRoot = path.join(tmpDir, 'repo')
@@ -613,7 +518,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          agentTeams: false,
           tier: 'quick',
         })
 
@@ -637,7 +541,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -658,7 +561,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        agentTeams: false,
         tier: 'full',
       })
 
@@ -679,7 +581,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        agentTeams: false,
         tier: 'quick',
       })
 
@@ -713,7 +614,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        agentTeams: false,
         tier: 'quick',
       })
 

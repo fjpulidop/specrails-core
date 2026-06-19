@@ -26,7 +26,6 @@ export interface InstallFrameworkFlags {
   'framework-dir'?: string | boolean
   provider?: string | boolean
   version?: string | boolean
-  'agent-teams'?: boolean
   /**
    * Materialize the provider subtree but do NOT swap `current`. The caller
    * materializes EVERY provider first (each with `--no-swap`), then issues ONE
@@ -47,7 +46,6 @@ export interface AssembleFlags {
   provider?: string | boolean
   version?: string | boolean
   'code-root'?: string | boolean
-  'agent-teams'?: boolean
   /** Comma-separated per-project agent allow-list (links a subset of the superset). */
   'selected-agents'?: string | boolean
 }
@@ -126,7 +124,6 @@ export async function runInstallFramework(
     provider,
     providerDir,
     version,
-    agentTeams: flags['agent-teams'] === true,
     swapCurrent,
   })
   if (swapCurrent) {
@@ -195,7 +192,6 @@ export async function runAssemble(flags: AssembleFlags): Promise<AssembleOutcome
     codeRoot,
     scriptDir,
     selectedAgents,
-    agentTeams: flags['agent-teams'] === true,
   })
   ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
 

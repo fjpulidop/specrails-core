@@ -125,7 +125,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      agentTeams: false,
       tier: 'quick',
       selectedAgents: undefined,
     })
@@ -150,7 +149,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      agentTeams: false,
       tier: 'quick',
       selectedAgents: ['sr-test-writer'],
     })
@@ -178,7 +176,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      agentTeams: false,
       tier: 'quick',
       selectedAgents: undefined,
     })
@@ -269,7 +266,6 @@ describe('update — optional-agent preservation', () => {
       '  preset: balanced',
       '  defaults: { model: sonnet }',
       '  overrides: {}',
-      'agent_teams: false',
       '',
     ].join('\n')
     writeFileLf(

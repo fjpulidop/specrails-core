@@ -110,7 +110,7 @@ co-located with the installer source:
 | `src/installer/commands/update.test.ts` | Update | update flow + reserved paths + --only |
 | `src/installer/commands/doctor.test.ts` | Doctor | health checks against fixture repos |
 | `src/installer/cli.test.ts` | CLI | Argument parsing, dispatch, exit codes |
-| `src/installer/phases/scaffold.test.ts` | Scaffold | template placement, VPC exclusion, agent-teams gate |
+| `src/installer/phases/scaffold.test.ts` | Scaffold | template placement, VPC exclusion |
 | `src/installer/phases/manifest.test.ts` | Manifest | sha256 stability, sorted output, exclusions |
 | `src/installer/phases/install-config.test.ts` | Config validation | YAML round-trip + validation errors |
 | `src/installer/phases/provider-detect.test.ts` | Provider | claude vs codex resolution + Codex coming-soon error |

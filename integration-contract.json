@@ -49,8 +49,7 @@
       "agents.excluded": "string[] — agent names to skip",
       "models.preset": "string — balanced | budget | max",
       "models.defaults.model": "string — sonnet | opus | haiku (overrides preset)",
-      "models.overrides": "Record<string, string> — per-agent model (highest priority)",
-      "agent_teams": "boolean — install team-review and team-debug commands"
+      "models.overrides": "Record<string, string> — per-agent model (highest priority)"
     }
   },
   "checkpoints": {

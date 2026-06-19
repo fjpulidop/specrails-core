@@ -60,17 +60,31 @@ describe('install-config', () => {
       expect(result.provider).toBe('gemini')
     })
 
-    it('accepts an optional agent_teams, tier, and preset', () => {
+    it('accepts an optional tier and preset', () => {
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'claude',
+        tier: 'quick',
+        agents: { selected: [], preset: 'balanced' },
+      })
+      expect(result.tier).toBe('quick')
+      expect(result.agents.preset).toBe('balanced')
+    })
+
+    it('tolerates a legacy agent_teams field (backward compat) without failing', () => {
+      // Older configs may still carry `agent_teams: true/false`. The field is no
+      // longer supported but must be silently ignored, never rejected.
       const result = validateInstallConfig({
         version: 1,
         provider: 'claude',
         agent_teams: true,
         tier: 'quick',
-        agents: { selected: [], preset: 'balanced' },
+        agents: { selected: ['sr-architect'], preset: 'balanced' },
       })
-      expect(result.agent_teams).toBe(true)
+      expect(result.provider).toBe('claude')
       expect(result.tier).toBe('quick')
-      expect(result.agents.preset).toBe('balanced')
+      expect(result.agents.selected).toEqual(['sr-architect'])
+      expect((result as unknown as Record<string, unknown>).agent_teams).toBeUndefined()
     })
 
     it('rejects missing version', () => {
@@ -159,7 +173,6 @@ describe('install-config', () => {
         [
           'version: 1',
           'provider: claude',
-          'agent_teams: false',
           'tier: full',
           'agents:',
           '  selected:',
