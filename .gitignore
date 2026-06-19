@@ -1,8 +1,15 @@
-.claude/.dry-run/
-.claude/health-history/
-.claude/compat-snapshots/
-.claude/worktrees/
-.claude/backlog-cache.json
+# specrails dogfood artifacts (relocate-artifacts: artifacts live in $HOME, not
+# the repo). The generated agents / commands / layer rule / settings / pipeline
+# state under .claude/ are NOT committed — they drift vs templates/ (the source
+# of truth) and now regenerate under $HOME on install. Only the bespoke
+# dev-convention rules (no template source) stay tracked.
+.claude/*
+!.claude/rules/
+.claude/rules/*
+!.claude/rules/agents.md
+!.claude/rules/shell.md
+!.claude/rules/templates.md
+
 coverage/
 templates/web-manager/node_modules/
 node_modules/
@@ -12,11 +19,5 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-
 # specrails
-.claude/agent-memory/
 .specrails/
-
-# Third-party / superseded self-install artifacts (not specrails-core deliverables)
-.claude/commands/opsx/
-.claude/skills/
