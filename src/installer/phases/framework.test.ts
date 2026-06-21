@@ -247,6 +247,40 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       expect(readFileSync(path.join(ws, '.specrails', 'specrails-version'), 'utf8').trim()).toBe('5.0.0')
     })
 
+    it('win32: reads the framework from the VERSION dir, not the (untraversable) current junction', () => {
+      // Windows "untrusted mount point" repro: on the user's box Node's fs throws
+      // UNKNOWN/scandir reading THROUGH the `current` junction, but the versioned
+      // dir reads fine. The assemble must source the framework from the version
+      // dir on Windows — else linkAgentFiles links nothing and the workspace has
+      // no sr-* agents, so the implement pipeline can't delegate and runs inline.
+      const orig = process.platform
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true })
+      try {
+        const scriptDir = path.join(tmpDir, 'core')
+        const fwDir = path.join(tmpDir, 'framework')
+        const ws = path.join(tmpDir, 'ws')
+        const repo = path.join(tmpDir, 'repo')
+        setupFakeScriptDir(scriptDir)
+        materialize(fwDir, scriptDir)
+        // Make reading THROUGH `current` fail (replace the link with a plain file)
+        // — exactly the symptom on the user's box. The version dir is untouched.
+        rmSync(path.join(fwDir, 'current'), { recursive: true, force: true })
+        writeFileLf(path.join(fwDir, 'current'), 'broken-junction\n')
+
+        assembleProjectWorkspace({
+          workspace: ws, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude',
+          version: '5.0.0', codeRoot: repo, scriptDir,
+        })
+
+        const wsArch = path.join(ws, '.claude', 'agents', 'sr-architect.md')
+        const fwArch = path.join(fwDir, '5.0.0', '.claude', 'agents', 'sr-architect.md')
+        expect(pathExists(wsArch)).toBe(true) // populated despite a broken `current`
+        expect(readTextFile(wsArch)).toBe(readTextFile(fwArch))
+      } finally {
+        Object.defineProperty(process, 'platform', { value: orig, configurable: true })
+      }
+    })
+
     it('preserves a pre-existing custom-*.md agent (reserved path) while linking framework agents', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const fwDir = path.join(tmpDir, 'framework')
