@@ -591,7 +591,19 @@ export interface AssembleProjectWorkspaceResult {
 export function assembleProjectWorkspace(
   input: AssembleProjectWorkspaceInput,
 ): AssembleProjectWorkspaceResult {
-  const currentProviderDir = path.join(input.frameworkDir, 'current', input.providerDir)
+  // Source root for the framework subtrees. On POSIX read through the `current`
+  // symlink so the per-file workspace symlinks track the atomic `current`-swap
+  // (O(1) framework updates). On WINDOWS the `current` junction can be
+  // UNTRAVERSABLE by Node's `fs` ("UNKNOWN: scandir" / "untrusted mount point")
+  // — `readdirSync(<frameworkDir>/current/<providerDir>/agents)` then throws and
+  // `linkAgentFiles` links NOTHING, leaving the workspace with no agents (and no
+  // commands/skills): the implement pipeline has no sr-* sub-agents to delegate
+  // to and silently runs everything inline. The versioned dir is a real,
+  // traversable directory and `version` is always passed, so read from it
+  // directly on Windows (the subtrees become copies / version-pinned junctions —
+  // the already-accepted O(projects) Windows update cost). POSIX is unchanged.
+  const sourceRoot = process.platform === 'win32' ? input.version : 'current'
+  const currentProviderDir = path.join(input.frameworkDir, sourceRoot, input.providerDir)
   const workspaceProviderDir = path.join(input.workspace, input.providerDir)
   mkdirp(workspaceProviderDir)
 
