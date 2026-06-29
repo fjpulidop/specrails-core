@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.10.1](https://github.com/fjpulidop/specrails-core/compare/v4.10.0...v4.10.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* **implement:** make pipeline local-tickets-only; drop GitHub/JIRA branching ([#318](https://github.com/fjpulidop/specrails-core/issues/318)) ([04edd2c](https://github.com/fjpulidop/specrails-core/commit/04edd2c97de26de0e00fe2094052dd9321e0cbca))
+
 ## [4.10.0](https://github.com/fjpulidop/specrails-core/compare/v4.9.1...v4.10.0) (2026-06-19)
 
 
