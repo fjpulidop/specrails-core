@@ -6,9 +6,9 @@ Full OpenSpec lifecycle with specialized agents: architect designs, developer im
 
 **Input:** $ARGUMENTS — accepts three modes:
 
-1. **Issue numbers** (recommended): `#85, #71, #63` — implement these specific GitHub Issues directly. Skips exploration and selection.
+1. **Ticket numbers** (recommended): `#85, #71, #63` — implement these specific tickets from the local backlog (`local-tickets.json`). Skips exploration and selection.
 2. **Text description** (single feature): `"add price history chart"` — implement a single feature from a description. Skips exploration and selection.
-3. **Area names** (fallback): `Analytics, UI, Testing` — explores areas and picks the best items. Only use if no backlog issues exist.
+3. **Area names** (fallback): `Analytics, UI, Testing` — explores areas and picks the best items. Only use if no backlog tickets exist.
 
 **IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — background agents cannot request permissions interactively.
 
@@ -21,7 +21,7 @@ Your working directory may NOT be the user's source repository. **Repo-resident*
 Rules used throughout this pipeline:
 - **openspec reads/writes** → `${SPECRAILS_REPO_DIR:-.}/openspec/...`
 - **git commands** → `git -C "${SPECRAILS_REPO_DIR:-.}" ...`
-- **`gh` commands** (issue/PR — they need the repo's remote) → run them from the repo: `(cd "${SPECRAILS_REPO_DIR:-.}" && gh ...)`
+- **`gh` commands** (PR — they need the repo's remote) → run them from the repo: `(cd "${SPECRAILS_REPO_DIR:-.}" && gh ...)`
 - **worktree merge-back** → the merge *target* side (the main working tree) is `${SPECRAILS_REPO_DIR:-.}/<file>`
 
 **Run-state stays with the working directory** (NOT the repo): `.claude/pipeline-state/`, `.claude/agent-memory/`, `.claude/backlog-cache.json`, and the dry-run cache `.claude/.dry-run/` are all written relative to the current directory. **Profile/agent files** (`.claude/agents/sr-*.md`) are likewise resolved relative to the current directory — do NOT prefix them with `${SPECRAILS_REPO_DIR:-.}`.
@@ -40,21 +40,12 @@ Check the environment variable `CLAUDE_CODE_ENTRYPOINT`. If it contains `remote_
 
 #### 1. Backlog provider availability
 
-Read `.specrails/backlog-config.json` and extract `BACKLOG_PROVIDER`.
-
-**If `BACKLOG_PROVIDER=local`:**
 ```bash
 [[ -f ".specrails/local-tickets.json" ]] && echo "Local tickets storage: OK" || echo "WARNING: local-tickets.json not found"
 ```
 - Set `LOCAL_TICKETS_AVAILABLE=true/false` based on file existence.
-- Set `GH_AVAILABLE=false` (GitHub CLI not needed for local provider).
+- Set `GH_AVAILABLE=false` (backlog is always local).
 - Set `BACKLOG_AVAILABLE=true` if local-tickets.json exists.
-
-**Otherwise:**
-```bash
-gh auth status 2>&1
-```
-- Set `GH_AVAILABLE=true/false` for later phases.
 
 #### 2. OpenSpec CLI
 
@@ -312,13 +303,10 @@ Initialize conflict-tracking variables:
 - Set `SINGLE_MODE = true`. No worktrees, no parallelism.
 - **Skip Phase 1 and Phase 2** — go directly to Phase 3a.
 
-**If the user passed issue/ticket references** (e.g. `#85, #71` for GitHub, `#1, #2` for local tickets, or `PROJ-85, PROJ-71` for JIRA):
-- Fetch each issue/ticket:
-  ```bash
-  {{BACKLOG_VIEW_CMD}}
-  ```
-- Extract area, value, effort, and feature details from each issue body.
-- If only 1 issue: set `SINGLE_MODE = true`.
+**If the user passed ticket references** (e.g. `#85, #71` or `#1, #2`):
+- Fetch each ticket from `.specrails/local-tickets.json` at `tickets["{id}"]`.
+- Extract area, value, effort, and feature details from each ticket body.
+- If only 1 ticket: set `SINGLE_MODE = true`.
 - **Skip Phase 1 and Phase 2** — go directly to confirmation table.
 
 #### Phase 0 snapshot capture
@@ -362,48 +350,7 @@ If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
 
 If the write fails: print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
 
-##### If `GH_AVAILABLE=true` and input mode was issue numbers (GitHub/JIRA):
-
-For each resolved issue number, run:
-
-```bash
-(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
-```
-
-Build a snapshot object for each issue:
-- `number`: integer issue number
-- `title`: issue title string
-- `state`: `"open"` or `"closed"`
-- `assignees`: array of assignee login names, sorted alphabetically
-- `labels`: array of label names, sorted alphabetically
-- `body_sha`: SHA-256 of the raw body string — compute with:
-  ```bash
-  echo -n "{body}" | sha256sum | cut -d' ' -f1
-  ```
-  If `sha256sum` is not available, fall back to `openssl dgst -sha256 -r` or `shasum -a 256`.
-- `updated_at`: the `updatedAt` value from the GitHub API response
-- `captured_at`: current local time in ISO 8601 format
-
-Write the following JSON to `.claude/backlog-cache.json` (overwrite fully — this establishes a fresh baseline for this run):
-
-```json
-{
-  "schema_version": "1",
-  "provider": "github",
-  "last_updated": "<ISO 8601 timestamp>",
-  "written_by": "implement",
-  "issues": {
-    "<number>": { <snapshot object> },
-    ...
-  }
-}
-```
-
-If the write succeeds: set `SNAPSHOTS_CAPTURED=true`.
-
-If the write fails (e.g., `.claude/` directory does not exist): print `[backlog-cache] Warning: could not write cache. Conflict detection disabled for this run.` and set `SNAPSHOTS_CAPTURED=false`. Do NOT abort the pipeline.
-
-##### Otherwise (no backlog available or non-issue input):
+##### Otherwise (no backlog available or non-ticket input):
 
 Set `SNAPSHOTS_CAPTURED=false`. Print: `[conflict-check] Snapshot skipped — backlog unavailable or non-issue input.`
 
@@ -509,19 +456,9 @@ Pick the single idea with the best impact/effort ratio from each exploration. Pr
 
 **Guard:** If `SNAPSHOTS_CAPTURED=false` OR `DRY_RUN=true`, print `[conflict-check] Skipped — SNAPSHOTS_CAPTURED=false (or dry-run mode).` and proceed directly to Phase 3a.
 
-Otherwise, re-fetch each issue in scope and diff against the Phase 0 snapshot:
+Otherwise, re-fetch each ticket in scope and diff against the Phase 0 snapshot:
 
-**If `BACKLOG_PROVIDER=local`:** For each ticket ID in `ISSUE_REFS`, read `.specrails/local-tickets.json` and extract the ticket at `tickets["{id}"]`. If the ticket does not exist (deleted): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`. Otherwise, reconstruct a current snapshot using the same mapping as the Phase 0 local snapshot.
-
-**If `BACKLOG_PROVIDER=github`:** For each issue number in `ISSUE_REFS`:
-
-```bash
-(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
-```
-
-If the `gh` command returns non-zero (issue deleted or inaccessible): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`.
-
-In both cases, reconstruct a current snapshot (same shape as Phase 0: sort `assignees` and `labels`, compute `body_sha`).
+For each ticket ID in `ISSUE_REFS`, read `.specrails/local-tickets.json` and extract the ticket at `tickets["{id}"]`. If the ticket does not exist (deleted): treat as a CRITICAL conflict — field `"state"`, was `<cached state>`, now `"deleted"`. Otherwise, reconstruct a current snapshot using the same mapping as the Phase 0 local snapshot (sort `assignees` and `labels`, compute `body_sha`).
 
 **Short-circuit:** If `current.updatedAt == cached.updated_at`, mark the issue as clean and skip field comparison.
 
@@ -1223,14 +1160,9 @@ When `DRY_RUN=true`, the reviewer still writes `confidence-score.json` (it is an
 
 This check is independent of Phase 3a.0. Even if the user chose to continue through a conflict at Phase 3a.0, this gate re-checks all in-scope issues against the Phase 0 snapshot. It is the final gate before any code reaches git.
 
-Re-fetch each issue in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
+Re-fetch each ticket in `ISSUE_REFS` and diff against `.claude/backlog-cache.json` using the same algorithm as Phase 3a.0:
 
-**If `BACKLOG_PROVIDER=local`:** Read `.specrails/local-tickets.json` and extract each ticket by ID.
-
-**If `BACKLOG_PROVIDER=github`:**
-```bash
-(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view {number} --json number,title,state,assignees,labels,body,updatedAt)
-```
+Read `.specrails/local-tickets.json` and extract each ticket by ID.
 
 If the cache file is missing or malformed JSON at this point: log `[conflict-check] Warning: cache file missing or unreadable. Skipping diff for this run.` and proceed to Phase 4c (treat as clean).
 
@@ -1264,9 +1196,6 @@ Record skipped operations to `.cache-manifest.json` under `skipped_operations`:
 - If `BACKLOG_PROVIDER=local` and `BACKLOG_WRITE=true`:
   - `"local: ticket comment #{id}"` for each ticket in scope
   - `"local: ticket status update #{id}"` for each fully resolved ticket
-- If `BACKLOG_PROVIDER=github` and `BACKLOG_WRITE=true`:
-  - `"github: issue comment #N"` for each issue in scope
-  - `"github: issue close #N (via PR merge)"` for each fully resolved issue
 
 Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 
@@ -1324,15 +1253,12 @@ All implementation is complete and CI checks pass.
   ```bash
   {{BACKLOG_COMMENT_CMD}}
   ```
-  - **Local:** Update the ticket status to `"done"` using `{{BACKLOG_UPDATE_CMD}}` and add a comment: `"Implemented in PR #XX. All acceptance criteria met."` via `{{BACKLOG_COMMENT_CMD}}`. Local tickets are closed directly — there is no auto-close-on-merge mechanism.
-  - **GitHub:** `(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue comment {number} --body "Implemented in PR #XX. All acceptance criteria met.")` — do NOT close the issue explicitly. Use `Closes #N` in the PR body so GitHub auto-closes on merge.
-  - **JIRA:** `jira issue comment {key} --message "Implemented in PR #XX. All acceptance criteria met."`
-  - For GitHub/JIRA: ensure the PR body includes `Closes #N` for each fully resolved issue (auto-closes on merge)
+  - Update the ticket status to `"done"` using `{{BACKLOG_UPDATE_CMD}}` and add a comment: `"Implemented in PR #XX. All acceptance criteria met."` via `{{BACKLOG_COMMENT_CMD}}`. Tickets are closed directly in `local-tickets.json`.
 - For partially resolved issues/tickets: add a comment noting progress:
   ```bash
   {{BACKLOG_PARTIAL_COMMENT_CMD}}
   ```
-  - **Local:** Additionally update the ticket status to `"in_progress"` via `{{BACKLOG_UPDATE_CMD}}` if it is still `"todo"`.
+  - Additionally update the ticket status to `"in_progress"` via `{{BACKLOG_UPDATE_CMD}}` if it is still `"todo"`.
 
 **If `BACKLOG_WRITE=false`:**
 - Do NOT create, modify, or comment on any issues/tickets.
@@ -1343,8 +1269,8 @@ All implementation is complete and CI checks pass.
   The following tickets should be updated:
   | Ticket | Status | Suggested Action |
   |--------|--------|-----------------|
-  | #85 / PROJ-85 | Fully implemented | Close / move to Done |
-  | #71 / PROJ-71 | Partial progress | Comment: "X completed, Y remaining" |
+  | #85 | Fully implemented | Mark as Done in local-tickets.json |
+  | #71 | Partial progress | Update to "in_progress": "X completed, Y remaining" |
   ```
 
 **Pipeline state:** update `ship` → `done` if git operations and PR creation succeeded, or `failed` with error context describing which step failed (e.g. `"git push failed: <exit code>"`, `"gh pr create failed"`, `"security gate blocked ship"`). If `DRY_RUN=true`: update `ship` → `skipped`.
