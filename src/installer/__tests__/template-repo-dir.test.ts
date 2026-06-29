@@ -293,7 +293,7 @@ describe('STAGE 3 — runtime templates point repo-resident artifacts at ${SPECR
     expect(implement).toContain('${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/tasks.md')
     expect(implement).toContain('git -C "${SPECRAILS_REPO_DIR:-.}" checkout -b feat/')
     expect(implement).toContain('git -C "${SPECRAILS_REPO_DIR:-.}" push -u origin')
-    expect(implement).toContain('(cd "${SPECRAILS_REPO_DIR:-.}" && gh issue view')
+    expect(implement).toContain('(cd "${SPECRAILS_REPO_DIR:-.}" && gh ...)')
     expect(implement).toContain('cp <worktree-path>/<file> "${SPECRAILS_REPO_DIR:-.}"/<file>')
 
     const dev = readFileSync(T('agents/sr-developer.md'), 'utf8')
