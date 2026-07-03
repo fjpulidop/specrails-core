@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.0](https://github.com/fjpulidop/specrails-core/compare/v4.10.1...v4.11.0) (2026-07-03)
+
+
+### Features
+
+* **implement:** honour SPECRAILS_GIT_AUTO=false so a host can own version control ([#320](https://github.com/fjpulidop/specrails-core/issues/320)) ([3867289](https://github.com/fjpulidop/specrails-core/commit/386728975422434442f5e37bb0e55605d426543e))
+
 ## [4.10.1](https://github.com/fjpulidop/specrails-core/compare/v4.10.0...v4.10.1) (2026-06-29)
 
 
