@@ -134,6 +134,12 @@ specrails is not a chat interface. It's a **development pipeline** that coordina
 
 Architect designs → developer builds → reviewer validates → PR created. Multiple features run in parallel with git worktrees.
 
+#### Letting a host own version control (`SPECRAILS_GIT_AUTO`)
+
+By default the pipeline ships automatically (`GIT_AUTO=true`): it creates a branch, commits, pushes, and opens a pull request. When specrails-core runs **inside a host that owns version control itself** — such as [specrails-desktop](https://github.com/fjpulidop/specrails-desktop), which runs each pipeline in an isolated git worktree and opens the pull request for you — that host sets the `SPECRAILS_GIT_AUTO` environment variable to `false`.
+
+When `SPECRAILS_GIT_AUTO=false` (or `0`), the Ship phase is forced onto the **manual** path regardless of configuration: the pipeline stops at "code written and verified" and makes **no branch, commit, push, or PR** — the host does that. This prevents a second, uncoordinated pull request. Leave the variable unset for the normal standalone behaviour (automatic shipping, subject to your `GIT_AUTO` configuration). It composes with `--dry-run`, which independently skips all git/GitHub/backlog operations.
+
 #### Dry-run / preview mode
 
 Not ready to commit? Run the full pipeline without touching git or GitHub:
