@@ -1213,6 +1213,8 @@ Then skip the rest of Phase 4c and proceed directly to Phase 4e.
 
 This phase respects the `GIT_AUTO` and `BACKLOG_WRITE` settings from configuration.
 
+**Environment override (host owns version control).** Before applying the `GIT_AUTO` logic below, check the `SPECRAILS_GIT_AUTO` environment variable. If it is set to `false` or `0`, treat `GIT_AUTO` as `false` for the rest of this phase (and Phase 4d) **regardless of configuration** — do not create a branch, commit, push, or open a PR; follow the `GIT_AUTO=false` (manual shipping) path instead. A host such as [specrails-desktop](https://github.com/fjpulidop/specrails-desktop) sets this when it owns version control (it runs the pipeline in an isolated worktree and opens the pull request itself), so honouring it prevents a second, uncoordinated PR. When `SPECRAILS_GIT_AUTO` is unset or any other value, resolve `GIT_AUTO` from configuration as normal.
+
 #### If `GIT_AUTO=true` (automatic shipping)
 
 All git operations run against the repo via `git -C "${SPECRAILS_REPO_DIR:-.}"`, and `gh` runs from inside the repo so it can detect the remote.
