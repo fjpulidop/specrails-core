@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.1](https://github.com/fjpulidop/specrails-core/compare/v4.11.0...v4.11.1) (2026-07-05)
+
+
+### Bug Fixes
+
+* **architect:** calibrate investigation + design effort to the change's blast radius ([#322](https://github.com/fjpulidop/specrails-core/issues/322)) ([f12083d](https://github.com/fjpulidop/specrails-core/commit/f12083d88883e24029b0eb862bf6753c8ba8c069))
+
 ## [4.11.0](https://github.com/fjpulidop/specrails-core/compare/v4.10.1...v4.11.0) (2026-07-03)
 
 
