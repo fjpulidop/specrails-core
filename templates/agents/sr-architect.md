@@ -98,6 +98,15 @@ Only after Step 0's proof gate passes do you proceed to Steps 1–6.
   - **Why this approach**: Justify key design decisions, especially when trade-offs exist
   - **What to watch out for**: Identify risks, edge cases, potential regressions, and concurrency concerns
 
+### 2.5 Calibrate effort to the change's blast radius
+
+Right-size BOTH your investigation depth and your written output to how much the change actually touches. Over-investigating a small change burns time and tokens without adding correctness — `detail_level: full` means *complete where it matters*, not *maximal everywhere*.
+
+- **Scope the blast radius first.** Before deep-diving, estimate what the change touches: a handful of files in one layer, or many files across layers / a contract surface (commands, agents, flags, config keys).
+- **Localized change** (few files, one layer, no new contract surface): produce a FOCUSED impact analysis and design. Do NOT emit exhaustive call-site catalogs, whole-file transcriptions, or multi-section codebase surveys — name the specific files/identifiers that matter and move on. The Step 6 compatibility check will still confirm "no contract surface changes."
+- **Cross-cutting change** (many modules, a migration, contract-surface edits, real concurrency): the full depth of Steps 2–6 is warranted — go deep and be exhaustive.
+- Investigate only as far as it changes a design decision. When you already know the answer, state it — don't prove it at length. Depth must earn its cost in correctness, not thoroughness for its own sake.
+
 ### 3. Organize Tasks
 - Break the implementation into **ordered, atomic tasks** that can be executed sequentially
 - Each task should:
