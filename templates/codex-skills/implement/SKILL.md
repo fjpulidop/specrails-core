@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Implement a single backlog ticket through a multi-phase pipeline: architect plans (OpenSpec proposal+design+tasks+specs), one or more developers code in TDD order, one or more reviewers validate in parallel. Routing is dynamic — the orchestrator inspects which rail skills are installed in .codex/skills/rails/ and spawns the specialists that apply to the change's scope. Reads .specrails/local-tickets.json, closes the ticket in place, reports concisely. Use when the user invokes `$implement #N` or `$implement <free-form>`."
+description: "Implement a single backlog ticket through a multi-phase pipeline: architect plans (OpenSpec proposal+design+tasks+specs), sr-developer codes in TDD order, sr-reviewer validates (correctness, tests, security, performance). A profile may add custom-* rails. Reads .specrails/local-tickets.json, closes the ticket in place, reports concisely. Use when the user invokes `$implement #N` or `$implement <free-form>`."
 license: MIT
 compatibility: "Codex-native. Uses spawn_agent / send_message / wait_agent (full-history forks, no agent_type / model / reasoning_effort). Per-role instructions live in the rail skills; this orchestrator only routes."
 ---
@@ -40,7 +40,7 @@ move on.
 
 **A `clean` run is NOT finished until the change is archived.**
 Archiving (`openspec archive`) is a hard obligation, not an
-optional epilogue — see Phase 5. If you mark a ticket `done`
+optional epilogue — see Phase 4. If you mark a ticket `done`
 without an archived change under `openspec/changes/archive/`,
 you violated this contract.
 
@@ -71,27 +71,14 @@ and gives you a single aggregated report.
     │
     ├─►  PHASE 1: $sr-architect
     │     produces openspec/changes/<slug>/{proposal,design,tasks,specs}
-    │     + a "Scope" tag in design.md
     │
-    ├─►  PHASE 2: developer(s) — routing depends on scope
-    │     scope=frontend → $sr-frontend-developer (if installed)
-    │     scope=backend  → $sr-backend-developer  (if installed)
-    │     scope=both     → spawn BOTH in parallel (tasks.md must be
-    │                       partitioned), OR fall back to $sr-developer
-    │     else           → $sr-developer
+    ├─►  PHASE 2: $sr-developer
+    │     implements every task (tests + docs included per task)
     │
-    ├─►  PHASE 3: reviewer(s) — parallel where installed
-    │     always:  $sr-reviewer  (baseline)
-    │     frontend changes:    $sr-frontend-reviewer  (if installed)
-    │     backend changes:     $sr-backend-reviewer   (if installed)
-    │     security-sensitive:  $sr-security-reviewer  (if installed)
-    │     perf-sensitive:      $sr-performance-reviewer (if installed)
+    ├─►  PHASE 3: $sr-reviewer
+    │     single reviewer — correctness, TDD/spec, security, performance
     │
-    ├─►  PHASE 4 (optional): post-review augmentation
-    │     coverage dropped + $sr-test-writer installed → spawn
-    │     public surface changed + $sr-doc-sync installed → spawn
-    │
-    └─►  PHASE 5: close ticket + report
+    └─►  PHASE 4: close ticket + report
 ```
 
 All spawns are **full-history forks**. NEVER pass `agent_type`,
@@ -109,14 +96,12 @@ the combo and you'll burn a turn on the retry.
    `jq '.tickets["<ID>"]' .specrails/local-tickets.json`
 3. **List the installed rail skills**:
    `ls .codex/skills/rails/`
-   The output drives routing in phases 2-4. Skills that aren't
-   listed are not installed — never spawn them. The three core
-   rails (`sr-architect`, `sr-developer`, `sr-reviewer`) are
-   always present. `sr-merge-resolver` and every layer specialist
-   are optional — spawn them only when listed.
-4. State (≤4 lines) the ticket goal, the stack you detected from
-   a quick `ls`/`find`, and the optional rails that are
-   available. Do NOT plan files-to-touch — that's the
+   The three core rails (`sr-architect`, `sr-developer`,
+   `sr-reviewer`) are always present and are the only first-party
+   rails. A profile may add user-owned `custom-*` rails; spawn a
+   `custom-*` rail only when it is listed.
+4. State (≤4 lines) the ticket goal and the stack you detected from
+   a quick `ls`/`find`. Do NOT plan files-to-touch — that's the
    architect's job.
 
 ### 1. Phase 1 — Architect
@@ -135,161 +120,78 @@ the combo and you'll burn a turn on the retry.
   > for the full ticket. Follow the `$sr-architect` skill
   > instructions exactly.
   >
-  > In `design.md`'s `## Context` section, include a
-  > `Scope: <labels>` line. Labels are a comma-separated set
-  > drawn from: `frontend`, `backend`, `both`, `security-sensitive`,
-  > `performance-sensitive`. Pick the labels that honestly apply
-  > to this change. The orchestrator uses these to route
-  > subsequent phases.
-  >
   > Reply with the one-line summary the skill specifies.
 
 - `wait_agent`. Read the reply. Extract the plan path.
 - `close_agent`. Open the plan file + design.md.
-- **Parse the Scope line** from design.md's Context section.
-  Store the set of labels for use in phases 2-3. If the line is
-  missing, default to scope = `both`.
 
 If the architect replied with `BLOCKED: …`, stop the pipeline,
 write that reason into the final report, and exit without
 updating the ticket.
 
-### 2. Phase 2 — Developer(s)
+### 2. Phase 2 — Developer
 
-Routing matrix (`available_rails` is the set from step 0.3,
-`scope` is the parsed set from step 1):
-
-| scope contains   | available_rails has                | spawn |
-|---|---|---|
-| `frontend` only  | `sr-frontend-developer`            | $sr-frontend-developer |
-| `backend` only   | `sr-backend-developer`             | $sr-backend-developer  |
-| `frontend` only  | (no fe specialist)                 | $sr-developer (general) |
-| `backend` only   | (no be specialist)                 | $sr-developer (general) |
-| `both`           | both specialists installed         | TWO devs in parallel (see below) |
-| `both`           | only one or neither specialist     | $sr-developer (general) |
-| neither/unknown  | —                                   | $sr-developer (general) |
-
-**Parallel developer case** (`scope = both` AND both specialists
-installed AND `tasks.md` has tasks tagged `[frontend]` /
-`[backend]`):
-
-- spawn TWO `spawn_agent`s, anonymously named e.g.
-  `developer-fe-#<TICKET_ID>` and `developer-be-#<TICKET_ID>`.
-- `send_message` to the frontend agent: `$sr-frontend-developer
-  ... only run task blocks tagged [frontend] in tasks.md`.
-  Symmetric message to the backend agent.
-- `wait_agent` on BOTH. Aggregate the changed-files list.
-- `close_agent` on both.
-
-If the architect's `tasks.md` doesn't tag task blocks, fall back
-to a single `$sr-developer` invocation — the parallel split
-needs ordered, non-overlapping cycles.
-
-**Sequential developer case** (default):
+There is one developer rail. Unless an active profile routes the
+ticket to a `custom-*` developer that is listed in step 0.3, spawn
+`$sr-developer`.
 
 - `spawn_agent` (full-history).
 - `send_message`:
 
-  > `$<developer-skill>`
+  > `$sr-developer`
   >
   > Ticket id: `<TICKET_ID>`
   > Plan: `<PLAN_PATH>`
-  > Scope: `<comma-separated labels>`
   >
-  > Follow the `$<developer-skill>` skill instructions exactly.
+  > Follow the `$sr-developer` skill instructions exactly.
 
 - `wait_agent`. Capture file list. `close_agent`.
 
 If the developer returned `BLOCKED: …`, surface it to the user
 in the final report (no review phase, no ticket update).
 
-### 3. Phase 3 — Reviewer(s) in parallel
+### 3. Phase 3 — Reviewer
 
-Always spawn `$sr-reviewer`. In addition, spawn each of the
-following if the rail is installed AND the scope flag applies:
-
-| scope flag                | rail to add (if installed)     |
-|---|---|
-| `frontend`                | `$sr-frontend-reviewer`        |
-| `backend`                 | `$sr-backend-reviewer`         |
-| `security-sensitive`      | `$sr-security-reviewer`        |
-| `performance-sensitive`   | `$sr-performance-reviewer`     |
-
-For each reviewer:
+Spawn the single `$sr-reviewer`. It owns every review dimension —
+correctness, TDD/spec completeness, code quality, security, and
+performance — scaled to what the change touches.
 
 - `spawn_agent` (full-history).
 - `send_message`:
 
-  > `$<reviewer-skill>`
+  > `$sr-reviewer`
   >
   > Ticket id: `<TICKET_ID>`
   > Plan: `<PLAN_PATH>`
   > Changed files:
   > <one per line>
   >
-  > Follow the `$<reviewer-skill>` skill instructions exactly.
+  > Follow the `$sr-reviewer` skill instructions exactly.
 
-**Spawn all reviewers BEFORE waiting** so they run in parallel.
-Then `wait_agent` on each in turn. `close_agent` each as it
-returns.
-
-**Aggregate verdicts**:
-
-- Per reviewer: parse `Score: N/100` and `Verdict: …` from the
-  reply.
-- Overall score = minimum of the reviewer scores (the harshest
-  reviewer is the bound).
-- Overall verdict:
-  - `clean` — every reviewer scored ≥ 70 AND nobody said
-    fix/blocked
-  - `fix needed` — any reviewer said `fix needed: …`, OR any
-    score < 70 with no `blocked: …` verdict, OR any reviewer
-    said `blocked: …` AND the overall score is **in the
-    recoverable range 30-69**. The recoverable-blocked case is
-    the common one where the reviewer used "blocked" because
-    the issue is significant, not because the design itself is
-    wrong — a single developer fix pass can usually clear it
-    (e.g. API surface mismatch, missing JSX component shape,
-    forgotten persistence hook).
-  - `blocked` — any reviewer said `blocked: …` AND overall
-    score is **< 30**, OR every reviewer said `blocked: …`.
-    This is the design-level case where another developer
-    pass won't help — the architect needs to re-engage.
-
-### 4. Phase 4 — Optional augmentation
-
-Run AFTER review is `clean` (or after the single fix-loop pass).
-Skip when the overall verdict is `fix needed` or `blocked` — no
-point sugar-coating an unsound change.
-
-- If `sr-test-writer` is installed AND the reviewer's confidence
-  artefact reports a coverage gap (`tdd_evidence.all_tasks_have_tests`
-  is `false`, or `tdd_evidence.tests_are_non_trivial` is `false`),
-  spawn it with the changed files list. It writes more tests, runs
-  them, reports. (These are the fields the `$sr-reviewer` skill
-  actually writes — do not key on a non-existent "coverage" field.)
-- If `sr-doc-sync` is installed AND the change touches a
-  publicly-documented surface (README mentions a renamed
-  function, AGENTS.md references a removed file, openspec specs
-  drifted), spawn it.
-
-These augment, never block. If they return findings, surface in
-the final report under "Follow-up" rather than reopening the
-ticket.
-
-### 5. Optional fix loop (single pass only)
-
-If phase 3's overall verdict is `fix needed`:
-
-- Spawn ONE follow-up developer (same routing rules as phase 2)
-  with a message that includes every reviewer's `issues[]`
-  array from their confidence artefacts.
 - `wait_agent`. `close_agent`.
-- Re-run phase 3 (same reviewer set). If still `fix needed` or
-  `blocked`, **do not loop again** — surface in the final
-  report.
 
-### 6. Phase 5 — Archive FIRST, then close + report
+**Verdict** — parse `Score: N/100` and `Verdict: …` from the reply:
+
+- `clean` — score ≥ 70 AND not fix/blocked.
+- `fix needed` — verdict `fix needed: …`, OR score < 70 with no
+  `blocked: …`, OR `blocked: …` with score **in the recoverable
+  range 30-69** (a single developer fix pass can usually clear it).
+- `blocked` — `blocked: …` with score **< 30**. Design-level; a
+  developer pass won't help — the architect needs to re-engage.
+
+### 4. Optional fix loop (single pass only)
+
+If phase 3's verdict is `fix needed`:
+
+- Spawn ONE follow-up developer (`$sr-developer`, or the same
+  `custom-*` developer used in phase 2) with a message that
+  includes the reviewer's `issues[]` array from its confidence
+  artefact.
+- `wait_agent`. `close_agent`.
+- Re-run phase 3. If still `fix needed` or `blocked`, **do not loop
+  again** — surface in the final report.
+
+### 5. Phase 4 — Archive FIRST, then close + report
 
 > **INVARIANT.** A ticket may be marked `done` ONLY if its change is
 > archived (`openspec/changes/archive/<slug>/` exists). A `clean`

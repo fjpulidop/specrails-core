@@ -82,60 +82,37 @@ the pipeline yourself):
   > Read `jq '.tickets["<TICKET_ID>"]' .specrails/local-tickets.json`
   > for the full ticket. Follow the `$sr-architect` skill
   > instructions exactly.
-  >
-  > In `design.md`'s `## Context` section, include a
-  > `Scope: <labels>` line drawn from: `frontend`, `backend`,
-  > `both`, `security-sensitive`, `performance-sensitive`.
 
 - `wait_agent`. Parse reply for the plan path. `close_agent`.
-- Open the plan + design.md, parse the `Scope:` line.
+- Open the plan + design.md.
 - If the architect returned `BLOCKED: …`, mark this ticket
   as failed for the batch report and **continue to the next
   ticket** — do not stop the batch.
 
 #### 1.b Developer phase (per ticket)
 
-Routing matrix (mirrors `$implement`):
-
-| scope contains | rails available | spawn |
-|---|---|---|
-| `frontend` only | `sr-frontend-developer` | $sr-frontend-developer |
-| `backend` only | `sr-backend-developer` | $sr-backend-developer |
-| `frontend` only | (no fe specialist) | $sr-developer |
-| `backend` only | (no be specialist) | $sr-developer |
-| `both` + both specialists + tagged tasks.md | — | TWO devs parallel |
-| else | — | $sr-developer |
+One developer rail. Unless a profile routes the ticket to a
+listed `custom-*` developer, spawn `$sr-developer`.
 
 - `spawn_agent`. `send_message`:
 
-  > `$<developer-skill>`
+  > `$sr-developer`
   >
   > Ticket id: `<TICKET_ID>`
   > Plan: `<PLAN_PATH>`
-  > Scope: `<comma-separated labels>`
   >
-  > Follow the `$<developer-skill>` skill instructions exactly.
+  > Follow the `$sr-developer` skill instructions exactly.
 
 - `wait_agent`. Capture file list. `close_agent`.
 - If `BLOCKED: …` → mark ticket as failed in the batch report
   and move to next ticket.
 
-#### 1.c Reviewer phase (per ticket) — parallel where possible
+#### 1.c Reviewer phase (per ticket)
 
-Always spawn `$sr-reviewer`. Additionally if installed AND
-scope matches:
+Spawn the single `$sr-reviewer` — it covers correctness, tests,
+security, and performance. `wait_agent`, then `close_agent`.
 
-| scope flag | additional rail |
-|---|---|
-| `frontend` | `$sr-frontend-reviewer` |
-| `backend` | `$sr-backend-reviewer` |
-| `security-sensitive` | `$sr-security-reviewer` |
-| `performance-sensitive` | `$sr-performance-reviewer` |
-
-Spawn ALL reviewers in parallel, then `wait_agent` on each.
-`close_agent` each.
-
-Aggregate verdicts (same matrix as `$implement`):
+Verdict (same matrix as `$implement`):
 
 - `clean` — every reviewer ≥70, no fix/blocked verdicts.
 - `fix needed` — any "fix needed", OR score <70 with no

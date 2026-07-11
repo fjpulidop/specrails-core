@@ -28,13 +28,13 @@
 
 ## 4. implement.md: single path
 
-- [ ] 4.1 Phase -1: collapse legacy/profile dual-mode into `AVAILABLE_AGENTS = profile ?? baseline`; baseline is the implicit in-command default `{sr-architect, sr-developer, sr-reviewer}` with standard models; remove the terms "legacy mode"/"profile mode" and all per-mode branches
-- [ ] 4.2 Profile validation: non-baseline agent missing on disk → warn `[warn] profile references agent '<id>' but no agent file exists — skipping (removed in v5; use a custom-* agent)` and continue; baseline agent missing → hard error `[error] Core agent <name> not found. Run npx specrails-core update to reinstall.`
-- [ ] 4.3 Delete layer-based developer routing (Phase 3b routing table + `DEVELOPER_ROUTING`), Phase 3c (test-writer), Phase 3d (doc-sync), extra reviewer passes in 4b (frontend/backend/security/performance), and every `∈ AVAILABLE_AGENTS` guard for removed agents; keep profile-declared `custom-*` routing hooks
-- [ ] 4.4 Phase 4a multi-feature merge: remove the sr-merge-resolver delegation branch; built-in section-aware/patch merge is the only path; unresolvable conflicts go to "Requires Manual Resolution" in the report
-- [ ] 4.5 Update the agent table (lines ~231-240), status JSON template (test-writer/doc-sync keys), and pipeline diagrams to the 3-agent + custom-* reality
-- [ ] 4.6 Mirror 4.1–4.5 in `templates/gemini-commands/implement.toml` and the codex `implement` skill
-- [ ] 4.7 `batch-implement.md` (+ gemini TOML + codex skill): remove sr-merge-resolver dependency per the batch-implement delta (orchestrator-owned conflict resolution, wave halt on unresolvable conflicts)
+- [x] 4.1 Phase -1: collapse legacy/profile dual-mode into `AVAILABLE_AGENTS = profile ?? baseline`; baseline is the implicit in-command default `{sr-architect, sr-developer, sr-reviewer}` with standard models; remove the terms "legacy mode"/"profile mode" and all per-mode branches
+- [x] 4.2 Profile validation: non-baseline agent missing on disk → warn `[warn] profile references agent '<id>' but no agent file exists — skipping (removed in v5; use a custom-* agent)` and continue; baseline agent missing → hard error `[error] Core agent <name> not found. Run npx specrails-core update to reinstall.`
+- [x] 4.3 Delete layer-based developer routing (Phase 3b routing table + `DEVELOPER_ROUTING`), Phase 3c (test-writer), Phase 3d (doc-sync), extra reviewer passes in 4b (frontend/backend/security/performance), and every `∈ AVAILABLE_AGENTS` guard for removed agents; keep profile-declared `custom-*` routing hooks
+- [x] 4.4 Phase 4a multi-feature merge: remove the sr-merge-resolver delegation branch; built-in section-aware/patch merge is the only path; unresolvable conflicts go to "Requires Manual Resolution" in the report
+- [x] 4.5 Update the agent table (lines ~231-240), status JSON template (test-writer/doc-sync keys), and pipeline diagrams to the 3-agent + custom-* reality
+- [x] 4.6 Mirror 4.1–4.5 in `templates/gemini-commands/implement.toml` and the codex `implement` skill
+- [x] 4.7 `batch-implement.md` (+ gemini TOML + codex skill): remove sr-merge-resolver dependency per the batch-implement delta (orchestrator-owned conflict resolution, wave halt on unresolvable conflicts)
 
 ## 5. Tests
 

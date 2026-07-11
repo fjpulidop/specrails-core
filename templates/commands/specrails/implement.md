@@ -66,28 +66,14 @@ which openspec && openspec --version
 
 #### 5. Agent discovery
 
-Agent discovery runs in one of two modes: **profile mode** (a profile JSON is active) or **legacy mode** (no profile — identical to pre-4.1.0 behavior).
+`AVAILABLE_AGENTS` resolves through a single path: **a profile if one is active, otherwise the baseline trio**. There are no modes — the baseline is just the default value the resolution falls back to when no profile is present.
 
-##### Profile detection
+##### Resolve the profile path
 
-A profile is active when either condition holds:
+A profile is active when either condition holds (highest precedence first):
 
-1. The environment variable `SPECRAILS_PROFILE_PATH` is set AND points to a readable file. Tools like `specrails-desktop` set this to a job-scoped snapshot.
-2. The file `.specrails/profiles/project-default.json` exists and is readable.
-
-If condition 1 holds, use `$SPECRAILS_PROFILE_PATH` as the profile path. Otherwise, if condition 2 holds, use `.specrails/profiles/project-default.json`. Otherwise, fall through to **legacy mode**.
-
-##### Preflight: `jq` availability (profile mode only)
-
-When running in profile mode, `jq` is required to read the profile JSON. Run:
-
-```bash
-command -v jq >/dev/null 2>&1 || { echo "[error] 'jq' is required for profile-aware mode. Install with: brew install jq / apt install jq / https://stedolan.github.io/jq/"; exit 1; }
-```
-
-##### Profile mode — load, validate, populate
-
-Resolve the profile path into `PROFILE_PATH` (highest precedence wins), then read it:
+1. `SPECRAILS_PROFILE_PATH` is set AND points to a readable file. Tools like `specrails-desktop` set this to a job-scoped snapshot.
+2. `.specrails/profiles/project-default.json` exists and is readable.
 
 ```bash
 if [[ -n "${SPECRAILS_PROFILE_PATH:-}" && -r "${SPECRAILS_PROFILE_PATH:-}" ]]; then
@@ -95,13 +81,27 @@ if [[ -n "${SPECRAILS_PROFILE_PATH:-}" && -r "${SPECRAILS_PROFILE_PATH:-}" ]]; t
 elif [[ -r ".specrails/profiles/project-default.json" ]]; then
   PROFILE_PATH=".specrails/profiles/project-default.json"
 else
-  PROFILE_MODE="legacy"
+  PROFILE_PATH=""
 fi
 ```
 
-When `PROFILE_PATH` is set (profile mode), read the profile:
+##### No profile → baseline default
+
+When `PROFILE_PATH` is empty, `AVAILABLE_AGENTS` is the baseline trio and there are no per-agent model overrides (each agent uses the `model:` in its own `.md` frontmatter). No profile file is written — the baseline is an in-memory default, honoring the reserved-paths contract (`.specrails/profiles/**` is never created by the pipeline):
 
 ```bash
+if [[ -z "$PROFILE_PATH" ]]; then
+  AVAILABLE_AGENTS="$(printf '%s\n' sr-architect sr-developer sr-reviewer)"
+  PROFILE_NAME=""
+fi
+```
+
+##### Profile present → load, validate, populate
+
+`jq` is required to read a profile JSON:
+
+```bash
+command -v jq >/dev/null 2>&1 || { echo "[error] 'jq' is required to read a profile. Install with: brew install jq / apt install jq / https://stedolan.github.io/jq/"; exit 1; }
 PROFILE="$(cat "$PROFILE_PATH")"
 ```
 
@@ -149,14 +149,20 @@ if [[ "$IS_LAST" != "true" ]]; then
 fi
 ```
 
-Populate `AVAILABLE_AGENTS` from the profile and verify each referenced agent file exists on disk:
+Populate `AVAILABLE_AGENTS` from the profile. The three baseline agents are **hard-required**: if a baseline agent's file is missing, STOP. A **non-baseline** agent whose file is missing is **warned and skipped** — this is how a pre-v5 profile that still references a removed agent (e.g. `sr-frontend-developer`) degrades gracefully:
 
 ```bash
-AVAILABLE_AGENTS="$(jq -r '.agents[].id' <<<"$PROFILE" | sort)"
-for id in $AVAILABLE_AGENTS; do
-  [[ -f ".claude/agents/$id.md" ]] \
-    || { echo "[error] profile references agent '$id' but .claude/agents/$id.md does not exist"; exit 1; }
+AVAILABLE_AGENTS=""
+for id in $(jq -r '.agents[].id' <<<"$PROFILE" | sort); do
+  if [[ -f ".claude/agents/$id.md" ]]; then
+    AVAILABLE_AGENTS="$AVAILABLE_AGENTS$id"$'\n'
+  elif [[ "$id" == "sr-architect" || "$id" == "sr-developer" || "$id" == "sr-reviewer" ]]; then
+    echo "[error] Core agent $id not found. Run npx specrails-core update to reinstall."; exit 1
+  else
+    echo "[warn] profile references agent '$id' but no agent file exists — skipping (removed in v5; use a custom-* agent)"
+  fi
 done
+AVAILABLE_AGENTS="$(printf '%s' "$AVAILABLE_AGENTS" | sed '/^$/d')"
 ```
 
 Also store per-agent model overrides and the orchestrator model for use in later phases:
@@ -176,13 +182,12 @@ done < <(jq -r '.agents[] | [.id, (.model // "null")] | @tsv' <<<"$PROFILE")
 # Routing rules (array), consumed by Phase 3b.
 ROUTING="$(jq '.routing' <<<"$PROFILE")"
 
-PROFILE_MODE="profile"
 PROFILE_NAME="$(jq -r '.name' <<<"$PROFILE")"
 ```
 
-##### Apply per-agent model overrides (profile mode only)
+##### Apply per-agent model overrides (only when a profile declares them)
 
-Claude Code's Agent tool determines a subagent's model from the `model:` line in the agent's `.md` frontmatter at invocation time — there is no per-call model parameter. When a profile is active, rewrite each agent's frontmatter `model:` value in-place to match `AGENT_MODEL[$id]`.
+Claude Code's Agent tool determines a subagent's model from the `model:` line in the agent's `.md` frontmatter at invocation time — there is no per-call model parameter. When a profile declares model overrides, rewrite each agent's frontmatter `model:` value in-place to match `AGENT_MODEL[$id]`.
 
 This rewrite is safe because:
 - Multi-feature runs execute in **isolated git worktrees** (`isolation: worktree`), so each rail mutates its own copy of `.claude/agents/` without cross-rail contention.
@@ -195,7 +200,7 @@ for id in "${!AGENT_MODEL[@]}"; do
   file=".claude/agents/$id.md"
   [[ -f "$file" ]] || continue
   # Rewrite the first `model:` line within the frontmatter block (lines between the
-  # first two `---` separators). Use sed with portable syntax (macOS + Linux).
+  # first two `---` separators). Use awk with portable syntax (macOS + Linux).
   awk -v new="$model" '
     BEGIN { in_fm=0; done=0 }
     /^---$/ { in_fm = !in_fm; print; next }
@@ -207,42 +212,21 @@ done
 
 If a profile does not declare `model` for a given agent (the field is optional), that agent's frontmatter is left untouched.
 
-##### Legacy mode — preserve current behavior
+##### Agent roles
 
-If no profile is active, scan the agents directory exactly as before:
-
-```bash
-AVAILABLE_AGENTS="$(ls .claude/agents/sr-*.md 2>/dev/null | sed 's|.*/||;s|\.md$||' | sort)"
-PROFILE_MODE="legacy"
-PROFILE_NAME=""
-```
-
-Per-agent model overrides are empty in legacy mode — subagent invocations inherit the `model:` value from each agent's `.md` frontmatter. Routing in Phase 3b uses the hardcoded legacy rules.
-
-##### Agent roles (both modes)
-
-The pipeline adapts dynamically to the installed agents:
+The pipeline ships exactly three first-party agents. Any additional agent comes from an active profile that declares a user-owned `custom-*` agent (with routing) — the installer never ships or manages non-core agents.
 
 | Agent | Role | Required? | Phase(s) affected |
 |-------|------|-----------|-------------------|
 | sr-architect | Architecture & design | **Core** (always present) | 3a |
 | sr-developer | Full-stack implementation | **Core** (always present) | 3b |
-| sr-reviewer | Generalist quality gate | **Core** (always present) | 4b |
-| sr-merge-resolver | Merge conflict resolution | Optional — required for multi-feature merge conflict resolution | 4a |
-| sr-product-manager | Product exploration | Optional | 1 |
-| sr-test-writer | Test generation | Optional | 3c |
-| sr-doc-sync | Documentation sync | Optional | 3d |
-| sr-frontend-developer | Frontend implementation | Optional | 3b (routing) |
-| sr-backend-developer | Backend implementation | Optional | 3b (routing) |
-| sr-frontend-reviewer | Frontend review | Optional | 4b |
-| sr-backend-reviewer | Backend review | Optional | 4b |
-| sr-security-reviewer | Security analysis | Optional | 4b |
-| sr-performance-reviewer | Performance analysis | Optional | 4b |
+| sr-reviewer | Quality gate (correctness, tests, security, performance) | **Core** (always present) | 4b |
+| custom-* | Profile-declared specialist | Optional — only when an active profile lists it | per profile routing |
 
 **Gate rules** (applied throughout the pipeline):
-- If an optional agent is NOT in `AVAILABLE_AGENTS`, **skip** that phase/sub-step silently and note `"<agent> not installed — skipping"`.
-- Core agents are guaranteed to exist. If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run /specrails:enrich or reinstall.`
-- In **profile mode**, the profile's `agents[]` IS the source of truth for `AVAILABLE_AGENTS`. Agents not listed are considered unavailable regardless of what is on disk.
+- The three baseline agents are the source of truth for the non-profile default; a profile's `agents[]` (baseline + any `custom-*`) is the source of truth when a profile is active. Agents not in `AVAILABLE_AGENTS` are unavailable regardless of what is on disk.
+- If a `custom-*` agent routed by the profile is not in `AVAILABLE_AGENTS` (e.g. skipped above), that routing target is dropped — the task falls through to the profile's `default: true` rule.
+- If a core agent is missing, **STOP** and print: `[error] Core agent <name> not found. Run npx specrails-core update to reinstall.`
 
 ### Summary
 
@@ -392,8 +376,6 @@ Write the initial state file:
   "phases": {
     "architect": "pending",
     "developer": "pending",
-    "test-writer": "<'pending' if sr-test-writer ∈ AVAILABLE_AGENTS, else 'skipped'>",
-    "doc-sync": "<'pending' if sr-doc-sync ∈ AVAILABLE_AGENTS, else 'skipped'>",
     "reviewer": "pending",
     "ship": "pending",
     "ci": "pending"
@@ -430,27 +412,15 @@ When a phase completes or fails, update `PIPELINE_STATE_PATH`:
 
 If `PIPELINE_STATE_AVAILABLE=false`: skip all state updates silently.
 
-**If the user passed area names**:
+**If the user passed area names** (no concrete issue/spec):
 - Check for open backlog issues. If found, filter and pick top 3.
-- If none, proceed to Phase 1.
+- If none, STOP with: `[input] No backlog issue or spec resolved from the given area(s). Product exploration was removed in v5 — pass a backlog issue number or a feature description/spec.`
 
 ---
 
-## Phase 1: Explore (parallel)
+## Phase 1 & 2: (removed in v5)
 
-**Only runs if Phase 0 found no backlog issues AND user passed area names AND `sr-product-manager` ∈ `AVAILABLE_AGENTS`.**
-
-If `sr-product-manager` is not installed, skip Phase 1 and Phase 2 entirely. Print: `[phase-1] sr-product-manager not installed — skipping exploration. Proceeding with provided input.`
-
-For each area, launch a **sr-product-manager** agent (`subagent_type: sr-product-manager`, `run_in_background: true`).
-
-Wait for all to complete. Read their output.
-
-## Phase 2: Select
-
-**Only runs if Phase 1 ran.**
-
-Pick the single idea with the best impact/effort ratio from each exploration. Present to user and wait for confirmation.
+Product exploration and idea selection were driven by `sr-product-manager`, which is not shipped in v5. The pipeline works from concrete inputs — backlog issues or a feature description/spec passed to the command — and proceeds directly from Phase 0 to Phase 3a. If you want product discovery, run it as a separate step and feed the resulting spec/issue into `/specrails:implement`.
 
 ## Phase 3a.0: Pre-architect conflict check
 
@@ -619,11 +589,11 @@ Produce three sets: `FRONTEND_TASKS`, `BACKEND_TASKS`, `OTHER_TASKS`.
 
 **Step 2 — Route tasks to developer agents:**
 
-Routing operates in one of two modes depending on the value of `PROFILE_MODE` set in Phase -1.
+Routing has a single path. When **no profile** is active, every task goes to `sr-developer` — `DEVELOPER_ROUTING = { sr-developer: <all tasks> }`. When a **profile** is active, apply its `ROUTING` rules (below), which may direct some tasks to profile-declared `custom-*` agents.
 
-##### Profile mode (`PROFILE_MODE=profile`)
+##### Profile routing
 
-When a profile is active, apply `ROUTING` rules in their array order. For each task, collect its tag set (layer tags plus any explicit `[tag]` markers in tasks.md). The first rule whose `tags` array intersects the task's tag set wins. The terminal `default: true` rule catches tasks matched by no earlier rule.
+Apply `ROUTING` rules in their array order. For each task, collect its tag set (the layer tags from Step 1 plus any explicit `[tag]` markers in tasks.md). The first rule whose `tags` array intersects the task's tag set wins. The terminal `default: true` rule catches tasks matched by no earlier rule.
 
 Example (pseudocode):
 
@@ -655,29 +625,14 @@ assigned_agent_for_task() {
 }
 ```
 
-Produce `DEVELOPER_ROUTING` from the per-task decisions, grouping by assigned agent. An agent assigned by the profile SHALL only be used if it also appears in `AVAILABLE_AGENTS` (the profile's own `agents[]`). If the profile routes a task to an agent not present in `agents[]`, that is a profile configuration bug — **STOP** and print: `[error] profile routing references agent '<id>' which is not declared in profile.agents[]`.
+Produce `DEVELOPER_ROUTING` from the per-task decisions, grouping by assigned agent. If a rule routes a task to an agent that is **not** in `AVAILABLE_AGENTS` (e.g. a `custom-*` agent that was warned-and-skipped in Phase -1 because its file is missing), that routing target is dropped and the task falls through to the terminal `default: true` rule (which resolves to a baseline agent). Do not STOP for a missing non-baseline target — graceful degradation is intentional.
 
-##### Legacy mode (`PROFILE_MODE=legacy`)
-
-When no profile is active, evaluate available developer agents in `AVAILABLE_AGENTS` and apply these hardcoded rules in priority order:
-
-| Condition | Agent(s) selected | Mode |
-|-----------|-------------------|------|
-| ALL tasks are frontend-only AND `sr-frontend-developer` ∈ `AVAILABLE_AGENTS` | **sr-frontend-developer** | Single agent for all tasks |
-| ALL tasks are backend-only AND `sr-backend-developer` ∈ `AVAILABLE_AGENTS` | **sr-backend-developer** | Single agent for all tasks |
-| Mix of frontend + backend tasks AND both layer-specific developers available | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for `OTHER_TASKS` | Parallel agents per layer |
-| Frontend tasks exist AND `sr-frontend-developer` available, but no backend-specific developer | **sr-frontend-developer** for `FRONTEND_TASKS`, **sr-developer** for remaining | Parallel agents |
-| Backend tasks exist AND `sr-backend-developer` available, but no frontend-specific developer | **sr-backend-developer** for `BACKEND_TASKS`, **sr-developer** for remaining | Parallel agents |
-| No layer-specific developers available (fallback) | **sr-developer** | Single agent for all tasks |
-
-Store the result as `DEVELOPER_ROUTING`: a map of `{agent_id: [task_list]}`.
-
-##### Routing trace (both modes)
+##### Routing trace
 
 After computing `DEVELOPER_ROUTING`, optionally emit a trace line to aid debugging:
 
 ```
-[phase-3b] routing decision: mode=$PROFILE_MODE profile=${PROFILE_NAME:-none} agents=[list]
+[phase-3b] routing decision: profile=${PROFILE_NAME:-none} agents=[list]
 ```
 
 **Step 3 — Print routing decision:**
@@ -687,16 +642,15 @@ After computing `DEVELOPER_ROUTING`, optionally emit a trace line to aid debuggi
 
 | Agent | Tasks | Reason |
 |-------|-------|--------|
-| sr-frontend-developer | Task 1, Task 3 | Frontend-only tasks (React components) |
-| sr-backend-developer  | Task 2, Task 4 | Backend-only tasks (API endpoints) |
-| sr-developer          | Task 5         | Mixed layer (config + infra) |
+| sr-developer     | Task 1, Task 2 | Default (no profile / default rule) |
+| custom-api-dev   | Task 3         | Profile routed [backend] tasks here |
 ```
 
 Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually launched) — Phase 4b will use this for reviewer selection.
 
 #### Launch modes
 
-For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using its `subagent_type` (`sr-developer`, `sr-frontend-developer`, or `sr-backend-developer`) with its task subset.
+For each entry in `DEVELOPER_ROUTING`, launch the assigned developer agent using its `subagent_type` (`sr-developer` or a profile-declared `custom-*` developer) with its task subset.
 
 **If `SINGLE_MODE` and only one agent in routing**: Launch in the main repo, foreground.
 **If `SINGLE_MODE` but multiple agents in routing**: Launch agents sequentially in the main repo (one at a time, foreground), passing only their assigned tasks.
@@ -717,84 +671,14 @@ Only after the LAST background agent sends its completion notification, emit the
 | <feature-a> | sr-developer | 64 | 8m 02s |
 | <feature-b> | sr-developer | 50 | 7m 35s |
 
-All N developers complete. Proceeding to Phase 3c.
+All N developers complete. Proceeding to Phase 4.
 ```
 
 This prevents stale "still waiting" text from appearing as the terminal result when the job completes.
 
 **Pipeline state:** update `developer` → `done`. Also update `implemented_files` in the state file with the complete list of files created or modified by the developer agent(s). If developer failed: update `developer` → `failed` with error context `"<agent-id> failed: <exit code or error description>"`.
 
-## Phase 3c: Write Tests
-
-**Guard:** If `sr-test-writer` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3c] sr-test-writer not installed — skipping test generation.` Update pipeline state: `test-writer` → `skipped`. Proceed to Phase 3d.
-
-Launch a **sr-test-writer** agent (`subagent_type: sr-test-writer`) for each feature immediately after its developer completes.
-
-Construct the agent invocation prompt to include:
-- **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
-- **TASK_DESCRIPTION**: the original task or feature description that drove the implementation
-
-### Launch modes
-
-**If `SINGLE_MODE`**: Launch a single sr-test-writer agent in the foreground (`run_in_background: false`). Wait for it to complete before proceeding to Phase 4.
-
-**If multiple features (worktrees)**: Launch one sr-test-writer agent per feature, each in its corresponding worktree (`isolation: worktree`, `run_in_background: true`). Wait for all sr-test-writer agents to complete before proceeding to Phase 4.
-
-### Dry-run behavior
-
-**If `DRY_RUN=true`**, include in every test-writer agent prompt:
-
-> IMPORTANT: This is a dry-run. Write all new or modified test files under:
->   .claude/.dry-run/\<feature-name\>/
->
-> Mirror the real destination path within this directory. After writing each file, append an entry
-> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using:
->   {"cached_path": "...", "real_path": "...", "operation": "create"}
-
-### Failure handling
-
-If a test-writer agent fails or times out:
-- Record `Tests: FAILED` for that feature in the Phase 4e report
-- Continue to Phase 4 — the sr-test-writer failure is non-blocking
-- Include in the reviewer agent prompt: "Note: the sr-test-writer failed for this feature. Check for coverage gaps."
-
-**Pipeline state:** update `test-writer` → `done` (or `failed` with error context `"sr-test-writer timed out or errored"`). Failure does not block the pipeline.
-
-## Phase 3d: Doc Sync
-
-**Guard:** If `sr-doc-sync` ∉ `AVAILABLE_AGENTS`, skip this phase. Print: `[phase-3d] sr-doc-sync not installed — skipping doc sync.` Update pipeline state: `doc-sync` → `skipped`. Proceed to Phase 4.
-
-Launch a **sr-doc-sync** agent (`subagent_type: sr-doc-sync`) for each feature after its tests are written.
-
-Construct the agent invocation prompt to include:
-- **IMPLEMENTED_FILES_LIST**: the complete list of files the developer created or modified for this feature
-- **TASK_DESCRIPTION**: the original task or feature description that drove the implementation
-
-### Launch modes
-
-**If `SINGLE_MODE`**: Launch a single sr-doc-sync agent in the foreground (`run_in_background: false`). Wait for it to complete before proceeding to Phase 4.
-
-**If multiple features (worktrees)**: Launch one sr-doc-sync agent per feature, each in its corresponding worktree (`isolation: worktree`, `run_in_background: true`). Wait for all sr-doc-sync agents to complete before proceeding to Phase 4.
-
-### Dry-run behavior
-
-**If `DRY_RUN=true`**, include in every doc-sync agent prompt:
-
-> IMPORTANT: This is a dry-run. Write all new or modified doc files under:
->   .claude/.dry-run/\<feature-name\>/
->
-> Mirror the real destination path within this directory. After writing each file, append an entry
-> to .claude/.dry-run/\<feature-name\>/.cache-manifest.json using:
->   {"cached_path": "...", "real_path": "...", "operation": "create|modify"}
-
-### Failure handling
-
-If a doc-sync agent fails or times out:
-- Record `Docs: FAILED` for that feature in the Phase 4e report
-- Continue to Phase 4 — the sr-doc-sync failure is non-blocking
-- Include in the reviewer agent prompt: "Note: the sr-doc-sync agent failed for this feature."
-
-**Pipeline state:** update `doc-sync` → `done` (or `failed` with error context `"sr-doc-sync timed out or errored"`). Failure does not block the pipeline.
+> **Note (v5):** dedicated test-writing (`sr-test-writer`) and doc-sync (`sr-doc-sync`) phases were removed. Tests and documentation are part of each OpenSpec task and are produced by `sr-developer`; the reviewer's TDD and spec-completeness checklist enforces them. A profile may reintroduce equivalent stages via `custom-*` agents with routing.
 
 ## Phase 4: Merge & Review
 
@@ -890,40 +774,15 @@ After all features are processed, print the preliminary report:
 - <file> (features: <a>, <b> — conflicting section: "<heading>")
 ```
 
-**Step 5a: Smart conflict resolution** (skip if `SINGLE_MODE=true` or `DRY_RUN=true` or `sr-merge-resolver` ∉ `AVAILABLE_AGENTS`)
+**Step 5a: Conflict handling** (orchestrator-owned; skip if `SINGLE_MODE=true` or `DRY_RUN=true`)
 
-If `sr-merge-resolver` is not installed, print: `[smart-merge] sr-merge-resolver not installed — skipping merge conflict resolution agent. Fix conflicts manually.` and skip to Step 5b.
+There is no dedicated resolver agent. The built-in section-aware / `patch --forward` merge above IS the only resolution path. If `MERGE_REPORT.requires_resolution` is non-empty after the merge, the orchestrator does not guess:
 
-If `MERGE_REPORT.requires_resolution` is non-empty:
+- Leave the conflict markers in place in the affected files.
+- **Halt the affected features** — do not proceed to Phase 4c (git/PR) for any feature whose files still carry conflict markers. Independent features with no unresolved conflicts continue normally.
+- Print: `[merge] N file(s) have unresolved conflict markers — halting the affected feature(s). Resolve manually, then re-run.`
 
-```
-[smart-merge] N file(s) have conflict markers. Launching sr-merge-resolver…
-```
-
-Build `CONTEXT_BUNDLES` from the features in `MERGE_ORDER`:
-```
-{ "<feature-a>": "${SPECRAILS_REPO_DIR:-.}/openspec/changes/<feature-a>/context-bundle.md", "<feature-b>": "${SPECRAILS_REPO_DIR:-.}/openspec/changes/<feature-b>/context-bundle.md" }
-```
-
-Load merge resolver config from `.claude/merge-resolver-config.json` if it exists. Extract `confidence_threshold` (default: 70) and `mode` (default: `auto`).
-
-Construct the `sr-merge-resolver` agent prompt with:
-- `CONFLICTED_FILES`: all file paths in `MERGE_REPORT.requires_resolution`
-- `CONTEXT_BUNDLES`: the map above
-- `CONFIDENCE_THRESHOLD`: from config or default (70)
-- `RESOLUTION_MODE`: from config or default (`auto`)
-- `REPORT_PATH`: `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<first-feature-in-MERGE_ORDER>/merge-resolution-report.md`
-
-Launch the **sr-merge-resolver** agent (`subagent_type: sr-merge-resolver`, foreground, `run_in_background: false`). Wait for it to complete.
-
-Read `MERGE_RESOLUTION_STATUS` from the agent's output (`CLEAN`, `PARTIAL`, or `UNRESOLVED`).
-
-**Post-resolution: update MERGE_REPORT**
-
-For each file in `MERGE_REPORT.requires_resolution`:
-- Re-scan the file for remaining `<<<<<<<` markers.
-- If none remain: move the file from `requires_resolution` → `auto_resolved` (with note: `smart-resolver`).
-- If markers remain: keep in `requires_resolution`.
+Files in `requires_resolution` MUST appear in the Phase 4e final report so the user sees exactly what to fix.
 
 **Step 5b: Emit final merge report**
 
@@ -945,7 +804,7 @@ Pipeline will continue. Fix remaining conflicts before the reviewer runs CI.
 Resolution report: openspec/changes/<feature>/merge-resolution-report.md
 ```
 
-If `MERGE_REPORT.requires_resolution` is now empty: print `All conflicts resolved by smart resolver.` and omit the "Requires Manual Resolution" section.
+If `MERGE_REPORT.requires_resolution` is now empty: print `All conflicts resolved.` and omit the "Requires Manual Resolution" section.
 
 **Step 6: Clean up worktrees** (skip if `DRY_RUN=true`)
 
@@ -953,91 +812,23 @@ If `MERGE_REPORT.requires_resolution` is now empty: print `All conflicts resolve
 git worktree remove <worktree-path> --force
 ```
 
-Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`. If the smart resolver ran, also pass the path to `merge-resolution-report.md` so the reviewer can inspect resolution decisions for correctness.
+Pass `MERGE_REPORT` to the Phase 4b reviewer agent prompt, listing any files in `requires_resolution`.
 
-### 4b. Layer Dispatch and Review
+### 4b. Review
 
-#### Step 1: Layer Classification
+There is a single reviewer, `sr-reviewer`. It owns every review dimension — correctness, TDD/spec completeness, code quality, **security**, and **performance** — scaled to what the change actually touches (its checklist covers all of them). There are no separate layer-reviewer passes.
 
-Before launching any reviewer, classify `MODIFIED_FILES_LIST` into layer-specific file sets.
-
-**Frontend files** — a file is frontend if any of these conditions match:
-- Extension is one of: `.jsx`, `.tsx`, `.vue`, `.svelte`, `.css`, `.scss`, `.sass`, `.less`, `.html`, `.htm`
-- Extension is `.js` or `.ts` AND path contains one of: `components/`, `pages/`, `views/`, `ui/`, `client/`, `frontend/`, `app/`
-- Path starts with: `public/`, `static/`, `assets/`
-
-Set `FRONTEND_FILES` = files matching frontend rules.
-
-**Backend files** — a file is backend if any of these conditions match:
-- Extension is one of: `.py`, `.go`, `.java`, `.rb`, `.php`, `.rs`, `.cs`, `.sql`
-- Extension is `.js` or `.ts` AND path contains one of: `server/`, `api/`, `routes/`, `controllers/`, `services/`, `models/`, `db/`, `backend/`
-- Path is under: `migrations/`, `alembic/`, `db/migrate/`
-
-Set `BACKEND_FILES` = files matching backend rules.
-
-**Overlap rule:** a file may appear in both `FRONTEND_FILES` and `BACKEND_FILES` (e.g., a Next.js API route at `pages/api/`). Both reviewers will scan it independently.
-
-#### Step 2: Determine which reviewers to launch
-
-A layer reviewer is launched when **both** conditions are met:
-1. There are files to review for that layer (file classification) **OR** the corresponding layer developer was used in Phase 3b (`DEVELOPER_AGENTS_USED`)
-2. The reviewer agent is installed (`∈ AVAILABLE_AGENTS`)
-
-| Reviewer | Launch condition | Skip reason |
-|----------|-----------------|-------------|
-| sr-frontend-reviewer | (`FRONTEND_FILES` non-empty OR `sr-frontend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No frontend files + no frontend developer used, or not installed |
-| sr-backend-reviewer | (`BACKEND_FILES` non-empty OR `sr-backend-developer` ∈ `DEVELOPER_AGENTS_USED`) AND installed | No backend files + no backend developer used, or not installed |
-| sr-security-reviewer | Installed | Not installed |
-| sr-performance-reviewer | Installed | Not installed |
-
-If a reviewer is skipped, set its report variable to `"SKIPPED"` and note the reason.
-
-#### Step 3: Launch Layer Reviewers in Parallel
-
-Launch all applicable layer reviewers in parallel (`run_in_background: true`), using the corresponding `subagent_type` for each (`sr-frontend-reviewer`, `sr-backend-reviewer`, `sr-security-reviewer`, `sr-performance-reviewer`):
-
-**sr-frontend-reviewer** (`subagent_type: sr-frontend-reviewer`, if applicable per Step 2):
-- Pass `FRONTEND_FILES_LIST`: the list of files in `FRONTEND_FILES`
-- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-
-**sr-backend-reviewer** (`subagent_type: sr-backend-reviewer`, if applicable per Step 2):
-- Pass `BACKEND_FILES_LIST`: the list of files in `BACKEND_FILES`
-- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-
-**sr-security-reviewer** (`subagent_type: sr-security-reviewer`, if applicable per Step 2):
-- Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
-- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-- Pass the exemptions config path: `.claude/security-exemptions.yaml`
-
-**sr-performance-reviewer** (`subagent_type: sr-performance-reviewer`, if applicable per Step 2):
-- Pass `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
-- Pass `PIPELINE_CONTEXT`: brief description of what was implemented
-
-Wait for all launched layer reviewers to complete before proceeding to Step 4.
-
-Parse status lines from each completed reviewer:
-- `FRONTEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `FRONTEND_STATUS`
-- `BACKEND_REVIEW_STATUS: ISSUES_FOUND` or `CLEAN` → set `BACKEND_STATUS`
-- `SECURITY_STATUS: BLOCKED | WARNINGS | CLEAN` → set `SECURITY_BLOCKED=true` if `BLOCKED`, otherwise `false`
-
-If a layer reviewer fails or times out: set the relevant report variable to `"ERROR: reviewer did not complete"` and continue.
-
-#### Step 4: Launch Generalist Reviewer
-
-Construct the generalist reviewer's invocation prompt with layer reports injected. Set each variable to the full output of the corresponding reviewer, or to the string `"SKIPPED"` if that reviewer was not launched:
-
-- `FRONTEND_REVIEW_REPORT`: full output of frontend-reviewer (or `"SKIPPED"`)
-- `BACKEND_REVIEW_REPORT`: full output of backend-reviewer (or `"SKIPPED"`)
-- `SECURITY_REVIEW_REPORT`: full output of security-reviewer
-
-Include in the reviewer prompt:
+Construct the reviewer's invocation prompt with:
+- `MODIFIED_FILES_LIST`: the complete list of all files created or modified during this run
+- `PIPELINE_CONTEXT`: a brief description of what was implemented
+- `MERGE_REPORT`: any files still in `requires_resolution` (multi-feature runs)
+- The security-exemptions config path: `.claude/security-exemptions.yaml` (if present)
 - Full CI commands
 - Cross-feature merge issue checks
 - Instruction to record learnings to `common-fixes.md`
 - Instruction to archive completed changes via OpenSpec
-- The three layer report variables substituted into the `[injected]` slots in the reviewer agent template
 
-Note: if total layer report length is very large, truncate each layer report to its findings tables only (omit skipped-file logs) to stay within prompt limits.
+The reviewer emits `SECURITY_STATUS: BLOCKED | WARNINGS | CLEAN`. Set `SECURITY_BLOCKED=true` if `BLOCKED`, otherwise `false`.
 
 **The security gate (blocking ship on `SECURITY_STATUS: BLOCKED`) is enforced in Phase 4c.** Do not apply it here.
 
@@ -1407,7 +1198,6 @@ Include the shipping mode in the report:
 
 ## Error Handling
 
-- If a sr-product-manager fails: skip that area, continue with others
 - If a sr-architect fails: skip that area, report the failure
 - If a sr-developer fails: report which phase it failed at
 - If the sr-reviewer finds unfixable issues: report them, push what works

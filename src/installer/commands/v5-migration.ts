@@ -31,6 +31,7 @@ const REMOVED_COMMANDS = [
   'auto-propose-backlog-specs',
   'get-backlog-specs',
   'merge-resolve',
+  'test',
 ] as const
 
 export interface V5MigrationInput {
