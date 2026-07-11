@@ -49,13 +49,13 @@
 
 ## 6. Docs and specs
 
-- [ ] 6.1 README: rewrite install flow (single `npx specrails-core@latest init`), remove tier/enrich sections, document the 3-agent baseline + profiles extension path, add v5 migration notes (update cleanup, custom-* migration recipe for removed agents)
-- [ ] 6.2 CLAUDE.md (repo): update repo-layout tree (no personas/, no enrich command), Architecture line (drop sr-product-manager stage), Profiles section (single resolution path wording), dogfood grep example if it references removed agents
+- [x] 6.1 README: rewrite install flow (single `npx specrails-core@latest init`), remove tier/enrich sections, document the 3-agent baseline + profiles extension path, add v5 migration notes (update cleanup, custom-* migration recipe for removed agents)
+- [x] 6.2 CLAUDE.md (repo): update repo-layout tree (no personas/, no enrich command), Architecture line (drop sr-product-manager stage), Profiles section (single resolution path wording), dogfood grep example if it references removed agents
 - [ ] 6.3 Delete legacy flat spec files superseded/removed: `openspec/specs/quick-start-mode.md`, `smart-merge-resolver.md`, `performance-regression-detector/` (dir) — at archive time via `/opsx:archive` sync; verify the delta specs land in `openspec/specs/`
-- [ ] 6.4 Release notes / CHANGELOG guidance: document BREAKING changes (enrich removed, tiers removed, 11 agents removed, desktop protocol obsolete) and the migration recipes; commit as `feat!:` so release-please cuts v5.0.0
-- [ ] 6.5 Repo-wide acceptance sweep: `grep -ri 'enrich\|tier\|quick' src/ bin/ templates/ commands/ README.md CLAUDE.md` — remaining hits are only deliberate (error messages naming the removal, release notes, unrelated words); zero references to any removed agent name outside release notes
+- [x] 6.4 Release notes / CHANGELOG guidance: document BREAKING changes (enrich removed, tiers removed, 11 agents removed, desktop protocol obsolete) and the migration recipes; commit as `feat!:` so release-please cuts v5.0.0
+- [x] 6.5 Repo-wide acceptance sweep: `grep -ri 'enrich\|tier\|quick' src/ bin/ templates/ commands/ README.md CLAUDE.md` — remaining hits are only deliberate (error messages naming the removal, release notes, unrelated words); zero references to any removed agent name outside release notes
 
 ## 7. Downstream coordination (tracking only, outside this repo)
 
 - [ ] 7.1 File a specrails-desktop issue: migrate from `enrich --from-config` + `[checkpoint:phase_*]` parsing to `init --from-config` + profiles; desktop pins `specrails-core@^4` until adapted
-- [ ] 7.2 Verify `schemas/profile.v1.json` needs no change (baseline validation already matches the v5 trio; custom-* support unchanged) — confirm and note in the PR description
+- [x] 7.2 Verify `schemas/profile.v1.json` needs no change (baseline validation already matches the v5 trio; custom-* support unchanged) — confirm and note in the PR description

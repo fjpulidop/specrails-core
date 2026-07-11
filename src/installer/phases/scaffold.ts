@@ -23,10 +23,9 @@ import { buildManifest, writeManifestFiles } from './manifest.js'
 import type { Provider } from './provider-detect.js'
 
 /**
- * The three baseline agents that every specrails install requires.
- * These are the only agents guaranteed to be present — the implement
- * pipeline depends on all three. sr-merge-resolver and every other
- * agent are optional add-ons selected at install time.
+ * The three baseline agents — the COMPLETE set of agents the installer
+ * ships. The implement pipeline depends on all three. Any additional agent
+ * comes from a user-authored profile (`custom-*`), never the installer.
  *
  * Mirrors the `allOf` baseline in schemas/profile.v1.json — update
  * both files together if this set ever changes.
@@ -1581,8 +1580,7 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
   // copies were vestigial — unused on Claude, always overridden on codex,
   // and shipped with unsubstituted placeholders — and were removed).
   //
-  // Only the three CORE_AGENTS are placed by default; sr-merge-resolver and
-  // every layer specialist are placed only when selectedAgents includes them.
+  // Only the three CORE_AGENTS ship, so only their rail skills exist to place.
   const codexRailsOverridesDir = input.provider === 'codex'
     ? path.join(input.scriptDir, 'templates', 'codex-skills', 'rails')
     : null

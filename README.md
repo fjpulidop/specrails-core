@@ -9,11 +9,10 @@
 
 **Your agentic development team. From idea to production code.**
 
-One command turns your repo into a spec-driven pipeline with a team of specialized AI agents — architect, developers, reviewers, product manager — all adapted to your codebase.
+One command turns your repo into a spec-driven pipeline with three specialized AI agents working together through OpenSpec — architect, developer, reviewer — all adapted to your codebase. Need more specialists? Add your own via a profile.
 
 ```bash
-npx specrails-core@latest init   # install into the current repo
-/specrails:enrich                # optional: deep codebase analysis
+npx specrails-core@latest init   # install into the current repo — ready to use immediately
 ```
 
 > **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), git, Node 20+. Cross-platform: macOS, Linux, Windows.
@@ -31,33 +30,23 @@ Idea  →  Architecture  →  Implementation  →  Review  →  PR
 
 Run `/specrails:implement "add dark mode"` — the pipeline designs, builds, reviews, and ships a pull request. No hand-holding.
 
-Every artifact (agents, rules, personas) is generated **specifically for your project** by analysing your actual codebase, tech stack, and CI setup. Not generic templates.
+The three core agents are adapted to your project's stack and conventions at install time, and the per-layer rules carry your codebase's patterns. Extend the trio with your own specialists through a [profile](#agent-profiles).
 
 ---
 
 ## Quick start
 
 ```bash
-# 1. Install into the current repo
+# 1. Install into the current repo — one pass, no follow-up step
 npx specrails-core@latest init
-```
 
-The TUI asks you to pick a tier:
-
-- **Quick** (default) — agents and commands installed straight to `.claude/`, ready to use immediately. No AI interaction.
-- **Full** — same as Quick plus `/specrails:enrich` (5-phase deep analysis: stack detection, VPC personas, competitive research). ~5 min.
-
-```bash
-# 2. Optional — run enrich later if you picked Quick
-/specrails:enrich
-
-# 3. Start building
+# 2. Start building
 > /specrails:implement "add user authentication"
 > /specrails:implement #1, #2          # from local tickets (default)
 > /specrails:implement #42             # from GitHub Issues (if configured)
 ```
 
-That's it. The pipeline takes over.
+That's it. Installation places the three agents, commands, rules, and OpenSpec skills directly — no wizard, no AI step. The pipeline takes over.
 
 ---
 
@@ -67,14 +56,14 @@ Everything lands in your repo — nothing auto-updates, nothing phones home. You
 
 | Category | Location | Purpose |
 |----------|----------|---------|
-| **Agents** | `.claude/agents/` | 14 specialised AI agents |
-| **Commands** | `.claude/commands/specrails/` | 17 workflow commands (`/specrails:implement`, `/specrails:get-backlog-specs`, `/specrails:why`, …) |
+| **Agents** | `.claude/agents/` | The three core agents (sr-architect, sr-developer, sr-reviewer) |
+| **Commands** | `.claude/commands/specrails/` | Workflow commands (`/specrails:implement`, `/specrails:why`, `/specrails:retry`, …) |
 | **OpenSpec skills** | `.claude/commands/opsx/` | `/opsx:*` commands for spec artefacts |
 | **Config** | `.specrails/config.yaml` | Stack, CI commands, git workflow |
-| **Personas** | `.specrails/personas/*.md` | VPC user profiles, generated from your users |
 | **Rules** | `.specrails/rules/*.md` | Per-layer coding conventions |
 | **Memory** | `.specrails/agent-memory/` | Persistent knowledge — agents learn across sessions |
 | **Pipeline state** | `.specrails/pipeline/` | In-flight feature state for parallel builds |
+| **Profiles** _(optional, yours)_ | `.specrails/profiles/*.json` | Add custom specialists + task routing |
 
 To update, re-run the installer:
 
@@ -82,7 +71,7 @@ To update, re-run the installer:
 npx specrails-core@latest init
 ```
 
-It refreshes the agents/commands while leaving your `.specrails/` data untouched.
+Or run `npx specrails-core@latest update` to refresh in place. Update leaves your `.specrails/` data, profiles, and `custom-*` agents untouched. Upgrading from v4? Update also removes the artefacts v5 no longer ships (the enrich wizard, install tiers, and the non-core agents) and prints exactly what it removed — see [Migrating from v4](#migrating-from-v4).
 
 ---
 
@@ -92,33 +81,26 @@ It refreshes the agents/commands while leaving your `.specrails/` data untouched
 |---|---|---|---|
 | Structured pipeline | ✅ Architect → Dev → Review → PR | ❌ Manual | ❌ Manual |
 | Adapts to your codebase | ✅ Reads your real stack/CI | ⚠️ Prompts only | ❌ |
-| Product-driven backlog | ✅ VPC persona scoring | ❌ | ❌ |
+| Spec-driven (OpenSpec) | ✅ Proposal → design → tasks → specs | ❌ | ❌ |
 | Parallel feature builds | ✅ Git worktrees | ❌ | ❌ |
 | Institutional memory | ✅ Agents learn across sessions | ❌ | ❌ |
 | Open source | ✅ MIT | N/A | ❌ |
 
-specrails is not a chat interface. It's a **development pipeline** that coordinates multiple specialised agents through your existing tools (GitHub Issues, JIRA, git, CI).
+specrails is not a chat interface. It's a **development pipeline** that coordinates specialised agents through your existing tools (GitHub Issues, git, CI).
 
 ---
 
 ## The agents
 
+Three agents, tightly integrated through the OpenSpec lifecycle (`/opsx:ff` → `/opsx:apply` → `/opsx:archive`):
+
 | Agent | Model | Role |
 |-------|-------|------|
 | **sr-architect** | Sonnet | Designs features: proposal, technical design, task breakdown |
-| **sr-developer** | Sonnet | Full-stack implementation |
-| **sr-backend-developer** | Sonnet | Backend-specialised implementation |
-| **sr-frontend-developer** | Sonnet | Frontend-specialised implementation |
-| **sr-reviewer** | Sonnet | Quality gate: runs CI, fixes issues, records learnings |
-| **sr-backend-reviewer** | Sonnet | Backend code review: API design, DB patterns, performance |
-| **sr-frontend-reviewer** | Sonnet | Frontend code review: UX, accessibility, component design |
-| **sr-test-writer** | Sonnet | Generates unit, integration, and e2e tests |
-| **sr-security-reviewer** | Sonnet | Secrets detection, OWASP checks, dependency vulnerabilities |
-| **sr-doc-sync** | Sonnet | Updates changelogs, READMEs, API docs |
-| **sr-merge-resolver** | Sonnet | AI-powered merge conflict resolution for multi-feature pipelines |
-| **sr-performance-reviewer** | Sonnet | Performance regression detection after implementation |
-| **sr-product-manager** | Opus | Product discovery: competitive analysis, VPC evaluation |
-| **sr-product-analyst** | Haiku | Read-only backlog analysis and prioritisation |
+| **sr-developer** | Sonnet | Full-stack implementation (tests and docs included per task) |
+| **sr-reviewer** | Sonnet | Single quality gate: correctness, TDD/spec completeness, security, and performance; runs CI, fixes issues, records learnings |
+
+Need a specialist — a dedicated security reviewer, a data-engineering developer, a docs agent? Author it as a `custom-*` agent and declare it in a [profile](#agent-profiles); the pipeline routes to it. The installer never ships or manages non-core agents, so your custom agents are always yours.
 
 ---
 
@@ -129,7 +111,6 @@ specrails is not a chat interface. It's a **development pipeline** that coordina
 ```bash
 /specrails:implement "add dark mode"        # from a description
 /specrails:implement #85, #71               # from tickets
-/specrails:implement UI, Analytics          # explore areas, pick the best ideas
 ```
 
 Architect designs → developer builds → reviewer validates → PR created. Multiple features run in parallel with git worktrees.
@@ -163,31 +144,21 @@ To discard without applying:
 rm -rf .claude/.dry-run/add-dark-mode/
 ```
 
-### `/specrails:get-backlog-specs` — View prioritised backlog
+### `/specrails:retry` — Resume a failed pipeline
 
 ```bash
-/specrails:get-backlog-specs                  # show all areas
-/specrails:get-backlog-specs UI, Decks        # filter by area
+/specrails:retry add-dark-mode                # resume from the failed phase
+/specrails:retry add-dark-mode --from reviewer
+/specrails:retry --list                       # show resumable pipeline states
 ```
 
-Reads your tickets (local or GitHub Issues), scores by VPC persona match, recommends top 3 for the next sprint.
-
-### `/specrails:auto-propose-backlog-specs` — Discover features
-
-```bash
-/specrails:auto-propose-backlog-specs             # explore all areas
-/specrails:auto-propose-backlog-specs Analytics   # focus on one area
-```
-
-AI product discovery using your personas. Evaluates ideas, creates tickets (local or GitHub Issues) for the best ones.
+Picks up a `/specrails:implement` run from where it stopped, reusing the OpenSpec artefacts already produced.
 
 ---
 
 ## Agent profiles
 
-> Available in `specrails-core >= 4.1.0`. Optional — without a profile, the pipeline behaves exactly as before.
-
-Profiles are declarative JSON files that tell `/specrails:implement` which agents to use, which models to run them with, and how to route tasks to specialists. One project can define many profiles (e.g. `default`, `data-heavy`, `security-heavy`) and run different features with different profiles — useful for concurrent rails in `/specrails:batch-implement`.
+Profiles are **the way to extend the core trio**. They are declarative JSON files that tell `/specrails:implement` which agents to use, which models to run them with, and how to route tasks to specialists. Without a profile the pipeline runs the three baseline agents; with one, you add your own `custom-*` agents and routing. One project can define many profiles (e.g. `default`, `data-heavy`, `security-heavy`) and run different features with different profiles — useful for concurrent rails in `/specrails:batch-implement`.
 
 ### File layout
 
@@ -205,7 +176,7 @@ When running the pipeline, the active profile is resolved in this order:
 
 1. `$SPECRAILS_PROFILE_PATH` environment variable (absolute path to a JSON snapshot)
 2. `<cwd>/.specrails/profiles/project-default.json`
-3. No profile — legacy behavior (identical to pre-4.1.0)
+3. No profile — the three baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`)
 
 Tools such as [specrails-desktop](https://github.com/fjpulidop/specrails-desktop) set `$SPECRAILS_PROFILE_PATH` to a job-scoped snapshot so concurrent rails can run independent profiles.
 
@@ -251,12 +222,10 @@ specrails-core ships with a built-in ticket system — no GitHub account or exte
 
 Tickets live in `.specrails/local-tickets.json` alongside your code. They're plain JSON and git-friendly.
 
-**Local tickets are the default.** The `/specrails:enrich` wizard skips GitHub/JIRA credential setup unless you opt in.
+**Local tickets are the default** — no GitHub account or credential setup required.
 
 ```bash
 /specrails:implement #1, #4                # implement by ticket ID
-/specrails:get-backlog-specs               # view prioritised backlog
-/specrails:auto-propose-backlog-specs      # discover and create tickets with AI
 /specrails:propose-spec                    # create a ticket from a spec proposal
 ```
 
@@ -266,20 +235,21 @@ Migrating from GitHub Issues or JIRA? See [docs/migration-guide.md](./docs/migra
 
 ---
 
-## VPC persona scoring
+## Migrating from v4
 
-Features are scored against your user personas using the Value Proposition Canvas framework:
+v5 is a breaking release. It removes the `/specrails:enrich` wizard, the quick/full install tiers, and the nine non-core agents (product manager/analyst, layer-specific developers and reviewers, test-writer, doc-sync, merge-resolver). The installer is now mode-less: `init` places the three core agents directly, in one pass.
 
-```
-+-----------------------------+    +-----------------------------+
-|     VALUE PROPOSITION       |    |     CUSTOMER SEGMENT        |
-|  Products & Services    <---+--->|  Customer Jobs              |
-|  Pain Relievers         <---+--->|  Pains                      |
-|  Gain Creators          <---+--->|  Gains                      |
-+-----------------------------+    +-----------------------------+
+To upgrade an existing install:
+
+```bash
+npx specrails-core@latest update
 ```
 
-Each persona scores features 0–5. Features are ranked by score / effort ratio. No gut-feel product decisions.
+Update removes the artefacts v5 no longer ships (installer-owned agents, commands, and enrich staging) and prints the exact list of removed files. It never touches your `.specrails/profiles/**` or `.claude/agents/custom-*.md`.
+
+- **Relied on a removed agent?** Its body is plain Markdown — copy the v4 agent to `.claude/agents/custom-<name>.md` and declare it in a [profile](#agent-profiles). Same behaviour, now user-owned.
+- **Have a v4 profile that lists removed agents?** It keeps working: the pipeline warns and skips any profile agent whose file no longer exists, and continues with the rest. The three baseline agents remain required.
+- **Using specrails-desktop?** Pin it to `specrails-core@^4` until a desktop release adopts the mode-less `init --from-config` flow.
 
 ---
 
@@ -292,7 +262,6 @@ Each persona scores features 0–5. Features are ranked by score / effort ratio.
 | **git** | Yes | Repository detection |
 | **Node 20+** | Yes | Needed for `npx specrails-core@latest init`. Cross-platform: macOS, Linux, Windows (10/11, x64 + ARM64 via emulation). |
 | **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation. Not needed with local tickets. |
-| **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA. Not needed with local tickets. |
 
 The installer checks for prerequisites and offers to install missing ones.
 
@@ -300,7 +269,7 @@ The installer checks for prerequisites and offers to install missing ones.
 
 ## Supported stacks
 
-Stack-agnostic. The `/specrails:enrich` wizard detects and adapts to whatever you're running:
+Stack-agnostic. The installer detects and adapts the agents and rules to whatever you're running:
 
 - **Backend:** Python/FastAPI, Node/Express, Go/Gin, Rust/Actix, Java/Spring, Ruby/Rails, .NET
 - **Frontend:** React, Vue, Angular, Svelte, Next.js, Nuxt
@@ -313,21 +282,22 @@ Stack-agnostic. The `/specrails:enrich` wizard detects and adapts to whatever yo
 ## Design principles
 
 1. **Local by default** — Everything lives in your repo. No cloud services, no telemetry, no phone home.
-2. **Self-cleaning** — Installer scaffolding is removed after setup. Only final, project-specific files remain.
+2. **Mode-less** — One install path. `init` places everything directly; there is no follow-up wizard.
 3. **Context-first** — Every generated file uses your real paths, patterns, and CI commands.
-4. **Persona-driven** — Product decisions grounded in researched user personas, not assumptions.
+4. **Spec-driven** — Every feature flows through OpenSpec (proposal → design → tasks → specs), not ad-hoc prompts.
 5. **Institutional memory** — Agents learn across sessions. Reviewer learnings feed back to future developers.
 6. **Parallel-safe** — Multiple features implemented simultaneously via git worktrees with automatic merge.
+7. **Yours to extend** — The core is three agents; specialists come from profiles + `custom-*` agents the installer never touches.
 
 ---
 
 ## FAQ
 
 **Can I customise the agents after installation?**
-Yes. Everything under `.claude/` and `.specrails/` is yours to edit — agent prompts, personas, rules, config. Commit what makes sense, gitignore what's transient.
+Yes. Everything under `.claude/` and `.specrails/` is yours to edit — agent prompts, rules, config. To add a *new* specialist, author it as `.claude/agents/custom-<name>.md` and declare it in a profile; the installer will never overwrite it. Commit what makes sense, gitignore what's transient.
 
-**Can I re-run the wizard?**
-Run `/specrails:enrich` again at any time to regenerate or update project data files. Re-running `npx specrails-core@latest init` refreshes the agents/commands without touching `.specrails/`.
+**How do I update an install?**
+Run `npx specrails-core@latest update` (or re-run `init`) to refresh the agents/commands. Both leave your `.specrails/` data, profiles, and `custom-*` agents untouched.
 
 **Does this work without GitHub CLI?**
 Yes. Local tickets are the default and need no external tools. `/specrails:implement "description"` also works without `gh` — it just skips automated PR creation.
@@ -336,7 +306,7 @@ Yes. Local tickets are the default and need no external tools. `/specrails:imple
 Not simultaneously for the same project — backlog commands use one active provider at a time. You can migrate from GitHub Issues to local tickets using the [migration guide](./docs/migration-guide.md).
 
 **How much does it cost to run?**
-A full `/specrails:implement` cycle for one feature typically costs a few dollars in Claude API usage. The sr-product-manager uses Opus; all other agents use Sonnet or Haiku.
+A full `/specrails:implement` cycle for one feature typically costs a few dollars in Claude API usage. All three core agents run on Sonnet by default; a profile can override per-agent models.
 
 **Does it work with private repos?**
 Yes. Everything runs locally through Claude Code. No external services beyond the model API.

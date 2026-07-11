@@ -42,9 +42,9 @@ const AGENTS = [
 
 const ALL_AGENT_IDS = AGENTS.map(a => a.id);
 
-// Core agents — the three that every install requires. The implement
-// pipeline depends on exactly these three. All other agents (including
-// sr-merge-resolver) are optional add-ons selected by the user.
+// Core agents — the three the installer ships, which the implement pipeline
+// depends on. They are the COMPLETE shipped set; any extra specialist comes
+// from a user-authored profile (custom-*), never the installer.
 const CORE_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
@@ -73,9 +73,9 @@ const MODEL_PRESETS = {
     overrides:   {},
   },
   max: {
-    label:       'Max quality — Opus for architect + PM, Sonnet for rest',
+    label:       'Max quality — Opus for the architect, Sonnet for the rest',
     defaults:    'sonnet',
-    overrides:   { 'sr-architect': 'opus', 'sr-product-manager': 'opus' },
+    overrides:   { 'sr-architect': 'opus' },
   },
 };
 
@@ -261,7 +261,7 @@ async function run() {
     }
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
-    console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
+    console.log(`  ✓ Provider: ${provider}, Agents: ${DEFAULT_SELECTED.size}, Preset: balanced\n`);
     return;
   }
 

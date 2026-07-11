@@ -150,7 +150,7 @@ if (subcommand === 'init') {
     }
 
     // TUI succeeded — re-enter init with --from-config so the Node
-    // command reads provider/tier from install-config.yaml.
+    // command reads provider/agents from install-config.yaml.
     const nextArgs = subargs
       .filter((a) => a !== '--no-tui' && a !== '--no-direct')
       .concat(['--yes', '--from-config'])
