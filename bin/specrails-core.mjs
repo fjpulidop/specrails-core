@@ -6,8 +6,6 @@
  * in-process via the Node installer under dist/installer/. This file
  * only keeps logic that is local to the dispatcher:
  *   - `profile validate` / `profile show` — schema validation via ajv.
- *   - `enrich`                            — spawns Claude Code with
- *                                           the /specrails:enrich command.
  *   - `init` TUI short-circuit            — spawns tui-installer.mjs
  *                                           then re-enters init with
  *                                           --from-config.
@@ -44,6 +42,15 @@ if (!subcommand) {
   process.exit(0)
 }
 
+// ─── Removed-in-v5 subcommands (clear error, not a generic "unknown") ────────
+
+const REMOVED_SUBCOMMANDS = new Set(['enrich'])
+
+if (REMOVED_SUBCOMMANDS.has(subcommand)) {
+  console.error(`${subcommand} was removed in v5 — init now installs everything directly.`)
+  process.exit(1)
+}
+
 // ─── Subcommand allowlist (kept for backwards compatibility) ─────────────────
 
 const KNOWN_SUBCOMMANDS = new Set([
@@ -52,7 +59,6 @@ const KNOWN_SUBCOMMANDS = new Set([
   'doctor',
   'install-framework',
   'assemble',
-  'enrich',
   'version',
   'profile',
   'help',
@@ -61,8 +67,15 @@ const KNOWN_SUBCOMMANDS = new Set([
 if (!KNOWN_SUBCOMMANDS.has(subcommand)) {
   console.error(`Unknown command: ${subcommand}\n`)
   console.error(
-    'Available commands: init, update, doctor, install-framework, assemble, enrich, version, profile, help',
+    'Available commands: init, update, doctor, install-framework, assemble, version, profile, help',
   )
+  process.exit(1)
+}
+
+// ─── Removed-in-v5 flags (clear error) ───────────────────────────────────────
+
+if (args.includes('--quick') || args.includes('--lite')) {
+  console.error('--quick was removed in v5 — init now installs everything directly.')
   process.exit(1)
 }
 
@@ -87,32 +100,6 @@ if (subcommand === 'version') {
 if (subcommand === 'profile') {
   await runProfile(subargs)
   process.exit(0)
-}
-
-// ─── enrich ──────────────────────────────────────────────────────────────────
-// Launches Claude Code with the /specrails:enrich slash command.
-
-if (subcommand === 'enrich') {
-  const enrichFlags = subargs.join(' ')
-  const claudeCmd = `/specrails:enrich${enrichFlags ? ' ' + enrichFlags : ''}`
-  const result = spawnSync(
-    'claude',
-    ['--command', claudeCmd, '--dangerously-skip-permissions'],
-    {
-      stdio: 'inherit',
-      cwd: process.cwd(),
-      shell: process.platform === 'win32',
-    },
-  )
-  if (result.error) {
-    console.error(
-      '\nFailed to launch Claude CLI for enrich:',
-      result.error.message,
-      '\nEnsure Claude Code is installed: npm install -g @anthropic-ai/claude-code\n',
-    )
-    process.exit(1)
-  }
-  process.exit(result.status ?? (result.error ? 1 : 0))
 }
 
 // ─── init: optional TUI short-circuit ────────────────────────────────────────
@@ -195,7 +182,6 @@ Usage:
   specrails-core init       [--root-dir <path>] [--yes|-y] [--no-tui]  Install into a repository
   specrails-core update     [--only <component>] [--dry-run]           Update an existing installation
   specrails-core doctor                                                 Run health checks
-  specrails-core enrich     [--from-config <path>]                      Run /specrails:enrich via Claude CLI
   specrails-core profile    <validate|show> [<path>]                    Validate or pretty-print a profile JSON
   specrails-core version                                                Show installed version
 

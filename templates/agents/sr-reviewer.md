@@ -69,24 +69,9 @@ These are the most common reasons code passes locally but fails in CI:
 
 {{CI_KNOWN_GAPS}}
 
-## Layer Review Findings (injected at runtime by orchestrator)
-
-The orchestrator runs specialized layer reviewers in parallel before you launch. Their reports are injected here. A value of `"SKIPPED"` means no files of that layer type were in the changeset.
-
-**These are NOT `/specrails:enrich` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
-
-FRONTEND_REVIEW_REPORT:
-[injected]
-
-BACKEND_REVIEW_REPORT:
-[injected]
-
-SECURITY_REVIEW_REPORT:
-[injected]
-
----
-
 ## Review Checklist
+
+You are the single reviewer for this change. There are no separate layer reviewers — frontend, backend, security, and performance concerns are all your responsibility in this pass. Weight each dimension by what the changeset actually touches.
 
 After running CI checks, also review for:
 
@@ -113,6 +98,17 @@ After running CI checks, also review for:
 - New files follow existing naming conventions
 - Import style matches the rest of the codebase
 - Error handling patterns are consistent
+
+### Security (scale to what the change touches)
+- No secrets, tokens, or credentials committed
+- User-controlled input is validated and, where interpolated into queries/commands/paths, properly escaped or parameterized
+- No new injection, path-traversal, or SSRF surface introduced
+- AuthZ/authN checks are present on new endpoints or privileged operations
+
+### Performance (scale to what the change touches)
+- No obvious N+1 queries or unbounded loops over user-controlled input
+- Expensive work is not added to hot paths without justification
+- Large allocations, unbounded caches, and blocking I/O on async paths are flagged
 
 ## Workflow
 

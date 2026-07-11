@@ -8,7 +8,6 @@ import { readTextFile, pathExists } from '../util/fs.js'
 
 import {
   type Provider,
-  type Tier,
   loadInstallConfig,
   resolveConfigPath,
 } from '../phases/install-config.js'
@@ -29,8 +28,7 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
  *   --root-dir <path>     Target repo (default: cwd)
  *   --yes / -y            Non-interactive; auto-init git + accept defaults
  *   --provider <claude>   Force provider (only `claude` accepted in v1)
- *   --from-config [<p>]   Read provider + tier from install-config.yaml
- *   --quick               Quick tier (direct template placement, skip enrich)
+ *   --from-config [<p>]   Read provider + agents from install-config.yaml
  *   --relocate            Relocate artifacts to the $HOME workspace (symlinked
  *                         from the bundled framework) instead of installing them
  *                         IN-REPO. Default is in-repo so a standalone user's
@@ -46,7 +44,6 @@ export interface InitFlags {
   yes?: boolean
   provider?: string | boolean
   'from-config'?: string | boolean
-  quick?: boolean
   relocate?: boolean
   'hub-json'?: boolean
 }
@@ -54,7 +51,6 @@ export interface InitFlags {
 export interface InitResult {
   repoRoot: string
   provider: Provider
-  tier: Tier
 }
 
 /**
@@ -72,10 +68,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   const autoYes = flags.yes === true
   const skipPrereqs = process.env.SPECRAILS_SKIP_PREREQS === '1'
 
-  // --from-config: read provider + tier from yaml.
+  // --from-config: read provider + agents from yaml.
   const fromConfigFlag = flags['from-config']
   let providerHint: Provider | undefined
-  let tierHint: Tier | undefined
   let selectedAgentsHint: string[] | undefined
 
   if (fromConfigFlag !== undefined) {
@@ -84,7 +79,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     const config = loadInstallConfig(resolved)
     if (config) {
       providerHint = config.provider
-      tierHint = config.tier
       selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
     } else {
@@ -98,10 +92,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
       )
     }
     providerHint = flags.provider as Provider
-  }
-
-  if (flags.quick === true) {
-    tierHint = 'quick'
   }
 
   // ─── Phase 1 ──────────────────────────────────────────────────────────
@@ -176,14 +166,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   // openspec STAYS in the repo (codeRoot) — unchanged behaviour.
   await installOpenSpecProject(codeRoot, prereqs.provider)
 
-  const tier: Tier = tierHint ?? 'full'
-  if (tier === 'full') {
-    step('Next steps')
-    info('Run `/specrails:enrich` inside Claude Code to complete your setup.')
-  } else {
-    step('Installation complete')
-    info('Quick tier: agents + rules were placed directly; enrich not required.')
-  }
+  step('Installation complete')
+  info('Agents, commands, and rules were placed directly — no follow-up step required.')
+  info('Extend the core trio (sr-architect, sr-developer, sr-reviewer) via profiles + custom-*.md agents.')
   // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
   // checkpoint). The sentinel line below is FROZEN — the downstream setup
@@ -193,7 +178,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   return {
     repoRoot,
     provider: prereqs.provider,
-    tier,
   }
 }
 

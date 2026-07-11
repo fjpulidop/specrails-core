@@ -153,7 +153,7 @@ A valid telemetry record has the following structure (fields may be absent — t
 - Infer `agent` name from:
   1. The `agent` field directly (if present).
   2. The source log file path (if the path contains `sr-<name>`, extract it).
-  3. A `system_prompt` field snippet (if present): match against known agent persona names (`sr-architect`, `sr-developer`, `sr-test-writer`, `sr-reviewer`, `sr-security-reviewer`, `sr-doc-sync`, `sr-product-analyst`, `sr-product-manager`).
+  3. A `system_prompt` field snippet (if present): match against known agent names (`sr-architect`, `sr-developer`, `sr-reviewer`) or any `custom-*` agent declared by an active profile.
   4. If agent cannot be determined: assign to the bucket `"unknown"`.
 - Apply time filter: if `PERIOD_START` is not null, skip records where `timestamp < PERIOD_START`.
 - If `AGENT_FILTER` is set, skip records where the resolved agent name does not match.

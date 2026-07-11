@@ -66,7 +66,7 @@ Set the following fields:
 - `priority`: Map Estimated Complexity — Low → `"low"`, Medium → `"medium"`, High/Very High → `"high"`
 - `labels`: `["spec-proposal"]`
 - `source`: `"propose-spec"`
-- `created_by`: `"sr-product-engineer"`
+- `created_by`: `"sr-architect"`
 
 Print: `Created local ticket #{id}: {title}`
 

@@ -103,9 +103,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   } else {
     addFail(
       `${instructionsFile}: missing`,
-      provider !== 'claude'
-        ? 'Run specrails-core init to regenerate the provider instructions.'
-        : 'Run /specrails:enrich inside Claude Code to regenerate.',
+      'Run npx specrails-core update to regenerate.',
     )
   }
 
