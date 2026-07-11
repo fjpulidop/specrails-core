@@ -29,7 +29,7 @@ function setupFakeSource(scriptDir: string): void {
 }
 
 function setupRichFakeSource(scriptDir: string): void {
-  // Agents (incl. VPC-dependent + reviewer for explanations dir)
+  // v5 ships exactly the three core agents.
   writeFileLf(
     path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
     '# arch\nproject: {{PROJECT_NAME}}\nmemory: {{MEMORY_PATH}}\n',
@@ -42,28 +42,11 @@ function setupRichFakeSource(scriptDir: string): void {
     path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'),
     '# reviewer\nmemory: {{MEMORY_PATH}}\nsecurity: {{SECURITY_EXEMPTIONS_PATH}}\n',
   )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-product-manager.md'),
-    '# product manager\nneeds-enrich: true\npersonas: {{PERSONA_DIR}}\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-product-analyst.md'),
-    '# product analyst\nneeds-enrich: true\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'),
-    '# merge resolver\nmemory: {{MEMORY_PATH}}\n',
-  )
 
-  // Commands (incl. product/merge variants so we can assert
-  // dependency-driven exclusion).
+  // Commands: the surviving v5 set. An `unknown-ph.md` exercises token stripping.
   const cmds = [
     ['implement.md', '/specrails:implement\nmemory: {{MEMORY_PATH}}\n'],
     ['why.md', '/specrails:why'],
-    ['auto-propose-backlog-specs.md', '/specrails:auto-propose-backlog-specs'],
-    ['get-backlog-specs.md', '/specrails:get-backlog-specs'],
-    ['vpc-drift.md', '/specrails:vpc-drift'],
-    ['merge-resolve.md', '/specrails:merge-resolve'],
     ['unknown-ph.md', 'raw {{UNKNOWN_PLACEHOLDER}} trailing'],
   ] as const
   for (const [name, content] of cmds) {
@@ -75,7 +58,6 @@ function setupRichFakeSource(scriptDir: string): void {
     '# rules for {{PROJECT_NAME}}\n',
   )
 
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
@@ -138,7 +120,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       expect(isDir(path.join(repoRoot, '.claude', 'commands', 'specrails'))).toBe(true)
@@ -169,7 +150,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'gemini',
         providerDir: '.gemini',
-        tier: 'quick',
       })
     }
 
@@ -288,7 +268,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const copied = path.join(
@@ -312,7 +291,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const dest = path.join(repoRoot, '.claude', 'commands', 'specrails')
@@ -344,7 +322,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'setup.md'))).toBe(false)
@@ -374,7 +351,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'quick',
       })
 
       expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
@@ -393,7 +369,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const agentsDir = path.join(repoRoot, '.claude', 'agents')
@@ -417,7 +392,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
           selectedAgents: ['sr-architect'],
         })
 
@@ -448,7 +422,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const projectName = path.basename(repoRoot)
@@ -473,7 +446,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const cmd = readTextFile(path.join(repoRoot, '.claude', 'commands', 'specrails', 'unknown-ph.md'))
@@ -491,7 +463,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
@@ -518,7 +489,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const memRoot = path.join(repoRoot, '.claude', 'agent-memory')
@@ -541,7 +511,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const contents = readTextFile(path.join(repoRoot, '.gitignore'))
@@ -561,7 +530,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'full',
       })
 
       // Codex skills live under <providerDir>/skills/ now (was: .agents/skills/
@@ -581,7 +549,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'quick',
       })
 
       expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
@@ -614,7 +581,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'quick',
       })
 
       // The claude-only quick-tier placement is skipped, so no

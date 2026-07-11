@@ -6,7 +6,7 @@
 - [x] 1.2 Delete removed command templates: `templates/commands/specrails/enrich.md`, `reconfig.md`, `vpc-drift.md`, `auto-propose-backlog-specs.md`, `get-backlog-specs.md`, `merge-resolve.md`
 - [x] 1.3 Delete `templates/personas/` (persona.md, the-maintainer.md), `templates/codex-skills/enrich/`, `templates/codex-skills/merge-resolve/`, `templates/settings/perf-thresholds.yml`, and root `commands/enrich.md`
 - [x] 1.4 Prune dead references from surviving templates: `implement.md` (see group 4), `batch-implement.md`, `retry.md`, `telemetry.md`, `memory-inspect.md`, `health-check.md`, `refactor-recommender.md`, `explore-spec.md`, gemini TOMLs (`implement.toml`, `batch-implement.toml`), codex skills (`implement/`, `batch-implement/`, `retry/`, `rails/`), and the 3 core agent bodies (any mention of enrich/VPC/removed agents)
-- [ ] 1.5 Acceptance sweep: `grep -ri 'enrich\|sr-product\|sr-test-writer\|sr-doc-sync\|sr-merge-resolver\|sr-frontend\|sr-backend\|sr-security-reviewer\|sr-performance-reviewer\|vpc' templates/ commands/` returns zero hits (except deliberate release-note prose, if any)
+- [x] 1.5 Acceptance sweep: `grep -ri 'enrich\|sr-product\|sr-test-writer\|sr-doc-sync\|sr-merge-resolver\|sr-frontend\|sr-backend\|sr-security-reviewer\|sr-performance-reviewer\|vpc' templates/ commands/` returns zero hits (except deliberate release-note prose, if any)
 
 ## 2. Installer: remove tiers and enrich
 
@@ -15,7 +15,7 @@
 - [x] 2.3 `install-config.ts`: remove `Tier` type and `tier` from `InstallConfig`; parser ignores an existing `tier` key (tolerated on read, never written); drop tier validation error
 - [x] 2.4 `cli.ts` + `commands/init.ts`: remove `--quick` flag handling and `tierHint`; `--quick` now errors with `--quick was removed in v5 — init now installs everything directly`; remove both post-install tier messages, replace with a single mode-less summary
 - [x] 2.5 `bin/specrails-core.mjs`: remove `enrich` from the subcommand allowlist and its spawn block; invoking it prints `enrich was removed in v5 — init now installs everything directly` and exits non-zero; update help text
-- [ ] 2.6 `bin/tui-installer.mjs`: delete Step 2 (tier select), the tier line in the YAML writer, the full-tier "Next: run /specrails:enrich" epilogue; shrink the agent multiselect to the 3 core agents (or remove the step entirely and print a profiles pointer); update `ALL_AGENT_IDS`
+- [x] 2.6 `bin/tui-installer.mjs`: delete Step 2 (tier select), the tier line in the YAML writer, the full-tier "Next: run /specrails:enrich" epilogue; shrink the agent multiselect to the 3 core agents (or remove the step entirely and print a profiles pointer); update `ALL_AGENT_IDS`
 - [x] 2.7 `phases/prereqs.ts`: remove the JIRA CLI check (1.8) and enrich-oriented comments/messaging
 - [x] 2.8 `commands/doctor.ts`: replace the `/specrails:enrich` remediation hint with `Run npx specrails-core update to regenerate.`
 
@@ -38,14 +38,14 @@
 
 ## 5. Tests
 
-- [ ] 5.1 `scaffold.test.ts` + `__tests__/scaffold.test.ts`: remove tier-branch cases; assert direct placement is unconditional (no tier input), agent set is exactly the core trio across all 3 providers; `setup-templates/` still staged but with no `personas/` subtree
-- [ ] 5.2 `install-config.test.ts`: remove tier validation cases; add case `tier: full` in YAML is ignored without error
-- [ ] 5.3 `init.test.ts` + `cli` arg-parser tests: `--quick` errors; no enrich hint in output; summary is mode-less
-- [ ] 5.4 `update.test.ts` + `v5-migration.test.ts`: migration cases — removed agent/command files deleted, obsolete `setup-templates/personas/` removed, `setup-templates/` itself kept, reserved paths (`profiles/**`, `custom-*.md`) and untracked files untouched, migration summary printed
-- [ ] 5.5 `manifest.test.ts`: manifest rewrite drops obsolete entries after cleanup
-- [ ] 5.6 `reserved-paths.test.ts`: contract unchanged — update fixtures that referenced removed agents/tiers; audit still passes
-- [ ] 5.7 Add template-inventory test: `templates/agents/` contains exactly 3 files; no removed command/persona template exists under `templates/` (the modeless-install audit scenario)
-- [ ] 5.8 Full suite green: `npm test` (typecheck + build + vitest) on the local platform; verify CI matrix on the PR
+- [x] 5.1 `scaffold.test.ts` + `__tests__/scaffold.test.ts`: remove tier-branch cases; assert direct placement is unconditional (no tier input), agent set is exactly the core trio across all 3 providers; `setup-templates/` still staged but with no `personas/` subtree
+- [x] 5.2 `install-config.test.ts`: remove tier validation cases; add case `tier: full` in YAML is ignored without error
+- [x] 5.3 `init.test.ts` + `cli` arg-parser tests: `--quick` errors; no enrich hint in output; summary is mode-less
+- [x] 5.4 `update.test.ts` + `v5-migration.test.ts`: migration cases — removed agent/command files deleted, obsolete `setup-templates/personas/` removed, `setup-templates/` itself kept, reserved paths (`profiles/**`, `custom-*.md`) and untracked files untouched, migration summary printed
+- [x] 5.5 `manifest.test.ts`: manifest rewrite drops obsolete entries after cleanup
+- [x] 5.6 `reserved-paths.test.ts`: contract unchanged — update fixtures that referenced removed agents/tiers; audit still passes
+- [x] 5.7 Add template-inventory test: `templates/agents/` contains exactly 3 files; no removed command/persona template exists under `templates/` (the modeless-install audit scenario)
+- [x] 5.8 Full suite green: `npm test` (typecheck + build + vitest) on the local platform; verify CI matrix on the PR
 
 ## 6. Docs and specs
 

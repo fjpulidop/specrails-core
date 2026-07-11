@@ -111,7 +111,7 @@ describe('runInit', () => {
     }
   }
 
-  it('installs into a fresh git repo on the quick tier', async () => {
+  it('installs the core agents into a fresh git repo', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -125,12 +125,10 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
     expect(result.provider).toBe('claude')
-    expect(result.tier).toBe('quick')
     expect(result.repoRoot).toBe(repoRoot)
 
     // Bundled-framework: the static framework is materialized ONCE under
@@ -173,7 +171,7 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
-  it('reads provider + tier from install-config.yaml when --from-config is passed', async () => {
+  it('reads provider + agents from install-config.yaml (tolerating a legacy tier key) when --from-config is passed', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -193,14 +191,13 @@ describe('runInit', () => {
       ].join('\n'),
     )
 
-    const result = await runInit({
+    await runInit({
       'root-dir': repoRoot,
       yes: true,
       'from-config': true,
       relocate: true,
     })
 
-    expect(result.tier).toBe('quick')
     const ws = workspaceFor(repoRoot)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
@@ -218,7 +215,7 @@ describe('runInit', () => {
     const repoRoot = path.join(tmpDir, 'repo-codex')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
-    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true, relocate: true })
+    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', relocate: true })
     expect(result.provider).toBe('codex')
     const ws = workspaceFor(repoRoot)
     // Provider-derived layout: .codex/ + AGENTS.md — under the workspace.
@@ -258,7 +255,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
     })
     expect(result.provider).toBe('claude')
 
@@ -302,7 +298,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
@@ -328,7 +323,7 @@ describe('runInit', () => {
     const prevRelocate = process.env.SPECRAILS_RELOCATE
     process.env.SPECRAILS_RELOCATE = '1'
     try {
-      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude', quick: true })
+      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     } finally {
       if (prevRelocate === undefined) delete process.env.SPECRAILS_RELOCATE
       else process.env.SPECRAILS_RELOCATE = prevRelocate
@@ -384,7 +379,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
     })
 
     expect(pathExists(path.join(repoRoot, 'openspec', 'changes', 'archive'))).toBe(true)

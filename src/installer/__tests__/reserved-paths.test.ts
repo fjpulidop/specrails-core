@@ -124,7 +124,6 @@ describe('reserved paths audit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
     })
 
     assertReservedUntouched(fx)

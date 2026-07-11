@@ -141,7 +141,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   rawOut('\n')
   if (failed === 0) {
     info(
-      `All ${passed + failed} checks passed. Run /specrails:get-backlog-specs to get started.`,
+      `All ${passed + failed} checks passed. Run /specrails:implement to get started.`,
     )
   } else {
     rawOut(`${failed} check(s) failed.\n`)

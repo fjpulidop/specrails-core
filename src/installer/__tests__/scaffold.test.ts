@@ -125,7 +125,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      tier: 'quick',
       selectedAgents: undefined,
     })
 
@@ -149,7 +148,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      tier: 'quick',
       selectedAgents: ['sr-test-writer'],
     })
 
@@ -176,7 +174,6 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      tier: 'quick',
       selectedAgents: undefined,
     })
 

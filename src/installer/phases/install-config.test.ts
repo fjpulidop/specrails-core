@@ -60,20 +60,19 @@ describe('install-config', () => {
       expect(result.provider).toBe('gemini')
     })
 
-    it('accepts an optional tier and preset', () => {
+    it('accepts an optional preset', () => {
       const result = validateInstallConfig({
         version: 1,
         provider: 'claude',
-        tier: 'quick',
         agents: { selected: [], preset: 'balanced' },
       })
-      expect(result.tier).toBe('quick')
       expect(result.agents.preset).toBe('balanced')
     })
 
-    it('tolerates a legacy agent_teams field (backward compat) without failing', () => {
-      // Older configs may still carry `agent_teams: true/false`. The field is no
-      // longer supported but must be silently ignored, never rejected.
+    it('tolerates legacy agent_teams and tier fields (backward compat) without failing', () => {
+      // Older configs may still carry `agent_teams: true/false` and `tier: full|quick`.
+      // Both are no longer supported but must be silently ignored, never rejected
+      // and never carried forward onto the parsed config.
       const result = validateInstallConfig({
         version: 1,
         provider: 'claude',
@@ -82,9 +81,9 @@ describe('install-config', () => {
         agents: { selected: ['sr-architect'], preset: 'balanced' },
       })
       expect(result.provider).toBe('claude')
-      expect(result.tier).toBe('quick')
       expect(result.agents.selected).toEqual(['sr-architect'])
       expect((result as unknown as Record<string, unknown>).agent_teams).toBeUndefined()
+      expect((result as unknown as Record<string, unknown>).tier).toBeUndefined()
     })
 
     it('rejects missing version', () => {
@@ -134,17 +133,16 @@ describe('install-config', () => {
       }
     })
 
-    it('rejects an unsupported tier', () => {
-      try {
-        validateInstallConfig({
-          version: 1,
-          provider: 'claude',
-          tier: 'enterprise',
-          agents: { selected: [] },
-        })
-      } catch (err) {
-        expect((err as InvalidConfigError).errors[0]).toContain(`unsupported tier`)
-      }
+    it('ignores any tier value (tolerated, never rejected)', () => {
+      // v5 has no install tiers. A legacy/unknown tier value is silently ignored,
+      // never a validation error.
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'claude',
+        tier: 'enterprise',
+        agents: { selected: [] },
+      })
+      expect((result as unknown as Record<string, unknown>).tier).toBeUndefined()
     })
 
     it('surfaces multiple errors in one throw', () => {
@@ -202,11 +200,10 @@ describe('install-config', () => {
       writeInstallConfig(p, {
         version: 1,
         provider: 'claude',
-        tier: 'quick',
         agents: { selected: ['sr-architect'], preset: 'max' },
       })
       const cfg = loadInstallConfig(p)
-      expect(cfg!.tier).toBe('quick')
+      expect(cfg!.provider).toBe('claude')
       expect(cfg!.agents.preset).toBe('max')
     })
   })
