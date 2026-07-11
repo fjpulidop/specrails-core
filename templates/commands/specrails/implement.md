@@ -240,7 +240,7 @@ Print a setup report:
 | OpenSpec | ok | ... |
 | Dependencies | ok | ... |
 | Test runner | ok | ... |
-| Agents | N installed | core: 3/3, optional: M |
+| Agents | N available | baseline: 3/3, custom (profile): M |
 ```
 
 **Pass `TEST_CMD`, `BACKLOG_AVAILABLE`, and `AVAILABLE_AGENTS` forward** — all later phases must use these.
@@ -285,13 +285,13 @@ Initialize conflict-tracking variables:
 **If the user passed a text description** (e.g. `"add feature X"`):
 - **Single-feature mode**. Derive a kebab-case change name.
 - Set `SINGLE_MODE = true`. No worktrees, no parallelism.
-- **Skip Phase 1 and Phase 2** — go directly to Phase 3a.
+- Go directly to Phase 3a.
 
 **If the user passed ticket references** (e.g. `#85, #71` or `#1, #2`):
 - Fetch each ticket from `.specrails/local-tickets.json` at `tickets["{id}"]`.
 - Extract area, value, effort, and feature details from each ticket body.
 - If only 1 ticket: set `SINGLE_MODE = true`.
-- **Skip Phase 1 and Phase 2** — go directly to confirmation table.
+- Go directly to the confirmation table.
 
 #### Phase 0 snapshot capture
 
@@ -646,7 +646,7 @@ After computing `DEVELOPER_ROUTING`, optionally emit a trace line to aid debuggi
 | custom-api-dev   | Task 3         | Profile routed [backend] tasks here |
 ```
 
-Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually launched) — Phase 4b will use this for reviewer selection.
+Also store `DEVELOPER_AGENTS_USED` (the set of developer agent IDs actually launched) — reported in the Phase 4e summary.
 
 #### Launch modes
 

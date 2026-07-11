@@ -11,13 +11,14 @@ import { resolveArtifacts } from '../util/registry.js'
 
 /**
  * Tests for the CORE_AGENTS constant and the default agent-selection
- * behavior in placeQuickTierArtefacts.
+ * behavior in placeArtefacts.
  *
- * Key invariants under test:
- *  - CORE_AGENTS = {sr-architect, sr-developer, sr-reviewer} — NOT sr-merge-resolver
+ * Key invariants under test (v5):
+ *  - CORE_AGENTS = {sr-architect, sr-developer, sr-reviewer} — the COMPLETE shipped set
  *  - Fresh init (selectedAgents: undefined) places exactly the three core agents
- *  - Explicit selectedAgents list places that list PLUS the three core agents
- *  - update preserves previously-selected optional agents via install-config.yaml
+ *  - A selection entry with no shipped template is ignored (stale v4 configs)
+ *  - update places only the core trio even when a pre-v5 install-config.yaml
+ *    still selects removed agents
  */
 
 
@@ -27,24 +28,18 @@ import { resolveArtifacts } from '../util/registry.js'
 
 /**
  * Write a minimal fake scriptDir so scaffoldInstallation has templates
- * to copy. Includes agent templates for the three core agents plus any
- * extras passed in `extraAgents`.
+ * to copy. Mirrors the real v5 package: agent templates exist for the
+ * three core agents ONLY.
  */
-async function setupFakeScriptDir(
-  scriptDir: string,
-  version: string,
-  extraAgents: string[] = [],
-): Promise<void> {
+async function setupFakeScriptDir(scriptDir: string, version: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'VERSION'), `${version}\n`)
 
   const agentsSrc = path.join(scriptDir, 'templates', 'agents')
-  const coreIds = ['sr-architect', 'sr-developer', 'sr-reviewer']
-  for (const id of [...coreIds, ...extraAgents]) {
+  for (const id of ['sr-architect', 'sr-developer', 'sr-reviewer']) {
     writeFileLf(path.join(agentsSrc, `${id}.md`), `# ${id}\n`)
   }
 
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
@@ -81,7 +76,7 @@ describe('CORE_AGENTS constant', () => {
 // placeQuickTierArtefacts default behavior
 // ---------------------------------------------------------------------------
 
-describe('placeQuickTierArtefacts — default agent placement', () => {
+describe('placeArtefacts — default agent placement', () => {
   let tmpDir: string
   let prevSkipPrereqs: string | undefined
   let prevSkipOpenSpecInit: string | undefined
@@ -112,9 +107,7 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
   it('places exactly the three core agents when selectedAgents is undefined (fresh init)', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const testRepoRoot = path.join(tmpDir, 'repo')
-    // Include sr-merge-resolver and sr-test-writer in the template dir so
-    // we can verify they are NOT placed when selectedAgents is undefined.
-    await setupFakeScriptDir(scriptDir, '5.0.0', ['sr-merge-resolver', 'sr-test-writer'])
+    await setupFakeScriptDir(scriptDir, '5.0.0')
     mkdirp(testRepoRoot)
     await initRepo(testRepoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
@@ -130,14 +123,12 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 
     const placed = placedAgentIds(testRepoRoot)
     expect(placed.sort()).toEqual(['sr-architect', 'sr-developer', 'sr-reviewer'].sort())
-    expect(placed).not.toContain('sr-merge-resolver')
-    expect(placed).not.toContain('sr-test-writer')
   })
 
-  it('places sr-test-writer in addition to the three core agents when explicitly selected (opt-in works)', async () => {
+  it('ignores a selected agent that has no shipped template (stale v4 selection)', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const testRepoRoot = path.join(tmpDir, 'repo')
-    await setupFakeScriptDir(scriptDir, '5.0.0', ['sr-merge-resolver', 'sr-test-writer'])
+    await setupFakeScriptDir(scriptDir, '5.0.0')
     mkdirp(testRepoRoot)
     await initRepo(testRepoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
@@ -148,37 +139,13 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
       codeRoot: testRepoRoot,
       provider: 'claude',
       providerDir: '.claude',
-      selectedAgents: ['sr-test-writer'],
+      // A pre-v5 config may still select removed agents — no template exists,
+      // so the entries are ignored and only the core trio lands.
+      selectedAgents: ['sr-test-writer', 'sr-merge-resolver'],
     })
 
     const placed = placedAgentIds(testRepoRoot)
-    expect(placed).toContain('sr-architect')
-    expect(placed).toContain('sr-developer')
-    expect(placed).toContain('sr-reviewer')
-    expect(placed).toContain('sr-test-writer')
-    // sr-merge-resolver was not selected — should not appear
-    expect(placed).not.toContain('sr-merge-resolver')
-  })
-
-  it('does NOT place sr-merge-resolver when selectedAgents is undefined', async () => {
-    const scriptDir = path.join(tmpDir, 'core')
-    const testRepoRoot = path.join(tmpDir, 'repo')
-    await setupFakeScriptDir(scriptDir, '5.0.0', ['sr-merge-resolver'])
-    mkdirp(testRepoRoot)
-    await initRepo(testRepoRoot)
-    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
-
-    scaffoldInstallation({
-      scriptDir,
-      artifactRoot: testRepoRoot,
-      codeRoot: testRepoRoot,
-      provider: 'claude',
-      providerDir: '.claude',
-      selectedAgents: undefined,
-    })
-
-    const placed = placedAgentIds(testRepoRoot)
-    expect(placed).not.toContain('sr-merge-resolver')
+    expect(placed.sort()).toEqual(['sr-architect', 'sr-developer', 'sr-reviewer'].sort())
   })
 })
 
@@ -186,7 +153,7 @@ describe('placeQuickTierArtefacts — default agent placement', () => {
 // Update — optional-agent preservation via install-config.yaml
 // ---------------------------------------------------------------------------
 
-describe('update — optional-agent preservation', () => {
+describe('update — stale v4 selection handling', () => {
   let tmpDir: string
   let registryHome: string
   let prevSkipPrereqs: string | undefined
@@ -230,19 +197,19 @@ describe('update — optional-agent preservation', () => {
     rmSync(registryHome, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
-  it('re-places a previously-selected optional agent (sr-test-writer) on update', async () => {
+  it('places only the core trio when a pre-v5 install-config still selects removed agents', async () => {
     const { runUpdate } = await import('../commands/update.js')
 
     const scriptDir = path.join(tmpDir, 'core')
     const testRepoRoot = path.join(tmpDir, 'repo')
 
-    // Install-config declares sr-test-writer as selected (simulates prior install)
-    await setupFakeScriptDir(scriptDir, '5.0.0', ['sr-test-writer', 'sr-merge-resolver'])
+    await setupFakeScriptDir(scriptDir, '5.0.0')
     mkdirp(testRepoRoot)
     await initRepo(testRepoRoot)
     process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
-    // Simulate an existing relocate-always install: marker/manifest in workspace.
+    // Simulate an existing relocate-always install: marker/manifest in workspace,
+    // plus a stale removed-agent file left behind by a v4 install.
     const ws = workspaceFor(testRepoRoot)
     writeFileLf(path.join(ws, '.specrails', 'specrails-version'), '4.0.0\n')
     writeFileLf(
@@ -250,8 +217,10 @@ describe('update — optional-agent preservation', () => {
       JSON.stringify({ version: '4.0.0', installed_at: '2026-01-01T00:00:00Z', artifacts: {} }),
     )
     mkdirp(path.join(ws, '.claude', 'commands', 'specrails'))
+    writeFileLf(path.join(ws, '.claude', 'agents', 'sr-test-writer.md'), '# stale v4 agent')
 
     // install-config.yaml is a USER file → stays in the repo (read from repoRoot).
+    // It carries pre-v5 fields (tier, removed agents) that must be tolerated.
     const installConfigYaml = [
       'version: 1',
       'provider: claude',
@@ -273,13 +242,9 @@ describe('update — optional-agent preservation', () => {
     await runUpdate({ 'root-dir': testRepoRoot })
 
     const placed = placedAgentIds(ws)
-    // Optional agent that was in install-config must be re-placed
-    expect(placed).toContain('sr-test-writer')
-    // Core agents always placed
-    expect(placed).toContain('sr-architect')
-    expect(placed).toContain('sr-developer')
-    expect(placed).toContain('sr-reviewer')
-    // sr-merge-resolver was not in selected — should not appear
-    expect(placed).not.toContain('sr-merge-resolver')
+    // Core agents placed; the stale selection entry has no template and the
+    // v5 migration removed the leftover file — it must NOT survive the update.
+    expect(placed.sort()).toEqual(['sr-architect', 'sr-developer', 'sr-reviewer'].sort())
+    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-test-writer.md'))).toBe(false)
   })
 })

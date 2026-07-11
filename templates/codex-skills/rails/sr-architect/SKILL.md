@@ -87,18 +87,6 @@ writing code.
 <one paragraph: the system state today, the constraints the
 change must respect, the assumptions you are making.>
 
-Scope: <comma-separated labels — pick honestly from:
-        frontend, backend, both, security-sensitive,
-        performance-sensitive>
-        Examples:
-        - "Scope: frontend"
-        - "Scope: backend, security-sensitive"
-        - "Scope: both, performance-sensitive"
-        The implement orchestrator parses this line to route
-        the developer + reviewer phases. A missing or wrong
-        label means the wrong specialists get spawned (or
-        none at all).
-
 ## Goal
 <one sentence: what observable behaviour you are adding /
 changing.>

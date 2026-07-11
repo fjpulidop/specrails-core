@@ -1,5 +1,6 @@
 import { chmodSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
+import { PassThrough } from 'node:stream'
 import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isDir, isSymlink, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
-import { runInit } from './init.js'
+import { resetLoggerStreams, setLoggerStreams } from '../util/logger.js'
+import { runInit, warnUnknownSelectedAgents } from './init.js'
 
 /**
  * Integration-style tests for `runInit`. Uses a real filesystem
@@ -29,9 +31,7 @@ async function setupFakeScriptDir(scriptDir: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), 'reviewer')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'), 'merge')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
@@ -202,7 +202,7 @@ describe('runInit', () => {
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
-    // sr-merge-resolver is optional — not placed unless it appears in agents.selected
+    // Removed v4 agents never exist — only the core trio ships.
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
     // NOTE: this test pre-creates repo/.specrails/install-config.yaml (a USER
     // file), so the repo-immutability invariant is asserted in the other tests.
@@ -387,5 +387,40 @@ describe('runInit', () => {
     expect(
       pathExists(path.join(repoRoot, '.claude', 'skills', 'openspec-propose', 'SKILL.md')),
     ).toBe(true)
+  })
+})
+
+describe('warnUnknownSelectedAgents', () => {
+  const capture = (): { lines: string[]; restore: () => void } => {
+    const lines: string[] = []
+    const sink = new PassThrough()
+    sink.on('data', (chunk: Buffer) => lines.push(chunk.toString()))
+    setLoggerStreams({ out: sink, err: sink })
+    return { lines, restore: () => resetLoggerStreams() }
+  }
+
+  it('warns for each selected agent that no longer ships', () => {
+    const { lines, restore } = capture()
+    try {
+      warnUnknownSelectedAgents(['sr-architect', 'sr-frontend-developer', 'sr-test-writer'])
+    } finally {
+      restore()
+    }
+    const out = lines.join('')
+    expect(out).toContain(`'sr-frontend-developer'`)
+    expect(out).toContain(`'sr-test-writer'`)
+    expect(out).toContain('removed in v5')
+    expect(out).not.toContain(`'sr-architect'`)
+  })
+
+  it('is silent for the core trio and for undefined', () => {
+    const { lines, restore } = capture()
+    try {
+      warnUnknownSelectedAgents(['sr-architect', 'sr-developer', 'sr-reviewer'])
+      warnUnknownSelectedAgents(undefined)
+    } finally {
+      restore()
+    }
+    expect(lines.join('')).toBe('')
   })
 })

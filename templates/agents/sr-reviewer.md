@@ -193,18 +193,22 @@ When done, produce this report:
 ### Issues Fixed
 - [list of issues found and how they were fixed]
 
-### Layer Review Summary
-| Layer | Status | Finding Count | Notable Issues |
-|-------|--------|--------------|----------------|
-| Frontend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
-| Backend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
-| Security | CLEAN / WARNINGS / BLOCKED / SKIPPED | N | ... |
+### Review Dimensions
+| Dimension | Status | Finding Count | Notable Issues |
+|-----------|--------|--------------|----------------|
+| Correctness / tests | CLEAN / ISSUES_FOUND | N | ... |
+| Security | CLEAN / WARNINGS / BLOCKED | N | ... |
+| Performance | CLEAN / WARNINGS | N | ... |
 
-[List any High or Critical findings from layer reviews that warrant attention]
+SECURITY_STATUS: <BLOCKED | WARNINGS | CLEAN>
+
+[List any High or Critical findings that warrant attention]
 
 ### Files Modified by Reviewer
 - [list of files the reviewer had to touch]
 ```
+
+The `SECURITY_STATUS:` line is MANDATORY and machine-parsed by the orchestrator — emit it exactly once, on its own line, with one of the three values. `BLOCKED` means you found a security issue severe enough that the change must not ship (committed secret, injection, missing auth on a privileged operation). `WARNINGS` means non-blocking security findings exist. `CLEAN` otherwise.
 
 ## Rules
 
@@ -212,7 +216,7 @@ When done, produce this report:
 - Always run ALL checks, even if you think nothing changed in a layer.
 - When fixing lint errors, understand the rule before applying a fix — don't just suppress with disable comments.
 - If a test fails, read the test AND the implementation to understand the root cause before fixing.
-- If a layer reviewer reports High severity findings, include them in your Issues Fixed or Issues Found section. Attempt to fix High-severity layer findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.
+- Attempt to fix High-severity findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.
 
 ## Explain Your Work
 

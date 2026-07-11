@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
 import { runCommand } from '../util/exec.js'
-import { info, ok, step } from '../util/logger.js'
+import { info, ok, step, warn } from '../util/logger.js'
 import { readTextFile, pathExists } from '../util/fs.js'
 
 import {
@@ -14,6 +14,7 @@ import {
 import { checkPrerequisites } from '../phases/prereqs.js'
 import { derivedPaths } from '../phases/provider-detect.js'
 import {
+  CORE_AGENTS,
   assembleProjectWorkspace,
   ensureCurrentSymlink,
   installFramework,
@@ -81,6 +82,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
       providerHint = config.provider
       selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
+      warnUnknownSelectedAgents(selectedAgentsHint)
     } else {
       info(`install-config.yaml not found at ${resolved} — falling back to auto-detection`)
     }
@@ -178,6 +180,24 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   return {
     repoRoot,
     provider: prereqs.provider,
+  }
+}
+
+/**
+ * Warn (once per id) about `agents.selected` entries that have no shipped
+ * template — typically a pre-v5 install-config.yaml still listing removed
+ * agents. They are skipped at placement; the warning tells the user why and
+ * points at the v5 extension path.
+ */
+export function warnUnknownSelectedAgents(selected: string[] | undefined): void {
+  if (!selected) return
+  for (const id of selected) {
+    if (!CORE_AGENTS.has(id)) {
+      warn(
+        `install-config.yaml selects agent '${id}', which specrails-core no longer ships — ` +
+          `skipping (removed in v5; use a .claude/agents/custom-*.md agent declared in a profile).`,
+      )
+    }
   }
 }
 

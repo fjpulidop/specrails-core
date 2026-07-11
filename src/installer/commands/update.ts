@@ -12,7 +12,7 @@ import { assembleProjectWorkspace } from '../phases/scaffold.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 import { migratePreV5Install } from './v5-migration.js'
 
-import { ensureFramework } from './init.js'
+import { ensureFramework, warnUnknownSelectedAgents } from './init.js'
 
 /**
  * Components recognised by the `--only <component>` flag. Mirrors the
@@ -108,6 +108,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   const config =
     loadInstallConfig(resolveConfigPath(repoRoot)) ?? loadInstallConfig(resolveConfigPath(artifactRoot))
   const selectedAgents = config?.agents.selected
+  warnUnknownSelectedAgents(selectedAgents)
 
   const marker = path.join(artifactRoot, '.specrails', 'specrails-version')
   if (!pathExists(marker)) {
