@@ -22,7 +22,7 @@ Macro-orchestrator above `/specrails:implement`. Accepts a set of feature refere
 - **`--wave-size N`**: max features per wave regardless of concurrency (default: unlimited)
 - **`--dry-run` / `--preview`**: passed through to each `/specrails:implement` invocation; no git or backlog operations will run
 
-**IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — background agents cannot request permissions interactively.
+**IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — subagents cannot request permissions interactively.
 
 ---
 
@@ -205,7 +205,8 @@ For each wave `W`:
      ```
      /specrails:implement <ref1> <ref2> ... [--dry-run]
      ```
-   - Run invocations in the batch in parallel (`run_in_background: true`).
+   - Run invocations in the batch **concurrently in the FOREGROUND**: emit every agent invocation for the batch in a single message with `run_in_background: false`. They still run in parallel, and your turn blocks until all of them return.
+   - **NEVER use `run_in_background: true`, and NEVER end your reply while a wave is still running.** In headless/pipeline execution (`claude -p`, specrails-desktop loops) the host tears the process down as soon as your turn ends — background agents are killed before they write a single file. Replies like "wave 1 is running in the background, I'll pick it up when it finishes" lose the entire wave.
    - Wait for all in the batch to complete before starting the next batch.
    - **COMPLETION GUARD**: Do not exit the wave loop early. Even if invocations take a long time or return errors, record outcomes and continue to the next batch/wave. Always reach Phase 3 (Batch Report).
 3. For each completed invocation, record outcome in `WAVE_RESULTS`:
