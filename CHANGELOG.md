@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.2](https://github.com/fjpulidop/specrails-core/compare/v4.11.1...v4.11.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **batch-implement:** run wave invocations in the foreground ([#324](https://github.com/fjpulidop/specrails-core/issues/324)) ([165a924](https://github.com/fjpulidop/specrails-core/commit/165a92477102fcdec5f2b4cf01c6d6b2f031d924))
+
 ## [4.11.1](https://github.com/fjpulidop/specrails-core/compare/v4.11.0...v4.11.1) (2026-07-05)
 
 
