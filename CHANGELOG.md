@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.11.3](https://github.com/fjpulidop/specrails-core/compare/v4.11.2...v4.11.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* **batch-implement:** teach the orchestrator its desktop rail execution context ([#326](https://github.com/fjpulidop/specrails-core/issues/326)) ([12836cf](https://github.com/fjpulidop/specrails-core/commit/12836cfe3ab870e3b0d6b1852e9604b7e68bbe47))
+
 ## [4.11.2](https://github.com/fjpulidop/specrails-core/compare/v4.11.1...v4.11.2) (2026-07-18)
 
 
