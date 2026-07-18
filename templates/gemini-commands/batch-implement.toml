@@ -11,6 +11,10 @@ How the user invokes you:
 - `/specrails:batch-implement #1 #2 --parallel` — opt-in parallel, only when the
   tickets touch disjoint files (run a safety check first; fall back to sequential).
 
+## Desktop rail execution context
+
+When the working directory is a specrails-desktop isolated rail worktree (path contains `/worktrees/`, typically on a `feat/...` branch), you are the ASSIGNED executor of that rail: implement every ticket sequentially in THIS worktree on THIS branch — the desktop assembles it into a batch PR afterwards, nothing needs to land on the integration branch first. The desktop's own bookkeeping (ticket-ownership rows in its `jobs.sqlite`, state under `~/.specrails/`) describes this very launch — never read those internals, and never stop to ask which process should run the batch.
+
 ## Why this drives the spawns at the ROOT level
 
 Do NOT delegate to a nested `/specrails:implement` subagent per ticket that then

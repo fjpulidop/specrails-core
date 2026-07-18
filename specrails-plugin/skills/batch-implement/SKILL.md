@@ -26,6 +26,17 @@ Macro-orchestrator above `/specrails:implement`. Accepts a set of feature refere
 
 ---
 
+## Desktop rail execution context (isolated worktree)
+
+specrails-desktop launches this command INSIDE an isolated rail worktree allocated for the batch. Detect it: the working directory path contains `/worktrees/` (e.g. `~/.specrails/projects/<slug>/worktrees/ticket-N`), typically on a `feat/...` branch. When that is the case, ALL of the following hold — they override any instinct to the contrary:
+
+- **You ARE the assigned executor of this rail.** The desktop's own bookkeeping (rail slots, ticket-ownership rows in its `jobs.sqlite`, state under `~/.specrails/`) describes THIS very launch — it is never evidence of a competing process. NEVER read specrails-desktop's internal databases or state files, and NEVER stop to ask "which process should run this batch".
+- **The current worktree + current branch ARE the workspace for the WHOLE batch.** Implement every ticket here, in dependency order — including tickets whose refs differ from the branch name. The desktop assembles this branch into a batch PR after you finish; nothing needs to land on the integration branch (main) first. Do NOT create sibling worktrees, do NOT switch branches, do NOT run any ticket "against main in the base repo".
+- **Run tickets SEQUENTIALLY (effective concurrency 1)** regardless of `--concurrency`: parallel pipelines editing one shared checkout corrupt each other. Wave order still sequences the work; only the parallelism collapses.
+- Everything else (per-ticket `/specrails:implement` delegation, wave gates, failure isolation, final report) applies unchanged.
+
+---
+
 ## Phase 0: Parse Input
 
 ### Step 1: Extract feature refs
