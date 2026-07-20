@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.0](https://github.com/fjpulidop/specrails-core/compare/v4.11.3...v4.12.0) (2026-07-20)
+
+
+### Features
+
+* add Kimi Code as a first-class AI provider ([#328](https://github.com/fjpulidop/specrails-core/issues/328)) ([796d2eb](https://github.com/fjpulidop/specrails-core/commit/796d2eb0cd246410c64acd25b14844e48e2902ab))
+
 ## [4.11.3](https://github.com/fjpulidop/specrails-core/compare/v4.11.2...v4.11.3) (2026-07-18)
 
 
