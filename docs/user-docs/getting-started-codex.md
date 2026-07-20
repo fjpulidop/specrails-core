@@ -1,12 +1,9 @@
 # Getting Started with SpecRails + Codex
 
-> # 🧪 Coming Soon — Currently in Lab
->
-> **OpenAI Codex support is being tested in our lab and is not yet available for installation.** The installer will refuse to install Codex and will ask you to use Claude Code. This document describes the planned behaviour and will be activated when the feature ships.
->
-> **Current status:** Preview / documentation only. For now, use [Claude Code](https://claude.ai/download) — see the [standard installation guide](installation.md).
-
-This guide gets you running SpecRails using OpenAI Codex as your AI agent. If you are using Claude Code instead, see the [standard installation guide](installation.md).
+This guide gets you running SpecRails using OpenAI Codex as your AI agent.
+Claude Code, Gemini CLI, and Kimi Code are also supported; see the
+[standard installation guide](installation.md) or the
+[Kimi-specific guide](getting-started-kimi.md).
 
 ---
 
@@ -14,7 +11,7 @@ This guide gets you running SpecRails using OpenAI Codex as your AI agent. If yo
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| **Node.js** | 18+ | Required for the installer |
+| **Node.js** | 20.19.0+ | Required for the installer and pinned OpenSpec 1.4.1 CLI |
 | **Codex CLI** | Latest | `npm i -g @openai/codex` |
 | **Git** | Any | Your project must be a git repository |
 

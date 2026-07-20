@@ -36,6 +36,34 @@ import {
 
 let home: string
 
+function validEntry(
+  repoPath: string,
+  slug: string,
+  overrides: Partial<ProjectEntry> = {},
+): ProjectEntry {
+  const canon = canonicalizeRepoPath(repoPath)
+  return {
+    ...workspaceLayout(home, slug, canon),
+    providers: ['claude'],
+    primaryProvider: 'claude',
+    source: 'desktop',
+    ...overrides,
+  }
+}
+
+function writeRegistryProjects(projects: Record<string, unknown>): void {
+  writeFileSync(
+    registryPath(home),
+    JSON.stringify({
+      schemaVersion: REGISTRY_SCHEMA_VERSION,
+      generator: 'specrails-desktop@test',
+      updatedAt: '2026-07-20T00:00:00.000Z',
+      projects,
+    }),
+    'utf8',
+  )
+}
+
 beforeEach(() => {
   home = mkdtempSync(path.join(os.tmpdir(), 'specrails-registry-test-'))
   // The `.specrails` dir is created lazily by the module's writers; tests that
@@ -102,6 +130,11 @@ describe('workspaceLayout', () => {
     expect(l.backlogConfigPath).toBe(path.join(l.workspaceDir, '.specrails', 'backlog-config.json'))
     expect(l.profilesDir).toBe(path.join(l.workspaceDir, '.specrails', 'profiles'))
   })
+
+  it('uses the primary provider mutable-state directory for Kimi', () => {
+    const layout = workspaceLayout(home, 'acme', '/repo/acme', 'kimi')
+    expect(layout.stateDir).toBe(path.join(layout.workspaceDir, '.kimi-code'))
+  })
 })
 
 describe('legacyResolution', () => {
@@ -153,12 +186,150 @@ describe('readRegistryOrEmpty (fail-open)', () => {
   })
 
   it('parses a valid registry', () => {
-    writeFileSync(
-      registryPath(home),
-      JSON.stringify({ schemaVersion: 1, projects: { '/x': { slug: 'x' } } }),
-      'utf8',
+    const repo = path.join(home, 'repos', 'desktop-project')
+    mkdirSync(repo, { recursive: true })
+    const key = normalizeKey(canonicalizeRepoPath(repo))
+    const entry = validEntry(repo, 'desktop-project', {
+      // Desktop historically persisted `.claude` as the state base even when
+      // another provider was primary. Subpaths remain writer-owned as long as
+      // they stay inside the verified workspace.
+      providers: ['codex', 'kimi'],
+      primaryProvider: 'codex',
+    }) as ProjectEntry & { updatedAt: string }
+    entry.updatedAt = '2026-07-20T00:00:00.000Z'
+    writeRegistryProjects({ [key]: entry })
+
+    const parsed = readRegistryOrEmpty(home)
+    expect(parsed.projects[key]).toEqual(entry)
+    expect(parsed.generator).toBe('specrails-desktop@test')
+    expect((parsed.projects[key] as ProjectEntry & { updatedAt?: string }).updatedAt).toBe(
+      entry.updatedAt,
     )
-    expect(readRegistryOrEmpty(home).projects['/x']).toBeDefined()
+  })
+
+  it('filters malformed entries individually while preserving a valid Desktop entry', () => {
+    const validRepo = path.join(home, 'repos', 'valid')
+    const invalidRepo = path.join(home, 'repos', 'invalid')
+    mkdirSync(validRepo, { recursive: true })
+    mkdirSync(invalidRepo, { recursive: true })
+    const validKey = normalizeKey(canonicalizeRepoPath(validRepo))
+    const invalidKey = normalizeKey(canonicalizeRepoPath(invalidRepo))
+    const valid = validEntry(validRepo, 'valid')
+    const base = validEntry(invalidRepo, 'invalid')
+    const outside = path.join(home, 'outside')
+
+    const invalidRows: Array<[string, unknown, string]> = [
+      ['null row', null, invalidKey],
+      ['array row', [], invalidKey],
+      ['wrong field type', { ...base, repoPath: 42 }, invalidKey],
+      ['unknown source', { ...base, source: 'attacker' }, invalidKey],
+      ['providers is not an array', { ...base, providers: 'claude' }, invalidKey],
+      ['empty providers', { ...base, providers: [] }, invalidKey],
+      ['unknown provider', { ...base, providers: ['claude', 'unknown'] }, invalidKey],
+      ['duplicate provider', { ...base, providers: ['claude', 'claude'] }, invalidKey],
+      [
+        'primary does not match first provider',
+        { ...base, providers: ['claude', 'kimi'], primaryProvider: 'kimi' },
+        invalidKey,
+      ],
+      ['unsafe slug', { ...base, slug: '../outside' }, invalidKey],
+      ['relative path', { ...base, ticketsPath: 'relative/tickets.json' }, invalidKey],
+      ['NUL path', { ...base, profilesDir: `${base.workspaceDir}\0/escape` }, invalidKey],
+      ['workspace escape', { ...base, workspaceDir: outside }, invalidKey],
+      ['artifact escape', { ...base, artifactRoot: outside }, invalidKey],
+      ['nested path escape', { ...base, ticketsPath: path.join(outside, 'tickets.json') }, invalidKey],
+      ['code root mismatch', { ...base, codeRoot: validRepo }, invalidKey],
+      [
+        'map key mismatch',
+        base,
+        normalizeKey(path.join(home, 'repos', 'different-key')),
+      ],
+    ]
+
+    for (const [label, invalid, storedKey] of invalidRows) {
+      writeRegistryProjects({ [validKey]: valid, [storedKey]: invalid })
+      const parsed = readRegistryOrEmpty(home)
+      expect(Object.keys(parsed.projects), label).toEqual([validKey])
+      expect(parsed.projects[validKey], label).toEqual(valid)
+    }
+  })
+
+  it('filters every entry involved in a duplicate-slug workspace collision', () => {
+    const a = path.join(home, 'repos', 'a')
+    const b = path.join(home, 'repos', 'b')
+    const c = path.join(home, 'repos', 'c')
+    mkdirSync(a, { recursive: true })
+    mkdirSync(b, { recursive: true })
+    mkdirSync(c, { recursive: true })
+    const aKey = normalizeKey(canonicalizeRepoPath(a))
+    const bKey = normalizeKey(canonicalizeRepoPath(b))
+    const cKey = normalizeKey(canonicalizeRepoPath(c))
+    writeRegistryProjects({
+      [aKey]: validEntry(a, 'shared'),
+      [bKey]: validEntry(b, 'shared'),
+      [cKey]: validEntry(c, 'unique'),
+    })
+
+    const parsed = readRegistryOrEmpty(home)
+    expect(parsed.projects[aKey]).toBeUndefined()
+    expect(parsed.projects[bKey]).toBeUndefined()
+    expect(parsed.projects[cKey]).toBeDefined()
+  })
+
+  it('rejects a workspace symlink that escapes its immutable slug root', () => {
+    const repo = path.join(home, 'repos', 'symlink-workspace')
+    mkdirSync(repo, { recursive: true })
+    const key = normalizeKey(canonicalizeRepoPath(repo))
+    const entry = validEntry(repo, 'symlink-workspace')
+    const outside = path.join(home, 'outside-workspace')
+    mkdirSync(path.dirname(entry.workspaceDir), { recursive: true })
+    mkdirSync(outside, { recursive: true })
+    symlinkSync(
+      outside,
+      entry.workspaceDir,
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeRegistryProjects({ [key]: entry })
+
+    expect(readRegistryOrEmpty(home).projects).toEqual({})
+  })
+
+  it('rejects a managed projects root symlink that escapes the registry home', () => {
+    const repo = path.join(home, 'repos', 'projects-root-symlink')
+    mkdirSync(repo, { recursive: true })
+    const key = normalizeKey(canonicalizeRepoPath(repo))
+    const entry = validEntry(repo, 'projects-root-symlink')
+    const outside = mkdtempSync(path.join(os.tmpdir(), 'specrails-projects-escape-'))
+    symlinkSync(
+      outside,
+      path.join(home, '.specrails', 'projects'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeRegistryProjects({ [key]: entry })
+
+    try {
+      expect(readRegistryOrEmpty(home).projects).toEqual({})
+    } finally {
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a nested symlink that redirects an artifact path outside the workspace', () => {
+    const repo = path.join(home, 'repos', 'nested-symlink')
+    mkdirSync(repo, { recursive: true })
+    const key = normalizeKey(canonicalizeRepoPath(repo))
+    const entry = validEntry(repo, 'nested-symlink')
+    const outside = path.join(home, 'outside-specrails')
+    mkdirSync(entry.workspaceDir, { recursive: true })
+    mkdirSync(outside, { recursive: true })
+    symlinkSync(
+      outside,
+      path.join(entry.workspaceDir, '.specrails'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    )
+    writeRegistryProjects({ [key]: entry })
+
+    expect(readRegistryOrEmpty(home).projects).toEqual({})
   })
 })
 
@@ -321,5 +492,74 @@ describe('resolveArtifacts', () => {
     expect(entry.desktopProjectId).toBe('uuid-123')
     expect(entry.coreVersion).toBe('4.9.0')
     rmSync(repo, { recursive: true, force: true })
+  })
+
+  it('allocates Kimi state and unions later providers without changing the primary', () => {
+    const repo = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'kimi-registry-')))
+    const first = resolveArtifacts(repo, {
+      home,
+      allocate: true,
+      providers: ['kimi'],
+      now: '2026-01-01T00:00:00.000Z',
+    })
+    expect(first.providers).toEqual(['kimi'])
+    expect(first.primaryProvider).toBe('kimi')
+    expect(first.stateDir).toBe(path.join(first.workspaceDir, '.kimi-code'))
+
+    const second = resolveArtifacts(repo, {
+      home,
+      allocate: true,
+      providers: ['claude'],
+      now: '2026-01-02T00:00:00.000Z',
+    })
+    expect(second.providers).toEqual(['kimi', 'claude'])
+    expect(second.primaryProvider).toBe('kimi')
+    const persisted = readRegistryOrEmpty(home).projects[second.key]!
+    expect(persisted.providers).toEqual(['kimi', 'claude'])
+    rmSync(repo, { recursive: true, force: true })
+  })
+
+  it('never resolves or writes through an invalid registry destination', () => {
+    const repo = path.join(home, 'repos', 'poisoned')
+    mkdirSync(repo, { recursive: true })
+    const key = normalizeKey(canonicalizeRepoPath(repo))
+    const poisoned = validEntry(repo, 'poisoned', {
+      workspaceDir: path.join(home, 'attacker-controlled'),
+      artifactRoot: path.join(home, 'attacker-controlled'),
+    })
+    writeRegistryProjects({ [key]: poisoned })
+
+    const readOnly = resolveArtifacts(repo, { home, allocate: false })
+    expect(readOnly.isLegacy).toBe(true)
+    expect(readOnly.artifactRoot).toBe(canonicalizeRepoPath(repo))
+    expect(existsSync(path.join(home, 'attacker-controlled'))).toBe(false)
+
+    const allocated = resolveArtifacts(repo, {
+      home,
+      allocate: true,
+      providers: ['kimi'],
+    })
+    expect(allocated.isLegacy).toBe(false)
+    expect(allocated.artifactRoot).toBe(
+      path.join(home, '.specrails', 'projects', allocated.slug, 'workspace'),
+    )
+    expect(existsSync(path.join(home, 'attacker-controlled'))).toBe(false)
+    expect(readRegistryOrEmpty(home).projects[key]?.artifactRoot).toBe(
+      allocated.artifactRoot,
+    )
+  })
+
+  it('rejects unsupported providers before persisting a registry entry', () => {
+    const repo = path.join(home, 'repos', 'unsupported-provider')
+    mkdirSync(repo, { recursive: true })
+
+    expect(() =>
+      resolveArtifacts(repo, {
+        home,
+        allocate: true,
+        providers: ['kimi', 'not-a-provider'],
+      }),
+    ).toThrow(/Unsupported registry provider/)
+    expect(existsSync(registryPath(home))).toBe(false)
   })
 })

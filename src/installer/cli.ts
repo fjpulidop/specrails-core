@@ -85,7 +85,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 function usageText(): string {
   return [
     '',
-    'specrails-core — AI agent workflow system',
+    'specrails-core — Provider-independent AI agent workflow system',
     '',
     'Usage:',
     '  specrails-core <command> [options]',

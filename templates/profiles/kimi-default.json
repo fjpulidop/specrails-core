@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "name": "kimi-default",
+  "description": "Baseline Kimi profile with explicit provider-native model identifiers.",
+  "provider": "kimi",
+  "orchestrator": { "model": "k3" },
+  "agents": [
+    { "id": "sr-architect",            "model": "k3", "required": true },
+    { "id": "sr-developer",            "model": "k3", "required": true },
+    { "id": "sr-reviewer",             "model": "k3", "required": true }
+  ],
+  "routing": [
+    { "default": true, "agent": "sr-developer" }
+  ]
+}

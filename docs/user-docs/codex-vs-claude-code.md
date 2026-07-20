@@ -1,10 +1,8 @@
 # Codex vs Claude Code
 
-> # 🧪 Codex Support — Coming Soon (in Lab)
->
-> OpenAI Codex integration is currently being **tested in our lab** and is not available for installation. The installer only accepts Claude Code at this time. This document describes the planned behaviour and will be activated when the feature ships.
-
-SpecRails supports **Anthropic Claude Code** as an AI agent runtime, with **OpenAI Codex** support coming soon. This page explains the differences so you can choose the right setup for your team when Codex ships.
+SpecRails supports both **Anthropic Claude Code** and **OpenAI Codex** as AI
+agent runtimes. Gemini CLI and Kimi Code are also supported; this page focuses
+only on the Claude/Codex comparison.
 
 ---
 
@@ -12,7 +10,7 @@ SpecRails supports **Anthropic Claude Code** as an AI agent runtime, with **Open
 
 | | Claude Code | Codex |
 |--|-------------|-------|
-| **Support status** | Stable | Beta |
+| **Support status** | Supported | Supported |
 | **CLI** | `claude` | `codex` |
 | **Config directory** | `.claude/` | `.codex/` |
 | **Agent instructions** | `CLAUDE.md` | `AGENTS.md` |
@@ -113,7 +111,11 @@ Skills themselves are the same — only the CLI invocation differs.
 - Different team members use different tools
 - You want to benchmark agents across platforms
 
-When both CLIs are installed, the SpecRails installer detects which is active. You can override with `CLI_PROVIDER=claude` or `CLI_PROVIDER=codex`.
+When several CLIs are installed, pass `--provider` to choose explicitly:
+
+```bash
+npx specrails-core@latest init --provider codex
+```
 
 ---
 
@@ -129,8 +131,8 @@ Generating config in .codex/
 To override:
 
 ```bash
-CLI_PROVIDER=codex npx specrails-core@latest init --root-dir .
-CLI_PROVIDER=claude npx specrails-core@latest init --root-dir .
+npx specrails-core@latest init --provider codex --root-dir .
+npx specrails-core@latest init --provider claude --root-dir .
 ```
 
 ---

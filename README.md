@@ -4,8 +4,7 @@
 [![GitHub Stars](https://img.shields.io/github/stars/fjpulidop/specrails-core?style=social)](https://github.com/fjpulidop/specrails-core)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm downloads](https://img.shields.io/npm/dw/specrails-core.svg)](https://www.npmjs.com/package/specrails-core)
-[![Claude Code](https://img.shields.io/badge/Built%20for-Claude%20Code-blueviolet)](https://docs.anthropic.com/en/docs/claude-code)
-[![Codex — Coming Soon](https://img.shields.io/badge/OpenAI%20Codex-Coming%20Soon%20(in%20lab)-lightgrey)](https://github.com/openai/codex)
+[![AI providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini%20%7C%20Kimi-6f42c1)](#provider-support)
 
 **Your agentic development team. From idea to production code.**
 
@@ -13,12 +12,12 @@ One command turns your repo into a spec-driven pipeline with a team of specializ
 
 ```bash
 npx specrails-core@latest init   # install into the current repo
-/specrails:enrich                # optional: deep codebase analysis
+/specrails:enrich                # Claude/Gemini (Kimi: /skill:specrails-enrich)
 ```
 
-> **Requirements:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code), git, Node 20+. Cross-platform: macOS, Linux, Windows.
->
-> **🧪 Codex (OpenAI) support — Coming Soon:** We are testing Codex integration in our lab. Installation is disabled for now, but the feature will be available shortly. Follow the repo for updates.
+> **Requirements:** one supported AI CLI, git, and Node 20.19.0+. Cross-platform:
+> macOS, Linux, and Windows. Use `--provider claude|codex|gemini|kimi` to
+> override auto-detection.
 
 ---
 
@@ -44,7 +43,8 @@ npx specrails-core@latest init
 
 The TUI asks you to pick a tier:
 
-- **Quick** (default) — agents and commands installed straight to `.claude/`, ready to use immediately. No AI interaction.
+- **Quick** (default) — provider-native agents/skills and commands are installed
+  under `.claude/`, `.codex/`, `.gemini/`, or `.kimi-code/`. No AI interaction.
 - **Full** — same as Quick plus `/specrails:enrich` (5-phase deep analysis: stack detection, VPC personas, competitive research). ~5 min.
 
 ```bash
@@ -61,15 +61,34 @@ That's it. The pipeline takes over.
 
 ---
 
+## Provider support
+
+| Provider | Runtime command | Project surface | Workflow syntax |
+|----------|-----------------|-----------------|-----------------|
+| Claude Code | `claude` | `.claude/` | `/specrails:<command>` |
+| Codex CLI | `codex` | `.codex/` | provider-native skills |
+| Gemini CLI | `gemini` | `.gemini/` | `/specrails:<command>` |
+| Kimi Code | managed Node skill runner → external `kimi -p` | `.kimi-code/` | `/skill:specrails-<command>` in the TUI |
+
+Kimi is an external CLI dependency, just like the other providers. SpecRails
+does not bundle a Kimi binary, start `kimi web`, or own a Kimi server. Install
+Kimi Code separately, run `kimi login` once, then select it explicitly or let
+the installer detect it. Parallel Kimi roles are submitted as one bounded
+foreground wave; Core creates/reuses their git worktrees, attributes each
+child stream, and waits for aggregate completion—without a server. See the
+[Kimi setup guide](./docs/user-docs/getting-started-kimi.md).
+
 ## What gets installed
 
 Everything lands in your repo — nothing auto-updates, nothing phones home. You own it, you commit it.
 
 | Category | Location | Purpose |
 |----------|----------|---------|
-| **Agents** | `.claude/agents/` | 14 specialised AI agents |
-| **Commands** | `.claude/commands/specrails/` | 17 workflow commands (`/specrails:implement`, `/specrails:get-backlog-specs`, `/specrails:why`, …) |
-| **OpenSpec skills** | `.claude/commands/opsx/` | `/opsx:*` commands for spec artefacts |
+| **Provider workflows** | `.claude/`, `.codex/`, `.gemini/`, or `.kimi-code/` | Provider-native SpecRails commands and role definitions |
+| **Kimi workflow skills** | `.kimi-code/skills/specrails-*/SKILL.md` | `/skill:specrails-*` directory-form skills |
+| **Kimi role skills** | `.kimi-code/skills/sr-*/SKILL.md` | Specialized role prompts used by Kimi workflows; Kimi discovers only direct skill children |
+| **Kimi headless runner** | `.kimi-code/specrails/run-skill.mjs` | Materializes Kimi's native skill-activation prompt before launching the external CLI |
+| **OpenSpec skills** | Provider-native skills directory | Structured proposal/design/tasks/apply workflows |
 | **Config** | `.specrails/config.yaml` | Stack, CI commands, git workflow |
 | **Personas** | `.specrails/personas/*.md` | VPC user profiles, generated from your users |
 | **Rules** | `.specrails/rules/*.md` | Per-layer coding conventions |
@@ -204,7 +223,8 @@ Profiles are declarative JSON files that tell `/specrails:implement` which agent
 When running the pipeline, the active profile is resolved in this order:
 
 1. `$SPECRAILS_PROFILE_PATH` environment variable (absolute path to a JSON snapshot)
-2. `<cwd>/.specrails/profiles/project-default.json`
+2. Provider default: `<cwd>/.specrails/profiles/project-default.json` for
+   Claude, or `<cwd>/.specrails/profiles/kimi-default.json` for Kimi
 3. No profile — legacy behavior (identical to pre-4.1.0)
 
 Tools such as [specrails-desktop](https://github.com/fjpulidop/specrails-desktop) set `$SPECRAILS_PROFILE_PATH` to a job-scoped snapshot so concurrent rails can run independent profiles.
@@ -240,6 +260,9 @@ The following paths are **reserved** — `specrails-core update` will never crea
 
 - `.specrails/profiles/**` — profile JSON files (yours and desktop-authored).
 - `.claude/agents/custom-*.md` — your custom agents. Use the `custom-` prefix to opt in to this protection.
+- `.kimi-code/skills/custom-*/**` — your custom Kimi role skills. Pre-release
+  `.kimi-code/skills/rails/custom-*` roles are also reserved while Core safely
+  migrates them into this discoverable direct-child layout.
 
 This contract is what lets you safely hand-author (or let specrails-desktop author) profiles and custom agents without fear of the next `update` overwriting your work. Other paths managed by specrails-core (`.specrails/install-config.yaml`, `.specrails/specrails-version`, etc.) remain under update's control. Audited by `src/installer/__tests__/reserved-paths.test.ts` on every CI run.
 
@@ -287,10 +310,10 @@ Each persona scores features 0–5. Features are ranked by score / effort ratio.
 
 | Tool | Required | Purpose |
 |------|----------|---------|
-| **Claude Code** | Yes | AI agent runtime |
-| **Codex CLI** _(coming soon — in lab)_ | 🧪 Not yet | OpenAI Codex support is being tested in our lab and will be available shortly. |
+| **One supported AI CLI** | Yes | Claude Code, Codex CLI, Gemini CLI, or Kimi Code |
+| **Kimi Code 0.27.0+** | For Kimi projects | Install from the [official Kimi Code guide](https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started), then run `kimi login` |
 | **git** | Yes | Repository detection |
-| **Node 20+** | Yes | Needed for `npx specrails-core@latest init`. Cross-platform: macOS, Linux, Windows (10/11, x64 + ARM64 via emulation). |
+| **Node 20.19.0+** | Yes | Needed for `npx specrails-core@latest init` (the floor required by the pinned OpenSpec 1.4.1 CLI). Cross-platform: macOS, Linux, Windows (10/11, x64 + ARM64 via emulation). |
 | **GitHub CLI** (`gh`) | Optional | Backlog sync to GitHub Issues, PR creation. Not needed with local tickets. |
 | **JIRA CLI** (`jira`) | Optional | Backlog sync to JIRA. Not needed with local tickets. |
 
@@ -324,7 +347,9 @@ Stack-agnostic. The `/specrails:enrich` wizard detects and adapts to whatever yo
 ## FAQ
 
 **Can I customise the agents after installation?**
-Yes. Everything under `.claude/` and `.specrails/` is yours to edit — agent prompts, personas, rules, config. Commit what makes sense, gitignore what's transient.
+Yes. Everything in the selected provider tree and `.specrails/` is yours to
+edit. For Kimi, customize `.kimi-code/skills/`, `.kimi-code/rules/`, and the
+managed block in `.kimi-code/AGENTS.md`; `custom-*` role skills are preserved.
 
 **Can I re-run the wizard?**
 Run `/specrails:enrich` again at any time to regenerate or update project data files. Re-running `npx specrails-core@latest init` refreshes the agents/commands without touching `.specrails/`.
@@ -336,13 +361,24 @@ Yes. Local tickets are the default and need no external tools. `/specrails:imple
 Not simultaneously for the same project — backlog commands use one active provider at a time. You can migrate from GitHub Issues to local tickets using the [migration guide](./docs/migration-guide.md).
 
 **How much does it cost to run?**
-A full `/specrails:implement` cycle for one feature typically costs a few dollars in Claude API usage. The sr-product-manager uses Opus; all other agents use Sonnet or Haiku.
+Cost depends on the selected provider, model, and workload. SpecRails does not
+add a model surcharge. Kimi's stream output does not currently report a native
+USD cost, so consumers must display it as unavailable rather than inventing an
+estimate.
 
 **Does it work with private repos?**
-Yes. Everything runs locally through Claude Code. No external services beyond the model API.
+Yes. Orchestration runs through the selected local CLI. The provider still
+connects to its model API and any MCP/integration endpoints you configure.
 
-**How do I use specrails with Codex?**
-🧪 **Coming Soon — in lab.** OpenAI Codex support is currently being tested in our lab and will be available shortly. The install path will remain the same (`npx specrails-core@latest init --root-dir .`) — the installer will detect Codex and adjust the agent configuration automatically. See [docs/user-docs/getting-started-codex.md](./docs/user-docs/getting-started-codex.md) for the preview documentation.
+**How do I use specrails with Kimi?**
+Install and authenticate Kimi Code, then run
+`npx specrails-core@latest init --provider kimi`. Invoke the generated workflows
+as `/skill:specrails-implement`, `/skill:specrails-enrich`, and so on in Kimi's
+interactive TUI. Headless callers use the managed
+`.kimi-code/specrails/run-skill.mjs` helper: Kimi 0.27 sends a slash command
+passed directly to `kimi -p` as literal text, so the helper first renders the
+same skill prompt as Kimi's native activation path and then starts external
+`kimi -p --output-format stream-json`. No server installation is required.
 
 ---
 

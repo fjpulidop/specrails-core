@@ -5,11 +5,35 @@ specrails-core runs natively on Windows 10 (1809+) and Windows 11, on both x64 a
 ## Requirements
 
 - **Windows 10 1809+** or **Windows 11** (x64 or ARM64)
-- **Node.js ≥ 20** — install from [nodejs.org](https://nodejs.org/)
+- **Node.js ≥ 20.19.0** — the minimum required by the pinned OpenSpec 1.4.1 CLI; install from [nodejs.org](https://nodejs.org/)
 - **git ≥ 2.25** — install from [git-scm.com](https://git-scm.com/)
-- **Claude Code** (`claude.cmd`) — install from [claude.ai/download](https://claude.ai/download)
+- One supported provider CLI: `claude.cmd`, `codex.cmd`, `gemini.cmd`, or
+  `kimi.cmd`
 
 `npm install -g @anthropic-ai/claude-code` installs the Claude CLI as `claude.cmd` into your global npm bin (`%APPDATA%\npm\`). Make sure that directory is on your PATH so `where claude` resolves it.
+
+For Kimi Code, use the official PowerShell installer:
+
+```powershell
+irm https://code.kimi.com/kimi-code/install.ps1 | iex
+kimi login
+```
+
+Then verify `where kimi` and `kimi --version`. SpecRails does not install or
+start Kimi Server. For headless skills, its managed Node runner resolves the
+external Kimi executable from `PATH`. A native executable is spawned directly.
+For a standard npm `kimi.cmd`/`kimi.bat` shim, the runner extracts Kimi's
+JavaScript entry point and launches it with Node using `shell: false`; it never
+passes user input through `cmd.exe`. A non-standard command shim fails closed.
+The vendored YAML parser is plain ESM and introduces no native dependency.
+
+Windows `CreateProcess` cannot carry SpecRails' largest materialized workflow
+as an argv value. For the standard npm shim, a fixed Node bootstrap therefore
+receives the full prompt over stdin, replaces only Core's fixed `-p` marker in
+`process.argv`, and imports Kimi's official entry. Kimi prompt mode does not
+need stdin after startup. The transported command line is capped at 30,000
+UTF-16 code units. Native executables cannot use this npm-entry bootstrap and
+fail with actionable guidance when their argv exceeds that budget.
 
 ## Install
 
@@ -22,7 +46,8 @@ npx specrails-core@latest init
 
 The installer:
 - probes PATH with `where` (instead of the POSIX `which`),
-- spawns `.cmd` shims (`claude.cmd`, `npm.cmd`, `gh.cmd`) with `shell: true` — required by Node.js since CVE-2024-27980,
+- spawns provider and package-manager `.cmd` shims with the repository's safe
+  Windows process wrapper,
 - writes all files with LF line endings regardless of `core.autocrlf` to keep the bundled templates portable.
 
 ## PowerShell execution policy
@@ -43,7 +68,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 
 ## CI
 
-The specrails-core GitHub Actions workflow runs the vitest suite on `windows-latest` in a matrix with `ubuntu-latest` and `macos-latest`, on Node 20 and Node 22. Any PR that regresses Windows behaviour fails CI immediately.
+The specrails-core GitHub Actions workflow runs the vitest suite on `windows-latest` in a matrix with `ubuntu-latest` and `macos-latest`, on the exact Node 20.19.0 floor and Node 22. Any PR that regresses Windows behaviour fails CI immediately.
 
 ## Reporting Windows-specific bugs
 
