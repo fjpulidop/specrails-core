@@ -20,6 +20,30 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { writeFileLf } from '../util/fs.js'
 
+function canonicalPathIdentity(value: string): string {
+  const canonical =
+    typeof realpathSync.native === 'function'
+      ? realpathSync.native(value)
+      : realpathSync(value)
+  const resolved = path.resolve(canonical)
+  return process.platform === 'win32'
+    ? resolved.toLowerCase()
+    : resolved
+}
+
+function expectSamePath(actual: string, expected: string): void {
+  expect(canonicalPathIdentity(actual)).toBe(
+    canonicalPathIdentity(expected),
+  )
+}
+
+function toKimiPath(value: string): string {
+  const normalized = value.replaceAll('\\', '/')
+  return /^[a-z]:\//.test(normalized)
+    ? `${normalized[0]!.toUpperCase()}${normalized.slice(1)}`
+    : normalized
+}
+
 interface ParsedRunnerArgs {
   skill?: string
   model?: string
@@ -835,9 +859,10 @@ describe('managed Kimi skill runner — secure invocation', () => {
     const canonicalDir = realpathSync(
       path.join(frameworkRoot, 'skills', 'linked-skill'),
     )
-    expect(prepared.skillDir).toBe(canonicalDir)
-    expect(prepared.prompt).toContain(`Directory=${canonicalDir}`)
-    expect(prepared.prompt).not.toContain(linkedDir)
+    const kimiCanonicalDir = toKimiPath(canonicalDir)
+    expect(prepared.skillDir).toBe(kimiCanonicalDir)
+    expect(prepared.prompt).toContain(`Directory=${kimiCanonicalDir}`)
+    expect(prepared.prompt).not.toContain(toKimiPath(linkedDir))
   })
 
   it('spawns directly with shell disabled so hostile args remain prompt text', async () => {
@@ -993,97 +1018,102 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(common.spawnChild).not.toHaveBeenCalled()
   })
 
-  it('loads a one-shot fixed role request without evaluating hostile context', async () => {
-    const cwd = path.join(tmpDir, 'role-request-e2e')
-    const providerRoot = path.join(cwd, '.kimi-code')
-    writeFileLf(
-      path.join(
-        providerRoot,
-        'skills',
-        'custom-auditor',
-        'SKILL.md',
-      ),
-      [
-        '---',
-        'name: custom-auditor',
-        'description: Request-file security test',
-        'type: prompt',
-        '---',
-        'Audit exactly: $ARGUMENTS',
-      ].join('\n'),
-    )
-    const marker = path.join(cwd, 'shell-injection-marker')
-    const hostileArgs =
-      `"quoted"; $(touch ${marker}) \`touch ${marker}\` <unsafe>`
-    const requestPath = path.join(
-      cwd,
-      '.specrails',
-      'kimi-role-request.json',
-    )
-    writeFileLf(
-      requestPath,
-      JSON.stringify({
-        skill: 'custom-auditor',
-        model: 'k3',
-        args: hostileArgs,
-      }),
-    )
-
-    const fakeBin = path.join(cwd, 'bin')
-    const capturePath = path.join(cwd, 'captured-argv.json')
-    const fakeKimi = path.join(fakeBin, 'kimi')
-    writeFileLf(
-      fakeKimi,
-      [
-        '#!/usr/bin/env node',
-        "const { writeFileSync } = require('node:fs')",
-        'const args = process.argv.slice(2)',
-        'writeFileSync(process.env.SPECRAILS_CAPTURE, JSON.stringify(args))',
-      ].join('\n'),
-    )
-    chmodSync(fakeKimi, 0o755)
-
-    await expect(
-      runner.runSkillCli(
+  it.skipIf(process.platform === 'win32')(
+    'loads a one-shot fixed role request without evaluating hostile context',
+    async () => {
+      const cwd = path.join(tmpDir, 'role-request-e2e')
+      const providerRoot = path.join(cwd, '.kimi-code')
+      writeFileLf(
+        path.join(
+          providerRoot,
+          'skills',
+          'custom-auditor',
+          'SKILL.md',
+        ),
         [
-          '--request-file',
-          '.specrails/kimi-role-request.json',
-          '--add-dir',
-          cwd,
-        ],
-        {
-          scriptPath: path.join(
-            providerRoot,
-            'specrails',
-            'run-skill.mjs',
-          ),
-          cwd,
-          platform: 'linux',
-          signalSource: new EventEmitter(),
-          env: {
-            PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
-            SPECRAILS_CAPTURE: capturePath,
-          },
-          spawnChild: (command, args, options) => {
-            return spawn(
-              command,
-              args,
-              options as Parameters<typeof spawn>[2],
-            )
-          },
-        },
-      ),
-    ).resolves.toBe(0)
+          '---',
+          'name: custom-auditor',
+          'description: Request-file security test',
+          'type: prompt',
+          '---',
+          'Audit exactly: $ARGUMENTS',
+        ].join('\n'),
+      )
+      const marker = path.join(cwd, 'shell-injection-marker')
+      const hostileArgs =
+        `"quoted"; $(touch ${marker}) \`touch ${marker}\` <unsafe>`
+      const requestPath = path.join(
+        cwd,
+        '.specrails',
+        'kimi-role-request.json',
+      )
+      writeFileLf(
+        requestPath,
+        JSON.stringify({
+          skill: 'custom-auditor',
+          model: 'k3',
+          args: hostileArgs,
+        }),
+      )
 
-    expect(existsSync(marker)).toBe(false)
-    expect(existsSync(requestPath)).toBe(false)
-    const captured = JSON.parse(readFileSync(capturePath, 'utf8')) as string[]
-    const promptIndex = captured.indexOf('-p') + 1
-    expect(promptIndex).toBeGreaterThan(0)
-    expect(captured[promptIndex]).toContain(
-      hostileArgs.replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
-    )
-  })
+      const fakeBin = path.join(cwd, 'bin')
+      const capturePath = path.join(cwd, 'captured-argv.json')
+      const fakeKimi = path.join(fakeBin, 'kimi')
+      writeFileLf(
+        fakeKimi,
+        [
+          '#!/usr/bin/env node',
+          "const { writeFileSync } = require('node:fs')",
+          'const args = process.argv.slice(2)',
+          'writeFileSync(process.env.SPECRAILS_CAPTURE, JSON.stringify(args))',
+        ].join('\n'),
+      )
+      chmodSync(fakeKimi, 0o755)
+
+      await expect(
+        runner.runSkillCli(
+          [
+            '--request-file',
+            '.specrails/kimi-role-request.json',
+            '--add-dir',
+            cwd,
+          ],
+          {
+            scriptPath: path.join(
+              providerRoot,
+              'specrails',
+              'run-skill.mjs',
+            ),
+            cwd,
+            platform: 'linux',
+            signalSource: new EventEmitter(),
+            env: {
+              PATH: `${fakeBin}${path.delimiter}${process.env.PATH ?? ''}`,
+              SPECRAILS_CAPTURE: capturePath,
+            },
+            spawnChild: (command, args, options) => {
+              return spawn(
+                command,
+                args,
+                options as Parameters<typeof spawn>[2],
+              )
+            },
+          },
+        ),
+      ).resolves.toBe(0)
+
+      expect(existsSync(marker)).toBe(false)
+      expect(existsSync(requestPath)).toBe(false)
+      const captured = JSON.parse(
+        readFileSync(capturePath, 'utf8'),
+      ) as string[]
+      const promptIndex = captured.indexOf('-p') + 1
+      expect(promptIndex).toBeGreaterThan(0)
+      expect(captured[promptIndex]).toContain(
+        hostileArgs.replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+      )
+    },
+  )
 
   it('bounds and cleans fixed role request files and rejects alternate paths', () => {
     const cwd = path.join(tmpDir, 'role-request-validation')
@@ -1209,17 +1239,19 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(new Set(executionCwds).size).toBe(2)
     for (const call of calls) {
       expect(call.options).toMatchObject({ shell: false })
-      expect(
-        (call.options.env as Record<string, string>).SPECRAILS_REPO_DIR,
-      ).toBe(realpathSync(repo))
+      expectSamePath(
+        (call.options.env as Record<string, string>).SPECRAILS_REPO_DIR!,
+        repo,
+      )
     }
     expect(calls[0]?.args.join('\n')).toContain(
       hostileArgs.replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
     )
-    expect(
+    expectSamePath(
       (calls[1]?.options.env as Record<string, string>)
-        .SPECRAILS_PROFILE_PATH,
-    ).toBe(path.join(realpathSync(repo), '.specrails', 'profiles', 'rail-fast.json'))
+        .SPECRAILS_PROFILE_PATH!,
+      path.join(repo, '.specrails', 'profiles', 'rail-fast.json'),
+    )
     expect(
       existsSync(path.join(repo, '.specrails', 'kimi-role-wave.json')),
     ).toBe(false)

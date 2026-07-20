@@ -891,10 +891,32 @@ export function prepareSkillLaunch(options, dependencies = {}) {
 
 function canonicalizeExistingPath(value) {
   try {
-    return realpathSync(value)
+    return canonicalRealpath(value)
   } catch {
     return path.resolve(value)
   }
+}
+
+/**
+ * Node's legacy realpath implementation can preserve an input's Windows 8.3
+ * spelling while Git reports the same directory with its long name (or vice
+ * versa). Use the native resolver and a case-folded identity for comparisons;
+ * callers still lstat the recomputed managed path so a symlink alias cannot
+ * satisfy an ownership check.
+ */
+function canonicalRealpath(value) {
+  const resolved =
+    typeof realpathSync.native === 'function'
+      ? realpathSync.native(value)
+      : realpathSync(value)
+  return path.resolve(resolved)
+}
+
+function existingPathIdentity(value) {
+  const canonical = canonicalRealpath(value)
+  return process.platform === 'win32'
+    ? canonical.toLowerCase()
+    : canonical
 }
 
 function validateAttachmentPaths(attachmentPaths = [], dependencies = {}) {
@@ -1009,19 +1031,23 @@ export function resolveKimiLaunch(kimiArgs, options = {}) {
 }
 
 export function materializeRoleWaveWorkspaces(wave, options = {}) {
-  const initialCwd = realpathSync(options.cwd ?? process.cwd())
+  const initialCwd = canonicalRealpath(options.cwd ?? process.cwd())
   const git = options.spawnSync ?? spawnSync
   const gitBinary = options.gitBinary ?? 'git'
   const tempRoot = ensureManagedTempRoot(options.tempRoot ?? os.tmpdir())
-  const providerRoot = realpathSync(options.providerRoot)
+  const providerRoot = canonicalRealpath(options.providerRoot)
   const runGit = (cwd, args, input, extraEnv = {}) => {
-    const result = git(gitBinary, ['-C', cwd, ...args], {
-      encoding: 'utf8',
-      env: { ...process.env, ...extraEnv },
-      input,
-      maxBuffer: 256 * 1024 * 1024,
-      shell: false,
-    })
+    const result = git(
+      gitBinary,
+      ['-C', cwd, '-c', 'core.autocrlf=false', ...args],
+      {
+        encoding: 'utf8',
+        env: { ...process.env, ...extraEnv },
+        input,
+        maxBuffer: 256 * 1024 * 1024,
+        shell: false,
+      },
+    )
     if (result.error || result.status !== 0) {
       const detail =
         errorMessage(result.error ?? '').trim() ||
@@ -1034,7 +1060,7 @@ export function materializeRoleWaveWorkspaces(wave, options = {}) {
     return String(result.stdout ?? '')
   }
 
-  const baseRepo = realpathSync(
+  const baseRepo = canonicalRealpath(
     runGit(initialCwd, ['rev-parse', '--show-toplevel']).trim(),
   )
   const manifestPath = path.join(
@@ -1052,7 +1078,8 @@ export function materializeRoleWaveWorkspaces(wave, options = {}) {
     existingManifest &&
     (
       existingManifest.run !== wave.run ||
-      realpathSync(existingManifest.baseRepo) !== baseRepo
+      existingPathIdentity(existingManifest.baseRepo) !==
+        existingPathIdentity(baseRepo)
     )
   ) {
     throw new RunnerUsageError(
@@ -1175,7 +1202,7 @@ export function materializeRoleWaveWorkspaces(wave, options = {}) {
         )
       }
       const registeredTarget = existsSync(target)
-        ? realpathSync(target)
+        ? existingPathIdentity(target)
         : path.resolve(target)
       if (!listed.has(registeredTarget)) {
         if (existsSync(target)) {
@@ -1266,7 +1293,7 @@ function parseGitWorktreeList(source) {
       const candidate = field.slice('worktree '.length)
       paths.add(
         existsSync(candidate)
-          ? realpathSync(candidate)
+          ? existingPathIdentity(candidate)
           : path.resolve(candidate),
       )
     }
@@ -1438,7 +1465,7 @@ function assertManagedPathParents(root, file, label) {
 
 function ensureRealDirectoryTree(root, directory) {
   const lexicalRoot = path.resolve(root)
-  const absoluteRoot = realpathSync(lexicalRoot)
+  const absoluteRoot = canonicalRealpath(lexicalRoot)
   const lexicalTarget = path.resolve(directory)
   const relative = path.relative(lexicalRoot, lexicalTarget)
   if (
@@ -1475,12 +1502,12 @@ function ensureManagedTempRoot(candidate) {
         `Managed temp root must be a real directory: ${absolute}`,
       )
     }
-    return realpathSync(absolute)
+    return canonicalRealpath(absolute)
   }
   const parent = path.dirname(absolute)
-  const realParent = realpathSync(parent)
+  const realParent = canonicalRealpath(parent)
   ensureRealDirectoryTree(realParent, path.join(realParent, path.basename(absolute)))
-  return realpathSync(path.join(realParent, path.basename(absolute)))
+  return canonicalRealpath(path.join(realParent, path.basename(absolute)))
 }
 
 export function ensureProviderOverlay(
@@ -1492,7 +1519,7 @@ export function ensureProviderOverlay(
   const createLink = dependencies.symlink ?? symlinkSync
   const copyTree = dependencies.copyTree ?? cpSync
   const removeTree = dependencies.removeTree ?? rmSync
-  const expectedRoot = realpathSync(providerRoot)
+  const expectedRoot = canonicalRealpath(providerRoot)
   const contentSha256 = hashManagedDirectoryTree(expectedRoot)
   const markerValue = {
     schemaVersion: 2,
@@ -1506,7 +1533,10 @@ export function ensureProviderOverlay(
   if (existsSync(destination)) {
     const destinationMetadata = lstatSync(destination)
     if (destinationMetadata.isSymbolicLink()) {
-      if (realpathSync(destination) !== expectedRoot) {
+      if (
+        existingPathIdentity(destination) !==
+        existingPathIdentity(expectedRoot)
+      ) {
         throw new RunnerUsageError(
           `Worktree provider link does not target the managed provider: ${destination}`,
         )
@@ -2004,7 +2034,7 @@ function resolveRoleWaveState(
     nonEmptyString(sourceEnv.SPECRAILS_REPO_DIR) ??
     dependencies.cwd ??
     process.cwd()
-  const baseRepo = realpathSync(
+  const baseRepo = canonicalRealpath(
     runRoleGit(cwd, ['rev-parse', '--show-toplevel'], dependencies).trim(),
   )
   const manifestPath = path.join(
@@ -2017,7 +2047,8 @@ function resolveRoleWaveState(
   if (
     manifest === undefined ||
     manifest.run !== run ||
-    realpathSync(manifest.baseRepo) !== baseRepo ||
+    existingPathIdentity(manifest.baseRepo) !==
+      existingPathIdentity(baseRepo) ||
     (options.requireIsolated && manifest.baseCommit === null)
   ) {
     throw new RunnerUsageError(
@@ -2067,7 +2098,8 @@ function resolveRoleWaveState(
 function validateRoleWaveManifestIntegrity(manifest, context) {
   if (
     manifest.run !== context.run ||
-    path.resolve(manifest.baseRepo) !== context.baseRepo
+    existingPathIdentity(manifest.baseRepo) !==
+      existingPathIdentity(context.baseRepo)
   ) {
     throw new RunnerUsageError(
       `Role wave manifest identity mismatch for ${context.run}`,
@@ -2130,8 +2162,9 @@ function validateRoleWaveManifestIntegrity(manifest, context) {
     }
     if (
       !existsSync(expected) ||
-      realpathSync(expected) !== expected ||
-      !context.registered.has(expected)
+      lstatSync(expected).isSymbolicLink() ||
+      !lstatSync(expected).isDirectory() ||
+      !context.registered.has(existingPathIdentity(expected))
     ) {
       throw new RunnerUsageError(
         `Role wave worktree is not the expected registered path: ${worktree}`,
@@ -2196,13 +2229,17 @@ function validateRoleWaveManifestIntegrity(manifest, context) {
 function runRoleGit(cwd, args, dependencies = {}, input) {
   const command = dependencies.gitBinary ?? 'git'
   const execute = dependencies.spawnSync ?? spawnSync
-  const result = execute(command, ['-C', cwd, ...args], {
-    encoding: 'utf8',
-    env: { ...process.env, ...(dependencies.env ?? {}) },
-    input,
-    maxBuffer: 256 * 1024 * 1024,
-    shell: false,
-  })
+  const result = execute(
+    command,
+    ['-C', cwd, '-c', 'core.autocrlf=false', ...args],
+    {
+      encoding: 'utf8',
+      env: { ...process.env, ...(dependencies.env ?? {}) },
+      input,
+      maxBuffer: 256 * 1024 * 1024,
+      shell: false,
+    },
+  )
   if (result.error || result.status !== 0) {
     const detail =
       errorMessage(result.error ?? '').trim() ||
@@ -2439,9 +2476,11 @@ async function runRoleWave(wave, dependencies) {
                         `${role.profile}.json`,
                       ),
                     }),
-                GIT_CONFIG_COUNT: '1',
+                GIT_CONFIG_COUNT: '2',
                 GIT_CONFIG_KEY_0: 'core.excludesFile',
                 GIT_CONFIG_VALUE_0: role.gitExcludeFile,
+                GIT_CONFIG_KEY_1: 'core.autocrlf',
+                GIT_CONFIG_VALUE_1: 'false',
               },
               captureRoleKey: role.key,
               writeOutput,

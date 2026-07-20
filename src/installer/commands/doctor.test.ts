@@ -50,7 +50,7 @@ describe('runDoctor', () => {
     expect(result.failed).toBeGreaterThan(0)
     // Must mention missing provider agents dir and missing CLAUDE.md.
     const messages = result.results.map((r) => r.message).join('\n')
-    expect(messages).toMatch(/\.claude\/agents directory not found/)
+    expect(messages).toMatch(/\.claude[\\/]agents directory not found/)
     expect(messages).toMatch(/CLAUDE\.md: missing/)
   })
 
@@ -66,7 +66,9 @@ describe('runDoctor', () => {
     const passes = result.results.filter((r) => r.kind === 'pass').map((r) => r.message).join('\n')
     expect(passes).toContain('Git: initialized')
     expect(passes).toContain('CLAUDE.md: present')
-    expect(passes).toMatch(/Agent files: 2 agent\(s\) found in \.claude\/agents/)
+    expect(passes).toMatch(
+      /Agent files: 2 agent\(s\) found in \.claude[\\/]agents/,
+    )
   })
 
   async function setupHealthyKimiRepo(

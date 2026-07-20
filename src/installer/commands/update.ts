@@ -8,10 +8,14 @@ import { copyDir, isDir, pathExists, readTextFile } from '../util/fs.js'
 import { loadInstallConfig, resolveConfigPath, type Tier } from '../phases/install-config.js'
 import { buildManifest, writeManifestFiles, type SpecrailsManifest } from '../phases/manifest.js'
 import { derivedPaths, detectAvailability, resolveProvider, type Provider } from '../phases/provider-detect.js'
-import { assembleProjectWorkspace } from '../phases/scaffold.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 
-import { ensureFramework, installOpenSpecProject } from './init.js'
+import {
+  ensureFramework,
+  installOpenSpecProject,
+  reassembleWorkspaceProviders,
+  snapshotWorkspaceProviderSelections,
+} from './init.js'
 
 /**
  * Components recognised by the `--only <component>` flag. Mirrors the
@@ -121,6 +125,8 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
     )
   }
   const previousVersion = readExistingVersion(artifactRoot)
+  const previousSelections =
+    snapshotWorkspaceProviderSelections(artifactRoot)
 
   // Provider can be FORCED via --provider (e.g. specrails-desktop updating one
   // provider on a multi-provider workspace, where auto-detection would always
@@ -206,15 +212,18 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       version: currentVersion,
       selectedAgents,
     })
-    assembleProjectWorkspace({
+    reassembleWorkspaceProviders({
       workspace: artifactRoot,
       frameworkDir: fwDir,
-      provider,
-      providerDir,
       version: currentVersion,
       codeRoot,
       scriptDir,
-      selectedAgents,
+      selectedProvider: provider,
+      selectedAgents:
+        config?.provider === provider
+          ? selectedAgents
+          : previousSelections[provider] ?? selectedAgents,
+      previousSelections,
       // In-repo updates COPY real files; relocated workspaces symlink.
       copyStatics: artifactRoot === codeRoot,
     })

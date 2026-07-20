@@ -17,6 +17,7 @@ import { runCommand } from '../util/exec.js'
 import { info, ok, step } from '../util/logger.js'
 import {
   isDir,
+  isSymlink,
   listDir,
   pathExists,
   readTextFile,
@@ -74,6 +75,135 @@ export interface InitResult {
   repoRoot: string
   provider: Provider
   tier: Tier
+}
+
+const WORKSPACE_PROVIDER_ORDER: readonly Provider[] = [
+  'claude',
+  'codex',
+  'gemini',
+  'kimi',
+]
+
+export type WorkspaceProviderSelections = Partial<
+  Record<Provider, string[]>
+>
+
+/**
+ * Snapshot the provider/role inventory exposed by one live workspace before a
+ * global framework version swap. This matters on Windows: directory junctions
+ * resolve their target when they are created, so a workspace link made through
+ * `framework/current` must be recreated after `current` moves. Keeping the
+ * exact visible `sr-*` set also avoids widening or narrowing a project's
+ * optional role selection during that refresh.
+ */
+export function snapshotWorkspaceProviderSelections(
+  workspace: string,
+): WorkspaceProviderSelections {
+  const selections: WorkspaceProviderSelections = {}
+  for (const provider of WORKSPACE_PROVIDER_ORDER) {
+    const { providerDir } = derivedPaths(provider)
+    const providerRoot = path.join(workspace, providerDir)
+    if (
+      !pathExists(providerRoot) ||
+      !workspaceHasManagedProviderLink(providerRoot, provider)
+    ) {
+      continue
+    }
+
+    const roleRoot =
+      provider === 'codex'
+        ? path.join(workspace, providerDir, 'skills', 'rails')
+        : provider === 'kimi'
+          ? path.join(workspace, providerDir, 'skills')
+          : path.join(workspace, providerDir, 'agents')
+    const ids = listDir(roleRoot)
+      .filter((entry) =>
+        provider === 'claude' || provider === 'gemini'
+          ? path.basename(entry).endsWith('.md')
+          : isDir(entry),
+      )
+      .map((entry) => {
+        const name = path.basename(entry)
+        return name.endsWith('.md') ? name.slice(0, -3) : name
+      })
+      .filter((id) => /^sr-[a-z0-9-]+$/.test(id))
+    selections[provider] = [...new Set(ids)].sort()
+  }
+  return selections
+}
+
+function workspaceHasManagedProviderLink(
+  providerRoot: string,
+  provider: Provider,
+): boolean {
+  const directoryLinks =
+    provider === 'claude'
+      ? ['commands', 'skills', 'rules']
+      : provider === 'codex'
+        ? ['skills']
+        : provider === 'gemini'
+          ? ['commands']
+          : ['rules', 'specrails']
+  if (
+    directoryLinks.some((relative) =>
+      isSymlink(path.join(providerRoot, relative)),
+    )
+  ) {
+    return true
+  }
+
+  const granularRoot =
+    provider === 'kimi'
+      ? path.join(providerRoot, 'skills')
+      : path.join(providerRoot, 'agents')
+  return listDir(granularRoot).some((entry) => isSymlink(entry))
+}
+
+interface ReassembleWorkspaceProvidersInput {
+  workspace: string
+  frameworkDir: string
+  version: string
+  codeRoot: string
+  scriptDir: string
+  selectedProvider: Provider
+  selectedAgents?: string[]
+  previousSelections: WorkspaceProviderSelections
+  copyStatics: boolean
+}
+
+/**
+ * Refresh every provider already represented in the project plus the provider
+ * selected by the current operation. POSIX symlinks continue to follow
+ * `framework/current`; Windows junctions do not reliably preserve that
+ * indirection, so rebuilding all live links is required for true
+ * multi-provider version parity.
+ */
+export function reassembleWorkspaceProviders(
+  input: ReassembleWorkspaceProvidersInput,
+): Provider[] {
+  const providers = WORKSPACE_PROVIDER_ORDER.filter(
+    (provider) =>
+      provider === input.selectedProvider ||
+      Object.prototype.hasOwnProperty.call(input.previousSelections, provider),
+  )
+  for (const provider of providers) {
+    const { providerDir } = derivedPaths(provider)
+    assembleProjectWorkspace({
+      workspace: input.workspace,
+      frameworkDir: input.frameworkDir,
+      provider,
+      providerDir,
+      version: input.version,
+      codeRoot: input.codeRoot,
+      scriptDir: input.scriptDir,
+      selectedAgents:
+        provider === input.selectedProvider
+          ? input.selectedAgents ?? input.previousSelections[provider]
+          : input.previousSelections[provider],
+      copyStatics: input.copyStatics,
+    })
+  }
+  return providers
 }
 
 /**
@@ -187,6 +317,8 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   }
   // In-repo when the resolution did NOT relocate the artifacts out of the repo.
   const inRepo = artifactRoot === codeRoot
+  const previousSelections =
+    snapshotWorkspaceProviderSelections(artifactRoot)
 
   // ─── Phase 2 + 3 ──────────────────────────────────────────────────────
   // Bundled-framework flow: materialize the provider-INVARIANT framework ONCE
@@ -207,15 +339,15 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     selectedAgents: selectedAgentsHint,
   })
 
-  assembleProjectWorkspace({
+  reassembleWorkspaceProviders({
     workspace: artifactRoot,
     frameworkDir: fwDir,
-    provider: prereqs.provider,
-    providerDir,
     version,
     codeRoot,
     scriptDir,
+    selectedProvider: prereqs.provider,
     selectedAgents: selectedAgentsHint,
+    previousSelections,
     // In-repo: COPY the framework statics as real, committable files. Relocated:
     // symlink from the framework store (O(1) update on a version swap).
     copyStatics: inRepo,

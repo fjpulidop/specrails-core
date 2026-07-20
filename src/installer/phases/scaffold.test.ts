@@ -1091,7 +1091,9 @@ describe('Kimi scaffold', () => {
         ),
       ),
     ).toBe('js-yaml fixture license\n')
-    expect(assembled.links.specrails).toBe('symlink')
+    expect(assembled.links.specrails).toBe(
+      process.platform === 'win32' ? 'junction' : 'symlink',
+    )
   })
 
   it('never overwrites a flat custom role when the legacy nested migration conflicts', () => {

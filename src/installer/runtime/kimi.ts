@@ -40,11 +40,11 @@ export interface KimiInvocation {
   stdinText?: string
 }
 
-export const KIMI_SKILL_RUNNER_PATH = path.join(
-  '.kimi-code',
-  'specrails',
-  'run-skill.mjs',
-)
+// This is both a Node argv path and a published wire-contract value. Forward
+// slashes are accepted by Node on Windows and keep the contract byte-identical
+// across hosts instead of leaking the build machine's path separator.
+export const KIMI_SKILL_RUNNER_PATH =
+  '.kimi-code/specrails/run-skill.mjs'
 
 const OFFICIAL_SHORT_MODEL_IDS = new Set([
   'k3',

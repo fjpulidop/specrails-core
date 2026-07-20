@@ -70,9 +70,9 @@ describe('Kimi headless invocation', () => {
       'kimi-code/k3',
       '--session=ses_123',
       '--add-dir',
-      '/repo/source',
+      path.resolve('/repo/source'),
       '--add-dir',
-      '/repo/worktree',
+      path.resolve('/repo/worktree'),
     ])
     expect(invocation.args).not.toContain('continue the review')
     expect(invocation.env).toEqual({
@@ -256,7 +256,7 @@ describe('Kimi headless invocation', () => {
       'línea uno\n第二行 🚀',
       '--session=ses_123',
       '--add-dir',
-      '/repo/source',
+      path.resolve('/repo/source'),
     ])
     expect(invocation.args.join('\n')).not.toContain('/skill:')
   })
