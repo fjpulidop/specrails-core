@@ -1365,9 +1365,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
       )
       expect(readFileSync(path.join(repoDir, 'openspec', 'change.md'), 'utf8'))
         .toBe('untracked spec\n')
-      expect(realpathSync(path.join(repoDir, '.kimi-code'))).toBe(
-        realpathSync(providerRoot),
-      )
+      expectSamePath(path.join(repoDir, '.kimi-code'), providerRoot)
     }
     writeFileLf(path.join(String(featureA.repoDir), 'role-change.txt'), 'kept\n')
 
@@ -1843,9 +1841,11 @@ describe('managed Kimi skill runner — secure invocation', () => {
     const providerRoot = writeSkill('overlay-role', 'body')
     const workspace = path.join(tmpDir, 'windows-overlay')
     mkdirSync(workspace, { recursive: true })
-    const createLink = vi.fn(() => {
-      throw new Error('junction privilege unavailable')
-    })
+    const createLink = vi.fn(
+      (_source: string, _destination: string, _type: string) => {
+        throw new Error('junction privilege unavailable')
+      },
+    )
     const copyTree = vi.fn((source: string, destination: string) => {
       cpSync(source, destination, {
         recursive: true,
@@ -1857,11 +1857,12 @@ describe('managed Kimi skill runner — secure invocation', () => {
       symlink: createLink,
       copyTree,
     })
-    expect(createLink).toHaveBeenCalledWith(
-      realpathSync(providerRoot),
-      path.join(workspace, '.kimi-code'),
-      'junction',
-    )
+    expect(createLink).toHaveBeenCalledTimes(1)
+    const [linkSource, linkDestination, linkType] =
+      createLink.mock.calls[0]!
+    expectSamePath(String(linkSource), providerRoot)
+    expect(linkDestination).toBe(path.join(workspace, '.kimi-code'))
+    expect(linkType).toBe('junction')
     expect(copyTree).toHaveBeenCalled()
     expect(
       readFileSync(
