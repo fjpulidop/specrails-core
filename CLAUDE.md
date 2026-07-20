@@ -6,7 +6,7 @@ Agent Workflow System installer for Claude Code. Installs a complete product-dri
 
 | Layer | Tech |
 |-------|------|
-| Installer | TypeScript / Node ≥ 20 (cross-platform: macOS, Linux, Windows) |
+| Installer | TypeScript / Node ≥ 20.19.0 (cross-platform: macOS, Linux, Windows) |
 | Templates | Markdown with `{{PLACEHOLDER}}` substitution |
 | Commands | Claude Code slash commands (Markdown) |
 | Prompts | Markdown guide prompts |
@@ -67,7 +67,7 @@ unsubstituted placeholders after a dogfood with
 ## Environment
 
 - Distributed as an npm package: `npx specrails-core@latest init`
-- Cross-platform from v4.2.0: macOS, Linux, Windows (Node ≥ 20). No bash / python required.
+- Cross-platform from v4.2.0: macOS, Linux, Windows (Node ≥ 20.19.0). No bash / python required.
 - Test framework: vitest with a cross-OS / cross-Node matrix in `.github/workflows/ci.yml`
 - CI/CD: GitHub Actions (release-please + npm publish)
 - GitHub Issues used for backlog (label: `product-driven-backlog`)

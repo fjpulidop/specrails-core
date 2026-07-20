@@ -108,6 +108,51 @@ describe('manifest', () => {
       })
       expect(manifest.installed_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/)
     })
+
+    it('records and unions provider inventory for multi-provider workspaces', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo')
+      setupFakePackage(scriptDir)
+      const claude = buildManifest({
+        scriptDir,
+        repoRoot,
+        version: '1.0.0',
+        providers: ['claude'],
+        primaryProvider: 'claude',
+      })
+      writeManifestFiles(repoRoot, claude)
+      const kimi = buildManifest({
+        scriptDir,
+        repoRoot,
+        version: '1.0.0',
+        providers: ['kimi'],
+        primaryProvider: 'kimi',
+      })
+      expect(kimi.providers).toEqual(['claude', 'kimi'])
+      expect(kimi.primary_provider).toBe('claude')
+    })
+
+    it('tracks the managed Kimi headless skill runner as a versioned artifact', () => {
+      const manifest = buildManifest({
+        scriptDir: process.cwd(),
+        repoRoot: path.join(tmpDir, 'repo-runner'),
+        version: 'test',
+      })
+      expect(
+        manifest.artifacts['templates/kimi/specrails/run-skill.mjs'],
+      ).toMatch(/^sha256:[0-9a-f]{64}$/)
+      expect(
+        manifest.artifacts[
+          'templates/kimi/specrails/vendor/js-yaml/js-yaml.mjs'
+        ],
+      ).toMatch(/^sha256:[0-9a-f]{64}$/)
+      expect(
+        manifest.artifacts['templates/kimi/specrails/vendor/js-yaml/LICENSE'],
+      ).toMatch(/^sha256:[0-9a-f]{64}$/)
+      expect(
+        manifest.artifacts['templates/kimi/specrails/vendor/js-yaml/NOTICE.md'],
+      ).toMatch(/^sha256:[0-9a-f]{64}$/)
+    })
   })
 
   describe('writeManifestFiles', () => {

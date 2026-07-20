@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isDir, isSymlink, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
-import { runInit } from './init.js'
+import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit } from './init.js'
 
 /**
  * Integration-style tests for `runInit`. Uses a real filesystem
@@ -24,13 +24,56 @@ import { runInit } from './init.js'
 
 const IS_WIN = process.platform === 'win32'
 
-async function setupFakeScriptDir(scriptDir: string): Promise<void> {
-  writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '4.2.0' })}\n`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), 'reviewer')
+async function setupFakeScriptDir(
+  scriptDir: string,
+  version = '4.2.0',
+): Promise<void> {
+  writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version })}\n`)
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), `${version}-arch`)
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), `${version}-dev`)
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), `${version}-reviewer`)
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'), 'merge')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'kimi', 'specrails', 'run-skill.mjs'),
+    '// managed Kimi runner fixture\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'js-yaml.mjs',
+    ),
+    '// vendored js-yaml fixture\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'LICENSE',
+    ),
+    'js-yaml fixture license\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'NOTICE.md',
+    ),
+    'js-yaml fixture notice\n',
+  )
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
@@ -102,6 +145,7 @@ describe('runInit', () => {
       '.claude',
       '.codex',
       '.gemini',
+      '.kimi-code',
       'CLAUDE.md',
       'AGENTS.md',
       'GEMINI.md',
@@ -173,7 +217,27 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
-  it('reads provider + tier from install-config.yaml when --from-config is passed', async () => {
+  it('treats -y exactly like --yes and initializes a fresh non-git directory', async () => {
+    const scriptDir = path.join(tmpDir, 'core-short-y')
+    const repoRoot = path.join(tmpDir, 'repo-short-y')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    const result = await runInit({
+      'root-dir': repoRoot,
+      y: true,
+      provider: 'claude',
+      quick: true,
+      relocate: true,
+    })
+
+    expect(result.provider).toBe('claude')
+    expect(pathExists(path.join(repoRoot, '.git'))).toBe(true)
+    assertRepoHasNoSpecrailsArtifacts(repoRoot)
+  })
+
+  it('accepts matching --provider + --from-config from the TUI re-entry flow', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -196,6 +260,7 @@ describe('runInit', () => {
     const result = await runInit({
       'root-dir': repoRoot,
       yes: true,
+      provider: 'claude',
       'from-config': true,
       relocate: true,
     })
@@ -214,11 +279,18 @@ describe('runInit', () => {
     expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates'))).toBe(false)
   })
 
-  it('accepts --provider codex and produces a codex install (.codex/ + AGENTS.md)', async () => {
+  it('uses explicit --provider as fallback when --from-config does not exist', async () => {
     const repoRoot = path.join(tmpDir, 'repo-codex')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
-    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', quick: true, relocate: true })
+    const result = await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'codex',
+      'from-config': true,
+      quick: true,
+      relocate: true,
+    })
     expect(result.provider).toBe('codex')
     const ws = workspaceFor(repoRoot)
     // Provider-derived layout: .codex/ + AGENTS.md — under the workspace.
@@ -234,13 +306,54 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
-  it('rejects --provider with an unknown value', async () => {
+  it('rejects invalid --provider values even when --from-config is present', async () => {
     const repoRoot = path.join(tmpDir, 'repo-unknown')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
     await expect(
-      runInit({ 'root-dir': repoRoot, yes: true, provider: 'turbofake' as never }),
-    ).rejects.toThrow(/must be 'claude', 'codex', or 'gemini'/)
+      runInit({
+        'root-dir': repoRoot,
+        yes: true,
+        provider: 'turbofake',
+        'from-config': true,
+      }),
+    ).rejects.toThrow(/must be 'claude', 'codex', 'gemini', or 'kimi'/)
+    await expect(
+      runInit({
+        'root-dir': repoRoot,
+        yes: true,
+        provider: true,
+        'from-config': true,
+      }),
+    ).rejects.toThrow(/must be 'claude', 'codex', 'gemini', or 'kimi'/)
+  })
+
+  it('rejects conflicting --provider + --from-config instead of silently overriding', async () => {
+    const repoRoot = path.join(tmpDir, 'repo-provider-conflict')
+    mkdirp(repoRoot)
+    await initRepo(repoRoot)
+    writeFileLf(
+      path.join(repoRoot, '.specrails', 'install-config.yaml'),
+      [
+        'version: 1',
+        'provider: kimi',
+        'tier: quick',
+        'agents:',
+        '  selected: [sr-architect]',
+        '',
+      ].join('\n'),
+    )
+
+    await expect(
+      runInit({
+        'root-dir': repoRoot,
+        yes: true,
+        provider: 'claude',
+        'from-config': true,
+      }),
+    ).rejects.toThrow(
+      /--provider 'claude' conflicts with provider 'kimi' in .*install-config\.yaml/,
+    )
   })
 
   it('installs IN-REPO by default (no --relocate, no pre-existing registry entry): real files, not symlinks', async () => {
@@ -315,6 +428,78 @@ describe('runInit', () => {
     expect(ws).not.toBe(repoRoot)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.specrails', 'specrails-version'))).toBe(true)
+  })
+
+  it('carries Claude 4.11 forward when a relocated project adds Kimi on 4.12', async () => {
+    const scriptDir = path.join(tmpDir, 'core-cross-version')
+    const repoRoot = path.join(tmpDir, 'repo-cross-version')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir, '4.11.0')
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'claude',
+      quick: true,
+      relocate: true,
+    })
+
+    const ws = workspaceFor(repoRoot)
+    const fw = frameworkFor()
+    const claudeCommands = path.join(ws, '.claude', 'commands')
+    const claudeArchitect = path.join(ws, '.claude', 'agents', 'sr-architect.md')
+    writeFileLf(
+      path.join(ws, '.claude', 'agents', 'custom-owner.md'),
+      'user-owned-claude-agent\n',
+    )
+    expect(realpathSync(claudeCommands)).toBe(
+      realpathSync(path.join(fw, '4.11.0', '.claude', 'commands')),
+    )
+    expect(readTextFile(claudeArchitect)).toBe('4.11.0-arch')
+
+    // Simulate installing the next Core release while selecting Kimi. Because
+    // `current` is global, the 4.12 target must be complete for BOTH providers
+    // before one swap makes it visible.
+    await setupFakeScriptDir(scriptDir, '4.12.0')
+    await runInit({
+      'root-dir': repoRoot,
+      yes: true,
+      provider: 'kimi',
+      quick: true,
+      relocate: true,
+    })
+
+    expect(realpathSync(path.join(fw, 'current'))).toBe(
+      realpathSync(path.join(fw, '4.12.0')),
+    )
+    expect(isDir(path.join(fw, '4.12.0', '.claude'))).toBe(true)
+    expect(isDir(path.join(fw, '4.12.0', '.kimi-code'))).toBe(true)
+
+    // Existing Claude links remain live and now resolve through the complete
+    // 4.12 target; user-owned files in the workspace are byte-preserved.
+    expect(realpathSync(claudeCommands)).toBe(
+      realpathSync(path.join(fw, '4.12.0', '.claude', 'commands')),
+    )
+    expect(readTextFile(claudeArchitect)).toBe('4.12.0-arch')
+    expect(
+      readTextFile(path.join(ws, '.claude', 'agents', 'custom-owner.md')),
+    ).toBe('user-owned-claude-agent\n')
+
+    // The newly selected provider is assembled from the same destination
+    // version, while the previous version remains available for rollback.
+    expect(
+      pathExists(path.join(ws, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md')),
+    ).toBe(true)
+    expect(pathExists(path.join(ws, '.kimi-code', 'specrails', 'run-skill.mjs'))).toBe(true)
+    expect(isDir(path.join(fw, '4.11.0', '.claude'))).toBe(true)
+
+    const manifest = JSON.parse(
+      readTextFile(path.join(ws, '.specrails', 'specrails-manifest.json')),
+    ) as { providers: string[]; primary_provider: string }
+    expect(manifest.providers).toEqual(['claude', 'kimi'])
+    expect(manifest.primary_provider).toBe('claude')
   })
 
   it('relocates when SPECRAILS_RELOCATE=1 is set (env opt-in)', async () => {
@@ -394,4 +579,77 @@ describe('runInit', () => {
       pathExists(path.join(repoRoot, '.claude', 'skills', 'openspec-propose', 'SKILL.md')),
     ).toBe(true)
   })
+
+  it.skipIf(process.platform === 'win32')(
+    'initializes Kimi in-repo and normalizes all OpenSpec skills',
+    async () => {
+      const scriptDir = path.join(tmpDir, 'core-kimi')
+      const repoRoot = path.join(tmpDir, 'repo-kimi')
+      const binDir = path.join(tmpDir, 'bin-kimi')
+      mkdirp(repoRoot)
+      mkdirp(binDir)
+      await setupFakeScriptDir(scriptDir)
+      for (const command of ['implement', 'batch-implement', 'retry', 'doctor']) {
+        writeFileLf(
+          path.join(scriptDir, 'templates', 'commands', 'specrails', `${command}.md`),
+          `/specrails:${command}\n`,
+        )
+      }
+      await initRepo(repoRoot)
+      process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+      process.env.SPECRAILS_SKIP_OPENSPEC_INIT = '0'
+
+      const fakeOpenSpec = path.join(binDir, 'openspec')
+      writeFileLf(
+        fakeOpenSpec,
+        [
+          '#!/bin/sh',
+          'if [ "$1" = "init" ]; then',
+          '  [ "$2" = "--tools" ] && [ "$3" = "kimi" ] || exit 31',
+          '  [ "$4" = "--profile" ] && [ "$5" = "custom" ] || exit 32',
+          '  [ -f "$XDG_CONFIG_HOME/openspec/config.json" ] || exit 33',
+          '  repo="$6"',
+          '  mkdir -p "$repo/openspec/changes/archive" "$repo/openspec/specs"',
+          `  for skill in ${KIMI_REQUIRED_OPENSPEC_SKILLS.join(' ')}; do`,
+          '    mkdir -p "$repo/.kimi/skills/$skill"',
+          '    printf "%s\\n" "---" "name: $skill" "description: generated" "---" > "$repo/.kimi/skills/$skill/SKILL.md"',
+          '  done',
+          '  exit 0',
+          'fi',
+          'exit 0',
+          '',
+        ].join('\n'),
+      )
+      chmodSync(fakeOpenSpec, 0o755)
+      process.env.SPECRAILS_OPENSPEC_BIN = fakeOpenSpec
+
+      const result = await runInit({
+        'root-dir': repoRoot,
+        yes: true,
+        provider: 'kimi',
+        quick: true,
+      })
+
+      expect(result.provider).toBe('kimi')
+      expect(pathExists(path.join(repoRoot, '.kimi-code', 'AGENTS.md'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.kimi-code', 'mcp.json'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(false)
+      expect(
+        pathExists(
+          path.join(repoRoot, '.kimi-code', 'skills', 'specrails-implement', 'SKILL.md'),
+        ),
+      ).toBe(true)
+      for (const skill of KIMI_REQUIRED_OPENSPEC_SKILLS) {
+        expect(
+          pathExists(path.join(repoRoot, '.kimi-code', 'skills', skill, 'SKILL.md')),
+        ).toBe(true)
+      }
+      expect(pathExists(path.join(repoRoot, '.kimi'))).toBe(false)
+      const manifest = JSON.parse(
+        readTextFile(path.join(repoRoot, '.specrails', 'specrails-manifest.json')),
+      ) as { providers: string[]; primary_provider: string }
+      expect(manifest.providers).toEqual(['kimi'])
+      expect(manifest.primary_provider).toBe('kimi')
+    },
+  )
 })

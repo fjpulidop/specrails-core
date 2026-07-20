@@ -74,19 +74,22 @@ The scaffold copies the full agent+command set into `.claude/` — you own and v
 
 **Best for:** Teams that want to version the agent prompts themselves, or projects that need full offline control.
 
-### 3. Codex project 🧪 _Coming Soon (in Lab)_
-
-> **Codex installation is not yet available.** OpenAI Codex integration is being tested in our lab and will ship shortly. The block below describes the **planned behaviour** for when the feature is released.
+### 3. Provider scaffold
 
 ```bash
-npx specrails-core@latest init --root-dir .   # same as scaffold (Codex path — not yet available)
-codex                                          # open Codex
-/specrails:enrich                             # configure
+npx specrails-core@latest init --root-dir . --provider codex
+npx specrails-core@latest init --root-dir . --provider gemini
+npx specrails-core@latest init --root-dir . --provider kimi
 ```
 
-Codex does not support the Claude Code plugin system. When Codex support ships, use the scaffold method.
+Codex, Gemini, and Kimi do not use the Claude Code plugin package. The
+scaffold renders their native project surfaces under `.codex/`, `.gemini/`,
+and `.kimi-code/` respectively. Kimi interactive workflows use
+`/skill:specrails-*`; its headless workflows use the managed runner installed
+under `.kimi-code/specrails/`.
 
-**Best for (when available):** OpenAI Codex CLI users.
+**Best for:** Codex, Gemini, or Kimi users and teams that version generated
+provider artifacts.
 
 ## The `/specrails:enrich` wizard
 

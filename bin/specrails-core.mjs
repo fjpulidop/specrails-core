@@ -6,8 +6,8 @@
  * in-process via the Node installer under dist/installer/. This file
  * only keeps logic that is local to the dispatcher:
  *   - `profile validate` / `profile show` — schema validation via ajv.
- *   - `enrich`                            — spawns Claude Code with
- *                                           the /specrails:enrich command.
+ *   - `enrich`                            — launches the installed provider's
+ *                                           native enrich workflow.
  *   - `init` TUI short-circuit            — spawns tui-installer.mjs
  *                                           then re-enters init with
  *                                           --from-config.
@@ -31,7 +31,11 @@ const subcommand = args[0]
 
 // ─── Global --version / -V flag ──────────────────────────────────────────────
 
-if (args.includes('--version') || args.includes('-V')) {
+// Treat version as a GLOBAL flag only when it is the command itself. Offline
+// lifecycle commands also carry a required `--version <target>` option; scanning
+// the whole argv would intercept `swap-current --version 4.12.0` here and exit 0
+// without ever validating or moving the framework pointer.
+if (subcommand === '--version' || subcommand === '-V') {
   const pkg = require_(path.resolve(ROOT, 'package.json'))
   console.log(`specrails-core v${pkg.version}`)
   process.exit(0)
@@ -51,6 +55,7 @@ const KNOWN_SUBCOMMANDS = new Set([
   'update',
   'doctor',
   'install-framework',
+  'swap-current',
   'assemble',
   'enrich',
   'version',
@@ -61,7 +66,7 @@ const KNOWN_SUBCOMMANDS = new Set([
 if (!KNOWN_SUBCOMMANDS.has(subcommand)) {
   console.error(`Unknown command: ${subcommand}\n`)
   console.error(
-    'Available commands: init, update, doctor, install-framework, assemble, enrich, version, profile, help',
+    'Available commands: init, update, doctor, install-framework, swap-current, assemble, enrich, version, profile, help',
   )
   process.exit(1)
 }
@@ -90,25 +95,91 @@ if (subcommand === 'profile') {
 }
 
 // ─── enrich ──────────────────────────────────────────────────────────────────
-// Launches Claude Code with the /specrails:enrich slash command.
+// Launches the configured provider's native enrich workflow.
 
 if (subcommand === 'enrich') {
-  const enrichFlags = subargs.join(' ')
-  const claudeCmd = `/specrails:enrich${enrichFlags ? ' ' + enrichFlags : ''}`
+  const workspace = await resolveEnrichWorkspace(process.cwd())
+  const { provider, model: explicitModel, workflowArgs } = resolveEnrichOptions(
+    workspace.codeRoot,
+    subargs,
+    workspace.artifactRoot,
+  )
+  const model =
+    explicitModel ??
+    resolveConfiguredEnrichModel(workspace.codeRoot, workspace.artifactRoot) ??
+    'k3'
+  const enrichFlags = serializeWorkflowArgs(workflowArgs)
+  const launch =
+    provider === 'kimi'
+      ? {
+          command: process.execPath,
+          args: [
+            path.resolve(
+              workspace.artifactRoot,
+              '.kimi-code',
+              'specrails',
+              'run-skill.mjs',
+            ),
+            '--skill',
+            'specrails-enrich',
+            '--model',
+            model,
+            '--add-dir',
+            workspace.codeRoot,
+            ...(enrichFlags ? ['--args', enrichFlags] : []),
+          ],
+          label: 'Kimi Code',
+        }
+      : provider === 'gemini'
+        ? {
+            command: 'gemini',
+            args: [
+              '-p',
+              `/specrails:enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
+              '--output-format',
+              'stream-json',
+            ],
+            label: 'Gemini CLI',
+          }
+        : provider === 'codex'
+          ? {
+              command: 'codex',
+              args: [
+                'exec',
+                `run enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
+              ],
+              label: 'Codex CLI',
+            }
+          : {
+              command: 'claude',
+              args: [
+                '--command',
+                `/specrails:enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
+                '--dangerously-skip-permissions',
+              ],
+              label: 'Claude Code',
+            }
   const result = spawnSync(
-    'claude',
-    ['--command', claudeCmd, '--dangerously-skip-permissions'],
+    launch.command,
+    launch.args,
     {
       stdio: 'inherit',
-      cwd: process.cwd(),
-      shell: process.platform === 'win32',
+      cwd: provider === 'kimi' ? workspace.artifactRoot : process.cwd(),
+      env:
+        provider === 'kimi'
+          ? {
+              ...process.env,
+              SPECRAILS_REPO_DIR: workspace.codeRoot,
+            }
+          : process.env,
+      shell: process.platform === 'win32' && provider !== 'kimi',
     },
   )
   if (result.error) {
     console.error(
-      '\nFailed to launch Claude CLI for enrich:',
+      `\nFailed to launch ${launch.label} for enrich:`,
       result.error.message,
-      '\nEnsure Claude Code is installed: npm install -g @anthropic-ai/claude-code\n',
+      `\nEnsure the configured ${provider} provider is installed and initialized.\n`,
     )
     process.exit(1)
   }
@@ -144,6 +215,7 @@ if (subcommand === 'init') {
     const tuiArgs = [path.resolve(ROOT, 'bin', 'tui-installer.mjs'), rootDir]
     if (providerVal) tuiArgs.push('--provider', providerVal)
     else if (providerEqArg) tuiArgs.push(providerEqArg)
+    if (subargs.includes('--with-profiles')) tuiArgs.push('--with-profiles')
     const tuiResult = spawnSync('node', tuiArgs, {
       stdio: 'inherit',
       cwd: process.cwd(),
@@ -189,20 +261,25 @@ process.exit(0)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function printUsage() {
-  console.log(`specrails-core — Agent Workflow System for Claude Code
+  console.log(`specrails-core — Provider-independent AI agent workflow system
 
 Usage:
   specrails-core init       [--root-dir <path>] [--yes|-y] [--no-tui]  Install into a repository
   specrails-core update     [--only <component>] [--dry-run]           Update an existing installation
   specrails-core doctor                                                 Run health checks
-  specrails-core enrich     [--from-config <path>]                      Run /specrails:enrich via Claude CLI
+  specrails-core install-framework --framework-dir <path> --provider <value> --version <value>
+                                                                        Materialize an offline framework version
+  specrails-core swap-current --framework-dir <path> --version <value> [--providers <csv>]
+                                                                        Validate and atomically expose a framework version
+  specrails-core assemble   --workspace <path> --framework-dir <path>   Assemble a workspace from the framework
+  specrails-core enrich     [--provider <value>] [workflow flags]       Run the configured provider's enrich workflow
   specrails-core profile    <validate|show> [<path>]                    Validate or pretty-print a profile JSON
   specrails-core version                                                Show installed version
 
 Flags for init:
   --root-dir <path>   Target repository path (default: current directory)
   --yes | -y          Non-interactive; use defaults, skip TUI
-  --provider <value>  Force provider: claude (codex coming soon)
+  --provider <value>  Force provider: claude, codex, gemini, or kimi
   --no-tui            Skip TUI; use defaults / flags directly
   --from-config       Skip TUI; use existing .specrails/install-config.yaml
 
@@ -210,6 +287,174 @@ Global flags:
   --version | -V    Show installed version
 
 More info: https://github.com/fjpulidop/specrails-core`)
+}
+
+function resolveEnrichOptions(cwd, argv, artifactRoot = cwd) {
+  const workflowArgs = []
+  let explicitProvider
+  let model
+  for (let index = 0; index < argv.length; index++) {
+    const token = argv[index]
+    if (token === '--provider' || token === '--model') {
+      const value = argv[++index]
+      if (!value) {
+        console.error(`${token} requires a value`)
+        process.exit(1)
+      }
+      if (token === '--provider') explicitProvider = value
+      else model = value
+      continue
+    }
+    if (token.startsWith('--provider=')) {
+      explicitProvider = token.slice('--provider='.length)
+      continue
+    }
+    if (token.startsWith('--model=')) {
+      model = token.slice('--model='.length)
+      continue
+    }
+    workflowArgs.push(token)
+  }
+
+  const supported = new Set(['claude', 'codex', 'gemini', 'kimi'])
+  if (explicitProvider && !supported.has(explicitProvider)) {
+    console.error(
+      `Unsupported provider "${explicitProvider}". Expected claude, codex, gemini, or kimi.`,
+    )
+    process.exit(1)
+  }
+
+  let provider = explicitProvider
+  if (!provider) {
+    for (const root of [cwd, artifactRoot]) {
+      const manifestPath = path.join(
+        root,
+        '.specrails',
+        'specrails-manifest.json',
+      )
+      if (existsSync(manifestPath)) {
+        try {
+          const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+          if (supported.has(manifest.primary_provider)) {
+            provider = manifest.primary_provider
+            break
+          }
+        } catch {
+          // A malformed manifest is diagnosed by `specrails-core doctor`;
+          // enrich continues to config/directory fallback.
+        }
+      }
+    }
+  }
+  if (!provider) {
+    for (const root of [cwd, artifactRoot]) {
+      const configPath = path.join(root, '.specrails', 'install-config.yaml')
+      if (!existsSync(configPath)) continue
+      const match = readFileSync(configPath, 'utf8').match(
+        /^provider:\s*(claude|codex|gemini|kimi)\s*$/m,
+      )
+      if (match) {
+        provider = match[1]
+        break
+      }
+    }
+  }
+  if (!provider) {
+    provider =
+      ['claude', 'codex', 'gemini', 'kimi'].find((candidate) =>
+        existsSync(
+          path.join(
+            artifactRoot,
+            candidate === 'kimi' ? '.kimi-code' : `.${candidate}`,
+          ),
+        ),
+      ) ?? 'claude'
+  }
+  return { provider, model, workflowArgs }
+}
+
+async function resolveEnrichWorkspace(cwd) {
+  const registryModulePath = path.resolve(
+    ROOT,
+    'dist',
+    'installer',
+    'util',
+    'registry.js',
+  )
+  if (!existsSync(registryModulePath)) {
+    return { artifactRoot: cwd, codeRoot: cwd }
+  }
+  try {
+    const registry = await import(pathToFileURL(registryModulePath).href)
+    const resolution = registry.resolveArtifacts(cwd, { allocate: false })
+    return {
+      artifactRoot: path.resolve(resolution.artifactRoot),
+      codeRoot: path.resolve(resolution.codeRoot),
+    }
+  } catch {
+    // Doctor reports malformed registry state. Enrich retains the legacy
+    // in-repository fallback instead of guessing another relocated workspace.
+    return { artifactRoot: cwd, codeRoot: cwd }
+  }
+}
+
+function resolveConfiguredEnrichModel(codeRoot, artifactRoot) {
+  const activeProfile = process.env.SPECRAILS_PROFILE_PATH
+  if (activeProfile) {
+    const activePath = path.isAbsolute(activeProfile)
+      ? activeProfile
+      : path.resolve(codeRoot, activeProfile)
+    const activeModel = readProfileOrchestratorModel(activePath)
+    if (activeModel) return activeModel
+  }
+  const configCandidates = [
+    path.join(codeRoot, '.specrails', 'install-config.yaml'),
+    path.join(artifactRoot, '.specrails', 'install-config.yaml'),
+  ]
+  for (const configPath of configCandidates) {
+    if (!existsSync(configPath)) continue
+    try {
+      const config = require_('js-yaml').load(readFileSync(configPath, 'utf8'))
+      const configured = config?.models?.defaults?.model
+      if (typeof configured === 'string' && configured.trim() !== '') {
+        return configured.trim()
+      }
+    } catch {
+      // The installer/doctor owns full config diagnostics. Continue to a
+      // provider profile rather than extracting a value from malformed YAML.
+    }
+  }
+  const profileCandidates = [
+    path.join(artifactRoot, '.specrails', 'profiles', 'kimi-default.json'),
+    path.join(codeRoot, '.specrails', 'profiles', 'kimi-default.json'),
+  ]
+  for (const profilePath of profileCandidates) {
+    const configured = readProfileOrchestratorModel(profilePath)
+    if (configured) return configured
+  }
+  return null
+}
+
+function readProfileOrchestratorModel(profilePath) {
+  if (!existsSync(profilePath)) return null
+  try {
+    const profile = JSON.parse(readFileSync(profilePath, 'utf8'))
+    const configured = profile?.orchestrator?.model
+    return typeof configured === 'string' && configured.trim() !== ''
+      ? configured.trim()
+      : null
+  } catch {
+    // Profile validation provides the actionable error. Fall through.
+    return null
+  }
+}
+
+function serializeWorkflowArgs(argv) {
+  return argv
+    .map((value) =>
+      value === '' || /\s|["']/u.test(value) ? JSON.stringify(value) : value,
+    )
+    .join(' ')
 }
 
 /**
@@ -244,11 +489,33 @@ async function runProfile(subargs) {
     process.exit(1)
   }
 
+  const workspace = await resolveEnrichWorkspace(process.cwd())
   const resolveProfilePath = () => {
     if (pathArg) return path.resolve(pathArg)
     if (process.env.SPECRAILS_PROFILE_PATH) return path.resolve(process.env.SPECRAILS_PROFILE_PATH)
-    const projectDefault = path.resolve(process.cwd(), '.specrails', 'profiles', 'project-default.json')
-    if (existsSync(projectDefault)) return projectDefault
+    const configRoots = [workspace.codeRoot, workspace.artifactRoot]
+    let provider
+    for (const root of configRoots) {
+      const configPath = path.join(root, '.specrails', 'install-config.yaml')
+      if (!existsSync(configPath)) continue
+      const match = readFileSync(configPath, 'utf8').match(
+        /^provider:\s*(claude|codex|gemini|kimi)\s*$/m,
+      )
+      if (match) {
+        provider = match[1]
+        break
+      }
+    }
+    const names =
+      provider === 'kimi'
+        ? ['kimi-default.json', 'project-default.json']
+        : ['project-default.json', 'kimi-default.json']
+    for (const root of [workspace.artifactRoot, workspace.codeRoot]) {
+      for (const name of names) {
+        const candidate = path.join(root, '.specrails', 'profiles', name)
+        if (existsSync(candidate)) return candidate
+      }
+    }
     return null
   }
 
@@ -256,7 +523,9 @@ async function runProfile(subargs) {
   if (!profilePath) {
     console.error('No profile path given and none could be resolved.')
     console.error('Pass an explicit path or set SPECRAILS_PROFILE_PATH, or place a profile at')
-    console.error('  .specrails/profiles/project-default.json')
+    console.error(
+      '  .specrails/profiles/project-default.json (or kimi-default.json for Kimi)',
+    )
     process.exit(1)
   }
   if (!existsSync(profilePath)) {
@@ -298,8 +567,12 @@ async function runProfile(subargs) {
   const schema = JSON.parse(readFileSync(schemaPath, 'utf8'))
   const ajv = new Ajv({ allErrors: true, strict: false })
   const validate = ajv.compile(schema)
+  const schemaValid = validate(profile)
+  const semanticErrors = schemaValid
+    ? validateProfileSemantics(profile)
+    : []
 
-  if (validate(profile)) {
+  if (schemaValid && semanticErrors.length === 0) {
     console.log(`✓ ${profilePath} is a valid v1 profile.`)
     process.exit(0)
   }
@@ -307,5 +580,55 @@ async function runProfile(subargs) {
   for (const err of validate.errors || []) {
     console.error(`    ${err.instancePath || '/'} ${err.message} (${JSON.stringify(err.params)})`)
   }
+  for (const err of semanticErrors) {
+    console.error(`    ${err}`)
+  }
   process.exit(1)
+}
+
+/**
+ * JSON Schema validates each profile entry in isolation. These invariants span
+ * multiple array entries and therefore require a second, semantic validation
+ * pass after AJV has established the profile's structural shape.
+ */
+function validateProfileSemantics(profile) {
+  const errors = []
+  const firstAgentIndex = new Map()
+
+  for (const [index, agent] of profile.agents.entries()) {
+    const previous = firstAgentIndex.get(agent.id)
+    if (previous !== undefined) {
+      errors.push(
+        `/agents/${index}/id duplicates agent id "${agent.id}" first declared at /agents/${previous}/id`,
+      )
+    } else {
+      firstAgentIndex.set(agent.id, index)
+    }
+  }
+
+  const knownAgents = new Set(firstAgentIndex.keys())
+  const defaultIndices = []
+  for (const [index, rule] of profile.routing.entries()) {
+    if (!knownAgents.has(rule.agent)) {
+      errors.push(
+        `/routing/${index}/agent references unknown agent "${rule.agent}"`,
+      )
+    }
+    if (rule.default === true) {
+      defaultIndices.push(index)
+    }
+  }
+
+  if (defaultIndices.length > 1) {
+    errors.push(
+      `/routing must contain at most one default rule (found ${defaultIndices.length})`,
+    )
+  }
+  for (const index of defaultIndices) {
+    if (index !== profile.routing.length - 1) {
+      errors.push(`/routing/${index} default rule must be the last routing entry`)
+    }
+  }
+
+  return errors
 }

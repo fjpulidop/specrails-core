@@ -33,6 +33,46 @@ function setupFakeScriptDir(scriptDir: string): void {
     path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'),
     '/specrails:implement\n',
   )
+  writeFileLf(
+    path.join(scriptDir, 'templates', 'kimi', 'specrails', 'run-skill.mjs'),
+    '// managed Kimi runner fixture\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'js-yaml.mjs',
+    ),
+    '// vendored js-yaml fixture\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'LICENSE',
+    ),
+    'fixture license\n',
+  )
+  writeFileLf(
+    path.join(
+      scriptDir,
+      'templates',
+      'kimi',
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'NOTICE.md',
+    ),
+    'fixture notice\n',
+  )
   writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
@@ -106,6 +146,37 @@ describe('framework subcommands (install-framework / assemble)', () => {
         runInstallFramework({ 'framework-dir': fwDir, provider: 'bogus', version: '5.0.0' }),
       ).rejects.toThrow(/provider value must be/)
     })
+
+    it.each([
+      ['dot segment', '.'],
+      ['parent dot segment', '..'],
+      ['traversal', '../victim'],
+      ['POSIX separator', '5.0.0/child'],
+      ['Windows separator', '5.0.0\\child'],
+      ['NUL', '5.0.0\0child'],
+    ])('rejects an unsafe --version (%s)', async (label, version) => {
+      await expect(
+        runInstallFramework({
+          'framework-dir': fwDir,
+          provider: 'claude',
+          version,
+        }),
+      ).rejects.toThrow(/safe framework version identifier/)
+      if (label === 'traversal') {
+        expect(pathExists(path.join(tmpDir, 'victim'))).toBe(false)
+      }
+    })
+
+    it('accepts a safe semver prerelease with build metadata', async () => {
+      const version = '5.0.0-beta.1+build.7'
+      const out = await runInstallFramework({
+        'framework-dir': fwDir,
+        provider: 'claude',
+        version,
+      })
+      expect(out.version).toBe(version)
+      expect(isDir(path.join(fwDir, version, '.claude', 'agents'))).toBe(true)
+    })
   })
 
   describe('runAssemble', () => {
@@ -167,6 +238,18 @@ describe('framework subcommands (install-framework / assemble)', () => {
         runAssemble({ 'framework-dir': fwDir, provider: 'claude', version: '5.0.0', 'code-root': tmpDir }),
       ).rejects.toThrow(/workspace is required/)
     })
+
+    it('rejects an unsafe --version before resolving framework content', async () => {
+      await expect(
+        runAssemble({
+          workspace: path.join(tmpDir, 'ws-unsafe-version'),
+          'framework-dir': fwDir,
+          provider: 'claude',
+          version: '../victim',
+          'code-root': tmpDir,
+        }),
+      ).rejects.toThrow(/safe framework version identifier/)
+    })
   })
 
   describe('--no-swap + swap-current (multi-provider materialize-all-then-swap-once)', () => {
@@ -197,6 +280,74 @@ describe('framework subcommands (install-framework / assemble)', () => {
 
     it('swap-current rejects a missing --framework-dir', async () => {
       await expect(runSwapCurrent({ version: '5.0.0' })).rejects.toThrow(/framework-dir is required/)
+    })
+
+    it('swap-current rejects an unsafe --version before registry resolution', async () => {
+      await expect(
+        runSwapCurrent({ 'framework-dir': fwDir, version: '..\\victim' }),
+      ).rejects.toThrow(/safe framework version identifier/)
+    })
+
+    it('swap-current rejects a nonexistent version without moving current', async () => {
+      await runInstallFramework({
+        'framework-dir': fwDir,
+        provider: 'claude',
+        version: '5.0.0',
+      })
+      const before = realpathSafe(path.join(fwDir, 'current'))
+
+      await expect(
+        runSwapCurrent({ 'framework-dir': fwDir, version: 'does-not-exist' }),
+      ).rejects.toThrow(/is not materialized/)
+      expect(realpathSafe(path.join(fwDir, 'current'))).toBe(before)
+    })
+
+    it('swap-current rejects a target missing a provider served by current', async () => {
+      await runInstallFramework({
+        'framework-dir': fwDir,
+        provider: 'claude',
+        version: '4.11.0',
+      })
+      const before = realpathSafe(path.join(fwDir, 'current'))
+
+      // Only Kimi is present in the destination. The current Claude framework
+      // still has live consumers, so exposing this target would break them.
+      await runInstallFramework({
+        'framework-dir': fwDir,
+        provider: 'kimi',
+        version: '4.12.0',
+        'no-swap': true,
+      })
+      await expect(
+        runSwapCurrent({
+          'framework-dir': fwDir,
+          version: '4.12.0',
+          providers: 'claude,kimi',
+        }),
+      ).rejects.toThrow(/incomplete.*claude: missing \.claude\//)
+      expect(realpathSafe(path.join(fwDir, 'current'))).toBe(before)
+    })
+
+    it('swap-current rejects corrupt managed content even when the stamp exists', async () => {
+      await runInstallFramework({
+        'framework-dir': fwDir,
+        provider: 'claude',
+        version: '4.12.0',
+        'no-swap': true,
+      })
+      writeFileLf(
+        path.join(fwDir, '4.12.0', '.claude', 'agents', 'sr-architect.md'),
+        'corrupt after materialize\n',
+      )
+
+      await expect(
+        runSwapCurrent({
+          'framework-dir': fwDir,
+          version: '4.12.0',
+          providers: 'claude',
+        }),
+      ).rejects.toThrow(/managed content does not match stamp/)
+      expect(pathExists(path.join(fwDir, 'current'))).toBe(false)
     })
   })
 

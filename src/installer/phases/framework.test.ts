@@ -8,6 +8,7 @@ import { isDir, isSymlink, pathExists, readTextFile, removePath, writeFileLf } f
 import {
   assembleProjectWorkspace,
   ensureCurrentSymlink,
+  frameworkStampPath,
   installFramework,
 } from './scaffold.js'
 
@@ -97,7 +98,7 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       expect(pathExists(path.join(fwDir, '5.0.0', 'CLAUDE.md'))).toBe(false)
     })
 
-    it('is idempotent — a second call with a matching stamp does NOT re-materialize', () => {
+    it('is idempotent with a deterministic stamp and repairs same-version corruption', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const fwDir = path.join(tmpDir, 'framework')
       setupFakeScriptDir(scriptDir)
@@ -107,15 +108,54 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       })
       expect(first.materialized).toBe(true)
 
-      // Tamper with a materialized file; an idempotent skip leaves it as-is.
       const archPath = path.join(fwDir, '5.0.0', '.claude', 'agents', 'sr-architect.md')
-      writeFileLf(archPath, 'TAMPERED')
+      const stampPath = frameworkStampPath(path.join(fwDir, '5.0.0'), '.claude')
+      const firstStamp = readTextFile(stampPath)
 
-      const second = installFramework({
+      // An unchanged retry is a true no-op and the stamp is byte-deterministic
+      // (there is no install timestamp churn).
+      const unchanged = installFramework({
         scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
       })
-      expect(second.materialized).toBe(false)
-      expect(readTextFile(archPath)).toBe('TAMPERED') // proof it was skipped
+      expect(unchanged.materialized).toBe(false)
+      expect(readTextFile(stampPath)).toBe(firstStamp)
+
+      // Corrupt a managed byte at the SAME version. The content hash must force
+      // a clean repair, restoring both output and the original deterministic
+      // stamp rather than trusting stamp existence alone.
+      writeFileLf(archPath, 'TAMPERED')
+
+      const repaired = installFramework({
+        scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
+      })
+      expect(repaired.materialized).toBe(true)
+      expect(readTextFile(archPath)).toContain('# arch')
+      expect(readTextFile(stampPath)).toBe(firstStamp)
+    })
+
+    it('repairs a missing managed file at the same version', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const fwDir = path.join(tmpDir, 'framework')
+      setupFakeScriptDir(scriptDir)
+
+      installFramework({
+        scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
+      })
+      const reviewerPath = path.join(
+        fwDir,
+        '5.0.0',
+        '.claude',
+        'agents',
+        'sr-reviewer.md',
+      )
+      rmSync(reviewerPath)
+      expect(pathExists(reviewerPath)).toBe(false)
+
+      const repaired = installFramework({
+        scriptDir, frameworkDir: fwDir, provider: 'claude', providerDir: '.claude', version: '5.0.0',
+      })
+      expect(repaired.materialized).toBe(true)
+      expect(readTextFile(reviewerPath)).toContain('# reviewer')
     })
 
     it('materializes a codex framework with config.toml but no project-named AGENTS.md', () => {

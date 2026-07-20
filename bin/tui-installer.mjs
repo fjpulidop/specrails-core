@@ -10,9 +10,10 @@
  */
 
 import { checkbox, select, Separator } from '@inquirer/prompts';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ─── Alternate screen buffer (fullscreen mode) ──────────────────────────────
 
@@ -72,10 +73,10 @@ const DEFAULT_SELECTED = new Set([
   ...CORE_AGENTS,
 ]);
 
-// ─── Model presets (Claude only — see PROVIDER_DEFAULT_MODEL) ────────────────────
-// Claude has real cost/quality tiers (sonnet/haiku/opus). Codex and gemini are
-// single-model in the scaffold (it hardcodes the per-agent model and ignores the
-// install-config preset), so these presets apply to Claude only.
+// ─── Model presets ──────────────────────────────────────────────────────────────
+// Claude exposes distinct Core-defined cost/quality tiers. Other providers use
+// an explicit provider-native default for every named preset; preset names never
+// imply that Claude aliases should be copied into another provider's config.
 
 const MODEL_PRESETS = {
   balanced: {
@@ -95,15 +96,23 @@ const MODEL_PRESETS = {
   },
 };
 
-// Per-provider default agent model. For codex/gemini the scaffold hardcodes this
-// (the install-config model is advisory), so the TUI writes the provider's real
-// model instead of a Claude-flavoured preset. Keep in sync with scaffold.ts
-// (GEMINI_DEFAULT_MODEL / the codex config.toml model).
+// Per-provider default agent model. Keep in sync with install-config.ts and the
+// provider renderers.
 const PROVIDER_DEFAULT_MODEL = {
   claude: 'sonnet',
   codex:  'gpt-5.5-mini',
   gemini: 'gemini-3.5-flash',
+  kimi:   'k3',
 };
+
+function resolveProviderModelPreset(provider, preset = 'balanced') {
+  if (provider === 'claude') return MODEL_PRESETS[preset];
+  return {
+    label: `${PROVIDER_DEFAULT_MODEL[provider]} for all agents`,
+    defaults: PROVIDER_DEFAULT_MODEL[provider],
+    overrides: {},
+  };
+}
 
 // ─── Provider registry ─────────────────────────────────────────────────────────
 // Single source of truth for the AI CLIs the TUI can target. Add a provider here
@@ -112,8 +121,19 @@ const PROVIDERS = [
   { id: 'claude', label: 'Claude Code (recommended)', versionCmd: 'claude --version', installLabel: 'Claude Code', installUrl: 'https://claude.ai/download' },
   { id: 'codex',  label: 'Codex (OpenAI)',            versionCmd: 'codex --version',  installLabel: 'Codex CLI',   installUrl: 'https://developers.openai.com/codex' },
   { id: 'gemini', label: 'Gemini CLI (Google)',       versionCmd: 'gemini --version', installLabel: 'Gemini CLI',  installUrl: 'https://github.com/google-gemini/gemini-cli' },
+  { id: 'kimi',   label: 'Kimi Code',                 versionCmd: 'kimi --version',   installLabel: 'Kimi Code',   installUrl: 'https://www.kimi.com/code/docs/en/' },
 ];
 const VALID_PROVIDER_IDS = new Set(PROVIDERS.map(p => p.id));
+const providerProbeTimeoutOverride = Number.parseInt(
+  process.env.SPECRAILS_PROVIDER_PROBE_TIMEOUT_MS ?? '',
+  10,
+);
+const PROVIDER_PROBE_TIMEOUT_MS =
+  Number.isFinite(providerProbeTimeoutOverride) &&
+  providerProbeTimeoutOverride >= 100 &&
+  providerProbeTimeoutOverride <= 30_000
+    ? providerProbeTimeoutOverride
+    : 3_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -121,25 +141,46 @@ const VALID_PROVIDER_IDS = new Set(PROVIDERS.map(p => p.id));
 function detectInstalledProviders() {
   const installed = new Set();
   for (const p of PROVIDERS) {
-    try { execSync(p.versionCmd, { stdio: 'ignore' }); installed.add(p.id); } catch { /* not installed */ }
+    try {
+      execSync(p.versionCmd, {
+        stdio: 'ignore',
+        timeout: PROVIDER_PROBE_TIMEOUT_MS,
+      });
+      installed.add(p.id);
+    } catch { /* absent, broken, or hung — do not block the installer */ }
   }
   return installed;
 }
 
-// Parse `--provider <id>` or `--provider=<id>` from process.argv. Returns a valid
-// provider id or null (unknown values warn-then-null so the TUI falls back to the
-// interactive picker).
-function parseProviderArg() {
-  const args = process.argv.slice(2);
+// Parse `--provider <id>` or `--provider=<id>` from process.argv. An explicit
+// but invalid value is a configuration error, never an invitation to silently
+// open a picker and install a different provider.
+function parseProviderArg(args = process.argv.slice(2)) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === '--provider' && args[i + 1]) {
+    if (a === '--provider') {
+      if (!args[i + 1] || args[i + 1].startsWith('-')) {
+        throw new Error(
+          `--provider requires one of: ${[...VALID_PROVIDER_IDS].join(', ')}`,
+        );
+      }
       const v = args[i + 1].trim().toLowerCase();
-      return VALID_PROVIDER_IDS.has(v) ? v : null;
+      if (!VALID_PROVIDER_IDS.has(v)) {
+        throw new Error(
+          `unsupported --provider '${args[i + 1]}' (expected: ${[...VALID_PROVIDER_IDS].join(', ')})`,
+        );
+      }
+      return v;
     }
     if (a.startsWith('--provider=')) {
       const v = a.slice('--provider='.length).trim().toLowerCase();
-      return VALID_PROVIDER_IDS.has(v) ? v : null;
+      if (!VALID_PROVIDER_IDS.has(v)) {
+        throw new Error(
+          `unsupported --provider '${a.slice('--provider='.length)}' ` +
+            `(expected: ${[...VALID_PROVIDER_IDS].join(', ')})`,
+        );
+      }
+      return v;
     }
   }
   return null;
@@ -205,15 +246,38 @@ function writeInstallConfig(specrailsDir, cfg) {
 function writeDefaultConfig(specrailsDir, provider) {
   const defaultSelected = [...DEFAULT_SELECTED];
   const defaultExcluded = ALL_AGENT_IDS.filter(id => !DEFAULT_SELECTED.has(id));
+  const modelSelection = resolveProviderModelPreset(provider);
   writeInstallConfig(specrailsDir, {
     provider,
     tier:           'full',
     selectedAgents: defaultSelected,
     excludedAgents: defaultExcluded,
     modelPreset:    'balanced',
-    modelDefaults:  PROVIDER_DEFAULT_MODEL[provider] ?? 'sonnet',
-    modelOverrides: {},
+    modelDefaults:  modelSelection.defaults,
+    modelOverrides: modelSelection.overrides,
   });
+}
+
+function scaffoldDefaultProfile(specrailsDir, provider) {
+  try {
+    const scriptDir = fileURLToPath(new URL('..', import.meta.url));
+    const templateName = provider === 'kimi' ? 'kimi-default.json' : 'default.json';
+    const templatePath = resolve(scriptDir, 'templates/profiles', templateName);
+    const profilesDir = resolve(specrailsDir, 'profiles');
+    // Provider-bound defaults must coexist in a multi-provider project. Keep
+    // the historical filename for Claude and give Kimi its own stable fallback.
+    const targetName = provider === 'kimi' ? 'kimi-default.json' : 'project-default.json';
+    const targetPath = resolve(profilesDir, targetName);
+    if (existsSync(templatePath) && !existsSync(targetPath)) {
+      mkdirSync(profilesDir, { recursive: true });
+      writeFileSync(targetPath, readFileSync(templatePath));
+      console.log(`  ✓ Profile scaffolded at .specrails/profiles/${targetName}`);
+    } else if (existsSync(targetPath)) {
+      console.log(`  ↷ Profile already exists at .specrails/profiles/${targetName} — skipped`);
+    }
+  } catch (e) {
+    console.warn(`  ⚠  Could not scaffold profile: ${e.message}`);
+  }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -222,6 +286,7 @@ async function run() {
   const rawArgs  = process.argv.slice(2);
   const autoYes  = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const withProfiles = rawArgs.includes('--with-profiles');
+  const argvProvider = parseProviderArg(rawArgs);
   // First positional arg (skipping flag values that follow `--provider`,
   // `--root-dir`, etc.) is the target directory.
   const FLAGS_WITH_VALUES = new Set(['--provider', '--root-dir', '--from-config']);
@@ -246,35 +311,12 @@ async function run() {
 
   const specrailsDir = resolve(rootDir, '.specrails');
 
-  // Optional: scaffold .specrails/profiles/project-default.json from the shipped template.
-  // Off by default to keep standalone installs zero-noise.
-  if (withProfiles) {
-    try {
-      const { readFileSync, writeFileSync, existsSync, mkdirSync } = await import('node:fs');
-      const { dirname } = await import('node:path');
-      const scriptDir = new URL('..', import.meta.url).pathname;
-      const templatePath = resolve(scriptDir, 'templates/profiles/default.json');
-      const profilesDir = resolve(specrailsDir, 'profiles');
-      const targetPath = resolve(profilesDir, 'project-default.json');
-      if (existsSync(templatePath) && !existsSync(targetPath)) {
-        mkdirSync(profilesDir, { recursive: true });
-        writeFileSync(targetPath, readFileSync(templatePath));
-        console.log(`  ✓ Profile scaffolded at .specrails/profiles/project-default.json`);
-      } else if (existsSync(targetPath)) {
-        console.log(`  ↷ Profile already exists at .specrails/profiles/project-default.json — skipped`);
-      }
-    } catch (e) {
-      console.warn(`  ⚠  Could not scaffold profile: ${e.message}`);
-    }
-  }
-
   // Auto-yes: write defaults and exit (no TUI needed)
   //
   // Honours an explicit --provider <id> argv flag when present; otherwise
   // picks claude → codex → first-detected. Errors only when none detected.
   if (autoYes) {
     const installed = detectInstalledProviders();
-    const argvProvider = parseProviderArg();
     let provider;
     if (argvProvider) {
       if (!installed.has(argvProvider)) {
@@ -291,12 +333,13 @@ async function run() {
       provider = PROVIDERS.find(p => installed.has(p.id))?.id;
       if (!provider) {
         console.error('');
-        console.error('  ⚠  No supported AI CLI detected on PATH (Claude Code, Codex, or Gemini CLI).');
+        console.error('  ⚠  No supported AI CLI detected on PATH (Claude Code, Codex, Gemini CLI, or Kimi Code).');
         for (const p of PROVIDERS) console.error(`     Install ${p.installLabel}: ${p.installUrl}`);
         console.error('');
         process.exit(1);
       }
     }
+    if (withProfiles) scaffoldDefaultProfile(specrailsDir, provider);
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
     console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
@@ -328,7 +371,6 @@ async function run() {
   // ── Step 1: Provider ────────────────────────────────────────────────────────
 
   const installed = detectInstalledProviders();
-  const argvProvider = parseProviderArg();
   let provider;
 
   if (argvProvider) {
@@ -359,6 +401,7 @@ async function run() {
       });
     }
   }
+  if (withProfiles) scaffoldDefaultProfile(specrailsDir, provider);
 
   // ── Step 2: Installation tier ───────────────────────────────────────────────
 
@@ -377,7 +420,10 @@ async function run() {
       {
         value:       'full',
         name:        'Full — AI-powered setup',
-        description: 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
+        description:
+          provider === 'kimi'
+            ? 'After install, run /skill:specrails-enrich to AI-customize all agents for your codebase'
+            : 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
       },
     ],
   });
@@ -409,11 +455,13 @@ async function run() {
   clearScreen();
   console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length}\n`);
 
-  // Claude exposes real model tiers; codex/gemini are single-model in the scaffold,
-  // so skip the (Claude-flavoured) preset picker for them and use the fixed model.
+  // Claude exposes real model tiers. Other providers retain the same config
+  // shape but resolve the preset through their provider-native catalog.
   let modelPreset = 'balanced';
-  let modelDefaults = PROVIDER_DEFAULT_MODEL[provider] ?? 'sonnet';
-  let modelOverrides = {};
+  let {
+    defaults: modelDefaults,
+    overrides: modelOverrides,
+  } = resolveProviderModelPreset(provider, modelPreset);
   if (provider === 'claude') {
     modelPreset = await select({
       message: 'Model configuration:',
@@ -424,7 +472,7 @@ async function run() {
     });
     ({ defaults: modelDefaults, overrides: modelOverrides } = MODEL_PRESETS[modelPreset]);
   } else {
-    console.log(`  → Model: ${modelDefaults}  (${provider} uses one model for all agents)\n`);
+    console.log(`  → Model: ${modelDefaults}  (${provider} provider preset)\n`);
   }
 
   // ── Write config & exit fullscreen ──────────────────────────────────────────
@@ -444,7 +492,10 @@ async function run() {
   console.log(`\n  ✓ Config written to .specrails/install-config.yaml`);
   console.log(`  ✓ Provider: ${provider} | Tier: ${tier} | Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length} | Preset: ${modelPreset}`);
   if (tier === 'full') {
-    console.log(`\n  Next: run /specrails:enrich --from-config inside ${provider} to AI-customize your agents.\n`);
+    const enrichCommand = provider === 'kimi'
+      ? '/skill:specrails-enrich --from-config'
+      : '/specrails:enrich --from-config';
+    console.log(`\n  Next: run ${enrichCommand} inside ${provider} to AI-customize your agents.\n`);
   } else {
     console.log(`\n  Agents will be installed with template defaults.\n`);
   }

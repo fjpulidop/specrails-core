@@ -4,7 +4,11 @@ Get SpecRails running in your project in under 5 minutes.
 
 ## What is SpecRails?
 
-SpecRails installs a **product-driven development workflow** into any repository. It gives Claude Code a team of **12 specialized AI agents** — an architect, developers, layer reviewers, a reviewer, a product manager — that work together to go from idea to shipped PR automatically.
+SpecRails installs a **product-driven development workflow** into any
+repository. It gives Claude Code, Codex CLI, Gemini CLI, or Kimi Code a team of
+specialized AI roles — an architect, developers, layer reviewers, a reviewer,
+and a product manager — that work together to go from idea to shipped PR
+automatically.
 
 Think of it as hiring a full engineering team that lives inside your CLI.
 
@@ -13,15 +17,14 @@ Think of it as hiring a full engineering team that lives inside your CLI.
 You need:
 
 - **Git** — your project must be a git repository
-- **[Claude Code](https://claude.ai/claude-code)** — Anthropic's CLI tool
-
-> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** OpenAI Codex integration is currently being tested in our lab. The installer will only install with Claude Code for now — Codex support will ship shortly.
+- One supported AI CLI: Claude Code, Codex CLI, Gemini CLI, or Kimi Code
 
 Optional (recommended):
 
 - **[GitHub CLI](https://cli.github.com/)** (`gh`) — for automatic PR creation and issue tracking
 
-> **Using OpenAI Codex instead of Claude Code?** See [getting-started-codex.md](user-docs/getting-started-codex.md) for Codex-specific setup.
+See the [Codex guide](user-docs/getting-started-codex.md) or
+[Kimi guide](user-docs/getting-started-kimi.md) for provider-specific setup.
 
 ## Install
 
@@ -31,7 +34,7 @@ Optional (recommended):
 claude plugin install sr
 ```
 
-**Scaffold method (for Codex users or full offline control)**
+**Scaffold method (all providers, or full offline control)**
 
 ```bash
 npx specrails-core@latest init --root-dir <your-project>
@@ -49,7 +52,8 @@ When you run `npx specrails-core@latest init`, the TUI installer lets you choose
 2. Choose a model preset
 3. Provide a brief product description
 
-Agents are ready to use immediately after install. Open Claude Code and start working.
+Agents are ready to use immediately after install. Open the selected provider
+CLI and start working.
 
 > Quick install excludes VPC personas and persona-dependent agents/commands (sr-product-manager, sr-product-analyst). These require the full enrichment process.
 

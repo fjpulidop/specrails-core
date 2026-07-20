@@ -1,7 +1,7 @@
 {
   "name": "specrails-core",
   "version": "4.11.3",
-  "description": "AI agent workflow system for Claude Code — installs 12 specialized agents, orchestration commands, and persona-driven product discovery into any repository",
+  "description": "Provider-independent AI agent workflow system for Claude Code, Codex, Gemini CLI, and Kimi Code",
   "type": "module",
   "bin": {
     "specrails-core": "bin/specrails-core.mjs"
@@ -17,7 +17,7 @@
     "pinned-versions.json"
   ],
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.19.0"
   },
   "repository": {
     "type": "git",
@@ -30,6 +30,10 @@
     "workflow",
     "developer-tools",
     "anthropic",
+    "kimi",
+    "moonshot-ai",
+    "gemini",
+    "codex",
     "llm",
     "ai",
     "automation",

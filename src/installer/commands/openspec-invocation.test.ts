@@ -61,4 +61,22 @@ describe('buildOpenSpecInvocation', () => {
     expect(bin).toBe('npx')
     expect(args).toContain(`@fission-ai/openspec@${pinned}`)
   })
+
+  it('Kimi requests the isolated custom workflow profile', () => {
+    const { bin, args } = buildOpenSpecInvocation(
+      repoRoot,
+      'kimi',
+      { SPECRAILS_OPENSPEC_BIN: '/usr/local/bin/openspec' },
+      pinned,
+    )
+    expect(bin).toBe('/usr/local/bin/openspec')
+    expect(args).toEqual([
+      'init',
+      '--tools',
+      'kimi',
+      '--profile',
+      'custom',
+      repoRoot,
+    ])
+  })
 })

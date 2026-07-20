@@ -1,14 +1,14 @@
 # CLI Reference
 
-> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** Codex-specific sections below describe the planned behaviour. Codex installation is currently disabled — only Claude Code is available today.
-
-SpecRails commands are implemented as Skills (`SKILL.md` format) and are designed to run in both Claude Code and Codex. The command syntax is identical on both platforms. Today only the Claude Code runtime is available; Codex support is being tested in our lab and will ship shortly.
+SpecRails installs provider-native workflows for Claude Code, Codex CLI,
+Gemini CLI, and Kimi Code. The workflow names and flags are shared, while each
+provider uses its own activation syntax and project directory.
 
 **Platform support key used in this reference:**
 
 | Badge | Meaning |
 |-------|---------|
-| ✅ Both | Works in Claude Code and Codex |
+| ✅ Providers | Works in Claude Code, Codex CLI, Gemini CLI, and Kimi Code |
 | 🔵 Claude Code | Claude Code only |
 | ⚠️ Limited | Works, but with known limitations (see notes) |
 
@@ -17,13 +17,20 @@ Run commands inside your AI CLI from your project directory:
 ```bash
 claude   # Claude Code
 codex    # Codex
+gemini   # Gemini CLI
+kimi     # Kimi Code
 ```
+
+Claude and Gemini use `/specrails:<command>`. Codex activates the generated
+skill from `.codex/skills/`. Kimi's interactive TUI uses
+`/skill:specrails-<command>`; headless Kimi runs must use the managed
+`.kimi-code/specrails/run-skill.mjs` helper, not a literal `/skill:` prompt.
 
 ---
 
 ## Core workflow
 
-### `/specrails:implement` ✅ Both
+### `/specrails:implement` ✅ Providers
 
 Implement a feature through the full agent pipeline: design → code → tests → docs → review → PR.
 
@@ -62,9 +69,14 @@ A single issue runs sequentially on the current branch. Multiple issues run in p
 
 ---
 
-### `/specrails:telemetry` ✅ Both
+### `/specrails:telemetry` ✅ Providers
 
 Inspect per-agent execution metrics: token usage, estimated API cost, run count, average duration, and success/failure rate.
+
+Kimi reads persisted `usage.record` events for real input/output/cache token
+counts and session duration. Its logs do not contain an authoritative USD rate
+or role outcome, so the Kimi dashboard reports cost and success rate as
+unavailable instead of applying another provider's rate card.
 
 ```
 /specrails:telemetry
@@ -81,11 +93,11 @@ Inspect per-agent execution metrics: token usage, estimated API cost, run count,
 | `--period <filter>` | Time window: `today`, `week` (default), or `all` |
 | `--agent <name>` | Focus on a single agent (e.g. `sr-developer`) |
 | `--format <fmt>` | Output format: `markdown` (default) or `json` |
-| `--save` | Write a snapshot to `.claude/telemetry/` after display |
+| `--save` | Write a snapshot under the active provider directory after display |
 
 ---
 
-### `/specrails:merge-resolve` ✅ Both
+### `/specrails:merge-resolve` ✅ Providers
 
 Resolve git conflict markers using AI-powered context analysis.
 
@@ -107,7 +119,7 @@ Reads OpenSpec context bundles from the features that produced each conflict, in
 
 ---
 
-### `/specrails:retry` ✅ Both
+### `/specrails:retry` ✅ Providers
 
 Resume a failed `/specrails:implement` run from the last successful phase.
 
@@ -128,7 +140,7 @@ Resume a failed `/specrails:implement` run from the last successful phase.
 
 **Valid `--from` values:** `architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci`
 
-Pipeline state is saved to `.claude/pipeline-state/<feature-name>.json` after each phase.
+Pipeline state is saved under the active provider directory after each phase.
 
 ---
 
@@ -148,7 +160,7 @@ Each feature gets its own worktree, its own agent pipeline, and its own PR. Use 
 
 ## Product and backlog
 
-### `/specrails:get-backlog-specs` ✅ Both
+### `/specrails:get-backlog-specs` ✅ Providers
 
 View your prioritized product backlog, ranked by VPC persona fit and estimated effort.
 
@@ -161,7 +173,7 @@ Reads GitHub Issues labeled `product-driven-backlog`. Produces a ranked table pe
 
 ---
 
-### `/specrails:auto-propose-backlog-specs` ✅ Both
+### `/specrails:auto-propose-backlog-specs` ✅ Providers
 
 Generate new feature ideas through product discovery and create GitHub Issues.
 
@@ -176,7 +188,7 @@ The Product Manager researches your competitive landscape, generates 2–4 featu
 
 ## Analysis and inspection
 
-### `/specrails:refactor-recommender` ✅ Both
+### `/specrails:refactor-recommender` ✅ Providers
 
 Scan the codebase for refactoring opportunities, ranked by impact/effort ratio.
 
@@ -188,7 +200,7 @@ Identifies duplicates, overly long functions, large files, dead code, outdated p
 
 ---
 
-### `/specrails:compat-check` ✅ Both
+### `/specrails:compat-check` ✅ Providers
 
 Analyze the backwards-compatibility impact of a proposed change.
 
@@ -205,7 +217,7 @@ The Architect runs this automatically as part of every `/specrails:implement` pi
 
 ---
 
-### `/specrails:why` ✅ Both
+### `/specrails:why` ✅ Providers
 
 Search agent explanation records in plain language.
 
@@ -215,11 +227,13 @@ Search agent explanation records in plain language.
 /specrails:why "why is pagination implemented this way"
 ```
 
-Agents write decision rationale to `.claude/agent-memory/explanations/` as they work. `/specrails:why` searches these records semantically. Useful for onboarding, code review, and revisiting past decisions.
+Agents write decision rationale under the active provider's `agent-memory/`
+directory as they work. `/specrails:why` searches these records semantically.
+Useful for onboarding, code review, and revisiting past decisions.
 
 ---
 
-### `/specrails:vpc-drift` ✅ Both
+### `/specrails:vpc-drift` ✅ Providers
 
 Detect when your VPC personas have drifted from what your product actually delivers.
 
@@ -234,7 +248,7 @@ Compares persona Jobs/Pains/Gains against your backlog, implemented features, an
 
 ---
 
-### `/specrails:memory-inspect` ✅ Both
+### `/specrails:memory-inspect` ✅ Providers
 
 Inspect and clean up agent memory directories.
 
@@ -252,11 +266,18 @@ Inspect and clean up agent memory directories.
 | `--stale <days>` | Flag files older than N days |
 | `--prune` | Delete stale files (prompts for confirmation) |
 
-Agent memory lives in `.claude/agent-memory/sr-*/` (Claude Code) or `.codex/agent-memory/sr-*/` (Codex).
+Agent memory lives below the provider root:
+
+| Provider | Memory root |
+|----------|-------------|
+| Claude Code | `.claude/agent-memory/` |
+| Codex CLI | `.codex/agent-memory/` |
+| Gemini CLI | `.gemini/agent-memory/` |
+| Kimi Code | `.kimi-code/agent-memory/` |
 
 ---
 
-### `/specrails:propose-spec` ✅ Both
+### `/specrails:propose-spec` ✅ Providers
 
 Explore a feature idea and produce a structured proposal ready for the OpenSpec pipeline.
 
@@ -272,7 +293,7 @@ Produces: problem statement, proposed solution, out-of-scope items, acceptance c
 
 OpenSpec is the structured design-to-code workflow. Use these commands when you want explicit control over each artifact: proposal → design → tasks → implementation.
 
-All OpenSpec commands work on both Claude Code and Codex (✅ Both).
+OpenSpec commands are generated for all four providers (✅ Providers).
 
 ### `/opsx:ff` — Fast Forward
 
@@ -400,7 +421,7 @@ The `npx specrails-core@latest init` command accepts:
 |------|--------|
 | `--root-dir <path>` | Install into this directory (default: current directory) |
 | `--yes` / `-y` | Skip confirmation prompts |
-| `--provider <claude\|codex>` | Force a specific AI CLI (default: auto-detect) |
+| `--provider <claude\|codex\|gemini\|kimi>` | Force a specific AI CLI (default: auto-detect) |
 
 ---
 

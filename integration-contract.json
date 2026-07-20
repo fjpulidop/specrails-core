@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "3.0",
+  "schemaVersion": "3.2",
   "providers": {
     "claude": {
       "enrichCommand": "/specrails:enrich",
@@ -22,6 +22,59 @@
         "enrichArgs": ["exec", "run enrich"],
         "enrichFromConfigArgs": ["exec", "run enrich --from-config"]
       }
+    },
+    "gemini": {
+      "enrichCommand": "/specrails:enrich",
+      "enrichArgs": ["--from-config"],
+      "updateCommand": "/specrails:enrich",
+      "updateArgs": ["--update"],
+      "cli": {
+        "initArgs": [],
+        "enrichArgs": ["-p", "/specrails:enrich", "--output-format", "stream-json"],
+        "enrichFromConfigArgs": ["-p", "/specrails:enrich --from-config", "--output-format", "stream-json"]
+      }
+    },
+    "kimi": {
+      "enrichCommand": "/skill:specrails-enrich",
+      "enrichArgs": ["--from-config"],
+      "updateCommand": "/skill:specrails-enrich",
+      "updateArgs": ["--update"],
+      "cli": {
+        "binary": "node",
+        "providerBinary": "kimi",
+        "skillRunner": ".kimi-code/specrails/run-skill.mjs",
+        "skillMaterialization": "kimi-0.27-user-slash-prompt",
+        "nestedSkillInvocation": "Kimi built-in Skill tool with { skill, args }; never literal /skill text",
+        "modelIdPattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$",
+        "sessionIdPattern": "^(?!\\.{1,2}$)[A-Za-z0-9._-]{1,128}$",
+        "roleWave": {
+          "path": ".specrails/kimi-role-wave.json",
+          "schema": "{ run: safe-id, roles: Array<{ key: safe-id, skill: direct-child-id, model: safe-model-id, profile: \"inherit\" | safe-id, args: string, workspace: \"current\" | \"worktree:<safe-id>\" }> } with no extra keys",
+          "maxBytes": 1048576,
+          "maxRoles": 32,
+          "transport": "structured WriteFile followed by one static foreground --role-wave-file command; the one-shot file is deleted before setup and every role is awaited. Inspection, merge, and cleanup use the separate static --role-wave-status, --role-merge-file, and --role-wave-cleanup modes",
+          "workspaces": "current roles receive unique execution directories with SPECRAILS_REPO_DIR set to the target repository; isolated roles create/reuse detached git worktrees from a synthetic baseline that includes the starting tracked/untracked overlay but excludes provider/runtime control files, with SPECRAILS_REPO_DIR set to that worktree",
+          "manifest": ".specrails/kimi-role-worktrees/<run>.json records the immutable synthetic base commit, source head, worktree ids, and role key to execution/repository paths",
+          "status": "--role-wave-status <run> validates the persisted manifest/ref/worktrees and emits one specrails.merge.inventory frame before any downstream merge",
+          "merge": ".specrails/kimi-role-merge.json is the only accepted merge request path; { run, actions: Array<{ worktree: safe-id, path: safe-relative-path, operation: \"copy\" | \"delete\" }> } applies an explicit A/M/D inventory through --role-merge-file without attributing the starting overlay or provider control files",
+          "cleanup": "--role-wave-cleanup <run> removes owned worktrees, temporary execution roots, persisted manifest, and synthetic baseline ref, then emits specrails.role.cleanup",
+          "output": "newline-delimited attributed specrails.role.workspace, specrails.role.event/output, specrails.role.completed, specrails.merge.inventory, specrails.merge.applied, and specrails.role.cleanup frames; aggregate role-wave exit is nonzero when any role fails"
+        },
+        "stableEngineEnv": {
+          "KIMI_CODE_EXPERIMENTAL_FLAG": null,
+          "KIMI_DISABLE_CRON": "1",
+          "KIMI_CODE_NO_AUTO_UPDATE": "1",
+          "KIMI_MODEL_THINKING_EFFORT": "low|high|max only for kimi-code/k3; omitted K3 effort preserves Kimi's documented high default; unset for every other model"
+        },
+        "windowsPromptTransport": "For the standard npm kimi.cmd/bat shim, prompt bytes travel over stdin to a fixed Node bootstrap which restores process.argv before importing Kimi; native executables fail above a 30000 UTF-16 command-line budget.",
+        "initialActivationTelemetry": "Visible prompt parity only; the external materializer cannot emit Kimi-private skill.activated/origin telemetry.",
+        "cancellation": "Single-skill mode forwards SIGINT/SIGTERM/SIGHUP to its direct Kimi child. Role-wave mode forwards each termination signal to every live Kimi child and waits for aggregate completion; the embedding host remains responsible for platform process-tree teardown.",
+        "initArgs": [],
+        "enrichArgs": [".kimi-code/specrails/run-skill.mjs", "--skill", "specrails-enrich", "--model", "k3"],
+        "enrichFromConfigArgs": [".kimi-code/specrails/run-skill.mjs", "--skill", "specrails-enrich", "--model", "k3", "--args", "--from-config"],
+        "resumeArgs": ["--session=<session-id>"],
+        "notes": "CLI-only integration. enrichCommand/updateCommand are interactive Kimi TUI syntax only. Headless callers must execute binary + enrichArgs; plain `kimi -p \"/skill:...\"` is literal prompt text in Kimi 0.27 and does not activate a skill. The managed Node runner materializes the upstream user-slash prompt, then launches external Kimi with stream-json and no shell. Generated multi-role workflows use one bounded role-wave file so context never enters shell source and parallel roles cannot race on request paths. Do not start kimi web/server; authenticate once with `kimi login`."
+      }
     }
   },
   "tiers": {
@@ -43,13 +96,13 @@
     "version": 1,
     "fields": {
       "version": "number — schema version, currently 1",
-      "provider": "string — claude | codex | gemini | auto",
+      "provider": "string — claude | codex | gemini | kimi",
       "tier": "string — full | quick",
-      "agents.selected": "string[] — agent names to install",
-      "agents.excluded": "string[] — agent names to skip",
-      "models.preset": "string — balanced | budget | max",
-      "models.defaults.model": "string — sonnet | opus | haiku (overrides preset)",
-      "models.overrides": "Record<string, string> — per-agent model (highest priority)"
+      "agents.selected": "string[] — unique lowercase kebab-case agent ids to install (1-64 characters)",
+      "agents.excluded": "string[] — unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
+      "models.preset": "string — balanced | budget | max; resolved within the selected provider catalog",
+      "models.defaults.model": "string — exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
+      "models.overrides": "Record<safe-agent-id, string> — exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
     }
   },
   "checkpoints": {
@@ -63,19 +116,38 @@
   },
   "modelPresets": {
     "balanced": {
-      "description": "Flagship models for architects and PMs, efficient models for others",
+      "scope": "claude",
+      "description": "Legacy Claude preset view retained for existing consumers. Other providers resolve this preset through providerModelCatalogs.",
       "defaults": { "model": "sonnet" },
-      "overrides": { "sr-architect": "opus", "sr-product-manager": "opus" }
+      "overrides": {}
     },
     "budget": {
-      "description": "All agents use the most cost-efficient model",
+      "scope": "claude",
+      "description": "Legacy Claude preset view retained for existing consumers. Other providers resolve this preset through providerModelCatalogs.",
       "defaults": { "model": "haiku" },
       "overrides": {}
     },
     "max": {
-      "description": "All agents use the most capable model",
-      "defaults": { "model": "opus" },
-      "overrides": {}
+      "scope": "claude",
+      "description": "Legacy Claude preset view retained for existing consumers. Other providers resolve this preset through providerModelCatalogs.",
+      "defaults": { "model": "sonnet" },
+      "overrides": { "sr-architect": "opus", "sr-product-manager": "opus" }
+    }
+  },
+  "providerModelCatalogs": {
+    "kimi": {
+      "default": "k3",
+      "models": ["k3", "kimi-for-coding", "kimi-for-coding-highspeed"],
+      "presets": {
+        "balanced": { "defaults": { "model": "k3" }, "overrides": {} },
+        "budget": { "defaults": { "model": "k3" }, "overrides": {} },
+        "max": { "defaults": { "model": "k3" }, "overrides": {} }
+      },
+      "cliAliasPrefix": "kimi-code/",
+      "reasoningEfforts": {
+        "k3": ["low", "high", "max"]
+      },
+      "note": "Install config and profiles retain exact ids or safe custom aliases. Preset names do not imply Claude aliases for Kimi. Process launch prefixes only the three documented official short ids with kimi-code/; every custom alias that matches the published model grammar passes through unchanged."
     }
   },
   "legacyCompat": {

@@ -22,6 +22,20 @@ export const RESERVED_PATHS = [
    * them.
    */
   '.claude/agents/custom-',
+
+  /**
+   * `.kimi-code/skills/custom-<id>/...` — user-authored Kimi role skills.
+   * Kimi discovers skills only one directory below `skills/`, so custom roles
+   * share the flat namespace with managed `sr-*` and workflow skills.
+   */
+  '.kimi-code/skills/custom-',
+
+  /**
+   * Pre-release compatibility: preserve a legacy nested custom role until the
+   * installer can atomically migrate it to the flat path. A destination
+   * collision is never overwritten or deleted automatically.
+   */
+  '.kimi-code/skills/rails/custom-',
 ] as const
 
 /**

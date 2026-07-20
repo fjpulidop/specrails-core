@@ -11,7 +11,7 @@ import { derivedPaths, detectAvailability, resolveProvider, type Provider } from
 import { assembleProjectWorkspace } from '../phases/scaffold.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 
-import { ensureFramework } from './init.js'
+import { ensureFramework, installOpenSpecProject } from './init.js'
 
 /**
  * Components recognised by the `--only <component>` flag. Mirrors the
@@ -52,8 +52,8 @@ export interface UpdateFlags {
   yes?: boolean
   /**
    * Force the provider to update. Without it, the provider is auto-detected
-   * from the existing install (`.claude` > `.codex` > `.gemini`), which on a
-   * MULTI-PROVIDER workspace always picks `.claude` first — so codex/gemini
+   * from the existing install (`.claude` > `.codex` > `.gemini` > `.kimi-code`), which on a
+   * MULTI-PROVIDER workspace always picks `.claude` first — so codex/gemini/kimi
    * could never be updated. specrails-desktop (and standalone users) pass
    * `--provider <name>` to update one specific provider. Mirrors `init`.
    */
@@ -124,13 +124,18 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
 
   // Provider can be FORCED via --provider (e.g. specrails-desktop updating one
   // provider on a multi-provider workspace, where auto-detection would always
-  // resolve `.claude` first and never reach codex/gemini). Absent ⇒ auto-detect
+  // resolve `.claude` first and never reach codex/gemini/kimi). Absent ⇒ auto-detect
   // from the existing install — byte-identical single-provider behaviour.
   let provider: Provider
   if (typeof flags.provider === 'string') {
-    if (flags.provider !== 'claude' && flags.provider !== 'codex' && flags.provider !== 'gemini') {
+    if (
+      flags.provider !== 'claude' &&
+      flags.provider !== 'codex' &&
+      flags.provider !== 'gemini' &&
+      flags.provider !== 'kimi'
+    ) {
       throw new InstallerError(
-        `--provider value must be 'claude', 'codex', or 'gemini', got: ${flags.provider}`,
+        `--provider value must be 'claude', 'codex', 'gemini', or 'kimi', got: ${flags.provider}`,
         40,
       )
     }
@@ -142,6 +147,15 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   }
   const { providerDir } = derivedPaths(provider)
   ok(`Detected provider: ${provider} (${providerDir})`)
+  if (artifactRoot !== codeRoot) {
+    resolveArtifacts(repoRoot, {
+      allocate: true,
+      allocator: 'core-standalone',
+      home: process.env.SPECRAILS_REGISTRY_HOME,
+      providers: [provider],
+      coreVersion: currentVersion,
+    })
+  }
 
   // ─── Resolve --only scope ────────────────────────────────────────
   const scope = resolveScope(flags.only)
@@ -151,6 +165,17 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
         'specrails-desktop is the supported dashboard. Skipping with no changes.',
     )
     return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier }
+  }
+  if (
+    provider === 'kimi' &&
+    (scope === 'rules' || scope === 'agents')
+  ) {
+    throw new InstallerError(
+      `--only=${scope} cannot safely refresh Kimi's linked direct-child skill ` +
+        'catalogue in isolation. Run `npx specrails-core update --provider kimi` ' +
+        'without --only so framework, live workspace, and manifest advance together.',
+      40,
+    )
   }
 
   if (config) {
@@ -193,6 +218,9 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       // In-repo updates COPY real files; relocated workspaces symlink.
       copyStatics: artifactRoot === codeRoot,
     })
+    if (provider === 'kimi') {
+      await installOpenSpecProject(codeRoot, provider, artifactRoot)
+    }
     ok(`Re-linked ${providerDir}/ at framework ${currentVersion} + rewrote manifest`)
   } else if (scope === 'rules' || scope === 'agents') {
     rescaffoldComponent(scope, { scriptDir, artifactRoot })
@@ -202,6 +230,8 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       scriptDir,
       repoRoot: artifactRoot,
       version: currentVersion,
+      providers: [provider],
+      primaryProvider: provider,
     })
     const { manifestPath, versionPath } = writeManifestFiles(artifactRoot, manifest)
     ok(`Wrote ${path.relative(artifactRoot, manifestPath)}`)
@@ -257,6 +287,7 @@ async function resolveExistingProvider(artifactRoot: string): Promise<Provider> 
   if (pathExists(path.join(artifactRoot, '.claude'))) return 'claude'
   if (pathExists(path.join(artifactRoot, '.codex'))) return 'codex'
   if (pathExists(path.join(artifactRoot, '.gemini'))) return 'gemini'
+  if (pathExists(path.join(artifactRoot, '.kimi-code'))) return 'kimi'
   // None present — fall back to resolving via CLI availability.
   const avail = await detectAvailability()
   try {

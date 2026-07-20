@@ -23,14 +23,19 @@
       "maxLength": 512,
       "description": "Optional short summary of when to use this profile."
     },
+    "provider": {
+      "type": "string",
+      "enum": ["claude", "codex", "gemini", "kimi"],
+      "description": "Optional provider binding. Omitted profiles retain the legacy Claude model-alias contract. Provider-bound profiles retain exact model identifiers; Kimi additionally enforces its safe process-boundary grammar."
+    },
     "orchestrator": {
       "type": "object",
       "required": ["model"],
       "additionalProperties": false,
       "properties": {
         "model": {
-          "$ref": "#/$defs/modelAlias",
-          "description": "Model used to run the top-level implement orchestrator."
+          "$ref": "#/$defs/providerModelId",
+          "description": "Provider model identifier used to run the top-level implement orchestrator."
         }
       }
     },
@@ -73,11 +78,68 @@
       "items": { "$ref": "#/$defs/routingRule" }
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          { "not": { "required": ["provider"] } },
+          {
+            "required": ["provider"],
+            "properties": { "provider": { "const": "claude" } }
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "orchestrator": {
+            "properties": { "model": { "$ref": "#/$defs/modelAlias" } }
+          },
+          "agents": {
+            "items": {
+              "properties": { "model": { "$ref": "#/$defs/modelAlias" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": ["provider"],
+        "properties": { "provider": { "const": "kimi" } }
+      },
+      "then": {
+        "properties": {
+          "orchestrator": {
+            "properties": { "model": { "$ref": "#/$defs/kimiModelId" } }
+          },
+          "agents": {
+            "items": {
+              "properties": { "model": { "$ref": "#/$defs/kimiModelId" } }
+            }
+          }
+        }
+      }
+    }
+  ],
   "$defs": {
     "modelAlias": {
       "type": "string",
       "enum": ["sonnet", "opus", "haiku"],
       "description": "Accepted model alias. Resolved to the current concrete model ID by the pipeline."
+    },
+    "providerModelId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^\\S(?:.*\\S)?$",
+      "description": "Exact provider model identifier or user-configured alias. Core retains this value verbatim and applies documented provider-specific validation/normalization."
+    },
+    "kimiModelId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]*$",
+      "description": "Kimi model identifier accepted at the shell-free process boundary."
     },
     "agentEntry": {
       "type": "object",
@@ -87,11 +149,11 @@
         "id": {
           "type": "string",
           "pattern": "^(sr|custom)-[a-z0-9][a-z0-9-]*$",
-          "description": "Agent identifier. MUST correspond to a file at `.claude/agents/<id>.md`."
+          "description": "Agent identifier. MUST correspond to the selected provider's role artifact."
         },
         "model": {
-          "$ref": "#/$defs/modelAlias",
-          "description": "Model override for this agent when this profile is active. When omitted, the agent's frontmatter `model:` is used as a fallback."
+          "$ref": "#/$defs/providerModelId",
+          "description": "Exact provider model override for this agent. When omitted, the provider default is used."
         },
         "required": {
           "type": "boolean",

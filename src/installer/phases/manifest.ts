@@ -3,7 +3,7 @@ import { readdirSync, statSync } from 'node:fs'
 import path from 'node:path'
 
 import { FilesystemError } from '../util/errors.js'
-import { readBytes, writeFileLf } from '../util/fs.js'
+import { pathExists, readBytes, readTextFile, writeFileLf } from '../util/fs.js'
 
 /**
  * Shape of the `.specrails/specrails-manifest.json` file the installer
@@ -13,6 +13,9 @@ import { readBytes, writeFileLf } from '../util/fs.js'
 export interface SpecrailsManifest {
   version: string
   installed_at: string
+  /** Provider inventory is emitted only by provider-aware lifecycle callers. */
+  providers?: string[]
+  primary_provider?: string
   artifacts: Record<string, string>
 }
 
@@ -34,6 +37,9 @@ export interface BuildManifestInput {
   version: string
   /** Override "installed_at" — exposed for deterministic testing. */
   installedAt?: string
+  /** Provider(s) materialized by this lifecycle pass. Existing entries are unioned. */
+  providers?: string[]
+  primaryProvider?: string
 }
 
 /**
@@ -60,10 +66,41 @@ export function buildManifest(input: BuildManifestInput): SpecrailsManifest {
   artifacts['commands/specrails/enrich.md'] = sha256Of(enrichPath)
   artifacts['commands/specrails/doctor.md'] = sha256Of(doctorPath)
 
-  return {
+  const manifest: SpecrailsManifest = {
     version: input.version,
     installed_at,
     artifacts: sortKeys(artifacts),
+  }
+  if (input.providers && input.providers.length > 0) {
+    const existing = readExistingProviderInventory(input.repoRoot)
+    manifest.providers = [...new Set([...existing.providers, ...input.providers])]
+    manifest.primary_provider =
+      existing.primaryProvider ?? input.primaryProvider ?? manifest.providers[0]
+  }
+  return manifest
+}
+
+function readExistingProviderInventory(repoRoot: string): {
+  providers: string[]
+  primaryProvider?: string
+} {
+  const manifestPath = path.join(repoRoot, '.specrails', 'specrails-manifest.json')
+  if (!pathExists(manifestPath)) return { providers: [] }
+  try {
+    const parsed = JSON.parse(readTextFile(manifestPath)) as {
+      providers?: unknown
+      primary_provider?: unknown
+    }
+    const providers = Array.isArray(parsed.providers)
+      ? parsed.providers.filter((provider): provider is string => typeof provider === 'string')
+      : []
+    return {
+      providers,
+      primaryProvider:
+        typeof parsed.primary_provider === 'string' ? parsed.primary_provider : undefined,
+    }
+  } catch {
+    return { providers: [] }
   }
 }
 

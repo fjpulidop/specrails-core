@@ -12,7 +12,7 @@ The plugin method (`claude plugin install sr`) installs logic into Claude Code's
 
 **Do I need Node.js if my project is not JavaScript?**
 
-Not for the plugin method (`claude plugin install sr`). Node.js 20+ is only required for the scaffold method (`npx specrails-core@latest init`). Once installed, SpecRails works with any language or framework, on macOS, Linux, or Windows.
+Not for the plugin method (`claude plugin install sr`). Node.js 20.19.0+ is only required for the scaffold method (`npx specrails-core@latest init`), because its pinned OpenSpec 1.4.1 CLI uses that runtime floor. Once installed, SpecRails works with any language or framework, on macOS, Linux, or Windows.
 
 **Do I need GitHub Issues?**
 

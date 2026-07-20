@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { rmSync } from 'node:fs'
+import { renameSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -12,6 +12,7 @@ import {
   listDir,
   mkdirp,
   pathExists,
+  readBytes,
   readTextFile,
   removePath,
   symlinkOrCopy,
@@ -80,6 +81,21 @@ const OPSX_TO_GEMINI_SKILL: Record<string, string> = {
   onboard: 'openspec-onboard',
 }
 
+/** OpenSpec's published Kimi skill ids. The mapping is intentionally explicit. */
+const OPSX_TO_KIMI_SKILL: Record<string, string> = {
+  propose: 'openspec-propose',
+  ff: 'openspec-ff-change',
+  new: 'openspec-new-change',
+  apply: 'openspec-apply-change',
+  continue: 'openspec-continue-change',
+  archive: 'openspec-archive-change',
+  'bulk-archive': 'openspec-bulk-archive-change',
+  sync: 'openspec-sync-specs',
+  verify: 'openspec-verify-change',
+  explore: 'openspec-explore',
+  onboard: 'openspec-onboard',
+}
+
 /**
  * Rewrite every literal `Skill("opsx:<id>"[, …])` call in a Claude-authored agent
  * body into the Gemini `activate_skill(name="…")` form. Positional skill input
@@ -93,6 +109,51 @@ export function translateOpsxSkillCallsForGemini(body: string): string {
     const skill = OPSX_TO_GEMINI_SKILL[id]
     return skill ? `activate_skill(name="${skill}")` : match
   })
+}
+
+/**
+ * Port shared Claude-authored prose to Kimi's directory-skill contract.
+ *
+ * Kimi's TUI/ACP clients intercept `/skill:*`, but a materialized workflow is
+ * already running inside a Session and must activate nested workflows through
+ * Kimi's built-in `Skill` tool (`{ skill, args }`). Emitting slash text here
+ * would silently become ordinary model text under `kimi -p`. Interactive slash
+ * examples therefore belong only in AGENTS/docs, never generated skill bodies.
+ * This is render-only; canonical Claude/Codex/Gemini templates stay unchanged.
+ */
+export function translateClaudeTextForKimi(body: string): string {
+  let translated = body.replace(
+    /Skill\("opsx:([a-z-]+)"(?:\s*,\s*("[^"]*"|'[^']*'|[^)]*))?\)/g,
+    (_match, id: string, input: string | undefined) => {
+      const skill = OPSX_TO_KIMI_SKILL[id]
+      if (!skill) return `Unresolved Kimi Skill tool mapping for "opsx:${id}"`
+      const args = input?.replace(/^["']|["']$/g, '') ?? ''
+      return `Skill(skill="${skill}", args=${JSON.stringify(args)})`
+    },
+  )
+  translated = translated
+    .replace(/\.claude\/agents\/personas\//g, '.kimi-code/personas/')
+    .replace(/\.claude\/agents\//g, '.kimi-code/skills/')
+    .replace(
+      /(\.kimi-code\/skills\/[^\s`"'()]+)\.md/g,
+      '$1/SKILL.md',
+    )
+    .replace(/\.claude\//g, '.kimi-code/')
+    .replace(/\.claude\b/g, '.kimi-code')
+    .replace(/\bCLAUDE\.md\b/g, '.kimi-code/AGENTS.md')
+    .replace(
+      /\/(?:specrails|sr):([a-z0-9-]+)/g,
+      'Skill(skill="specrails-$1", args=<arguments following this command>)',
+    )
+    .replace(
+      /\/(?:specrails|sr):/g,
+      'Skill(skill="specrails-<command>", args=<arguments following this command>)',
+    )
+    .replace(/\bsubagent_type\b/g, 'role_skill')
+    .replace(/\bClaude Code\b/g, 'Kimi Code')
+    .replace(/\bClaude CLI\b/g, 'Kimi CLI')
+    .replace(/\bAgent tool\b/g, 'external Kimi role process')
+  return translated
 }
 
 /**
@@ -211,7 +272,7 @@ export interface ScaffoldInput {
   scriptDir: string
   /**
    * Absolute path to the relocated artifact root — where every Specrails-managed
-   * artifact (.specrails/.claude/.codex/.gemini/CLAUDE.md/AGENTS.md/GEMINI.md/.mcp.json)
+   * artifact (.specrails/.claude/.codex/.gemini/.kimi-code and instruction/settings files)
    * is written. Under relocate-always this is the `$HOME` workspace, NOT the repo.
    */
   artifactRoot: string
@@ -268,7 +329,19 @@ const LINKED_PROVIDER_SUBTREES: Record<Provider, string[]> = {
   claude: ['agents', 'commands', 'skills', 'rules'],
   codex: ['skills'],
   gemini: ['agents', 'commands'],
+  // Kimi skills are linked one directory at a time so direct-child OpenSpec
+  // skills and user-owned custom-* roles can coexist. The self-contained
+  // headless runner and its vendored parser are Core-owned and linked as a
+  // separate static subtree.
+  kimi: ['rules', 'specrails'],
 }
+
+const KIMI_RUNNER_RELATIVE_FILES = [
+  'run-skill.mjs',
+  path.join('vendor', 'js-yaml', 'js-yaml.mjs'),
+  path.join('vendor', 'js-yaml', 'LICENSE'),
+  path.join('vendor', 'js-yaml', 'NOTICE.md'),
+] as const
 
 /**
  * Returns true iff any of the provider directories already contains
@@ -317,6 +390,10 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     // subagents under .gemini/agents/. No skills/ tree.
     mk(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails'))
     mk(path.join(input.artifactRoot, input.providerDir, 'agents'))
+  } else if (input.provider === 'kimi') {
+    mk(path.join(input.artifactRoot, input.providerDir, 'skills'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'specrails'))
+    mk(path.join(input.artifactRoot, input.providerDir, 'rules'))
   } else {
     mk(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails'))
     mk(path.join(input.artifactRoot, input.providerDir, 'skills'))
@@ -338,6 +415,14 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   if (input.artifactRoot === input.codeRoot) {
     const gitignoreEntries = ['.claude/agent-memory/', '.specrails/']
     if (input.provider === 'gemini') gitignoreEntries.push('.gemini/agent-memory/')
+    if (input.provider === 'kimi') {
+      gitignoreEntries.push(
+        '.kimi-code/agent-memory/',
+        '.kimi-code/pipeline-state/',
+        '.kimi-code/.dry-run/',
+        '.kimi-code/telemetry/',
+      )
+    }
     ensureGitignore(input.codeRoot, gitignoreEntries)
   }
 
@@ -361,6 +446,9 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   // --- Write bundled commands (enrich.md + doctor.md) ---
   copyBundledCommands({ ...input, copiedIncrement: (n) => (copiedFiles += n) })
   pruneLegacyArtifacts(input)
+  if (input.provider === 'kimi') {
+    copiedFiles += placeKimiSkillRunner(input)
+  }
 
   // --- Quick tier: direct-placement short-circuit ---
   if (input.tier === 'quick') {
@@ -402,14 +490,28 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     if (written > 0) {
       info(`Gemini provider: wrote ${written} setting file(s) (settings.json, GEMINI.md)`)
     }
+  } else if (input.provider === 'kimi') {
+    const written = applyKimiSettings(input)
+    copiedFiles += written
+    if (written > 0) {
+      info(`Kimi provider: wrote ${written} setting file(s) (.kimi-code/AGENTS.md, mcp.json)`)
+    }
   }
 
   // --- Full-tier hint: enrich is required to generate VPC artefacts ---
   if (input.tier === 'full') {
     const cliName =
-      input.provider === 'codex' ? 'Codex CLI' : input.provider === 'gemini' ? 'Gemini CLI' : 'Claude Code'
+      input.provider === 'codex'
+        ? 'Codex CLI'
+        : input.provider === 'gemini'
+          ? 'Gemini CLI'
+          : input.provider === 'kimi'
+            ? 'Kimi CLI'
+            : 'Claude Code'
+    const enrichCommand =
+      input.provider === 'kimi' ? '/skill:specrails-enrich' : '/specrails:enrich'
     info(
-      `Full tier staged. Run \`/specrails:enrich\` in ${cliName} to generate ` +
+      `Full tier staged. Run \`${enrichCommand}\` in ${cliName} to generate ` +
         'VPC personas and adapt agents (including sr-product-manager and ' +
         'sr-product-analyst) to this codebase.',
     )
@@ -443,7 +545,7 @@ export interface InstallFrameworkInput {
   frameworkDir: string
   /** Provider whose static subtree is being materialized. */
   provider: Provider
-  /** Derived provider dir (`.claude`/`.codex`/`.gemini`). */
+  /** Derived provider dir (`.claude`/`.codex`/`.gemini`/`.kimi-code`). */
   providerDir: string
   /** Framework version (the `<version>/` segment). */
   version: string
@@ -461,10 +563,134 @@ export interface InstallFrameworkResult {
 }
 
 /** Path to the per-version, per-provider materialization marker (manifest hash). */
-function frameworkStampPath(versionDir: string, providerDir: string): string {
+export function frameworkStampPath(versionDir: string, providerDir: string): string {
   // Store the stamp OUTSIDE the providerDir so it never leaks into the linked
   // subtree. `.stamp-<providerDir>.json` is provider-keyed.
   return path.join(versionDir, `.framework-stamp${providerDir}.json`)
+}
+
+interface FrameworkStamp {
+  schema: 1
+  version: string
+  provider: Provider
+  source_hash: string
+  content_hash: string
+}
+
+/**
+ * Stable Merkle-like digest over regular files. Relative POSIX paths and raw
+ * bytes are both framed into the hash, so renames, missing files, additions and
+ * byte corruption are detected. Directory mtimes and traversal order never
+ * affect the result.
+ */
+function hashFrameworkTrees(
+  roots: Array<{ label: string; dir: string }>,
+  options: { ignorePackageNoise?: boolean } = {},
+): string {
+  const hash = createHash('sha256')
+
+  const walk = (root: string, current: string, label: string): void => {
+    const entries = listDir(current).sort((a, b) =>
+      path.basename(a).localeCompare(path.basename(b)),
+    )
+    for (const entry of entries) {
+      const name = path.basename(entry)
+      if (
+        options.ignorePackageNoise === true &&
+        (name === 'node_modules' || name === 'package-lock.json')
+      ) {
+        continue
+      }
+      const rel = path.relative(root, entry).split(path.sep).join('/')
+      if (isDir(entry)) {
+        walk(root, entry, label)
+        continue
+      }
+      if (!pathExists(entry)) continue
+      const framedPath = `${label}/${rel}`
+      const bytes = readBytes(entry)
+      hash.update(`file\0${Buffer.byteLength(framedPath)}\0${framedPath}\0`)
+      hash.update(`${bytes.byteLength}\0`)
+      hash.update(bytes)
+    }
+  }
+
+  for (const root of [...roots].sort((a, b) => a.label.localeCompare(b.label))) {
+    hash.update(`root\0${root.label}\0`)
+    if (isDir(root.dir)) {
+      walk(root.dir, root.dir, root.label)
+    } else {
+      hash.update('missing\0')
+    }
+  }
+  return `sha256:${hash.digest('hex')}`
+}
+
+/** Hash of every package input that can influence provider materialization. */
+function frameworkSourceHash(scriptDir: string, provider: Provider): string {
+  const treeHash = hashFrameworkTrees(
+    [
+      { label: 'templates', dir: path.join(scriptDir, 'templates') },
+      { label: 'commands', dir: path.join(scriptDir, 'commands') },
+    ],
+    { ignorePackageNoise: true },
+  )
+  return `sha256:${createHash('sha256')
+    .update(treeHash)
+    .update('\0provider\0')
+    .update(provider)
+    .digest('hex')}`
+}
+
+/** Hash of the provider-static tree workspace links consume. */
+function frameworkContentHash(providerFrameworkDir: string): string {
+  return hashFrameworkTrees([
+    { label: 'provider', dir: providerFrameworkDir },
+  ])
+}
+
+function readFrameworkStamp(stampPath: string): FrameworkStamp | null {
+  if (!pathExists(stampPath)) return null
+  try {
+    const parsed = JSON.parse(readTextFile(stampPath)) as Partial<FrameworkStamp>
+    if (
+      parsed.schema !== 1 ||
+      typeof parsed.version !== 'string' ||
+      typeof parsed.provider !== 'string' ||
+      typeof parsed.source_hash !== 'string' ||
+      typeof parsed.content_hash !== 'string'
+    ) {
+      return null
+    }
+    return parsed as FrameworkStamp
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Validate one provider in a materialized version without needing the source
+ * package. Used by the final swap gate: the stamp identity and current output
+ * hash must still agree immediately before `current` moves.
+ */
+export function frameworkMaterializationProblem(
+  versionDir: string,
+  version: string,
+  provider: Provider,
+  providerDir: string,
+): string | null {
+  const providerFrameworkDir = path.join(versionDir, providerDir)
+  const stampPath = frameworkStampPath(versionDir, providerDir)
+  if (!isDir(providerFrameworkDir)) return `missing ${providerDir}/`
+  const stamp = readFrameworkStamp(stampPath)
+  if (!stamp) return `missing or invalid ${path.basename(stampPath)}`
+  if (stamp.version !== version || stamp.provider !== provider) {
+    return `invalid stamp (expected version=${version}, provider=${provider})`
+  }
+  if (stamp.content_hash !== frameworkContentHash(providerFrameworkDir)) {
+    return 'managed content does not match stamp'
+  }
+  return null
 }
 
 /**
@@ -479,11 +705,28 @@ export function installFramework(input: InstallFrameworkInput): InstallFramework
   const versionDir = path.join(input.frameworkDir, input.version)
   const providerFrameworkDir = path.join(versionDir, input.providerDir)
   const stampPath = frameworkStampPath(versionDir, input.providerDir)
+  const sourceHash = frameworkSourceHash(input.scriptDir, input.provider)
+  const stamp = readFrameworkStamp(stampPath)
 
-  // Idempotency: existing materialization with a matching stamp → skip.
-  if (isDir(providerFrameworkDir) && pathExists(stampPath)) {
+  // Same-version reuse is allowed only when BOTH provenance and every managed
+  // output byte still match the deterministic stamp. A legacy/timestamp-only
+  // stamp, a changed package source, or any missing/corrupt/extra managed file
+  // falls through to a clean provider-tree repair.
+  if (
+    isDir(providerFrameworkDir) &&
+    stamp?.version === input.version &&
+    stamp.provider === input.provider &&
+    stamp.source_hash === sourceHash &&
+    stamp.content_hash === frameworkContentHash(providerFrameworkDir)
+  ) {
     return { providerFrameworkDir, versionDir, materialized: false }
   }
+
+  // Framework provider trees are entirely Core-owned. Rebuilding from a clean
+  // destination removes stale files as well as repairing corrupt/missing ones,
+  // without touching sibling providers already materialized in this version.
+  removePath(providerFrameworkDir)
+  removePath(stampPath)
 
   // Reuse scaffoldInstallation's static-placement helpers by pointing
   // `artifactRoot` at the version dir. `seedProjectDirs: false` keeps the copy
@@ -518,11 +761,23 @@ export function installFramework(input: InstallFrameworkInput): InstallFramework
   for (const f of ['AGENTS.md', 'GEMINI.md', 'CLAUDE.md']) {
     rmSync(path.join(versionDir, f), { force: true })
   }
+  // Kimi's instruction and MCP files are provider-local rather than root-local,
+  // but both are project-specific and must be real files in each workspace.
+  // In particular, linking mcp.json would let Desktop mutate the shared
+  // framework and leak one project's MCP registry into every other project.
+  if (input.provider === 'kimi') {
+    rmSync(path.join(providerFrameworkDir, 'AGENTS.md'), { force: true })
+    rmSync(path.join(providerFrameworkDir, 'mcp.json'), { force: true })
+  }
 
-  writeFileLf(
-    stampPath,
-    `${JSON.stringify({ version: input.version, provider: input.provider, at: new Date().toISOString() }, null, 2)}\n`,
-  )
+  const frameworkStamp: FrameworkStamp = {
+    schema: 1,
+    version: input.version,
+    provider: input.provider,
+    source_hash: sourceHash,
+    content_hash: frameworkContentHash(providerFrameworkDir),
+  }
+  writeFileLf(stampPath, `${JSON.stringify(frameworkStamp, null, 2)}\n`)
   return { providerFrameworkDir, versionDir, materialized: true }
 }
 
@@ -544,7 +799,7 @@ export interface AssembleProjectWorkspaceInput {
   frameworkDir: string
   /** Provider whose subtrees are linked into the workspace. */
   provider: Provider
-  /** Derived provider dir (`.claude`/`.codex`/`.gemini`). */
+  /** Derived provider dir (`.claude`/`.codex`/`.gemini`/`.kimi-code`). */
   providerDir: string
   /** Framework version (used for the manifest record). */
   version: string
@@ -565,7 +820,7 @@ export interface AssembleProjectWorkspaceInput {
    * the workspace instead of SYMLINKED. Used by the in-repo standalone install
    * (`init`/`update` with `artifactRoot === codeRoot`) so the repo gets real,
    * committable files — a symlink into `$HOME/.specrails/framework` would be
-   * invisible to a standalone user's `claude`/`codex`/`gemini` running in the
+   * invisible to a standalone user's `claude`/`codex`/`gemini`/`kimi` running in the
    * repo. The PROJECT layer (agent-memory, manifest, instruction files) is real
    * either way. Defaults to false (relocated workspaces symlink — the desktop /
    * `--relocate` path).
@@ -628,12 +883,29 @@ export function assembleProjectWorkspace(
       links[sub] = symlinkOrCopy(target, dest, preferCopy)
     }
   }
+  if (input.provider === 'kimi') {
+    const kimiSkillsTarget = path.join(currentProviderDir, 'skills')
+    const kimiSkillsDest = path.join(workspaceProviderDir, 'skills')
+    migrateLegacyKimiRoleLayout(kimiSkillsDest)
+    if (pathExists(kimiSkillsTarget)) {
+      links.skills = linkKimiSkillDirectories(
+        kimiSkillsTarget,
+        kimiSkillsDest,
+        selectedAgentSet,
+        preferCopy,
+      )
+    }
+  }
 
-  // Link the provider-invariant settings file (codex config.toml / gemini
-  // settings.json) when the framework has one and the user has not authored a
-  // local override in the workspace.
+  // Link only provider-invariant settings (codex config.toml / gemini
+  // settings.json). Kimi mcp.json is a mutable per-project registry and is
+  // seeded below as a real workspace file.
   const settingsFile =
-    input.provider === 'codex' ? 'config.toml' : input.provider === 'gemini' ? 'settings.json' : null
+    input.provider === 'codex'
+      ? 'config.toml'
+      : input.provider === 'gemini'
+        ? 'settings.json'
+        : null
   if (settingsFile) {
     const settingsTarget = path.join(currentProviderDir, settingsFile)
     const settingsLink = path.join(workspaceProviderDir, settingsFile)
@@ -651,6 +923,8 @@ export function assembleProjectWorkspace(
     scriptDir: input.scriptDir,
     repoRoot: input.workspace,
     version: input.version,
+    providers: [input.provider],
+    primaryProvider: input.provider,
   })
   writeManifestFiles(input.workspace, manifest)
 
@@ -716,9 +990,68 @@ function seedProjectLayer(input: AssembleProjectWorkspaceInput, currentProviderD
     } catch (err) {
       warn(`gemini agent pre-acknowledgment skipped: ${(err as Error).message}`)
     }
+  } else if (input.provider === 'kimi') {
+    const skillsDir = path.join(currentProviderDir, 'skills')
+    if (isDir(skillsDir)) {
+      for (const roleDir of listDir(skillsDir)) {
+        if (!isDir(roleDir)) continue
+        const id = path.basename(roleDir)
+        if (
+          /^sr-[a-z0-9-]+$/.test(id) &&
+          selected.has(id) &&
+          !QUICK_EXCLUDED_AGENTS.has(id) &&
+          pathExists(path.join(roleDir, 'SKILL.md'))
+        ) {
+          placedAgentIds.push(id)
+        }
+      }
+    }
+    for (const id of placedAgentIds) {
+      mkdirp(path.join(input.workspace, '.kimi-code', 'agent-memory', id))
+      seededMemoryAgents.push(id)
+      if (EXPLANATION_AUTHORS.has(id)) {
+        mkdirp(path.join(input.workspace, '.kimi-code', 'agent-memory', 'explanations'))
+      }
+    }
+    seedInstructionFile(
+      path.join(input.workspace, '.kimi-code', 'AGENTS.md'),
+      renderInitialKimiAgentsMd(input.codeRoot),
+    )
+    seedKimiMcpFile(path.join(input.workspace, '.kimi-code', 'mcp.json'))
+    if (input.workspace === input.codeRoot) {
+      ensureGitignore(input.codeRoot, [
+        '.kimi-code/agent-memory/',
+        '.kimi-code/pipeline-state/',
+        '.kimi-code/.dry-run/',
+        '.kimi-code/telemetry/',
+        '.specrails/',
+      ])
+    }
   }
 
   return seededMemoryAgents
+}
+
+/**
+ * Ensure Kimi's per-project MCP registry is a real writable file. Older Core
+ * builds could create a framework symlink here; migrate a readable link by
+ * copying its bytes locally, or seed an empty registry when the link is stale.
+ */
+function seedKimiMcpFile(mcpPath: string): void {
+  if (isSymlink(mcpPath)) {
+    let existing = '{\n  "mcpServers": {}\n}\n'
+    try {
+      existing = readTextFile(mcpPath)
+    } catch {
+      // A version swap can leave the obsolete shared-framework link dangling.
+    }
+    removePath(mcpPath)
+    writeFileLf(mcpPath, existing)
+    return
+  }
+  if (!pathExists(mcpPath)) {
+    writeFileLf(mcpPath, '{\n  "mcpServers": {}\n}\n')
+  }
 }
 
 /**
@@ -795,6 +1128,96 @@ function linkAgentFiles(
 }
 
 /**
+ * Assemble Kimi skills without turning the whole directory into a symlink.
+ * Kimi's loader inspects only immediate children of `.kimi-code/skills`, so
+ * workflows (`specrails-*`), OpenSpec skills (`openspec-*`), managed roles
+ * (`sr-*`), and user roles (`custom-*`) all share this flat directory.
+ * OpenSpec and custom/unknown skills must survive every update.
+ */
+function linkKimiSkillDirectories(
+  frameworkSkillsDir: string,
+  workspaceSkillsDir: string,
+  selectedRoleIds: Set<string>,
+  preferCopy: boolean,
+): 'symlink' | 'junction' | 'copy' {
+  mkdirp(workspaceSkillsDir)
+  const linkedFrameworkNames = new Set<string>()
+  let mechanism: 'symlink' | 'junction' | 'copy' = 'symlink'
+
+  for (const source of listDir(frameworkSkillsDir)) {
+    if (!isDir(source)) continue
+    const name = path.basename(source)
+    if (name === 'rails') {
+      // A same-version framework materialized by the experimental build may
+      // still contain this container. `installFramework` normally rematerializes
+      // it, but never expose nested roles if a caller supplies one directly.
+      continue
+    }
+    if (
+      /^sr-[a-z0-9-]+$/.test(name) &&
+      (!selectedRoleIds.has(name) || QUICK_EXCLUDED_AGENTS.has(name))
+    ) {
+      continue
+    }
+    linkedFrameworkNames.add(name)
+    const used = symlinkOrCopy(source, path.join(workspaceSkillsDir, name), preferCopy)
+    if (used === 'copy') mechanism = 'copy'
+    else if (used === 'junction' && mechanism !== 'copy') mechanism = 'junction'
+  }
+
+  // `specrails-*` workflows and `sr-*` roles are framework-owned. OpenSpec,
+  // custom-* and unknown/user skill directories remain outside this boundary.
+  for (const existing of listDir(workspaceSkillsDir)) {
+    const name = path.basename(existing)
+    if (linkedFrameworkNames.has(name)) continue
+    if (name.startsWith('specrails-') || /^sr-[a-z0-9-]+$/.test(name)) {
+      removePath(existing)
+    }
+  }
+  return mechanism
+}
+
+/**
+ * Migrate the pre-release `skills/rails/<role>` layout without risking user
+ * data. Framework-owned `sr-*` directories are dropped (the caller recreates
+ * them at the discoverable flat path). Reserved `custom-*` roles are atomically
+ * moved to `skills/custom-*` when that target is free. A collision or unknown
+ * child remains byte-untouched under `rails/` and doctor reports it, requiring
+ * explicit user resolution rather than destructive guessing.
+ */
+function migrateLegacyKimiRoleLayout(skillsDir: string): void {
+  const legacyRolesDir = path.join(skillsDir, 'rails')
+  if (!isDir(legacyRolesDir)) return
+
+  for (const source of listDir(legacyRolesDir)) {
+    if (!isDir(source)) continue
+    const id = path.basename(source)
+    if (/^sr-[a-z0-9-]+$/.test(id)) {
+      removePath(source)
+      continue
+    }
+    if (!id.startsWith('custom-')) continue
+
+    const destination = path.join(skillsDir, id)
+    if (pathExists(destination)) {
+      warn(
+        `Kimi role migration kept ${path.relative(skillsDir, source)} because ` +
+          `${id}/ already exists; resolve the duplicate manually`,
+      )
+      continue
+    }
+    try {
+      renameSync(source, destination)
+      info(`Migrated Kimi role skills/rails/${id} → skills/${id}`)
+    } catch (err) {
+      warn(`failed to migrate Kimi role ${id}: ${(err as Error).message}`)
+    }
+  }
+
+  if (listDir(legacyRolesDir).length === 0) removePath(legacyRolesDir)
+}
+
+/**
  * True when `name` (an `<id>.md`) matches a framework-owned agent id (`sr-*`).
  * Used to identify a stale COPY-fallback framework agent on Windows that the
  * current framework version no longer provides, so it can be cleaned up on a
@@ -803,6 +1226,34 @@ function linkAgentFiles(
  */
 function isFrameworkAgentName(name: string): boolean {
   return /^sr-[a-z0-9-]+\.md$/.test(name)
+}
+
+/**
+ * Install Core's self-contained Kimi headless skill runner and the vendored
+ * js-yaml parser used by upstream Kimi 0.27. These files are provider-static
+ * and managed: updates replace them through the same framework copy/link
+ * lifecycle as rules. They intentionally live outside `skills/` so Kimi never
+ * attempts to discover executable support files as skills.
+ */
+function placeKimiSkillRunner(input: ScaffoldInput): number {
+  for (const relative of KIMI_RUNNER_RELATIVE_FILES) {
+    copyFile(
+      path.join(
+        input.scriptDir,
+        'templates',
+        'kimi',
+        'specrails',
+        relative,
+      ),
+      path.join(
+        input.artifactRoot,
+        input.providerDir,
+        'specrails',
+        relative,
+      ),
+    )
+  }
+  return KIMI_RUNNER_RELATIVE_FILES.length
 }
 
 /** Write or sentinel-upsert a project instruction file (AGENTS.md/GEMINI.md). */
@@ -819,6 +1270,11 @@ function seedInstructionFile(filePath: string, content: string): void {
 function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: number) => void }): void {
   const commandsSrc = path.join(input.scriptDir, 'commands')
   if (!isDir(commandsSrc)) return
+
+  // Kimi's complete workflow catalog is rendered from the canonical
+  // templates/commands/specrails sources in placeKimiSkills. Do not let this
+  // generic bundled-command pass fall through to Claude's file layout.
+  if (input.provider === 'kimi') return
 
   if (input.provider === 'codex') {
     // Codex: each bundled command ships as a SKILL under
@@ -979,6 +1435,773 @@ function writeClaudeSkillFromCommand(args: {
     '',
   ].join('\n')
   writeFileLf(args.dest, frontmatter + body)
+}
+
+const KIMI_ROLE_EXECUTION_CONTRACT = [
+  '## Kimi role execution contract',
+  '',
+  'These rules override later Claude-specific `role_skill`, `isolation`, and',
+  '`run_in_background` notation. When this workflow asks for one role or a',
+  'parallel group, submit exactly one foreground role wave. The managed helper',
+  'starts one external Kimi CLI per role, runs the wave concurrently, attributes',
+  'every output event, and waits for every required role. Never emulate a role',
+  'in the orchestrator and never start concurrent helper commands.',
+  '',
+  'First use the structured WriteFile tool (never Shell, a heredoc, `printf`,',
+  'or `echo`) to write `.specrails/kimi-role-wave.json`. Choose one lowercase',
+  'letters/digits/hyphens run id (1–64 characters) and reuse it for the whole',
+  'workflow. The file must have exactly this shape (1–32 roles):',
+  '',
+  '```json',
+  '{',
+  '  "run": "<stable-run-id>",',
+  '  "roles": [',
+  '    {',
+  '      "key": "<unique-role-call-id>",',
+  '      "skill": "<role-skill>",',
+  '      "model": "<exact profile model or k3>",',
+  '      "profile": "inherit",',
+  '      "args": "<complete role context>",',
+  '      "workspace": "current"',
+  '    }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Every `key`, profile stem, and worktree id uses the same 1–64 character grammar as `run`.',
+  'Use `"current"` for roles that target the orchestrator repository. The',
+  'helper gives each such role a private execution directory while setting its',
+  '`SPECRAILS_REPO_DIR` to that repository, so nested calls and run-state do not',
+  'collide. Where later instructions request `isolation: worktree`, use',
+  '`"worktree:<feature-id>"`; reuse that exact value for the developer, test,',
+  'documentation, and other sequential roles belonging to the same feature.',
+  'Never put two roles for the same worktree in one wave.',
+  '',
+  'Resolve each role model in the orchestrator and encode all context as JSON;',
+  'set `profile` to `inherit`, or to a validated profile filename stem for a',
+  'per-rail override under `.specrails/profiles/<stem>.json`. The helper passes',
+  'that absolute profile path only to that child process.',
+  'do not place any model or context text in a shell command. Then run this',
+  'exact static command in the foreground:',
+  '',
+  '```sh',
+  'node .kimi-code/specrails/run-skill.mjs \\',
+  '  --role-wave-file .specrails/kimi-role-wave.json \\',
+  '  --add-dir "${SPECRAILS_REPO_DIR:-.}"',
+  '```',
+  '',
+  'The helper accepts only that fixed, regular, non-symlink one-shot file,',
+  'bounds it to 1 MiB, validates the exact schema and every identifier, and',
+  'deletes it before creating a worktree or process. For an isolated role it',
+  'creates or reuses a detached git worktree from a synthetic baseline commit',
+  'that snapshots the starting tracked and non-ignored untracked workspace,',
+  'exposes the',
+  'managed `.kimi-code`, and sets the child repository root to that worktree.',
+  'It persists the base commit and key/path mapping under',
+  '`.specrails/kimi-role-worktrees/<run>.json` and emits',
+  '`specrails.role.workspace` frames. Replace every later',
+  '`<worktree-path>` placeholder with that emitted `repoDir`; compare against',
+  'the manifest `baseCommit`, not a hard-coded `main` ref.',
+  '',
+  'The helper frames child stdout/stderr with its role key, emits one completion',
+  'frame per role, and exits nonzero after the whole wave if any role failed.',
+  'A termination signal is forwarded to every live child. Partial failures',
+  'leave completed worktrees and the manifest available for retry; newly',
+  'created partial worktrees are removed only when setup itself fails. Apply',
+  'the workflow cleanup step after merge using the exact static command',
+  '`node .kimi-code/specrails/run-skill.mjs --role-wave-cleanup <run>`.',
+  'Cleanup removes registered worktrees, execution state, the manifest, and',
+  'the private synthetic-baseline ref; never clean up a failed run before retry.',
+  'The helper normalizes only the three',
+  'official short model ids (`k3` launches as `kimi-code/k3`); safe custom',
+  'aliases pass through unchanged.',
+  'There is no SpecRails-owned Kimi server or bundled Kimi binary.',
+  '',
+].join('\n')
+
+const KIMI_NESTED_SKILL_CONTRACT = [
+  '## Kimi nested skill activation',
+  '',
+  'When these instructions show `Skill(skill="<id>", args="<raw args>")`, call',
+  'Kimi\'s built-in `Skill` tool with those `skill` and `args` fields. Do not',
+  'print the notation as prose and do not send an interactive slash command as',
+  'model text. This native tool path preserves Kimi\'s nested-skill behavior and',
+  'skill activation telemetry.',
+  '',
+].join('\n')
+
+const KIMI_RUNTIME_CONTEXT_CONTRACT = [
+  '## Kimi runtime context contract',
+  '',
+  'SpecRails deliberately resolves project-specific context at activation time;',
+  'the Kimi enrich workflow does not rewrite framework-owned role or workflow',
+  'SKILL.md files. Resolve every `KIMI_RUNTIME_*`, `KIMI_BACKLOG_*`, and',
+  '`KIMI_PR_CREATE` marker below before acting. These are semantic markers,',
+  'never executable command names; do not pass them to Shell.',
+  '',
+  'Use `${SPECRAILS_REPO_DIR}` when set as the code repository, otherwise the',
+  'current repository. Read `.kimi-code/project-context.md` for stack, layers,',
+  'CI commands, conventions, warnings, architecture, and important paths; when',
+  'a field is absent, inspect package/build/CI files and report the inferred',
+  'value explicitly. Scan `.kimi-code/personas/*.md` at runtime and read only',
+  'regular non-symlink files; derive persona names, roles, score columns, and',
+  'VPC sections from that live inventory. An empty inventory means “no personas',
+  'configured”, never fabricated rows or scores.',
+  '',
+  'For every `KIMI_BACKLOG_*` marker, first read and validate',
+  '`.specrails/backlog-config.json`. Route `local` through structured reads and',
+  'atomic writes of `.specrails/local-tickets.json`; route `github` through the',
+  'approved `gh issue` operation; route `jira` only through the configured',
+  'project/base URL and credentials. Honour read-only mode and never perform a',
+  'write operation when configuration is missing, invalid, or read-only.',
+  'Arguments shown after a marker describe the operation; they are not shell',
+  'argv. Resolve `KIMI_PR_CREATE` with the repository’s configured PR workflow',
+  'and ask before publishing when the active workflow requires confirmation.',
+  '',
+].join('\n')
+
+const KIMI_RUNTIME_PLACEHOLDERS: Record<string, string> = {
+  ARCHITECTURE_DIAGRAM: 'KIMI_RUNTIME_ARCHITECTURE_DIAGRAM',
+  AREA_TABLE: 'KIMI_RUNTIME_AREA_TABLE',
+  BACKEND_ARCHITECTURE_DIAGRAM: 'KIMI_RUNTIME_BACKEND_ARCHITECTURE_DIAGRAM',
+  BACKEND_CRITICAL_RULES: 'KIMI_RUNTIME_BACKEND_CRITICAL_RULES',
+  BACKEND_EXPERTISE: 'KIMI_RUNTIME_BACKEND_EXPERTISE',
+  BACKEND_LAYER_CONVENTIONS: 'KIMI_RUNTIME_BACKEND_LAYER_CONVENTIONS',
+  BACKEND_STACK: 'KIMI_RUNTIME_BACKEND_STACK',
+  BACKEND_TECH_LIST: 'KIMI_RUNTIME_BACKEND_TECH_LIST',
+  BACKLOG_COMMENT_CMD: 'KIMI_BACKLOG_COMMENT',
+  BACKLOG_CREATE_CMD: 'KIMI_BACKLOG_CREATE',
+  BACKLOG_DELETE_CMD: 'KIMI_BACKLOG_DELETE',
+  BACKLOG_FETCH_ALL_CMD: 'KIMI_BACKLOG_FETCH_ALL',
+  BACKLOG_FETCH_CLOSED_CMD: 'KIMI_BACKLOG_FETCH_CLOSED',
+  BACKLOG_FETCH_CMD: 'KIMI_BACKLOG_FETCH',
+  BACKLOG_INIT_LABELS_CMD: 'KIMI_BACKLOG_INIT_LABELS',
+  BACKLOG_PARTIAL_COMMENT_CMD: 'KIMI_BACKLOG_PARTIAL_COMMENT',
+  BACKLOG_PREFLIGHT: 'KIMI_BACKLOG_PREFLIGHT',
+  BACKLOG_PROVIDER_NAME: 'KIMI_RUNTIME_BACKLOG_PROVIDER_NAME',
+  BACKLOG_UPDATE_CMD: 'KIMI_BACKLOG_UPDATE',
+  BACKLOG_VIEW_CMD: 'KIMI_BACKLOG_VIEW',
+  CI_CHECK_TABLE_ROWS: 'KIMI_RUNTIME_CI_CHECK_TABLE_ROWS',
+  CI_COMMANDS: 'KIMI_RUNTIME_CI_COMMANDS',
+  CI_COMMANDS_BACKEND: 'KIMI_RUNTIME_CI_COMMANDS_BACKEND',
+  CI_COMMANDS_FRONTEND: 'KIMI_RUNTIME_CI_COMMANDS_FRONTEND',
+  CI_COMMANDS_FULL: 'KIMI_RUNTIME_CI_COMMANDS_FULL',
+  CI_COMMON_PITFALLS: 'KIMI_RUNTIME_CI_COMMON_PITFALLS',
+  CI_CRITICAL_WARNINGS: 'KIMI_RUNTIME_CI_CRITICAL_WARNINGS',
+  CI_KNOWN_GAPS: 'KIMI_RUNTIME_CI_KNOWN_GAPS',
+  CODE_QUALITY_CHECKLIST: 'KIMI_RUNTIME_CODE_QUALITY_CHECKLIST',
+  CODE_QUALITY_STANDARDS: 'KIMI_RUNTIME_CODE_QUALITY_STANDARDS',
+  COMPETITIVE_LANDSCAPE: 'KIMI_RUNTIME_COMPETITIVE_LANDSCAPE',
+  DEPENDENCY_CHECK_COMMANDS: 'KIMI_RUNTIME_DEPENDENCY_CHECK_COMMANDS',
+  DOMAIN_EXPERTISE: 'KIMI_RUNTIME_DOMAIN_EXPERTISE',
+  DOMAIN_KNOWLEDGE: 'KIMI_RUNTIME_DOMAIN_KNOWLEDGE',
+  FRONTEND_ARCHITECTURE_DIAGRAM: 'KIMI_RUNTIME_FRONTEND_ARCHITECTURE_DIAGRAM',
+  FRONTEND_CRITICAL_RULES: 'KIMI_RUNTIME_FRONTEND_CRITICAL_RULES',
+  FRONTEND_EXPERTISE: 'KIMI_RUNTIME_FRONTEND_EXPERTISE',
+  FRONTEND_LAYER_CONVENTIONS: 'KIMI_RUNTIME_FRONTEND_LAYER_CONVENTIONS',
+  FRONTEND_STACK: 'KIMI_RUNTIME_FRONTEND_STACK',
+  FRONTEND_TECH_LIST: 'KIMI_RUNTIME_FRONTEND_TECH_LIST',
+  GIT_ACCESS: 'KIMI_RUNTIME_GIT_ACCESS',
+  JIRA_BASE_URL: 'KIMI_RUNTIME_JIRA_BASE_URL',
+  JIRA_PROJECT_KEY: 'KIMI_RUNTIME_JIRA_PROJECT_KEY',
+  KEY_FILE_PATHS: 'KIMI_RUNTIME_KEY_FILE_PATHS',
+  LAYER_CLAUDE_MD_PATHS: 'KIMI_RUNTIME_LAYER_CONTEXT_PATHS',
+  LAYER_CONVENTIONS: 'KIMI_RUNTIME_LAYER_CONVENTIONS',
+  LAYER_LIST: 'KIMI_RUNTIME_LAYER_LIST',
+  LAYER_NAME: 'KIMI_RUNTIME_LAYER_NAME',
+  LAYER_PATH: 'KIMI_RUNTIME_LAYER_PATH',
+  LAYER_TAGS: 'KIMI_RUNTIME_LAYER_TAGS',
+  MAINTAINER_PERSONA_LINE: 'KIMI_RUNTIME_MAINTAINER_PERSONA_LINE',
+  MAX_SCORE: 'KIMI_RUNTIME_PERSONA_MAX_SCORE',
+  PERSONA_COUNT: 'KIMI_RUNTIME_PERSONA_COUNT',
+  PERSONA_FILES: 'KIMI_RUNTIME_PERSONA_FILES',
+  PERSONA_FILE_LIST: 'KIMI_RUNTIME_PERSONA_FILE_LIST',
+  PERSONA_FILE_READ_LIST: 'KIMI_RUNTIME_PERSONA_FILE_READ_LIST',
+  PERSONA_FIT_FORMAT: 'KIMI_RUNTIME_PERSONA_FIT_FORMAT',
+  PERSONA_NAMES: 'KIMI_RUNTIME_PERSONA_NAMES',
+  PERSONA_NAMES_WITH_ROLES: 'KIMI_RUNTIME_PERSONA_NAMES_WITH_ROLES',
+  PERSONA_SCORE_FORMAT: 'KIMI_RUNTIME_PERSONA_SCORE_FORMAT',
+  PERSONA_SCORE_HEADERS: 'KIMI_RUNTIME_PERSONA_SCORE_HEADERS',
+  PERSONA_SCORE_SEPARATORS: 'KIMI_RUNTIME_PERSONA_SCORE_SEPARATORS',
+  PERSONA_VPC_SECTIONS: 'KIMI_RUNTIME_PERSONA_VPC_SECTIONS',
+  PR_CREATE_CMD: 'KIMI_PR_CREATE',
+  PROJECT_CONTEXT: 'KIMI_RUNTIME_PROJECT_CONTEXT',
+  TECH_EXPERTISE: 'KIMI_RUNTIME_TECH_EXPERTISE',
+  TEST_QUALITY_CHECKLIST: 'KIMI_RUNTIME_TEST_QUALITY_CHECKLIST',
+  TEST_RUNNER_CHECK: 'KIMI_RUNTIME_TEST_RUNNER_CHECK',
+  WARNINGS: 'KIMI_RUNTIME_WARNINGS',
+}
+
+function writeKimiWorkflowSkill(args: {
+  src: string
+  dest: string
+  commandName: string
+  placeholders: Record<string, string>
+}): void {
+  if (!pathExists(args.src)) return
+  const { body, description } = stripFrontmatter(readTextFile(args.src))
+  const skillName = `specrails-${args.commandName}`
+  const providerNeutral = renderPlaceholders(body, {
+    ...KIMI_RUNTIME_PLACEHOLDERS,
+    ...args.placeholders,
+    MEMORY_PATH: '.kimi-code/agent-memory/',
+  }).replaceAll(
+    '.specrails/profiles/project-default.json',
+    '.specrails/profiles/kimi-default.json',
+  )
+  const rendered = translateClaudeTextForKimi(
+    adaptKimiWorkflowBody(args.commandName, providerNeutral),
+  )
+  const frontmatter = [
+    '---',
+    `name: ${skillName}`,
+    `description: ${JSON.stringify(
+      translateClaudeTextForKimi(
+        renderPlaceholders(
+          description ?? `SpecRails ${args.commandName} workflow for Kimi Code.`,
+          {
+            ...KIMI_RUNTIME_PLACEHOLDERS,
+            ...args.placeholders,
+          },
+        ),
+      ),
+    )}`,
+    'type: prompt',
+    '---',
+    '',
+  ].join('\n')
+  writeFileLf(
+    args.dest,
+    frontmatter +
+      KIMI_NESTED_SKILL_CONTRACT +
+      KIMI_ROLE_EXECUTION_CONTRACT +
+      KIMI_RUNTIME_CONTEXT_CONTRACT +
+      rendered,
+  )
+}
+
+function adaptKimiWorkflowBody(commandName: string, body: string): string {
+  if (commandName === 'batch-implement') {
+    return adaptKimiBatchImplement(body)
+  }
+  if (commandName === 'auto-propose-backlog-specs') {
+    return adaptKimiAutoPropose(body)
+  }
+  if (commandName === 'enrich') {
+    return renderKimiEnrichWorkflow()
+  }
+  if (commandName === 'reconfig') {
+    return renderKimiReconfigWorkflow()
+  }
+  if (commandName === 'telemetry') {
+    return renderKimiTelemetryWorkflow()
+  }
+  if (commandName === 'retry') {
+    return adaptKimiRetry(body)
+  }
+  if (commandName !== 'implement') return body
+  let adapted = replaceMarkdownSection(
+    body,
+    '##### Apply per-agent model overrides (profile mode only)',
+    '##### Legacy mode — preserve current behavior',
+    [
+      '##### Resolve per-role model overrides (profile mode only)',
+      '',
+      'Keep each `AGENT_MODEL[id]` value exactly as declared in the profile.',
+      'Do **not** rewrite role `SKILL.md` frontmatter: Kimi directory skills do',
+      'not carry per-role model configuration. In the orchestrator, resolve the',
+      'role id against the parsed `AGENT_MODEL` map, then write the exact result',
+      'into that role wave entry\'s JSON `model` field using WriteFile. Use',
+      'the provider default `k3` when absent; never depend on a shell array from',
+      'a previous tool call. Only the official short ids `k3`,',
+      '`kimi-for-coding`, and `kimi-for-coding-highspeed` gain the',
+      '`kimi-code/` prefix at the CLI boundary. Never map Claude aliases.',
+      '',
+    ].join('\n'),
+  )
+  adapted = replaceMarkdownSection(
+    adapted,
+    '##### Legacy mode — preserve current behavior',
+    '##### Agent roles (both modes)',
+    [
+      '##### Legacy mode — preserve current behavior',
+      '',
+      'If no profile is active, discover role directories without mutating them:',
+      '',
+      '```bash',
+      'AVAILABLE_AGENTS="$(find -L .kimi-code/skills -mindepth 2 -maxdepth 2 \\',
+      '  -type f -name SKILL.md -print 2>/dev/null | sed \'s|.*/skills/||;s|/SKILL.md$||\' \\',
+      '  | grep -E \'^(sr|custom)-\' | sort)"',
+      'PROFILE_MODE="legacy"',
+      'PROFILE_NAME=""',
+      '```',
+      '',
+      'Per-role model overrides are empty in legacy mode. External role',
+      'processes use the explicit Kimi default (`k3`, launched as',
+      '`kimi-code/k3`).',
+      '',
+    ].join('\n'),
+  )
+  adapted = replaceMarkdownSection(
+    adapted,
+    '#### Merge Algorithm',
+    '**Step 4: Record outcomes**',
+    [
+      '#### Kimi role-wave merge algorithm',
+      '',
+      'The role-wave contract above overrides the generic runtime-supplied',
+      'worktree assumptions. Use the stable run id chosen for this workflow.',
+      'First run this command (the run id grammar is validated before git):',
+      '',
+      '```sh',
+      'node .kimi-code/specrails/run-skill.mjs --role-wave-status <stable-run-id>',
+      '```',
+      '',
+      'The single `specrails.merge.inventory` frame supplies `baseCommit`,',
+      '`manifestPath`, and each safe worktree id, `repoDir`, and complete',
+      '`changes` list. Every change is `{status:"A"|"M"|"D",path}`. This',
+      'inventory compares against the synthetic baseline snapshot, includes',
+      'committed/staged/unstaged and non-ignored untracked role output, and',
+      'excludes `.kimi-code` plus SpecRails run-state. Never discover changed',
+      'files with a shell loop, newline splitting, or a hard-coded `main` ref.',
+      '',
+      'Classify paths across all worktrees before applying anything:',
+      '- `exclusive_files`: appears in one worktree only.',
+      '- `shared_files`: appears in two or more worktrees.',
+      '- Preserve each A/M/D status; a D path has no source file to copy.',
+      '',
+      '**Exclusive A/M/D actions**',
+      '',
+      'For each feature in `MERGE_ORDER`, use structured WriteFile (never shell',
+      'interpolation) to write `.specrails/kimi-role-merge.json`:',
+      '',
+      '```json',
+      '{',
+      '  "run": "<stable-run-id>",',
+      '  "actions": [',
+      '    {"worktree":"<safe-id>","path":"<exact-git-path>","operation":"copy"},',
+      '    {"worktree":"<safe-id>","path":"<deleted-path>","operation":"delete"}',
+      '  ]',
+      '}',
+      '```',
+      '',
+      'Use `copy` for A/M and `delete` for D, then run exactly:',
+      '',
+      '```sh',
+      'node .kimi-code/specrails/run-skill.mjs \\',
+      '  --role-merge-file .specrails/kimi-role-merge.json',
+      '```',
+      '',
+      'The helper validates the one-shot file, manifest, registered worktree,',
+      'and path containment, then copies bytes/symlinks or deletes the target',
+      'without a shell. Filenames may contain spaces, Unicode, quotes, `$()`,',
+      'or leading dashes; never place them in a Bash command. It rejects',
+      'provider/run-state paths, traversal, duplicate targets, directories,',
+      'and symlinked target parents.',
+      '',
+      '**Shared paths**',
+      '',
+      'Process shared paths in `MERGE_ORDER`:',
+      '1. D in every contributor: submit one validated `delete` action.',
+      '2. D versus A/M: record a delete/modify conflict; do not silently copy',
+      '   or delete it.',
+      '3. A/M text: use structured ReadFile on each emitted `repoDir` + exact',
+      '   path and on the current merge target. Apply the existing Markdown',
+      '   section-aware strategy for `.md`; for other text perform a three-way',
+      '   semantic merge against the current target, writing through WriteFile.',
+      '4. Binary/type conflicts: record them for `sr-merge-resolver`; never',
+      '   decode or round-trip binary data through model text.',
+      '5. A resolved whole-file winner may be applied with one validated copy',
+      '   action. Any unresolved region receives the existing conflict markers',
+      '   and `MERGE_REPORT` entry.',
+      '',
+      'When `DRY_RUN=true`, do not invoke the repository merge-action helper.',
+      'Write resolved A/M outputs under `CACHE_DIR` with structured WriteFile',
+      'and record D paths as deletion operations in `.cache-manifest.json`.',
+      'Keep worktrees for inspection as the surrounding dry-run rule requires.',
+      '',
+    ].join('\n'),
+  )
+  adapted = adapted
+    .replace(
+      '  "implemented_files": [],',
+      [
+        '  "implemented_files": [],',
+        '  "kimi_role_wave": {',
+        '    "run": "<stable-run-id>",',
+        '    "manifest_path": ".specrails/kimi-role-worktrees/<stable-run-id>.json",',
+        '    "base_commit": null,',
+        '    "workspaces": {}',
+        '  },',
+      ].join('\n'),
+    )
+    .replace(
+      'If the write succeeds: set `PIPELINE_STATE_AVAILABLE=true`.',
+      [
+        'If the write succeeds: set `PIPELINE_STATE_AVAILABLE=true`.',
+        '',
+        '**Kimi retry state:** after every `specrails.role.workspace` frame,',
+        'atomically refresh `kimi_role_wave.manifest_path`, `base_commit`, and',
+        '`workspaces[<feature-id>]` from the helper output. Never synthesize',
+        'these values. Keep the same `run` and `worktree:<feature-id>` for that',
+        'feature through developer, test, docs, and review. On any failure keep',
+        'the manifest and worktrees. After every required change has been merged',
+        'successfully, run the static cleanup command from the Kimi role',
+        'contract and set `kimi_role_wave` to `null` in pipeline state.',
+      ].join('\n'),
+    )
+    .replaceAll(
+      'git -C <worktree-path> diff main --name-only',
+      'git -C <worktree-path> diff <base-commit> --name-only',
+    )
+    .replaceAll(
+      'git -C <worktree-path> diff main -- <file>',
+      'git -C <worktree-path> diff <base-commit> -- <file>',
+    )
+    .replace(
+      '(`<worktree-path>` is an absolute git-worktree path supplied by the runtime; `git -C <worktree-path>` already targets it directly.)',
+      '(`<worktree-path>` is the `repoDir` emitted by the role-wave helper, and `<base-commit>` is read from its persisted manifest; `git -C <worktree-path>` already targets it directly.)',
+    )
+  return adapted
+}
+
+function adaptKimiBatchImplement(body: string): string {
+  return replaceMarkdownSection(
+    body,
+    '### Wave invocation',
+    '### Failure isolation',
+    [
+      '### Kimi wave invocation',
+      '',
+      'Nested `specrails-implement` executions are independent foreground Kimi',
+      'processes. Do not call multiple built-in `Skill` tools in one Kimi',
+      'session and do not share one checkout concurrently.',
+      '',
+      'Choose one safe `BATCH_RUN` id. For dependency wave `W`, derive the',
+      'deterministic safe run id `<BATCH_RUN>-w<W>`. Process waves sequentially:',
+      '',
+      '1. For a normal repository launch, partition each dependency wave into',
+      '   foreground batches of at most `min(CONCURRENCY,32)` entries. Each entry uses',
+      '   `skill:"specrails-implement"`, `workspace:"worktree:<feature-id>"`,',
+      '   the complete `<ref> [--dry-run]` arguments, the selected profile stem',
+      '   (or `"inherit"`), and that profile\'s exact `orchestrator.model` (or',
+      '   `k3`). Feature ids and keys must be collision-free safe ids.',
+      '2. Wait for all completion frames. A failed entry fails only that ticket;',
+      '   preserve its manifest/worktree for diagnosis and record the failure.',
+      '3. Before a downstream dependency wave, call `--role-wave-status` for',
+      '   the completed wave. Merge each successful worktree\'s A/M/D inventory',
+      '   into the batch repository with the same structured merge-file and',
+      '   shared-path rules defined by `specrails-implement`. Never interpolate',
+      '   a filename into Shell. If merge succeeds, run',
+      '   `node .kimi-code/specrails/run-skill.mjs --role-wave-cleanup <run>`.',
+      '   This makes predecessor output part of the next wave\'s newly captured',
+      '   synthetic baseline. Do not cleanup failed or unmerged worktrees.',
+      '4. Record `{ref,wave,status,profile,error_summary,run,manifest_path,',
+      '   workspace}` in `WAVE_RESULTS` before starting another batch.',
+      '',
+      'Inside a specrails-desktop isolated rail worktree, effective concurrency',
+      'is exactly 1. Submit a one-entry foreground role wave per ticket with',
+      '`workspace:"current"` and a deterministic unique run id; wait before the',
+      'next ticket. No sibling worktree, status merge, or cleanup is needed',
+      'because every nested implementation writes directly into the desktop',
+      'rail\'s current repository.',
+      '',
+      'Per-ticket profiles remain isolated: `profile` is either `inherit` or the',
+      'validated filename stem from `PROFILE_MAP`; `model` is resolved from the',
+      'same profile before writing JSON. Never export a profile globally.',
+      '',
+    ].join('\n'),
+  )
+}
+
+function adaptKimiAutoPropose(body: string): string {
+  return body
+    .replace(
+      'Launch a **single** explorer subagent (`subagent_type: Explore`, `run_in_background: true`) for product discovery.',
+      [
+        'Launch one **sr-product-analyst** role in a foreground Kimi role wave.',
+        'Use `skill:"sr-product-analyst"`, `workspace:"current"`,',
+        '`profile:"inherit"`, and pass the complete discovery prompt below as',
+        '`args`. Before writing the wave, enumerate regular non-symlink',
+        '`.kimi-code/personas/*.md` files and include their exact paths plus',
+        'contents in that context; stop with guidance to run',
+        '`Skill(skill="specrails-enrich", args="")` when none exist. Wait for its attributed',
+        'completion/output frames. Kimi has no Claude Explore subagent type;',
+        'never select a non-existent Explore role.',
+      ].join(' '),
+    )
+    .replaceAll('The Explore agent receives this prompt:', 'The sr-product-analyst role receives this prompt:')
+    .replaceAll('After the Explore agent completes:', 'After the sr-product-analyst role completes:')
+}
+
+function adaptKimiRetry(body: string): string {
+  return body
+    .replace(
+      '- `PHASE_STATUSES` ← `phases` map (`architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci` → `"done"`, `"failed"`, `"skipped"`, or `"pending"`)',
+      [
+        '- `PHASE_STATUSES` ← `phases` map (`architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci` → `"done"`, `"failed"`, `"skipped"`, or `"pending"`)',
+        '- `KIMI_ROLE_WAVE` ← `kimi_role_wave` (required when an isolated Kimi',
+        '  phase has already started): persisted `run`, `manifest_path`,',
+        '  `base_commit`, and feature→workspace mapping.',
+      ].join('\n'),
+    )
+    .replace(
+      '**Validation:**',
+      [
+        '**Kimi workspace validation (before any phase):**',
+        '',
+        'If `KIMI_ROLE_WAVE` is non-null, validate its safe run id by invoking',
+        '`node .kimi-code/specrails/run-skill.mjs --role-wave-status <run>`.',
+        'The returned manifest path, base commit, and workspace ids must exactly',
+        'match pipeline state. Any mismatch/missing/unregistered worktree is a',
+        'hard stop: report recovery instructions and do not create a replacement',
+        'worktree. A retry must use the same run and exact',
+        '`worktree:<feature-id>` mapping so successful developer changes survive',
+        'a later test/docs/reviewer failure. Refresh state from emitted frames',
+        'after each resumed role. Never choose a new run while valid state',
+        'exists; never cleanup before every required phase and merge succeeds.',
+        '',
+        '**Validation:**',
+      ].join('\n'),
+    )
+    .replace(
+      'Include PR URL if ship ran successfully.',
+      [
+        'Include PR URL if ship ran successfully.',
+        '',
+        'After all required isolated outputs have been safely merged, invoke the',
+        'static `--role-wave-cleanup <run>` helper. Only after its cleanup frame',
+        'succeeds set `kimi_role_wave` to `null`. A failed retry retains state.',
+      ].join('\n'),
+    )
+}
+
+function renderKimiEnrichWorkflow(): string {
+  return [
+    '# Enrich SpecRails for Kimi Code',
+    '',
+    'Refresh the Kimi-native SpecRails installation, analyze this repository,',
+    'and maintain project context/personas without generating Claude artifacts.',
+    'Kimi skills are managed provider artifacts; never rewrite their SKILL.md',
+    'frontmatter or create Claude-style command/agent trees.',
+    '',
+    '## Mode selection',
+    '',
+    'Parse `$ARGUMENTS`: `--update`, `--quick`, and `--from-config` are mutually',
+    'exclusive. With no flag run interactive full mode.',
+    '',
+    '1. Resolve the repository as `${SPECRAILS_REPO_DIR:-.}` and verify',
+    '   `.kimi-code/specrails/run-skill.mjs` plus',
+    '   `.specrails/install-config.yaml` exist.',
+    '2. Read install config and require provider `kimi` (or an explicitly',
+    '   provider-neutral legacy config). Refuse a different provider.',
+    '3. Refresh managed provider artifacts with the installed Core CLI:',
+    '   `npx specrails-core update --provider kimi --root-dir "${SPECRAILS_REPO_DIR:-.}"`.',
+    '   Use the process result as a hard gate. This provider-aware materializer',
+    '   regenerates direct-child workflows/roles, rules, runner, OpenSpec skills,',
+    '   settings, manifest, and framework links. Do not reproduce its templates',
+    '   with model-authored file copying.',
+    '4. Validate `.specrails/profiles/kimi-default.json`: schemaVersion 1,',
+    '   provider `kimi`, required architect/developer/reviewer, unique role ids,',
+    '   safe model ids, and valid routing. Preserve exact model identifiers.',
+    '',
+    '## Quick mode',
+    '',
+    'Inspect package/build metadata and the top-level source tree. Atomically',
+    'write `.kimi-code/project-context.md` with stack, architecture, test/lint/',
+    'build commands, repository conventions, and the UTC refresh time. Preserve',
+    'existing `.kimi-code/personas/`. Report that full mode can add VPC personas.',
+    '',
+    '## From-config mode',
+    '',
+    'Do not ask questions. Apply the tier, selected agents, backlog, git, and',
+    'model choices already present in install config/profile; the Core update is',
+    'the only artifact-generation authority. For quick tier run Quick mode. For',
+    'full tier perform the same repository analysis as Full mode, retain existing',
+    'personas when present, and generate conservative personas only when the',
+    'config enables product roles and the persona directory is empty.',
+    '',
+    '## Update mode',
+    '',
+    'Run the provider-aware refresh, re-analyze commands/conventions, and',
+    'atomically refresh only `.kimi-code/project-context.md`. Keep user personas,',
+    'custom-* skills, agent memory, profiles, MCP configuration, and security',
+    'exemptions byte-for-byte. Report stale/missing persona references but do not',
+    'invent replacements.',
+    '',
+    '## Full mode',
+    '',
+    'Analyze the complete codebase and present findings. Ask concise questions',
+    'about target users, pains, gains, product goals, and repository shipping',
+    'policy. Research externally only with user-approved network tooling.',
+    'Generate 2–4 Value Proposition Canvas personas as real Markdown files under',
+    '`.kimi-code/personas/<safe-kebab-id>.md`; include jobs, pains, gains,',
+    'behavior, success criteria, and evidence/assumptions. On OSS projects also',
+    'materialize the bundled maintainer persona from setup templates. Never',
+    'overwrite an existing persona without showing the proposed change.',
+    '',
+    'Refresh `.kimi-code/project-context.md` and ensure every selected product',
+    'role has an agent-memory directory. Workflows discover persona files at',
+    'runtime, so do not fork or mutate framework-owned skills to embed a static',
+    'persona list.',
+    '',
+    '## Verification and report',
+    '',
+    'Run `npx specrails-core doctor --provider kimi --root-dir',
+    '"${SPECRAILS_REPO_DIR:-.}"`. Verify every immediate skill directory has one',
+    'valid SKILL.md, no role is nested under `skills/rails`, no unresolved',
+    'template token remains, the Kimi profile validates, and no Claude model',
+    'alias/path was generated. Report mode, provider version, context/persona',
+    'files, selected roles, exact models, and doctor result.',
+    '',
+  ].join('\n')
+}
+
+function renderKimiReconfigWorkflow(): string {
+  return [
+    '# Reconfig: apply Kimi models to a provider profile',
+    '',
+    'Kimi role skills do not carry per-role model frontmatter. Reconfiguration',
+    'updates a provider-bound profile; workflows read that profile and put each',
+    'exact model id in the structured role wave.',
+    '',
+    '1. Parse `$ARGUMENTS` as optional `--profile <safe-name>`; default to the',
+    '   active `SPECRAILS_PROFILE_PATH`, then',
+    '   `.specrails/profiles/kimi-default.json`.',
+    '2. Require a regular non-symlink JSON file inside `.specrails/profiles/`.',
+    '   Validate it against profile schema v1, require `provider:"kimi"`, unique',
+    '   agents, the baseline trio, valid routing references, and Kimi-safe model',
+    '   ids (`^[A-Za-z0-9][A-Za-z0-9._/:-]*$`, maximum 128 characters).',
+    '3. Read `.specrails/agents.yaml` only as an optional legacy input. Ask for',
+    '   confirmation before migrating its defaults/per-agent model values. Claude',
+    '   aliases `opus`, `sonnet`, and `haiku` are not Kimi models and must never',
+    '   be translated silently; require an explicit Kimi replacement.',
+    '4. Present the orchestrator and per-role old→new model table. Apply approved',
+    '   edits to a complete in-memory profile object, validate again, then use',
+    '   structured WriteFile for one atomic logical replacement. Preserve name,',
+    '   description, required flags, agent order, and routing.',
+    '5. Re-read and validate the result. Report changed/unchanged/skipped roles.',
+    '',
+    'Never edit any role SKILL.md under `.kimi-code/skills/`, never create Claude agent files,',
+    'and never put a model id in a shell command.',
+    '',
+  ].join('\n')
+}
+
+function renderKimiTelemetryWorkflow(): string {
+  return [
+    '# Kimi agent telemetry',
+    '',
+    'Analyze real Kimi Code session usage for this repository. Accepted flags:',
+    '`--period today|week|all` (default `week`), `--agent <id>`,',
+    '`--format markdown|json`, and `--save`. Cost is not derivable from Kimi logs and must remain',
+    '`null`/`unavailable`; never apply a Claude or invented rate card.',
+    '',
+    '## Discover and validate sessions',
+    '',
+    'Read `~/.kimi-code/session_index.jsonl` line by line. Ignore only a final',
+    'truncated JSON line; warn on any other malformed line. Fold records by',
+    '`sessionId`, keeping the latest valid entry and honoring an explicit latest',
+    'deletion/tombstone record. A live entry provides `sessionId`, `sessionDir`,',
+    'and `workDir`. Require safe scalar strings, match canonical `workDir` to',
+    '`${SPECRAILS_REPO_DIR:-.}`, and require canonical `sessionDir` to remain',
+    'inside `~/.kimi-code/sessions/`. Reject symlinks/path traversal and ignore',
+    'missing or deleted session directories.',
+    '',
+    'For each accepted session, read its regular non-symlink `state.json` and',
+    'validate its `workDir`, timestamps, and title. Then scan only regular',
+    '`agents/*/wire.jsonl` files within that same session directory. Tolerate a',
+    'truncated final line; count and warn on other malformed records.',
+    '',
+    '## Usage schema and attribution',
+    '',
+    'Consume only records with `type:"usage.record"` and a safe `model` plus',
+    '`usage:{inputOther,output,inputCacheRead,inputCacheCreation}`. Treat absent',
+    'numeric counters as zero; reject negative/non-finite values. Preserve',
+    '`usageScope` and aggregate input-other, output, cache-read, cache-creation,',
+    'and total tokens per model/session.',
+    '',
+    'Attribute an external role session by canonical workDir: first use its',
+    '`.specrails-role-workspace.json` marker; otherwise match `repoDir` in valid',
+    '`.specrails/kimi-role-worktrees/*.json` manifests. Attribute the top-level',
+    'session to `orchestrator`; use `unknown` only when no verified mapping',
+    'exists. Apply period and agent filters after attribution. Deduplicate by',
+    'session id + agent wire path + record position.',
+    '',
+    'Duration comes only from validated state timestamps. The wire schema does',
+    'not provide a trustworthy role success/failure outcome, so expose that',
+    'metric as unavailable rather than inferring it from the last event.',
+    '',
+    '## Output',
+    '',
+    'Show session/run count, duration, exact models, and all four token counters',
+    'per role plus totals and cache ratio. In JSON use',
+    '`cost_usd:null`, `avg_cost_per_run_usd:null`, and',
+    '`success_rate:null` with `unavailable_reason`. In Markdown print',
+    '`Cost: unavailable (Kimi logs contain usage, not billing rates)`.',
+    'Recommendations may discuss token/cache/runtime outliers only.',
+    '',
+    'With `--save`, write the same JSON object under',
+    '`.kimi-code/telemetry/<UTC-date>-<period>.json` using structured WriteFile;',
+    'never include prompt text, credentials, raw wire records, or paths outside',
+    'the repository/session identifiers.',
+    '',
+  ].join('\n')
+}
+
+function replaceMarkdownSection(
+  body: string,
+  startHeading: string,
+  endHeading: string,
+  replacement: string,
+): string {
+  const start = body.indexOf(startHeading)
+  if (start < 0) return body
+  const end = body.indexOf(endHeading, start + startHeading.length)
+  if (end < 0) return body
+  return body.slice(0, start) + replacement + body.slice(end)
+}
+
+function writeKimiRoleSkill(args: {
+  src: string
+  dest: string
+  roleId: string
+  placeholders: Record<string, string>
+}): void {
+  if (!pathExists(args.src)) return
+  const { body, description } = stripFrontmatter(readTextFile(args.src))
+  const rendered = translateClaudeTextForKimi(
+    renderPlaceholders(body, {
+      ...KIMI_RUNTIME_PLACEHOLDERS,
+      ...args.placeholders,
+      MEMORY_PATH: `.kimi-code/agent-memory/${args.roleId}/`,
+    }),
+  )
+  const frontmatter = [
+    '---',
+    `name: ${args.roleId}`,
+    `description: ${JSON.stringify(
+      translateClaudeTextForKimi(
+        renderPlaceholders(
+          description ?? `SpecRails ${args.roleId} role for Kimi Code.`,
+          {
+            ...KIMI_RUNTIME_PLACEHOLDERS,
+            ...args.placeholders,
+          },
+        ),
+      ),
+    )}`,
+    'type: prompt',
+    '---',
+    '',
+  ].join('\n')
+  writeFileLf(
+    args.dest,
+    frontmatter +
+      KIMI_NESTED_SKILL_CONTRACT +
+      KIMI_RUNTIME_CONTEXT_CONTRACT +
+      rendered,
+  )
 }
 
 /**
@@ -1239,6 +2462,68 @@ function applyGeminiSettings(input: ScaffoldInput): number {
   return written
 }
 
+/**
+ * Kimi keeps both its project instructions and MCP configuration under
+ * `.kimi-code`. Existing user MCP configuration is never rewritten.
+ */
+function applyKimiSettings(input: ScaffoldInput): number {
+  let written = 0
+  const providerRoot = path.join(input.artifactRoot, input.providerDir)
+  const agentsMdPath = path.join(providerRoot, 'AGENTS.md')
+  const content = renderInitialKimiAgentsMd(input.codeRoot)
+  if (!pathExists(agentsMdPath)) {
+    writeFileLf(agentsMdPath, content)
+    written++
+  } else {
+    const existing = readTextFile(agentsMdPath)
+    const next = upsertAgentsMdManagedBlock(existing, extractManagedBlock(content))
+    if (next !== existing) {
+      writeFileLf(agentsMdPath, next)
+      written++
+    }
+  }
+
+  const mcpPath = path.join(providerRoot, 'mcp.json')
+  if (!pathExists(mcpPath)) {
+    writeFileLf(mcpPath, '{\n  "mcpServers": {}\n}\n')
+    written++
+  }
+  return written
+}
+
+function renderInitialKimiAgentsMd(repoRoot: string): string {
+  const projectName = path.basename(repoRoot)
+  return [
+    AGENTS_MD_START,
+    '',
+    `# ${projectName} — Kimi Code instructions`,
+    '',
+    'This project uses SpecRails skills under `.kimi-code/skills/`.',
+    'Kimi discovers only direct child skill directories. Interactive TUI sessions',
+    'invoke workflows as `/skill:specrails-<command>`. Headless prompt mode does',
+    'not dispatch slash skills, so automation must invoke',
+    '`.kimi-code/specrails/run-skill.mjs`. Role skills live at',
+    '`.kimi-code/skills/<sr-*|custom-*>/SKILL.md` and are launched by workflows in',
+    'separate helper-managed `kimi -p --output-format stream-json` processes.',
+    '',
+    '## Conventions',
+    '',
+    '- Read project source, `.git`, and `openspec/**` from',
+    '  `${SPECRAILS_REPO_DIR:-.}`.',
+    '- Read provider rules from `.kimi-code/rules/` and runtime memory from',
+    '  `.kimi-code/agent-memory/`.',
+    '- Preserve model ids from provider-aware profiles exactly. The Kimi CLI',
+    '  accepts configured aliases; official short ids use the `kimi-code/`',
+    '  prefix at launch (for example `kimi-code/k3`).',
+    '- OpenSpec workflows are invoked as `/skill:openspec-*`.',
+    '- Kimi is CLI-only: do not start a server, register a service, or copy',
+    '  credentials into this project.',
+    '',
+    AGENTS_MD_END,
+    '',
+  ].join('\n')
+}
+
 function renderInitialGeminiMd(repoRoot: string): string {
   const projectName = path.basename(repoRoot)
   return [
@@ -1284,6 +2569,18 @@ function pruneLegacyArtifacts(
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'skills'))
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'setup.toml'))
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', 'setup.toml'))
+  } else if (input.provider === 'kimi') {
+    // Early experimental builds used a Claude-shaped commands/agents layout
+    // inside `.kimi-code`. They also nested role skills one level too deep at
+    // `skills/rails/*`, which Kimi never discovers. Migrate reserved custom
+    // roles and prune only framework-owned nested roles before rendering the
+    // canonical flat layout. MCP config, AGENTS.md and unknown user files stay
+    // untouched.
+    migrateLegacyKimiRoleLayout(
+      path.join(input.artifactRoot, input.providerDir, 'skills'),
+    )
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands'))
+    legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'agents'))
   } else {
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'setup.md'))
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'commands', 'specrails', 'setup.md'))
@@ -1403,6 +2700,31 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
       }
     }
     return { agents: 0, commands: commandsPlaced, rules: 0, skippedAgents: 0 }
+  }
+
+  if (input.provider === 'kimi') {
+    const setupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
+    const rulesSrc = path.join(setupTemplates, 'rules')
+    const rulesDest = path.join(input.artifactRoot, input.providerDir, 'rules')
+    let rulesPlaced = 0
+    if (isDir(rulesSrc)) {
+      mkdirp(rulesDest)
+      for (const src of listDir(rulesSrc)) {
+        const name = path.basename(src)
+        if (!name.endsWith('.md')) continue
+        const rendered = translateClaudeTextForKimi(
+          renderPlaceholders(readTextFile(src), {
+            ...KIMI_RUNTIME_PLACEHOLDERS,
+            PROJECT_NAME: path.basename(input.codeRoot),
+            SECURITY_EXEMPTIONS_PATH: '.kimi-code/security-exemptions.yaml',
+            PERSONA_DIR: '.kimi-code/personas/',
+          }),
+        )
+        writeFileLf(path.join(rulesDest, name), rendered)
+        rulesPlaced++
+      }
+    }
+    return { agents: 0, commands: 0, rules: rulesPlaced, skippedAgents: 0 }
   }
 
   const setupTemplates = path.join(input.artifactRoot, '.specrails', 'setup-templates')
@@ -1701,6 +3023,71 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
     result.placed += g.placed
     result.skipped += g.skipped
     result.filesCopied += g.filesCopied
+  }
+
+  if (input.provider === 'kimi') {
+    const setupRoot = path.join(input.artifactRoot, '.specrails', 'setup-templates')
+    const commandsSrc = path.join(setupRoot, 'commands', 'specrails')
+    const agentsSrc = path.join(setupRoot, 'agents')
+    const selectedAgents = input.selectedAgents
+      ? new Set([...input.selectedAgents, ...CORE_AGENTS])
+      : new Set([...CORE_AGENTS])
+    const placedRoleIds = new Set<string>()
+    const placeholders = {
+      PROJECT_NAME: path.basename(input.codeRoot),
+      SECURITY_EXEMPTIONS_PATH: '.kimi-code/security-exemptions.yaml',
+      PERSONA_DIR: '.kimi-code/personas/',
+    }
+
+    if (isDir(agentsSrc)) {
+      for (const src of listDir(agentsSrc)) {
+        const name = path.basename(src)
+        if (!name.endsWith('.md')) continue
+        const roleId = name.slice(0, -3)
+        if (!input.materializeAllAgents && !selectedAgents.has(roleId)) continue
+        if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(roleId)) {
+          result.skipped++
+          continue
+        }
+        writeKimiRoleSkill({
+          src,
+          dest: path.join(destBase, roleId, 'SKILL.md'),
+          roleId,
+          placeholders,
+        })
+        placedRoleIds.add(roleId)
+        result.placed++
+        result.filesCopied++
+        if (input.seedProjectDirs !== false) {
+          mkdirp(path.join(input.artifactRoot, input.providerDir, 'agent-memory', roleId))
+        }
+      }
+    }
+
+    const excludedCommands = new Set<string>()
+    if (!input.materializeAllAgents) {
+      for (const dep of COMMAND_AGENT_DEPENDENCIES) {
+        if (!dep.requires.every((role) => placedRoleIds.has(role))) {
+          excludedCommands.add(dep.command)
+        }
+      }
+    }
+    if (isDir(commandsSrc)) {
+      for (const src of listDir(commandsSrc)) {
+        const name = path.basename(src)
+        if (!name.endsWith('.md') || name === 'setup.md') continue
+        const commandName = name.slice(0, -3)
+        if (excludedCommands.has(commandName)) continue
+        writeKimiWorkflowSkill({
+          src,
+          dest: path.join(destBase, `specrails-${commandName}`, 'SKILL.md'),
+          commandName,
+          placeholders,
+        })
+        result.placed++
+        result.filesCopied++
+      }
+    }
   }
 
   return result

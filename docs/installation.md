@@ -2,19 +2,15 @@
 
 This guide covers the complete installation process in detail. For the quick version, see [Getting Started](getting-started.md).
 
-> ## 🧪 Codex (OpenAI) Support — Coming Soon (in Lab)
->
-> OpenAI Codex integration is currently being **tested in our lab** and **cannot be installed yet**. The installer will refuse any attempt to install with `--provider codex` and will guide you to use Claude Code instead. Codex-specific sections below describe the **planned behaviour** and will be activated when the feature ships.
-
 ## Installation methods
 
-SpecRails supports two distribution channels today, with a third coming soon:
+SpecRails offers a Claude plugin and a provider-independent scaffold:
 
 | Method | Command | Best for |
 |--------|---------|----------|
 | **Claude Code plugin** (recommended) | `claude plugin install sr` | Most projects — no Node.js required, auto-updates |
 | **Claude Code scaffold** | `npx specrails-core@latest init` | Full offline control, custom agent edits |
-| **Codex project** 🧪 _Coming Soon (in lab)_ | `npx specrails-core@latest init` | OpenAI Codex CLI users (not yet available) |
+| **Provider scaffold** | `npx specrails-core@latest init` | Claude, Codex, Gemini, or Kimi Code projects |
 
 ---
 
@@ -59,9 +55,9 @@ The plugin bundles the logic layer — agents, skills, commands, hooks, and refe
 
 | Tool | Why | Install |
 |------|-----|---------|
-| **Node.js 20+** | Required for the installer (macOS, Linux, Windows) | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
+| **Node.js 20.19.0+** | Required for the installer and pinned OpenSpec 1.4.1 CLI (macOS, Linux, Windows) | [nodejs.org](https://nodejs.org/) or via [nvm](https://github.com/nvm-sh/nvm) |
 | **Git** | SpecRails operates on git repositories | [git-scm.com](https://git-scm.com/) |
-| **Claude Code** or **Codex CLI** | The AI CLI that runs the agents | See [codex-vs-claude-code.md](user-docs/codex-vs-claude-code.md) |
+| **Supported AI CLI** | The runtime that runs the agents | Claude, Codex, Gemini, or [Kimi Code](user-docs/getting-started-kimi.md) |
 
 ### Install
 
@@ -88,7 +84,8 @@ node bin/specrails-core.mjs init --root-dir <your-project>
 The `npx specrails-core@latest init` command now includes a **TUI installer** that runs before copying files:
 
 1. **TUI agent selection** — Interactive terminal UI lets you select which agents to install and choose a model preset (balanced/budget/max). Writes `.specrails/install-config.yaml`.
-2. **Checks prerequisites** — validates Git, Claude Code; optionally installs npm and gh
+2. **Checks prerequisites** — validates Git and the selected provider CLI;
+   optionally installs npm and gh
 3. **Detects existing setup** — warns if SpecRails artifacts already exist
 4. **Installs artifacts:**
    - `.claude/commands/specrails/enrich.md` — the `/specrails:enrich` wizard
@@ -105,11 +102,25 @@ The scaffold installer only copies files. It does not modify your existing code,
 
 ## The Enrich Wizard
 
-After either installation method, open Claude Code (or Codex) in your project and run:
+After either installation method, open the selected AI CLI. Claude and Gemini
+use:
 
 ```
 /specrails:enrich
 ```
+
+Kimi uses:
+
+```text
+/skill:specrails-enrich
+```
+
+That slash form is Kimi TUI syntax. Automated callers use the managed
+`.kimi-code/specrails/run-skill.mjs` helper installed beside the skills; passing
+the slash form directly to `kimi -p` does not activate it in Kimi 0.27.
+Generated multi-role workflows give that helper one structured foreground
+role wave. It owns parallel child processes and reusable worktrees, so no
+Kimi daemon or bundled provider binary is required.
 
 There are three modes:
 
@@ -274,28 +285,35 @@ Runs a fully automated installation using `.specrails/install-config.yaml`. No i
 
 ```yaml
 version: 1
-provider: claude        # claude | codex | auto
+provider: claude        # claude | codex | gemini | kimi
 tier: full              # full (requires /specrails:enrich) | quick (agents placed directly)
 agents:
-  selected:             # list of agent names to install
+  selected:             # unique lowercase kebab-case ids (1-64 chars)
     - sr-architect
     - sr-developer
     - sr-reviewer
     - sr-test-writer
     - sr-product-manager
-  excluded: []          # agent names to skip
+  excluded: []          # unique ids to skip; must not overlap selected
 models:
   preset: balanced      # balanced | budget | max
-  overrides: {}         # per-agent overrides: { sr-architect: opus }
+  defaults:
+    model: sonnet       # exact provider model/alias; Kimi defaults to k3
+  overrides: {}         # exact per-agent models: { sr-architect: opus }
 ```
 
 **Model presets:**
 
 | Preset | Description |
 |--------|-------------|
-| `balanced` (default) | Opus for architect + PM, Sonnet for all others |
+| `balanced` (default) | Sonnet for all Claude agents |
 | `budget` | Haiku for all agents |
-| `max` | Opus for all agents |
+| `max` | Opus for Claude architect + PM, Sonnet for all others |
+
+Other providers resolve the same preset names within their own catalog. Kimi
+presets default to `k3`; exact official ids and configured aliases are retained.
+Kimi ids must be 1–128 characters matching
+`[A-Za-z0-9][A-Za-z0-9._/:-]*`, the same grammar enforced at process launch.
 
 ---
 
