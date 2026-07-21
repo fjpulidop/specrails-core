@@ -1031,7 +1031,7 @@ Construct the generalist reviewer's invocation prompt with layer reports injecte
 - `SECURITY_REVIEW_REPORT`: full output of security-reviewer
 
 Include in the reviewer prompt:
-- Full CI commands
+- Full CI commands (reference material for its scoped-first verification policy — the reviewer runs diff-scoped tests plus fast static checks, escalating to one full pass only when its own fixes warrant it; the developer's Phase 4 full pass is the baseline)
 - Cross-feature merge issue checks
 - Instruction to record learnings to `common-fixes.md`
 - Instruction to archive completed changes via OpenSpec

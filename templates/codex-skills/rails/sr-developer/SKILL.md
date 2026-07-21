@@ -83,14 +83,17 @@ note it in your reply — do not block on the architect.
         modify it.
       - Write the minimum code to make the failing test pass.
         Resist adding code unrelated to the test.
-      - Run the test runner. ALL tests must pass — the new
-        one AND every prior one.
+      - Run the test runner SCOPED to the task's test file(s)
+        (`npx vitest run <file>`, `pytest <file>`, …). They
+        must pass. The full suite runs once, at the validation
+        gate — not after every task.
       - Tick `- [x] N.2`.
 
    c. **REFACTOR — clean up (step N.3, if present).**
       - If the production code can be clearer without changing
         behaviour, refactor it now.
-      - Re-run the test runner. All tests still pass.
+      - Re-run the scoped tests for the files you touched.
+        Still green.
       - Tick `- [x] N.3`.
 
 3. **Honour the design's invariants and edge cases.** When the
@@ -115,7 +118,10 @@ The final task block in `tasks.md` is always the validation gate
 (`## N. Validation gate`). Run it:
 
 - Full project test suite (e.g. `npm test`, `pytest`,
-  `cargo test`). MUST pass.
+  `cargo test`). MUST pass. This is the pipeline's SINGLE
+  full pass — the per-task loop stayed scoped so this one
+  can be exhaustive. On a failure, fix, re-run the scoped
+  tests for the fix, then re-run the suite once clean.
 - Project build if present (e.g. `npm run build`,
   `cargo build`). MUST succeed.
 - A grep for debug breadcrumbs (`console.log`, `print(`, etc.)

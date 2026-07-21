@@ -142,7 +142,7 @@ This gate is non-negotiable. Phase 4 is unreachable until every checkbox in task
 
 1. **RED** — Write a failing test that describes the expected behavior. Run the test. Confirm it fails for the right reason.
 2. **GREEN** — Write the minimum production code to make the test pass. Run the test. Confirm it passes.
-3. **REFACTOR** — Clean up the code while keeping all tests green. Run all tests after refactoring.
+3. **REFACTOR** — Clean up the code while keeping the tests green. Re-run the **scoped** tests for the area you touched (the task's test file(s) / the affected package — e.g. `npx vitest run <file>`, `pytest <file>`, `cargo test <module>`), NOT the whole suite. The full suite runs exactly once, in Phase 4 — running it after every task multiplies wall-clock time without catching anything Phase 4 won't.
 
 **TDD rules:**
 - Never write production code without a corresponding test
@@ -172,9 +172,11 @@ Follow the project architecture strictly:
 
 **All tests MUST pass before you hand off to the reviewer. This is a hard gate — do not proceed if any test fails.**
 
+This phase is the pipeline's **single full verification pass** — the inner TDD loop stayed scoped precisely so this one can be exhaustive.
+
 - Run the **full CI-equivalent verification suite** (see below)
-- If any test fails, fix the issue and re-run ALL tests
-- Repeat until all tests pass — there is no maximum number of attempts
+- If a check fails, fix the issue, re-run the **scoped** tests covering the fix first, then finish with one clean run of the failed check and any check downstream of it
+- Repeat until the full suite is green — there is no maximum number of attempts
 - Review each file for adherence to conventions
 - Ensure all imports are correct and no circular dependencies exist
 - Verify type annotations are complete
