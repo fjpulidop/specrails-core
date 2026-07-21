@@ -39,6 +39,17 @@ Phase 3b SHALL include in every developer agent prompt a reminder that per-task 
 - **WHEN** Phase 3b launches any developer agent
 - **THEN** the prompt contains the test-economy reminder
 
+### Requirement: Deterministic repo map consumption
+When the environment variable `SPECRAILS_REPO_MAP_PATH` is set and points to a readable file, the architect agent SHALL read that file before any codebase exploration and SHALL NOT spend turns on top-level structure discovery (root listing, package location, README-for-structure reads). When the variable is unset, exploration behaviour SHALL be unchanged.
+
+#### Scenario: Map present
+- **WHEN** the spawner sets `SPECRAILS_REPO_MAP_PATH` to a generated map file
+- **THEN** the architect reads it first and starts exploration oriented at the relevant packages
+
+#### Scenario: Map absent
+- **WHEN** the variable is unset
+- **THEN** the architect explores exactly as before this change
+
 ### Requirement: Design confidence gate before implementation
 The pipeline SHALL evaluate the architect's `design-confidence.json` for each feature after Phase 3a and before Phase 3b. A missing file SHALL produce a warning and proceed (backward compatible). `high` or `medium` SHALL proceed. `low` SHALL halt that feature before any implementation cost is paid, printing the architect's `blocking_question` and re-run instructions, updating pipeline state (`developer` → `skipped`, error context carries the question), performing no git or backlog operations for that feature, and leaving the OpenSpec artifacts in place as a resumable starting point. `--confidence-override "<reason>"` SHALL bypass this gate as well as the Phase 4b-conf gate. In multi-feature mode the halt SHALL be per-feature.
 

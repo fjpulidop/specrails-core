@@ -17,6 +17,11 @@
 - [x] 3.4 Codex parity: architect skill emits the JSON + 3-line reply; implement orchestrator gates before Phase 2
 - [x] 3.5 Gemini parity: `templates/gemini-commands/implement.toml` gate between DESIGN and APPLY
 
-## 4. Validation gate
+## 4. Deterministic repo map consumption
+- [x] 4.1 `templates/agents/sr-architect.md`: read `SPECRAILS_REPO_MAP_PATH` first when set (skip top-level discovery); unset ⇒ legacy exploration
+- [x] 4.2 Codex parity: same instruction in `templates/codex-skills/rails/sr-architect/SKILL.md`
+- [x] 4.3 Desktop side (separate repo, PR #573 branch): `server/repo-map.ts` fs-only generator + `SPECRAILS_REPO_MAP_PATH` injection in loop-executors `aiStepEnv` + queue-manager `_startJob`; kill switch `SPECRAILS_REPO_MAP=false`
+
+## 5. Validation gate
 - [x] 4.1 `npx vitest run` — template/inventory suites pass (2 pre-existing failures in `cli-direct-run.test.ts` belong to unrelated uncommitted WIP on this branch)
 - [x] 4.2 `npx tsc --noEmit` passes
