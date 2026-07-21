@@ -35,9 +35,8 @@ describe('specrails-core dispatcher help', () => {
       'Provider-independent AI agent workflow system',
     )
     expect(result.stdout).toContain('claude, codex, gemini, or kimi')
-    expect(result.stdout).toContain(
-      "Run the configured provider's enrich workflow",
-    )
+    // enrich was removed in v5 — help must no longer advertise it.
+    expect(result.stdout).not.toContain('enrich')
     expect(result.stdout).toContain('swap-current')
     expect(result.stdout).not.toContain('via Claude CLI')
   })

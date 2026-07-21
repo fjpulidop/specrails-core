@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
 import { runCommand } from '../util/exec.js'
-import { info, ok, step } from '../util/logger.js'
+import { info, ok, step, warn } from '../util/logger.js'
 import {
   isDir,
   isSymlink,
@@ -27,7 +27,6 @@ import {
 
 import {
   type Provider,
-  type Tier,
   loadInstallConfig,
   resolveConfigPath,
 } from '../phases/install-config.js'
@@ -35,6 +34,7 @@ import { checkPrerequisites } from '../phases/prereqs.js'
 import { derivedPaths } from '../phases/provider-detect.js'
 import { materializeFrameworkVersion } from '../phases/framework-lifecycle.js'
 import {
+  CORE_AGENTS,
   assembleProjectWorkspace,
   installFramework,
 } from '../phases/scaffold.js'
@@ -48,8 +48,7 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
  *   --root-dir <path>     Target repo (default: cwd)
  *   --yes / -y            Non-interactive; auto-init git + accept defaults
  *   --provider <name>     Force provider (claude, codex, gemini, or kimi)
- *   --from-config [<p>]   Read provider + tier from install-config.yaml
- *   --quick               Quick tier (direct template placement, skip enrich)
+ *   --from-config [<p>]   Read provider + agents from install-config.yaml
  *   --relocate            Relocate artifacts to the $HOME workspace (symlinked
  *                         from the bundled framework) instead of installing them
  *                         IN-REPO. Default is in-repo so a standalone user's
@@ -66,7 +65,6 @@ export interface InitFlags {
   y?: boolean
   provider?: string | boolean
   'from-config'?: string | boolean
-  quick?: boolean
   relocate?: boolean
   'hub-json'?: boolean
 }
@@ -74,7 +72,6 @@ export interface InitFlags {
 export interface InitResult {
   repoRoot: string
   provider: Provider
-  tier: Tier
 }
 
 const WORKSPACE_PROVIDER_ORDER: readonly Provider[] = [
@@ -241,10 +238,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     explicitProvider = flags.provider
   }
 
-  // --from-config: read provider + tier from yaml.
+  // --from-config: read provider + agents from yaml.
   const fromConfigFlag = flags['from-config']
   let providerHint: Provider | undefined = explicitProvider
-  let tierHint: Tier | undefined
   let selectedAgentsHint: string[] | undefined
 
   if (fromConfigFlag !== undefined) {
@@ -259,9 +255,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
         )
       }
       providerHint = config.provider
-      tierHint = config.tier
       selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
+      warnUnknownSelectedAgents(selectedAgentsHint)
     } else {
       info(
         `install-config.yaml not found at ${resolved} — falling back to ${
@@ -269,10 +265,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
         }`,
       )
     }
-  }
-
-  if (flags.quick === true) {
-    tierHint = 'quick'
   }
 
   // ─── Phase 1 ──────────────────────────────────────────────────────────
@@ -361,16 +353,9 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   // openspec STAYS in the repo (codeRoot) — unchanged behaviour.
   await installOpenSpecProject(codeRoot, prereqs.provider, artifactRoot)
 
-  const tier: Tier = tierHint ?? 'full'
-  if (tier === 'full') {
-    step('Next steps')
-    const enrichCommand =
-      prereqs.provider === 'kimi' ? '/skill:specrails-enrich' : '/specrails:enrich'
-    info(`Run \`${enrichCommand}\` inside your selected provider to complete your setup.`)
-  } else {
-    step('Installation complete')
-    info('Quick tier: agents + rules were placed directly; enrich not required.')
-  }
+  step('Installation complete')
+  info('Agents, commands, and rules were placed directly — no follow-up step required.')
+  info('Extend the core trio (sr-architect, sr-developer, sr-reviewer) via profiles + custom-*.md agents.')
   // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
   // checkpoint). The sentinel line below is FROZEN — the downstream setup
@@ -380,7 +365,24 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   return {
     repoRoot,
     provider: prereqs.provider,
-    tier,
+  }
+}
+
+/**
+ * Warn (once per id) about `agents.selected` entries that have no shipped
+ * template — typically a pre-v5 install-config.yaml still listing removed
+ * agents. They are skipped at placement; the warning tells the user why and
+ * points at the v5 extension path.
+ */
+export function warnUnknownSelectedAgents(selected: string[] | undefined): void {
+  if (!selected) return
+  for (const id of selected) {
+    if (!CORE_AGENTS.has(id)) {
+      warn(
+        `install-config.yaml selects agent '${id}', which specrails-core no longer ships — ` +
+          `skipping (removed in v5; use a .claude/agents/custom-*.md agent declared in a profile).`,
+      )
+    }
   }
 }
 

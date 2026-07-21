@@ -9,7 +9,7 @@
  * to a single `import { main } from './dist/installer/cli.js'` call.
  */
 
-import { readFileSync } from 'node:fs'
+import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -206,12 +206,21 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
  *
  * Comparing `import.meta.url` against `process.argv[1]` keeps the guard inert on
  * import (so unit tests that `import { main }` never trigger a process.exit).
+ *
+ * SYMLINK CAVEAT: Node's ESM loader realpaths the entry module, so
+ * `import.meta.url` is the REAL path while `process.argv[1]` is the literal
+ * spawn argument. When the package lives behind a symlinked path (macOS
+ * `os.tmpdir()` = /var/folders → /private/var/folders — exactly where
+ * specrails-desktop's core-update channel stages the download), the raw
+ * comparison fails and main() silently never runs (child exits 0 having done
+ * nothing). Compare against the realpathed argv[1] too.
  */
 const isDirectRun = (() => {
   try {
     const entry = process.argv[1]
     if (!entry) return false
-    return import.meta.url === pathToFileURL(entry).href
+    if (import.meta.url === pathToFileURL(entry).href) return true
+    return import.meta.url === pathToFileURL(realpathSync(entry)).href
   } catch {
     return false
   }

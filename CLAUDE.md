@@ -1,6 +1,6 @@
 # specrails-core
 
-Agent Workflow System installer for Claude Code. Installs a complete product-driven development workflow into any repository: specialized AI agents, orchestration commands, VPC-based product discovery, and per-layer coding conventions — all adapted to the target codebase automatically.
+Agent Workflow System installer for Claude Code. Installs a spec-driven development workflow into any repository: three OpenSpec-integrated AI agents (architect, developer, reviewer), orchestration commands, and per-layer coding conventions — all adapted to the target codebase automatically. Extend the core trio with user-owned `custom-*` agents via profiles.
 
 ## Stack
 
@@ -29,13 +29,13 @@ specrails-core/
 ├── dist/                       # tsc output (npm-published, gitignored)
 ├── README.md                  # User-facing documentation
 ├── templates/                 # Source templates for agents, commands, rules
-│   ├── agents/                # Agent prompt templates (sr-*.md)
+│   ├── agents/                # Agent prompt templates (sr-architect/developer/reviewer only)
 │   ├── commands/              # Workflow command templates
-│   ├── personas/              # VPC persona template
 │   ├── rules/                 # Per-layer convention template
+│   ├── profiles/              # Default profile (baseline trio)
 │   ├── claude-md/             # Root CLAUDE.md template
 │   └── settings/              # Settings template
-├── commands/                  # Bundled slash-command bodies (enrich.md, doctor.md)
+├── commands/                  # Bundled slash-command bodies (doctor.md)
 ├── schemas/                   # JSON Schema for profile validation
 ├── openspec/                  # OpenSpec config, specs, and changes
 └── .specrails/                # Runtime config (gitignored)
@@ -75,8 +75,8 @@ unsubstituted placeholders after a dogfood with
 ## Architecture
 
 ```
-Product Discovery      →  Architecture    →  Implementation    →  Review        →  Ship
-(sr-product-manager)      (sr-architect)     (sr-developer)       (sr-reviewer)    (PR)
+Architecture    →  Implementation    →  Review        →  Ship
+(sr-architect)     (sr-developer)       (sr-reviewer)    (PR)
 ```
 
 ## Conventions
@@ -102,17 +102,16 @@ Layer-specific conventions live in `.claude/rules/` (loaded conditionally per la
 - **Specs**: `openspec/specs/` is the source of truth. Read relevant specs before implementing.
 - **Changes**: `openspec/changes/<name>/`. Use `/opsx:ff` → `/opsx:apply` → `/opsx:archive`.
 
-## Profiles (v4.1.0+)
+## Profiles (v5+)
 
-`implement.md` can run in two modes:
-
-- **Legacy**: no profile present → current hardcoded behavior. Zero breakage for standalone users.
-- **Profile**: profile JSON active → `AVAILABLE_AGENTS`, routing, and per-agent models come from the profile instead of the hardcoded defaults.
+`implement.md` resolves its agent roster through a single path: `AVAILABLE_AGENTS = profile ?? baseline`. There are no modes — the baseline trio is the implicit default the resolution falls back to when no profile is present.
 
 Profile resolution at Phase -1 (highest wins):
 1. `$SPECRAILS_PROFILE_PATH` env var (snapshot path)
 2. `<cwd>/.specrails/profiles/project-default.json`
-3. Legacy fallback
+3. Baseline default — `{sr-architect, sr-developer, sr-reviewer}`, expressed in-command (NO profile file is ever written; `.specrails/profiles/**` is reserved)
+
+Profiles are the ONLY extension mechanism: a profile adds user-owned `custom-*` agents with routing. When a profile lists a non-baseline agent whose `.md` file is missing (e.g. a removed v4 agent), the pipeline warns and skips it; a missing baseline agent is a hard error.
 
 Schema: `schemas/profile.v1.json` (shipped in the npm package). Validator error messages MUST name the offending field. Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) are required in every valid profile.
 

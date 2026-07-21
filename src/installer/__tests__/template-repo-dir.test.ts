@@ -40,23 +40,19 @@ const T = (rel: string) => path.join(REPO_ROOT, 'templates', rel)
 
 /** The runtime prompt templates re-pointed by STAGE 3. */
 const IN_SCOPE_FILES = [
-  // Claude agents
+  // Claude agents (the three core agents are the full shipped set)
   'agents/sr-developer.md',
   'agents/sr-architect.md',
   'agents/sr-reviewer.md',
-  'agents/sr-backend-developer.md',
-  'agents/sr-frontend-developer.md',
   // Claude commands
   'commands/specrails/implement.md',
   'commands/specrails/retry.md',
-  // Codex skills (orchestrators + baseline trio + layer devs)
+  // Codex skills (orchestrators + baseline trio)
   'codex-skills/implement/SKILL.md',
   'codex-skills/retry/SKILL.md',
   'codex-skills/rails/sr-architect/SKILL.md',
   'codex-skills/rails/sr-developer/SKILL.md',
   'codex-skills/rails/sr-reviewer/SKILL.md',
-  'codex-skills/rails/sr-backend-developer/SKILL.md',
-  'codex-skills/rails/sr-frontend-developer/SKILL.md',
   // Gemini commands
   'gemini-commands/implement.toml',
 ] as const
@@ -117,10 +113,6 @@ const OPENSPEC_ALLOW: Record<string, string[]> = {
     'OpenSpec change: openspec/changes/<slug>/',
   ],
   'codex-skills/rails/sr-developer/SKILL.md': [
-    // "Changed:" report block listing the touched artefact (descriptive).
-    '- openspec/changes/<slug>/tasks.md',
-  ],
-  'codex-skills/rails/sr-frontend-developer/SKILL.md': [
     // "Changed:" report block listing the touched artefact (descriptive).
     '- openspec/changes/<slug>/tasks.md',
   ],

@@ -78,24 +78,9 @@ These are the most common reasons code passes locally but fails in CI:
 
 {{CI_KNOWN_GAPS}}
 
-## Layer Review Findings (injected at runtime by orchestrator)
-
-The orchestrator runs specialized layer reviewers in parallel before you launch. Their reports are injected here. A value of `"SKIPPED"` means no files of that layer type were in the changeset.
-
-**These are NOT `/specrails:enrich` placeholders. They use `[injected]` notation, not `{{...}}` notation.** The `[injected]` markers below are replaced by the actual report text when the orchestrator launches you.
-
-FRONTEND_REVIEW_REPORT:
-[injected]
-
-BACKEND_REVIEW_REPORT:
-[injected]
-
-SECURITY_REVIEW_REPORT:
-[injected]
-
----
-
 ## Review Checklist
+
+You are the single reviewer for this change. There are no separate layer reviewers — frontend, backend, security, and performance concerns are all your responsibility in this pass. Weight each dimension by what the changeset actually touches.
 
 After running CI checks, also review for:
 
@@ -123,10 +108,21 @@ After running CI checks, also review for:
 - Import style matches the rest of the codebase
 - Error handling patterns are consistent
 
+### Security (scale to what the change touches)
+- No secrets, tokens, or credentials committed
+- User-controlled input is validated and, where interpolated into queries/commands/paths, properly escaped or parameterized
+- No new injection, path-traversal, or SSRF surface introduced
+- AuthZ/authN checks are present on new endpoints or privileged operations
+
+### Performance (scale to what the change touches)
+- No obvious N+1 queries or unbounded loops over user-controlled input
+- Expensive work is not added to hot paths without justification
+- Large allocations, unbounded caches, and blocking I/O on async paths are flagged
+
 ## Workflow
 
 1. **Run the scoped-first verification** (see Verification policy: static checks + diff-scoped tests, in CI order)
-2. **If anything fails**: Fix it, re-run the scoped tests covering the fix, and escalate to a full pass per the policy
+2. **If anything fails**: Fix it, then re-run **only the failed check, scoped to the failing files** where the runner supports it (`npx vitest run <file>`, `pytest <file>`, lint on the changed files) — never the entire ordered list after every individual fix — and escalate to a full pass per the policy
 3. **Repeat** up to 3 fix-and-verify cycles; when any cycle changed code, finish with ONE clean full CI-equivalent pass
 4. **Report** a summary of what passed, what failed, and what you fixed
 5. **Task Completion Gate** — Before archiving, verify all tasks are complete:
@@ -206,27 +202,34 @@ When done, produce this report:
 ### Issues Fixed
 - [list of issues found and how they were fixed]
 
-### Layer Review Summary
-| Layer | Status | Finding Count | Notable Issues |
-|-------|--------|--------------|----------------|
-| Frontend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
-| Backend | CLEAN / ISSUES_FOUND / SKIPPED | N | ... |
-| Security | CLEAN / WARNINGS / BLOCKED / SKIPPED | N | ... |
+### Review Dimensions
+| Dimension | Status | Finding Count | Notable Issues |
+|-----------|--------|--------------|----------------|
+| Correctness / tests | CLEAN / ISSUES_FOUND | N | ... |
+| Security | CLEAN / WARNINGS / BLOCKED | N | ... |
+| Performance | CLEAN / WARNINGS | N | ... |
 
-[List any High or Critical findings from layer reviews that warrant attention]
+SECURITY_STATUS: <BLOCKED | WARNINGS | CLEAN>
+
+[List any High or Critical findings that warrant attention]
 
 ### Files Modified by Reviewer
 - [list of files the reviewer had to touch]
 ```
+
+The `SECURITY_STATUS:` line is MANDATORY and machine-parsed by the orchestrator — emit it exactly once, on its own line, with one of the three values. `BLOCKED` means you found a security issue severe enough that the change must not ship (committed secret, injection, missing auth on a privileged operation). `WARNINGS` means non-blocking security findings exist. `CLEAN` otherwise.
 
 ## Rules
 
 - Never ask for clarification. Fix issues autonomously.
 - Follow the Verification policy: scoped-first, one full pass only when your own changes (or an unbounded blast radius) warrant it. Never skip the cheap static checks.
 - In the CI Checks report table, mark suites you did not re-run as `covered by developer's full pass` — never as passed-by-you.
+- **Output economy**: when a check fails, carry forward only the failing test/rule names and the relevant error excerpt (≤50 lines) — never re-paste a full runner log into your reasoning.
+- **File re-read discipline**: a file you already read is in your context. Before reading it again, state in one sentence what you already learned from it — re-read only if it changed.
+- **Loop detection**: the same command run 3 times with no intervening code change and inconsistent results means STOP — reassess instead of re-running.
 - When fixing lint errors, understand the rule before applying a fix — don't just suppress with disable comments.
 - If a test fails, read the test AND the implementation to understand the root cause before fixing.
-- If a layer reviewer reports High severity findings, include them in your Issues Fixed or Issues Found section. Attempt to fix High-severity layer findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.
+- Attempt to fix High-severity findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.
 
 ## Explain Your Work
 

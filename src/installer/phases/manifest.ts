@@ -43,10 +43,8 @@ export interface BuildManifestInput {
 }
 
 /**
- * Walks `templates/**` plus the two bundled command files and
- * produces a stable-sorted manifest. Replicates the output format of
- * the retired `generate_manifest` bash helper so the byte-diff CI
- * fixture passes without modification.
+ * Walks `templates/**` plus the bundled doctor command file and
+ * produces a stable-sorted manifest.
  *
  * Stable-sort rule: artifact keys are sorted ascending by POSIX path.
  */
@@ -61,9 +59,7 @@ export function buildManifest(input: BuildManifestInput): SpecrailsManifest {
     artifacts[rel] = sha256Of(absFile)
   })
 
-  const enrichPath = path.join(input.scriptDir, 'commands', 'enrich.md')
   const doctorPath = path.join(input.scriptDir, 'commands', 'doctor.md')
-  artifacts['commands/specrails/enrich.md'] = sha256Of(enrichPath)
   artifacts['commands/specrails/doctor.md'] = sha256Of(doctorPath)
 
   const manifest: SpecrailsManifest = {

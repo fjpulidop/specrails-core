@@ -72,6 +72,15 @@ The change is archived BY THE REVIEWER as part of a passing review — never by 
    (`openspec validate <id> --strict`).
    Apply the outcome rules above.
 
+   **Design confidence gate.** Read
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<id>/design-confidence.json`
+   (written by the architect). Missing → warn and proceed (backward
+   compatible). `high`/`medium` → proceed. `low` → STOP before phase 2 and
+   report `BLOCKED: design confidence low — <blocking_question>`; tell the
+   user to answer the question in the ticket and re-run. Do NOT update the
+   ticket, do NOT invoke the developer — implementation must never run on a
+   design the architect does not trust.
+
 2. **APPLY — `invoke_agent` `sr-developer`.** Only after the architect reports
    back. It implements the tasks in TDD order and checks them off in `tasks.md`.
    Apply the outcome rules — on `MAX_TURNS`, re-invoke to RESUME until every task

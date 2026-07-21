@@ -35,7 +35,7 @@ Resume a failed `/specrails:implement` run for **{{PROJECT_NAME}}**. Reads pipel
 Scan `$ARGUMENTS` for flags:
 
 - `--list`: if present, set `LIST_ONLY=true`.
-- `--from <phase>`: if present, set `RESUME_FROM_OVERRIDE=<phase>`. Valid values: `architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci`.
+- `--from <phase>`: if present, set `RESUME_FROM_OVERRIDE=<phase>`. Valid values: `architect`, `developer`, `reviewer`, `ship`, `ci`.
 - `--dry-run`: if present, set `DRY_RUN_OVERRIDE=true`.
 
 Extract the first positional argument (not starting with `--`) as `FEATURE_NAME`.
@@ -60,7 +60,7 @@ Exit after printing — do not proceed.
 Usage: /specrails:retry <feature-name> [--from <phase>] [--dry-run]
        /specrails:retry --list
 
-Phases: architect | developer | test-writer | doc-sync | reviewer | ship | ci
+Phases: architect | developer | reviewer | ship | ci
 ```
 
 ---
@@ -91,7 +91,7 @@ Parse the state file and set the following variables:
 - `ORIGINAL_INPUT_FLAGS` ← `input.flags` object
 - `SINGLE_MODE` ← `input.flags.single_mode` (default `true`)
 - `DRY_RUN` ← if `DRY_RUN_OVERRIDE=true` then `true`, else `input.flags.dry_run` (default `false`)
-- `PHASE_STATUSES` ← `phases` map (`architect`, `developer`, `test-writer`, `doc-sync`, `reviewer`, `ship`, `ci` → `"done"`, `"failed"`, `"skipped"`, or `"pending"`)
+- `PHASE_STATUSES` ← `phases` map (`architect`, `developer`, `reviewer`, `ship`, `ci` → `"done"`, `"failed"`, `"skipped"`, or `"pending"`)
 
 **Validation:**
 
@@ -114,9 +114,7 @@ Print the pipeline status:
 | Phase        | Status  | Notes                              |
 |--------------|---------|-------------------------------------|
 | architect    | done    |                                     |
-| developer    | done    |                                     |
-| test-writer  | FAILED  | <ERROR_CONTEXT or "no details">     |
-| doc-sync     | pending |                                     |
+| developer    | FAILED  | <ERROR_CONTEXT or "no details">     |
 | reviewer     | pending |                                     |
 | ship         | pending |                                     |
 | ci           | pending |                                     |
@@ -136,7 +134,7 @@ Original input        : <issues list or "text description">
 **Phase execution order (canonical):**
 
 ```
-architect → developer → test-writer → doc-sync → reviewer → ship → ci
+architect → developer → reviewer → ship → ci
 ```
 
 **If `RESUME_FROM_OVERRIDE` is set:** use it as `RESUME_PHASE`. Validate it is one of the canonical values; if not, print an error and exit.
@@ -179,7 +177,7 @@ If `n` or no response: exit without changes.
 
 Execute phases in canonical order starting from `RESUME_PHASE`. For each phase:
 
-- If its status in `PHASE_STATUSES` is `"skipped"`: **skip** — the agent was not installed at the original run (e.g. an optional sr-test-writer / sr-doc-sync). Never launch a phase that was skipped, regardless of its position relative to `RESUME_PHASE`.
+- If its status in `PHASE_STATUSES` is `"skipped"`: **skip** — it was not run at the original invocation. Never launch a phase that was skipped, regardless of its position relative to `RESUME_PHASE`.
 - If its status in `PHASE_STATUSES` is `"done"` AND it precedes `RESUME_PHASE` in canonical order: **skip** — do not re-run.
 - If it equals `RESUME_PHASE` or comes after (and is not `"skipped"`): **run** it.
 
@@ -240,46 +238,16 @@ Wait for all developers to complete. Collect the list of files created or modifi
 
 ---
 
-### 4c. Phase: test-writer
-
-**Runs if `RESUME_PHASE` is `architect`, `developer`, or `test-writer`.**
-
-If `IMPLEMENTED_FILES` is empty: warn but continue — the sr-test-writer will discover files from git diff.
-
-Launch **sr-test-writer** agent(s) exactly as in Phase 3c of the implement pipeline. Pass:
-- `IMPLEMENTED_FILES_LIST`: the `implemented_files` array from state
-- `TASK_DESCRIPTION`: derived from `ORIGINAL_ISSUES` or architect artifacts
-
-Wait for completion. Failure is **non-blocking** — record `FAILED` and continue to next phase.
-
-**Pipeline state update:** `test-writer` → `done` or `failed`.
-
----
-
-### 4d. Phase: doc-sync
-
-**Runs if `RESUME_PHASE` is any phase up to and including `doc-sync`.**
-
-Launch **sr-doc-sync** agent(s) exactly as in Phase 3d of the implement pipeline. Pass:
-- `IMPLEMENTED_FILES_LIST`: the `implemented_files` array from state
-- `TASK_DESCRIPTION`: derived from `ORIGINAL_ISSUES` or architect artifacts
-
-Wait for completion. Failure is **non-blocking** — record `FAILED` and continue.
-
-**Pipeline state update:** `doc-sync` → `done` or `failed`.
-
----
-
-### 4e. Phase: reviewer
+### 4c. Phase: reviewer
 
 **Runs if `RESUME_PHASE` is any phase up to and including `reviewer`.**
 
-Launch layer reviewers and the generalist sr-reviewer exactly as in Phase 4b of the implement pipeline. Pass:
+Launch the single **sr-reviewer** exactly as in Phase 4b of the implement pipeline. Pass:
 - `MODIFIED_FILES_LIST`: the `implemented_files` array from state
 - `PIPELINE_CONTEXT`: brief description from original input and issue titles
-- Layer reports from sr-frontend-reviewer, sr-backend-reviewer, sr-security-reviewer
+- The security-exemptions config path (`.claude/security-exemptions.yaml`) if present
 
-Wait for all to complete. Parse `SECURITY_BLOCKED`, `FRONTEND_STATUS`, `BACKEND_STATUS`.
+Wait for it to complete. Parse `SECURITY_BLOCKED` from the reviewer's `SECURITY_STATUS` line.
 
 **Run the Confidence Gate (Phase 4b-conf)** exactly as defined in the implement pipeline.
 
@@ -287,7 +255,7 @@ Wait for all to complete. Parse `SECURITY_BLOCKED`, `FRONTEND_STATUS`, `BACKEND_
 
 ---
 
-### 4f. Phase: ship
+### 4d. Phase: ship
 
 **Runs if `RESUME_PHASE` is `ship` or `ci`.**
 
@@ -303,7 +271,7 @@ Otherwise, run Phase 4c (ship) of the implement pipeline exactly as defined:
 
 ---
 
-### 4g. Phase: ci
+### 4e. Phase: ci
 
 **Runs if ship succeeded and code was pushed.**
 
@@ -327,8 +295,6 @@ Phases executed this run: <comma-separated list>
 |--------------|---------|
 | architect    | done    |
 | developer    | done    |
-| test-writer  | done    |
-| doc-sync     | done    |
 | reviewer     | done    |
 | ship         | done    |
 | ci           | done    |
@@ -359,8 +325,6 @@ Next steps:
 |-------|-----------|------------|
 | architect | **Yes** | Stop — cannot proceed without OpenSpec artifacts |
 | developer | **Yes** | Stop — cannot proceed without implemented files |
-| test-writer | No | Record FAILED, continue to doc-sync |
-| doc-sync | No | Record FAILED, continue to reviewer |
 | reviewer | No | Report findings, continue to ship |
 | ship | **Yes** | Stop — report failure with git/PR context |
 | ci | **Yes** | Stop — report failure with CI log and fix suggestions |

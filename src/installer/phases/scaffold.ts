@@ -24,10 +24,9 @@ import { buildManifest, writeManifestFiles } from './manifest.js'
 import type { Provider } from './provider-detect.js'
 
 /**
- * The three baseline agents that every specrails install requires.
- * These are the only agents guaranteed to be present — the implement
- * pipeline depends on all three. sr-merge-resolver and every other
- * agent are optional add-ons selected at install time.
+ * The three baseline agents — the COMPLETE set of agents the installer
+ * ships. The implement pipeline depends on all three. Any additional agent
+ * comes from a user-authored profile (`custom-*`), never the installer.
  *
  * Mirrors the `allOf` baseline in schemas/profile.v1.json — update
  * both files together if this set ever changes.
@@ -37,12 +36,6 @@ export const CORE_AGENTS = new Set([
   'sr-developer',
   'sr-reviewer',
 ])
-
-/**
- * Agents excluded from the quick tier because they require a full
- * /specrails:enrich persona pass to function correctly.
- */
-const QUICK_EXCLUDED_AGENTS = new Set(['sr-product-manager', 'sr-product-analyst'])
 
 /**
  * Gemini built-in tool ids granted to every `.gemini/agents/sr-*.md` subagent.
@@ -180,15 +173,6 @@ const GEMINI_DEFAULT_MODEL = 'gemini-3.5-flash'
 // contract. Re-introduce only if a future gemini build is reconfirmed to accept it.
 
 /**
- * Skills excluded from the quick tier because they depend on
- * VPC-only agents (sr-product-manager, sr-product-analyst).
- */
-const QUICK_EXCLUDED_SKILLS = new Set([
-  'sr-auto-propose-backlog-specs',
-  'sr-get-backlog-specs',
-])
-
-/**
  * Claude top-level `sr-*` skills, GENERATED at install time from their
  * canonical slash-command body under `templates/commands/specrails/<command>.md`.
  * The command is the single source of truth; the skill is just that body wrapped
@@ -222,29 +206,7 @@ const SKILL_FROM_COMMAND: Record<string, { command: string; description: string 
     description:
       'sr:why — Search explanation records written by specrails agents during the OpenSpec implementation pipeline.',
   },
-  'sr-get-backlog-specs': {
-    command: 'get-backlog-specs',
-    description:
-      'sr:get-backlog-specs — View product-driven backlog from GitHub Issues and propose top 3 for implementation.',
-  },
-  'sr-auto-propose-backlog-specs': {
-    command: 'auto-propose-backlog-specs',
-    description:
-      'sr:auto-propose-backlog-specs — Generate new feature ideas through product discovery, create GitHub Issues.',
-  },
 }
-
-/**
- * Command → required agent dependency map. A command is excluded
- * from the quick tier when its required agent was excluded (i.e.
- * VPC-dependent) or when the feature flag (Agent Teams) is off.
- */
-const COMMAND_AGENT_DEPENDENCIES: Array<{ command: string; requires: string[] }> = [
-  { command: 'auto-propose-backlog-specs', requires: ['sr-product-manager'] },
-  { command: 'vpc-drift', requires: ['sr-product-manager', 'sr-product-analyst'] },
-  { command: 'get-backlog-specs', requires: ['sr-product-analyst'] },
-  { command: 'merge-resolve', requires: ['sr-merge-resolver'] },
-]
 
 /**
  * Agents that write "explanation" memory records. When any of them
@@ -257,14 +219,13 @@ const EXPLANATION_AUTHORS = new Set(['sr-architect', 'sr-reviewer'])
  * Phase 2 + Phase 3 of the retired install.sh:
  *   - Detect prior installation state (.claude/.codex/openspec already present).
  *   - Create the directory skeleton.
- *   - Copy templates into `.specrails/setup-templates/` (the source of
- *     truth the enrich + update flows read from).
+ *   - Copy templates into `.specrails/setup-templates/` (the internal
+ *     staging dir that placement copies from and `update` diffs against).
  *   - Ensure `.gitignore` excludes the runtime artefacts.
  *
- * The Quick-tier direct placement (Phase 3c in bash) short-circuits
- * the enrich step: it copies the templates directly into the user's
- * live `.claude/agents/` and `.claude/commands/specrails/` dirs so
- * the installer finishes without requiring a Claude Code run.
+ * Placement (`placeArtefacts`) then copies the staged templates directly into
+ * the user's live `.claude/agents/` and `.claude/commands/specrails/` dirs so
+ * the installer finishes in one pass — no follow-up wizard required.
  */
 
 export interface ScaffoldInput {
@@ -286,9 +247,7 @@ export interface ScaffoldInput {
   provider: Provider
   /** Derived directory name (`.claude` or `.codex`). */
   providerDir: string
-  /** Install tier — `quick` triggers the direct-placement path. */
-  tier: 'full' | 'quick'
-  /** Optional explicit allow-list used by config-driven quick installs. */
+  /** Optional explicit allow-list used by config-driven installs. */
   selectedAgents?: string[]
   /**
    * When false, the static-placement helpers do NOT create the per-workspace
@@ -300,7 +259,7 @@ export interface ScaffoldInput {
   seedProjectDirs?: boolean
   /**
    * When true, place EVERY agent template (the full superset) regardless of
-   * `selectedAgents` and `QUICK_EXCLUDED_AGENTS`. Used by `installFramework` so
+   * `selectedAgents`. Used by `installFramework` so
    * the SHARED framework store is a superset that ANY project's selection can
    * link from — per-project agent filtering then happens at the workspace LINK
    * step (`linkAgentFiles`), not at materialization. Defaults to false (legacy
@@ -382,7 +341,6 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     // Codex skills live under <providerDir>/skills/ (e.g. .codex/skills/).
     // The pre-§18 code wrote to `.agents/skills/` which codex doesn't read;
     // that was a placeholder name from the gated state.
-    mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'enrich'))
     mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'doctor'))
     mk(path.join(input.artifactRoot, input.providerDir, 'skills', 'rails'))
   } else if (input.provider === 'gemini') {
@@ -403,7 +361,6 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   mk(path.join(setupTemplates, 'commands'))
   mk(path.join(setupTemplates, 'skills'))
   mk(path.join(setupTemplates, 'rules'))
-  mk(path.join(setupTemplates, 'personas'))
   mk(path.join(setupTemplates, 'claude-md'))
   mk(path.join(setupTemplates, 'settings'))
 
@@ -443,21 +400,20 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     warn(`templates/ not found at ${templatesSrc} — skipping template copy`)
   }
 
-  // --- Write bundled commands (enrich.md + doctor.md) ---
+  // --- Write bundled commands (doctor.md) ---
   copyBundledCommands({ ...input, copiedIncrement: (n) => (copiedFiles += n) })
   pruneLegacyArtifacts(input)
   if (input.provider === 'kimi') {
     copiedFiles += placeKimiSkillRunner(input)
   }
 
-  // --- Quick tier: direct-placement short-circuit ---
-  if (input.tier === 'quick') {
-    const placed = placeQuickTierArtefacts({ ...input })
+  // --- Direct placement (the only path) ---
+  {
+    const placed = placeArtefacts({ ...input })
     copiedFiles += placed.agents + placed.commands + placed.rules
-    const skippedNote = placed.skippedAgents > 0 ? ` (skipped ${placed.skippedAgents} VPC-dependent)` : ''
     info(
-      `Quick tier: placed ${placed.agents} agent(s) + ${placed.commands} command(s) + ` +
-        `${placed.rules} rule file(s) directly into ${input.providerDir}/${skippedNote}`,
+      `Placed ${placed.agents} agent(s) + ${placed.commands} command(s) + ` +
+        `${placed.rules} rule file(s) directly into ${input.providerDir}/`,
     )
   }
 
@@ -469,11 +425,10 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   {
     const skills = placeSkills(input)
     copiedFiles += skills.filesCopied
-    const skillSkipNote = skills.skipped > 0 ? ` (skipped ${skills.skipped} VPC-dependent)` : ''
     const skillsLabel = input.provider === 'gemini' ? 'agent' : 'skill'
     const skillsSubdir = input.provider === 'gemini' ? 'agents' : 'skills'
     info(
-      `Placed ${skills.placed} ${skillsLabel}(s) into ${input.providerDir}/${skillsSubdir}/${skillSkipNote}`,
+      `Placed ${skills.placed} ${skillsLabel}(s) into ${input.providerDir}/${skillsSubdir}/`,
     )
   }
 
@@ -496,25 +451,6 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     if (written > 0) {
       info(`Kimi provider: wrote ${written} setting file(s) (.kimi-code/AGENTS.md, mcp.json)`)
     }
-  }
-
-  // --- Full-tier hint: enrich is required to generate VPC artefacts ---
-  if (input.tier === 'full') {
-    const cliName =
-      input.provider === 'codex'
-        ? 'Codex CLI'
-        : input.provider === 'gemini'
-          ? 'Gemini CLI'
-          : input.provider === 'kimi'
-            ? 'Kimi CLI'
-            : 'Claude Code'
-    const enrichCommand =
-      input.provider === 'kimi' ? '/skill:specrails-enrich' : '/specrails:enrich'
-    info(
-      `Full tier staged. Run \`${enrichCommand}\` in ${cliName} to generate ` +
-        'VPC personas and adapt agents (including sr-product-manager and ' +
-        'sr-product-analyst) to this codebase.',
-    )
   }
 
   ok(`Created ${createdDirs.length} directories, copied ${copiedFiles} files`)
@@ -746,7 +682,6 @@ export function installFramework(input: InstallFrameworkInput): InstallFramework
     codeRoot: versionDir,
     provider: input.provider,
     providerDir: input.providerDir,
-    tier: 'quick',
     selectedAgents: undefined,
     materializeAllAgents: true,
     seedProjectDirs: false,
@@ -950,7 +885,7 @@ function seedProjectLayer(input: AssembleProjectWorkspaceInput, currentProviderD
       const name = path.basename(entry)
       if (!name.endsWith('.md')) continue
       const id = name.slice(0, -3)
-      if (selected.has(id) && !QUICK_EXCLUDED_AGENTS.has(id)) placedAgentIds.push(id)
+      if (selected.has(id)) placedAgentIds.push(id)
     }
   }
 
@@ -999,7 +934,6 @@ function seedProjectLayer(input: AssembleProjectWorkspaceInput, currentProviderD
         if (
           /^sr-[a-z0-9-]+$/.test(id) &&
           selected.has(id) &&
-          !QUICK_EXCLUDED_AGENTS.has(id) &&
           pathExists(path.join(roleDir, 'SKILL.md'))
         ) {
           placedAgentIds.push(id)
@@ -1061,10 +995,10 @@ function seedKimiMcpFile(mcpPath: string): void {
  * every SELECTED framework-owned agent at the shared read-only copy.
  *
  * `selectedIds` is the per-project agent allow-list (already unioned with the
- * CORE trio by the caller). Only framework agents whose id is in it AND not in
- * `QUICK_EXCLUDED_AGENTS` are linked — the shared framework store is the full
- * superset, so this is where per-project filtering lands. `undefined` ⇒ link
- * every framework agent (used by the legacy callers / parity tests).
+ * CORE trio by the caller). Only framework agents whose id is in it are linked —
+ * the shared framework store is the full superset, so this is where per-project
+ * filtering lands. `undefined` ⇒ link every framework agent (used by the legacy
+ * callers / parity tests).
  *
  * When `preferCopy` is true each agent is COPIED as a real file rather than
  * symlinked (the in-repo standalone install — so a standalone user's CLI finds
@@ -1092,7 +1026,7 @@ function linkAgentFiles(
     if (!name.endsWith('.md')) continue
     frameworkProvided.add(name)
     const id = name.slice(0, -3)
-    if (selectedIds && (!selectedIds.has(id) || QUICK_EXCLUDED_AGENTS.has(id))) continue
+    if (selectedIds && !selectedIds.has(id)) continue
     linkedNames.add(name)
     const m = symlinkOrCopy(src, path.join(workspaceAgentsDir, name), preferCopy)
     if (m === 'copy') mechanism = 'copy'
@@ -1153,10 +1087,7 @@ function linkKimiSkillDirectories(
       // it, but never expose nested roles if a caller supplies one directly.
       continue
     }
-    if (
-      /^sr-[a-z0-9-]+$/.test(name) &&
-      (!selectedRoleIds.has(name) || QUICK_EXCLUDED_AGENTS.has(name))
-    ) {
+    if (/^sr-[a-z0-9-]+$/.test(name) && !selectedRoleIds.has(name)) {
       continue
     }
     linkedFrameworkNames.add(name)
@@ -1291,9 +1222,8 @@ function copyBundledCommands(input: ScaffoldInput & { copiedIncrement: (n: numbe
       const destDir = path.join(input.artifactRoot, input.providerDir, 'skills', skillName)
       // A codex-native override (written for spawn_agent semantics + the
       // correct `.codex/skills/rails/` layout) wins over the claude port.
-      // This is the ONLY codex command-placement pass in full tier, so
-      // without the override check full-tier codex users get the claude
-      // body — e.g. enrich's obsolete `.codex/agents/*.toml` model.
+      // This is the ONLY codex command-placement pass, so without the override
+      // check codex users get the claude body with no codex-native semantics.
       const overrideSkill = path.join(codexOverrides, skillName, 'SKILL.md')
       if (pathExists(overrideSkill)) {
         copyDir(path.join(codexOverrides, skillName), destDir)
@@ -1702,8 +1632,8 @@ function adaptKimiWorkflowBody(commandName: string, body: string): string {
   if (commandName !== 'implement') return body
   let adapted = replaceMarkdownSection(
     body,
-    '##### Apply per-agent model overrides (profile mode only)',
-    '##### Legacy mode — preserve current behavior',
+    '##### Apply per-agent model overrides (only when a profile declares them)',
+    '##### Agent roles',
     [
       '##### Resolve per-role model overrides (profile mode only)',
       '',
@@ -1716,29 +1646,6 @@ function adaptKimiWorkflowBody(commandName: string, body: string): string {
       'a previous tool call. Only the official short ids `k3`,',
       '`kimi-for-coding`, and `kimi-for-coding-highspeed` gain the',
       '`kimi-code/` prefix at the CLI boundary. Never map Claude aliases.',
-      '',
-    ].join('\n'),
-  )
-  adapted = replaceMarkdownSection(
-    adapted,
-    '##### Legacy mode — preserve current behavior',
-    '##### Agent roles (both modes)',
-    [
-      '##### Legacy mode — preserve current behavior',
-      '',
-      'If no profile is active, discover role directories without mutating them:',
-      '',
-      '```bash',
-      'AVAILABLE_AGENTS="$(find -L .kimi-code/skills -mindepth 2 -maxdepth 2 \\',
-      '  -type f -name SKILL.md -print 2>/dev/null | sed \'s|.*/skills/||;s|/SKILL.md$||\' \\',
-      '  | grep -E \'^(sr|custom)-\' | sort)"',
-      'PROFILE_MODE="legacy"',
-      'PROFILE_NAME=""',
-      '```',
-      '',
-      'Per-role model overrides are empty in legacy mode. External role',
-      'processes use the explicit Kimi default (`k3`, launched as',
-      '`kimi-code/k3`).',
       '',
     ].join('\n'),
   )
@@ -2306,7 +2213,6 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
   const placeholders = {
     PROJECT_NAME: path.basename(input.codeRoot),
     SECURITY_EXEMPTIONS_PATH: '.gemini/security-exemptions.yaml',
-    PERSONA_DIR: '.gemini/agents/personas/',
   }
   const placedIds: string[] = []
   for (const src of listDir(agentsSrc)) {
@@ -2316,10 +2222,6 @@ function placeGeminiAgents(input: ScaffoldInput): SkillsPlacement {
     // Superset materialization (installFramework) places EVERY agent; per-project
     // filtering happens at the workspace LINK step (linkAgentFiles).
     if (!input.materializeAllAgents && !selectedAgents.has(agentId)) continue
-    if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(agentId)) {
-      result.skipped++
-      continue
-    }
     writeGeminiAgentFromTemplate({
       artifactRoot: input.artifactRoot,
       src,
@@ -2613,20 +2515,19 @@ interface QuickPlacement {
 }
 
 /**
- * Quick-tier placement: copy agents / commands / rules from the
+ * Direct placement: copy agents / commands / rules from the
  * .specrails/setup-templates/ staging directory into the live
- * provider directory, substituting template placeholders and
- * excluding agents + commands whose dependencies are not present.
+ * provider directory, substituting template placeholders. This is the
+ * only placement path — there are no install tiers.
  *
  * Source is setup-templates/ (not scriptDir/templates/) so the pipeline
  * is: scriptDir/templates/ → setup-templates/ (earlier scaffold step)
- * → <providerDir>/ (this function). The intermediate hop mirrors the
- * retired bash installer and lets downstream consumers (specrails-desktop's
- * deployTemplates, /specrails:enrich, update flow) read from a single
- * canonical staging dir.
+ * → <providerDir>/ (this function). The intermediate hop lets downstream
+ * consumers (specrails-desktop's deployTemplates, update flow) read from a
+ * single canonical staging dir.
  */
-function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
-  // Codex projects: the quick-tier `agents/` + `rules/` placement is
+function placeArtefacts(input: ScaffoldInput): QuickPlacement {
+  // Codex projects: the `agents/` + `rules/` placement is
   // skipped (handled by `placeSkills` rail-skills + `applyCodexSettings`).
   // The slash-command catalogue under `setup-templates/commands/specrails/`
   // IS ported, but to `.codex/skills/<name>/SKILL.md` instead of
@@ -2735,19 +2636,17 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   const placeholders = {
     PROJECT_NAME: projectName,
     SECURITY_EXEMPTIONS_PATH: `${input.providerDir}/security-exemptions.yaml`,
-    PERSONA_DIR: `${input.providerDir}/agents/personas/`,
   }
 
   // --- Agents ---
   const agentsSrc = path.join(setupTemplates, 'agents')
   const agentsDest = path.join(providerDirAbs, 'agents')
   let agentsPlaced = 0
-  let agentsSkipped = 0
-  const installedAgentNames = new Set<string>()
-  // When no agent selection is provided (fresh init with no install-config),
-  // default to placing only the three core agents. This keeps the default
-  // install lean — optional agents (sr-merge-resolver, layer specialists,
-  // product agents) are explicitly opt-in via the TUI or install-config.
+  const agentsSkipped = 0
+  // The only shipped agents are the three core agents. A profile-driven
+  // install may pass a selection; anything outside CORE_AGENTS has no template
+  // to place, so the intersection is always the core trio (extension happens
+  // via user-owned custom-*.md agents, never through the installer).
   const selectedAgents = input.selectedAgents
     ? new Set([...input.selectedAgents, ...CORE_AGENTS])
     : new Set([...CORE_AGENTS])
@@ -2762,11 +2661,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
       // filtering happens at the workspace LINK step, not here.
       if (!input.materializeAllAgents && selectedAgents && !selectedAgents.has(agentId)) continue
 
-      if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(agentId)) {
-        agentsSkipped++
-        continue
-      }
-
       const dest = path.join(agentsDest, name)
       const rendered = renderPlaceholders(readTextFile(src), {
         ...placeholders,
@@ -2774,7 +2668,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
       })
       writeFileLf(dest, rendered)
       agentsPlaced++
-      installedAgentNames.add(agentId)
 
       // Per-agent memory directory. Created even when empty so the first run of
       // the agent doesn't error on ENOENT. Skipped when materializing the SHARED
@@ -2791,13 +2684,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
   }
 
   // --- Commands ---
-  // Skip commands whose required agents were excluded.
-  const excludedCommands = new Set<string>()
-  for (const dep of COMMAND_AGENT_DEPENDENCIES) {
-    const hasAllRequired = dep.requires.every((a) => installedAgentNames.has(a))
-    if (!hasAllRequired) excludedCommands.add(dep.command)
-  }
-
   const commandsSrc = path.join(setupTemplates, 'commands', 'specrails')
   const commandsDest = path.join(providerDirAbs, 'commands', 'specrails')
   let commandsPlaced = 0
@@ -2806,8 +2692,6 @@ function placeQuickTierArtefacts(input: ScaffoldInput): QuickPlacement {
     for (const src of listDir(commandsSrc)) {
       const name = path.basename(src)
       if (!name.endsWith('.md')) continue
-      const cmdId = name.slice(0, -3)
-      if (excludedCommands.has(cmdId)) continue
 
       const dest = path.join(commandsDest, name)
       const rendered = renderPlaceholders(readTextFile(src), {
@@ -2870,7 +2754,7 @@ function applyCodexSettings(input: ScaffoldInput): number {
   }
 
   // AGENTS.md — top-level instructions file the codex CLI loads on startup.
-  // Written with a sentinel block so update + enrich passes can refresh the
+  // Written with a sentinel block so update passes can refresh the
   // managed content while preserving anything the user added outside it.
   const agentsMdPath = path.join(input.artifactRoot, 'AGENTS.md')
   const agentsMdContent = renderInitialAgentsMd(input.codeRoot)
@@ -2942,7 +2826,7 @@ function upsertAgentsMdManagedBlock(existing: string, managedBlock: string): str
 // CLAUDE: the top-level `sr-*` skills (sr-implement, sr-why, …) are GENERATED
 // from their canonical slash-command body (`templates/commands/specrails/
 // <command>.md`) — the command is the single source of truth, so the skill can
-// never drift from it. Quick tier excludes VPC-dependent ones.
+// never drift from it.
 //
 // CODEX: top-level skills are NOT placed — every one has a command counterpart
 // that the command path ports to `.codex/skills/<name>/` (with codex-native
@@ -2961,10 +2845,6 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       [string, { command: string; description: string }]
     >
     for (const [skillName, spec] of skillEntries) {
-      if (input.tier === 'quick' && QUICK_EXCLUDED_SKILLS.has(skillName)) {
-        result.skipped++
-        continue
-      }
       const src = path.join(commandsSrc, `${spec.command}.md`)
       if (!pathExists(src)) continue
       writeClaudeSkillFromCommand({
@@ -2987,8 +2867,7 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
   // copies were vestigial — unused on Claude, always overridden on codex,
   // and shipped with unsubstituted placeholders — and were removed).
   //
-  // Only the three CORE_AGENTS are placed by default; sr-merge-resolver and
-  // every layer specialist are placed only when selectedAgents includes them.
+  // Only the three CORE_AGENTS ship, so only their rail skills exist to place.
   const codexRailsOverridesDir = input.provider === 'codex'
     ? path.join(input.scriptDir, 'templates', 'codex-skills', 'rails')
     : null
@@ -3045,10 +2924,6 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
         if (!name.endsWith('.md')) continue
         const roleId = name.slice(0, -3)
         if (!input.materializeAllAgents && !selectedAgents.has(roleId)) continue
-        if (!input.materializeAllAgents && QUICK_EXCLUDED_AGENTS.has(roleId)) {
-          result.skipped++
-          continue
-        }
         writeKimiRoleSkill({
           src,
           dest: path.join(destBase, roleId, 'SKILL.md'),
@@ -3064,14 +2939,9 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
       }
     }
 
+    // v5 ships only the core trio; every bundled command's role dependencies
+    // are always satisfied, so no command exclusion set is needed.
     const excludedCommands = new Set<string>()
-    if (!input.materializeAllAgents) {
-      for (const dep of COMMAND_AGENT_DEPENDENCIES) {
-        if (!dep.requires.every((role) => placedRoleIds.has(role))) {
-          excludedCommands.add(dep.command)
-        }
-      }
-    }
     if (isDir(commandsSrc)) {
       for (const src of listDir(commandsSrc)) {
         const name = path.basename(src)

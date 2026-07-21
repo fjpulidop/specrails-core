@@ -196,7 +196,7 @@ describe('runUpdate', () => {
   })
 
   describe('install-config.yaml is honoured on update', () => {
-    it('reads tier=quick from install-config.yaml and re-applies quick-tier placement', async () => {
+    it('tolerates a legacy tier key in install-config.yaml and places the core agents', async () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
       await setupFakeScriptDir(scriptDir, '5.0.0')
@@ -215,14 +215,14 @@ describe('runUpdate', () => {
       process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
       const result = await runUpdate({ 'root-dir': repoRoot })
-      expect(result.tier).toBe('quick')
-      // Quick-tier placement happened: bundled agents are in <ws>/.claude/agents/
+      expect(result.provider).toBe('claude')
+      // Placement happened: bundled agents are in <ws>/.claude/agents/
       // (not just under setup-templates/).
       const ws = workspaceFor(repoRoot)
       expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     })
 
-    it('falls back to tier=full when no install-config.yaml exists', async () => {
+    it('runs without an install-config.yaml', async () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
       await setupFakeScriptDir(scriptDir, '5.0.0')
@@ -230,7 +230,7 @@ describe('runUpdate', () => {
       process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
 
       const result = await runUpdate({ 'root-dir': repoRoot })
-      expect(result.tier).toBe('full')
+      expect(result.provider).toBe('claude')
     })
   })
 
@@ -554,9 +554,9 @@ describe('runUpdate', () => {
       readTextFile(path.join(ws, '.specrails', 'specrails-manifest.json')),
     )
     expect(manifest.version).toBe('5.0.0')
-    // Artifacts map contains entries for bundled commands.
-    expect(manifest.artifacts['commands/specrails/enrich.md']).toBeDefined()
-    expect(pathExists(path.join(ws, '.claude', 'commands', 'specrails', 'enrich.md'))).toBe(
+    // Artifacts map contains an entry for the bundled doctor command.
+    expect(manifest.artifacts['commands/specrails/doctor.md']).toBeDefined()
+    expect(pathExists(path.join(ws, '.claude', 'commands', 'specrails', 'doctor.md'))).toBe(
       true,
     )
   })

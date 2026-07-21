@@ -41,7 +41,7 @@ function setupFakeSource(scriptDir: string): void {
 }
 
 function setupRichFakeSource(scriptDir: string): void {
-  // Agents (incl. VPC-dependent + reviewer for explanations dir)
+  // v5 ships exactly the three core agents.
   writeFileLf(
     path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
     '# arch\nproject: {{PROJECT_NAME}}\nmemory: {{MEMORY_PATH}}\n',
@@ -54,28 +54,11 @@ function setupRichFakeSource(scriptDir: string): void {
     path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'),
     '# reviewer\nmemory: {{MEMORY_PATH}}\nsecurity: {{SECURITY_EXEMPTIONS_PATH}}\n',
   )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-product-manager.md'),
-    '# product manager\nneeds-enrich: true\npersonas: {{PERSONA_DIR}}\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-product-analyst.md'),
-    '# product analyst\nneeds-enrich: true\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'),
-    '# merge resolver\nmemory: {{MEMORY_PATH}}\n',
-  )
 
-  // Commands (incl. product/merge variants so we can assert
-  // dependency-driven exclusion).
+  // Commands: the surviving v5 set. An `unknown-ph.md` exercises token stripping.
   const cmds = [
     ['implement.md', '/specrails:implement\nmemory: {{MEMORY_PATH}}\n'],
     ['why.md', '/specrails:why'],
-    ['auto-propose-backlog-specs.md', '/specrails:auto-propose-backlog-specs'],
-    ['get-backlog-specs.md', '/specrails:get-backlog-specs'],
-    ['vpc-drift.md', '/specrails:vpc-drift'],
-    ['merge-resolve.md', '/specrails:merge-resolve'],
     ['unknown-ph.md', 'raw {{UNKNOWN_PLACEHOLDER}} trailing'],
   ] as const
   for (const [name, content] of cmds) {
@@ -87,7 +70,6 @@ function setupRichFakeSource(scriptDir: string): void {
     '# rules for {{PROJECT_NAME}}\n',
   )
 
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
@@ -150,7 +132,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       expect(isDir(path.join(repoRoot, '.claude', 'commands', 'specrails'))).toBe(true)
@@ -181,7 +162,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'gemini',
         providerDir: '.gemini',
-        tier: 'quick',
       })
     }
 
@@ -300,7 +280,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const copied = path.join(
@@ -324,7 +303,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const dest = path.join(repoRoot, '.claude', 'commands', 'specrails')
@@ -356,7 +334,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'setup.md'))).toBe(false)
@@ -386,7 +363,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'quick',
       })
 
       expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
@@ -405,7 +381,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const agentsDir = path.join(repoRoot, '.claude', 'agents')
@@ -429,7 +404,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
           selectedAgents: ['sr-architect'],
         })
 
@@ -460,7 +434,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const projectName = path.basename(repoRoot)
@@ -485,7 +458,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const cmd = readTextFile(path.join(repoRoot, '.claude', 'commands', 'specrails', 'unknown-ph.md'))
@@ -503,7 +475,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
@@ -530,7 +501,6 @@ describe('scaffold', () => {
           codeRoot: repoRoot,
           provider: 'claude',
           providerDir: '.claude',
-          tier: 'quick',
         })
 
         const memRoot = path.join(repoRoot, '.claude', 'agent-memory')
@@ -553,7 +523,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'claude',
         providerDir: '.claude',
-        tier: 'full',
       })
 
       const contents = readTextFile(path.join(repoRoot, '.gitignore'))
@@ -573,7 +542,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'full',
       })
 
       // Codex skills live under <providerDir>/skills/ now (was: .agents/skills/
@@ -593,7 +561,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'quick',
       })
 
       expect(pathExists(path.join(repoRoot, '.codex', 'config.toml'))).toBe(true)
@@ -626,7 +593,6 @@ describe('scaffold', () => {
         codeRoot: repoRoot,
         provider: 'codex',
         providerDir: '.codex',
-        tier: 'quick',
       })
 
       // The claude-only quick-tier placement is skipped, so no
@@ -857,7 +823,6 @@ describe('Kimi scaffold', () => {
       codeRoot: repoRoot,
       provider: 'kimi',
       providerDir: '.kimi-code',
-      tier: 'quick',
     })
 
     const workflow = readTextFile(
@@ -1224,7 +1189,6 @@ describe('Kimi scaffold', () => {
       codeRoot: repoRoot,
       provider: 'kimi',
       providerDir: '.kimi-code',
-      tier: 'quick',
       materializeAllAgents: true,
     })
 
@@ -1333,34 +1297,6 @@ describe('Kimi scaffold', () => {
     expect(batch).toContain('Do not call multiple built-in `Skill` tools')
     expect(batch).toContain('KIMI_BACKLOG_VIEW')
 
-    const autoPropose = readTextFile(
-      path.join(
-        workflowRoot,
-        'specrails-auto-propose-backlog-specs',
-        'SKILL.md',
-      ),
-    )
-    expect(autoPropose).toContain('`skill:"sr-product-analyst"`')
-    expect(autoPropose).not.toContain('role_skill: Explore')
-    expect(autoPropose).toContain('KIMI_RUNTIME_PERSONA_FILE_READ_LIST')
-
-    const enrich = readTextFile(
-      path.join(workflowRoot, 'specrails-enrich', 'SKILL.md'),
-    )
-    expect(enrich).toContain('update --provider kimi')
-    expect(enrich).toContain('.kimi-code/project-context.md')
-    expect(enrich).not.toContain('opus')
-    expect(enrich).not.toContain('.kimi-code/commands/')
-    expect(enrich).not.toContain('.kimi-code/agents/')
-
-    const reconfig = readTextFile(
-      path.join(workflowRoot, 'specrails-reconfig', 'SKILL.md'),
-    )
-    expect(reconfig).toContain('.specrails/profiles/kimi-default.json')
-    expect(reconfig).toContain(
-      'Never edit any role SKILL.md under `.kimi-code/skills/`',
-    )
-
     const telemetry = readTextFile(
       path.join(workflowRoot, 'specrails-telemetry', 'SKILL.md'),
     )
@@ -1375,13 +1311,6 @@ describe('Kimi scaffold', () => {
     expect(retry).toContain('`KIMI_ROLE_WAVE`')
     expect(retry).toContain('--role-wave-status <run>')
     expect(retry).toContain('never cleanup before')
-
-    const productManager = readTextFile(
-      path.join(workflowRoot, 'sr-product-manager', 'SKILL.md'),
-    )
-    expect(productManager).toContain('.kimi-code/personas/')
-    expect(productManager).not.toContain('.kimi-code/skills/personas/')
-    expect(productManager).toContain('KIMI_RUNTIME_PERSONA_COUNT')
 
     const installedRunner = await import(
       pathToFileURL(

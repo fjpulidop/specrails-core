@@ -9,7 +9,7 @@
  *   --yes    - skip TUI, write defaults immediately
  */
 
-import { checkbox, select, Separator } from '@inquirer/prompts';
+import { select } from '@inquirer/prompts';
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -32,43 +32,27 @@ function clearScreen() {
 
 // ─── Agent registry ───────────────────────────────────────────────────────────
 
+// The three core agents are the complete shipped set. Extend an install with
+// user-owned custom-* agents declared in a profile (.specrails/profiles/**) —
+// the installer never ships or manages non-core agents.
 const AGENTS = [
-  // Architecture
-  { id: 'sr-architect',          category: 'Architecture', description: 'Architecture design, change specs, implementation planning' },
-  // Development
-  { id: 'sr-developer',          category: 'Development',  description: 'Full-stack implementation across all layers' },
-  { id: 'sr-frontend-developer', category: 'Development',  description: 'Frontend implementation (React, Vue, Angular, etc.)' },
-  { id: 'sr-backend-developer',  category: 'Development',  description: 'Backend specialization (APIs, databases, services)' },
-  // Review
-  { id: 'sr-reviewer',           category: 'Review',       description: 'General code review — the final quality gate' },
-  { id: 'sr-frontend-reviewer',  category: 'Review',       description: 'Frontend review (UI, accessibility, performance)' },
-  { id: 'sr-backend-reviewer',   category: 'Review',       description: 'Backend review (APIs, security, scalability)' },
-  { id: 'sr-security-reviewer',  category: 'Review',       description: 'Security analysis — OWASP, vulnerabilities, hardening' },
-  { id: 'sr-performance-reviewer', category: 'Review',     description: 'Performance analysis — profiling, bottlenecks, optimization' },
-  // Product
-  { id: 'sr-product-manager',    category: 'Product',      description: 'Product discovery, VPC personas, backlog management' },
-  { id: 'sr-product-analyst',    category: 'Product',      description: 'Backlog analysis, spec gap analysis, reporting' },
-  // Utilities
-  { id: 'sr-test-writer',        category: 'Utilities',    description: 'Comprehensive test generation (unit, integration, E2E)' },
-  { id: 'sr-doc-sync',           category: 'Utilities',    description: 'Documentation sync — keeps docs aligned with code' },
-  { id: 'sr-merge-resolver',     category: 'Utilities',    description: 'Merge conflict resolution with context awareness' },
+  { id: 'sr-architect', category: 'Architecture', description: 'Architecture design, change specs, implementation planning' },
+  { id: 'sr-developer', category: 'Development',  description: 'Full-stack implementation across all layers' },
+  { id: 'sr-reviewer',  category: 'Review',       description: 'Code review — correctness, tests, security, performance' },
 ];
 
 const ALL_AGENT_IDS = AGENTS.map(a => a.id);
 
-// Core agents — the three that every install requires. The implement
-// pipeline depends on exactly these three. All other agents (including
-// sr-merge-resolver) are optional add-ons selected by the user.
+// Core agents — the three the installer ships, which the implement pipeline
+// depends on. They are the COMPLETE shipped set; any extra specialist comes
+// from a user-authored profile (custom-*), never the installer.
 const CORE_AGENTS = new Set([
   'sr-architect',
   'sr-developer',
   'sr-reviewer',
 ]);
 
-// Only the three CORE agents are pre-selected. Optional agents (sr-merge-resolver,
-// product manager, test writer, layer specialists, reviewers, utilities) are
-// opt-in so the default install is as lean as possible. Users can add optional
-// agents via `/specrails:enrich` or by re-running init.
+// The three core agents ARE the full set; the selection always equals them.
 const DEFAULT_SELECTED = new Set([
   ...CORE_AGENTS,
 ]);
@@ -90,9 +74,9 @@ const MODEL_PRESETS = {
     overrides:   {},
   },
   max: {
-    label:       'Max quality — Opus for architect + PM, Sonnet for rest',
+    label:       'Max quality — Opus for the architect, Sonnet for the rest',
     defaults:    'sonnet',
-    overrides:   { 'sr-architect': 'opus', 'sr-product-manager': 'opus' },
+    overrides:   { 'sr-architect': 'opus' },
   },
 };
 
@@ -196,26 +180,6 @@ function detectGitRoot(dir) {
   }
 }
 
-function buildCheckboxChoices() {
-  const choices = [];
-  let currentCategory = null;
-  for (const agent of AGENTS) {
-    if (agent.category !== currentCategory) {
-      if (currentCategory !== null) choices.push(new Separator(''));
-      choices.push(new Separator(`── ${agent.category} ${'─'.repeat(Math.max(0, 46 - agent.category.length))}`));
-      currentCategory = agent.category;
-    }
-    const isCore = CORE_AGENTS.has(agent.id);
-    choices.push({
-      value:   agent.id,
-      name:    `${agent.id.padEnd(28)} ${agent.description}${isCore ? ' (core)' : ''}`,
-      checked: DEFAULT_SELECTED.has(agent.id),
-      disabled: isCore ? 'core — always installed' : false,
-    });
-  }
-  return choices;
-}
-
 function writeInstallConfig(specrailsDir, cfg) {
   if (!existsSync(specrailsDir)) mkdirSync(specrailsDir, { recursive: true });
 
@@ -229,7 +193,6 @@ function writeInstallConfig(specrailsDir, cfg) {
     '# Re-run: npx specrails-core@latest init  to regenerate',
     `version: 1`,
     `provider: ${cfg.provider}`,
-    `tier: ${cfg.tier}`,
     `agents:`,
     `  selected: [${cfg.selectedAgents.join(', ')}]`,
     `  excluded: [${cfg.excludedAgents.join(', ')}]`,
@@ -249,7 +212,6 @@ function writeDefaultConfig(specrailsDir, provider) {
   const modelSelection = resolveProviderModelPreset(provider);
   writeInstallConfig(specrailsDir, {
     provider,
-    tier:           'full',
     selectedAgents: defaultSelected,
     excludedAgents: defaultExcluded,
     modelPreset:    'balanced',
@@ -342,7 +304,7 @@ async function run() {
     if (withProfiles) scaffoldDefaultProfile(specrailsDir, provider);
     writeDefaultConfig(specrailsDir, provider);
     console.log(`  ✓ Default config written to .specrails/install-config.yaml`);
-    console.log(`  ✓ Provider: ${provider}, Tier: full, Agents: ${DEFAULT_SELECTED.size}/${ALL_AGENT_IDS.length}, Preset: balanced\n`);
+    console.log(`  ✓ Provider: ${provider}, Agents: ${DEFAULT_SELECTED.size}, Preset: balanced\n`);
     return;
   }
 
@@ -403,57 +365,20 @@ async function run() {
   }
   if (withProfiles) scaffoldDefaultProfile(specrailsDir, provider);
 
-  // ── Step 2: Installation tier ───────────────────────────────────────────────
+  // ── Agents: the three core agents are the full shipped set ──────────────────
 
   clearScreen();
   console.log(`  Provider: ${provider}\n`);
+  console.log('  Installing the three core agents: sr-architect, sr-developer, sr-reviewer.');
+  console.log('  Add specialists later via a profile (.specrails/profiles/**) with custom-* agents.\n');
 
-  const tier = await select({
-    message: 'Installation tier:',
-    default: 'quick',
-    choices: [
-      {
-        value:       'quick',
-        name:        'Quick — Ready to use immediately (recommended)',
-        description: 'Agents installed with sensible defaults. No AI step required.',
-      },
-      {
-        value:       'full',
-        name:        'Full — AI-powered setup',
-        description:
-          provider === 'kimi'
-            ? 'After install, run /skill:specrails-enrich to AI-customize all agents for your codebase'
-            : 'After install, run /specrails:enrich to AI-customize all agents for your codebase',
-      },
-    ],
-  });
-
-  // ── Step 3: Agent selection ─────────────────────────────────────────────────
-
-  clearScreen();
-  console.log(`  Provider: ${provider}  |  Tier: ${tier}\n`);
-  console.log('  Select agents to install.  Space = toggle,  a = all/none,  Enter = confirm.\n');
-
-  // Use most of the terminal height for agent list (reserve 6 lines for header/footer)
-  const termRows = process.stdout.rows || 24;
-  const agentPageSize = Math.max(10, termRows - 6);
-
-  const userSelected = await checkbox({
-    message: 'Agents to install:',
-    choices: buildCheckboxChoices(),
-    pageSize: agentPageSize,
-    // Core agents are installed unconditionally (disabled rows above), so an
-    // empty optional selection is valid — means "only core, nothing extra".
-  });
-
-  // Core agents are always included regardless of checkbox state
-  const selectedAgents = [...new Set([...CORE_AGENTS, ...userSelected])];
+  const selectedAgents = [...CORE_AGENTS];
   const excludedAgents = ALL_AGENT_IDS.filter(id => !selectedAgents.includes(id));
 
-  // ── Step 4: Model preset ────────────────────────────────────────────────────
+  // ── Step 2: Model preset ────────────────────────────────────────────────────
 
   clearScreen();
-  console.log(`  Provider: ${provider}  |  Tier: ${tier}  |  Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length}\n`);
+  console.log(`  Provider: ${provider}  |  Agents: ${selectedAgents.length}\n`);
 
   // Claude exposes real model tiers. Other providers retain the same config
   // shape but resolve the preset through their provider-native catalog.
@@ -481,7 +406,6 @@ async function run() {
 
   writeInstallConfig(specrailsDir, {
     provider,
-    tier,
     selectedAgents,
     excludedAgents,
     modelPreset,
@@ -490,15 +414,8 @@ async function run() {
   });
 
   console.log(`\n  ✓ Config written to .specrails/install-config.yaml`);
-  console.log(`  ✓ Provider: ${provider} | Tier: ${tier} | Agents: ${selectedAgents.length}/${ALL_AGENT_IDS.length} | Preset: ${modelPreset}`);
-  if (tier === 'full') {
-    const enrichCommand = provider === 'kimi'
-      ? '/skill:specrails-enrich --from-config'
-      : '/specrails:enrich --from-config';
-    console.log(`\n  Next: run ${enrichCommand} inside ${provider} to AI-customize your agents.\n`);
-  } else {
-    console.log(`\n  Agents will be installed with template defaults.\n`);
-  }
+  console.log(`  ✓ Provider: ${provider} | Agents: ${selectedAgents.length} | Preset: ${modelPreset}`);
+  console.log(`\n  Agents will be installed with template defaults — no follow-up step required.\n`);
 }
 
 run().catch(err => {

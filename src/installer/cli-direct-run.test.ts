@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, readlinkSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -31,6 +31,30 @@ maybe('cli direct-run guard (compiled dist)', () => {
       const fw = path.join(tmp, 'fw')
       expect(existsSync(path.join(fw, '9.9.9', '.claude', 'agents'))).toBe(true)
       expect(readlinkSync(path.join(fw, 'current'))).toContain('9.9.9')
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('still auto-runs when argv[1] reaches cli.js through a SYMLINKED path (macOS /var/folders staging)', () => {
+    // Node realpaths the entry module (import.meta.url) but argv[1] stays the
+    // literal spawn arg. specrails-desktop's core-update channel stages the
+    // download under os.tmpdir() — a symlink on macOS — so the raw href
+    // comparison used to fail and the CLI exited 0 having done NOTHING.
+    const tmp = mkdtempSync(path.join(os.tmpdir(), 'cli-direct-link-'))
+    try {
+      const pkgRoot = path.resolve(here, '..', '..')
+      const linkRoot = path.join(tmp, 'core-link')
+      symlinkSync(pkgRoot, linkRoot)
+      const linkedCli = path.join(linkRoot, 'dist', 'installer', 'cli.js')
+      const res = spawnSync(
+        process.execPath,
+        [linkedCli, 'install-framework', '--framework-dir', path.join(tmp, 'fw'), '--provider', 'claude', '--version', '9.9.9'],
+        { encoding: 'utf8' },
+      )
+      expect(res.status).toBe(0)
+      // The old broken guard also exited 0 — the REAL assertion is that work happened.
+      expect(existsSync(path.join(tmp, 'fw', '9.9.9', '.claude', 'agents'))).toBe(true)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

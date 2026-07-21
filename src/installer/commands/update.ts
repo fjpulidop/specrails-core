@@ -5,16 +5,18 @@ import { InstallerError, PrerequisiteError } from '../util/errors.js'
 import { info, ok, step, warn } from '../util/logger.js'
 import { copyDir, isDir, pathExists, readTextFile } from '../util/fs.js'
 
-import { loadInstallConfig, resolveConfigPath, type Tier } from '../phases/install-config.js'
+import { loadInstallConfig, resolveConfigPath } from '../phases/install-config.js'
 import { buildManifest, writeManifestFiles, type SpecrailsManifest } from '../phases/manifest.js'
 import { derivedPaths, detectAvailability, resolveProvider, type Provider } from '../phases/provider-detect.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
+import { migratePreV5Install } from './v5-migration.js'
 
 import {
   ensureFramework,
   installOpenSpecProject,
   reassembleWorkspaceProviders,
   snapshotWorkspaceProviderSelections,
+  warnUnknownSelectedAgents,
 } from './init.js'
 
 /**
@@ -79,8 +81,6 @@ export interface UpdateResult {
   dryRun: boolean
   /** Resolved scope of the update — what was actually re-applied. */
   scope: OnlyComponent
-  /** Tier honored during this update (read from install-config.yaml when present). */
-  tier: Tier
 }
 
 export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
@@ -92,9 +92,6 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   )
   const dryRun = flags['dry-run'] === true
 
-  // Read install-config.yaml so the user's original choices (tier) survive
-  // the update. Flag overrides win when present; missing config falls back to
-  // defaults (tier=full).
   // ─── Resolve where artifacts live: in-repo (default) vs relocated ─────
   // Mirrors init: standalone updates resolve IN-REPO by default (`allocate:false`
   // + no registry entry ⇒ `artifactRoot === codeRoot === repoRoot`); desktop and
@@ -115,8 +112,8 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   // the artifactRoot. Falls back to a workspace copy if present (none today).
   const config =
     loadInstallConfig(resolveConfigPath(repoRoot)) ?? loadInstallConfig(resolveConfigPath(artifactRoot))
-  const tier: Tier = config?.tier ?? 'full'
   const selectedAgents = config?.agents.selected
+  warnUnknownSelectedAgents(selectedAgents)
 
   const marker = path.join(artifactRoot, '.specrails', 'specrails-version')
   if (!pathExists(marker)) {
@@ -170,7 +167,7 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
       '--only=web-manager is deprecated. The standalone web-manager has been retired; ' +
         'specrails-desktop is the supported dashboard. Skipping with no changes.',
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope }
   }
   if (
     provider === 'kimi' &&
@@ -184,16 +181,20 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
     )
   }
 
-  if (config) {
-    info(`Honouring install-config.yaml: tier=${tier}`)
-  }
-
   if (dryRun) {
     info(
-      `Dry run: would update [${scope}, tier=${tier}] ` +
+      `Dry run: would update [${scope}] ` +
         `for ${previousVersion ?? '(unknown)'} → ${currentVersion}.`,
     )
-    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope, tier }
+    return { repoRoot, previousVersion, currentVersion, provider, dryRun, scope }
+  }
+
+  // ─── v5 migration: remove artefacts a pre-v5 install left behind ─────
+  // Runs BEFORE the re-scaffold so obsolete agents/commands/staging are gone
+  // before the fresh v5 template set is placed. Reserved paths (profiles, custom-*)
+  // and files the installer never owned are left untouched.
+  if (scope === 'all' || scope === 'core') {
+    migratePreV5Install({ artifactRoot, providerDir })
   }
 
   step(`Update: refreshing scaffold [scope=${scope}] (${previousVersion ?? '?'} → ${currentVersion})`)
@@ -251,15 +252,14 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   info(`specrails-core ${previousVersion ?? '?'} → ${currentVersion}`)
   // Terminal sentinel for programmatic consumers (see comment in init.ts).
   ok('update complete')
-  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope, tier }
+  return { repoRoot, previousVersion, currentVersion, provider, dryRun: false, scope }
 }
 
 /**
  * Re-applies a single subtree (rules or agents) from the bundled
- * templates into both the staging dir (.specrails/setup-templates/)
- * and the live provider directory if it already exists. Skips the
- * enrich placeholders + agent-memory bootstrap that scaffoldInstallation
- * does — those should only run on a true (re-)install.
+ * templates into the staging dir (.specrails/setup-templates/). Skips the
+ * agent-memory bootstrap that scaffoldInstallation does — that should only
+ * run on a true (re-)install.
  */
 function rescaffoldComponent(
   component: 'rules' | 'agents',

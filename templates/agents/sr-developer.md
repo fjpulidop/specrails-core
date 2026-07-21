@@ -140,9 +140,19 @@ This gate is non-negotiable. Phase 4 is unreachable until every checkbox in task
 
 **For each unit of functionality within the apply cycle, follow this TDD cycle:**
 
-1. **RED** — Write a failing test that describes the expected behavior. Run the test. Confirm it fails for the right reason.
-2. **GREEN** — Write the minimum production code to make the test pass. Run the test. Confirm it passes.
-3. **REFACTOR** — Clean up the code while keeping the tests green. Re-run the **scoped** tests for the area you touched (the task's test file(s) / the affected package — e.g. `npx vitest run <file>`, `pytest <file>`, `cargo test <module>`), NOT the whole suite. The full suite runs exactly once, in Phase 4 — running it after every task multiplies wall-clock time without catching anything Phase 4 won't.
+1. **RED** — Write a failing test that describes the expected behavior. Run **only that test file** (scoped run). Confirm it fails for the right reason.
+2. **GREEN** — Write the minimum production code to make the test pass. Re-run **only that test file**. Confirm it passes.
+3. **REFACTOR** — Clean up the code while keeping tests green. Re-run **the test files covering the files you touched** — not the whole suite. The full suite runs exactly once, in Phase 4 — running it after every task multiplies wall-clock time without catching anything Phase 4 won't.
+
+## Test-Execution Economy (MANDATORY)
+
+Test runs are the single largest cost of this pipeline. The contract:
+
+- **Inside task cycles (Phase 3): scoped runs only.** Invoke the runner with an explicit path/filter — `npx vitest run <file>`, `npx jest <file>`, `pytest <file>`, `go test ./<pkg>`, `./gradlew :<module>:test --tests <Class>`, etc. Derive the scoped form from the project's full test command. **Never run the full suite inside a task cycle.**
+- **The full suite runs exactly ONCE** — at your Phase 4 validation gate, after every task is `- [x]`. It does not run per task, per file, or "just to be safe".
+- **When a scoped run fails**, extract only the failing test names and the relevant error excerpt (≤50 lines) into your reasoning. Never re-paste a full runner log.
+- **Loop detection**: if you run the same command 3 times without an intervening code change and results are inconsistent, STOP running it — state your hypothesis and change the code or the test instead.
+- **File re-read discipline**: a file you already read is in your context. Before reading any file a second time, write one sentence stating what you already learned from it — then only re-read if it changed since.
 
 **TDD rules:**
 - Never write production code without a corresponding test
@@ -170,13 +180,14 @@ Follow the project architecture strictly:
 
 **Prerequisite: Phase 4 is only reachable if the Phase 3 checkbox verification gate passed** — meaning every task in `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/tasks.md` is marked `- [x]`. If any `- [ ]` items remain, return to Phase 3.
 
-**All tests MUST pass before you hand off to the reviewer. This is a hard gate — do not proceed if any test fails.**
+**All tests MUST pass before you hand off to the reviewer. This is a hard gate — do not hand off with known failures.**
 
 This phase is the pipeline's **single full verification pass** — the inner TDD loop stayed scoped precisely so this one can be exhaustive.
 
-- Run the **full CI-equivalent verification suite** (see below)
-- If a check fails, fix the issue, re-run the **scoped** tests covering the fix first, then finish with one clean run of the failed check and any check downstream of it
-- Repeat until the full suite is green — there is no maximum number of attempts
+- Run the **full CI-equivalent verification suite** (see below) — this is the ONE full-suite run of your phase
+- If anything fails: fix it, then re-run **only the failing test files / failing check** — not the whole suite
+- You have a budget of **2 fix cycles**. After the fixes converge, run the full suite ONE final time to confirm
+- If failures persist after the budget: **HALT and report honestly** — list every failing test verbatim to the orchestrator. Do NOT keep looping, do NOT weaken or skip tests to force green, do NOT hand off silently
 - Review each file for adherence to conventions
 - Ensure all imports are correct and no circular dependencies exist
 - Verify type annotations are complete
@@ -185,7 +196,7 @@ This phase is the pipeline's **single full verification pass** — the inner TDD
 
 ## CI-Equivalent Verification Suite
 
-You MUST run ALL of these checks after implementation. These match the CI pipeline exactly:
+You MUST run ALL of these checks after implementation — **once, at the Phase 4 gate** (see Test-Execution Economy). These match the CI pipeline exactly:
 
 {{CI_COMMANDS_FULL}}
 

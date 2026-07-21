@@ -6,8 +6,6 @@
  * in-process via the Node installer under dist/installer/. This file
  * only keeps logic that is local to the dispatcher:
  *   - `profile validate` / `profile show` — schema validation via ajv.
- *   - `enrich`                            — launches the installed provider's
- *                                           native enrich workflow.
  *   - `init` TUI short-circuit            — spawns tui-installer.mjs
  *                                           then re-enters init with
  *                                           --from-config.
@@ -48,6 +46,15 @@ if (!subcommand) {
   process.exit(0)
 }
 
+// ─── Removed-in-v5 subcommands (clear error, not a generic "unknown") ────────
+
+const REMOVED_SUBCOMMANDS = new Set(['enrich'])
+
+if (REMOVED_SUBCOMMANDS.has(subcommand)) {
+  console.error(`${subcommand} was removed in v5 — init now installs everything directly.`)
+  process.exit(1)
+}
+
 // ─── Subcommand allowlist (kept for backwards compatibility) ─────────────────
 
 const KNOWN_SUBCOMMANDS = new Set([
@@ -57,7 +64,6 @@ const KNOWN_SUBCOMMANDS = new Set([
   'install-framework',
   'swap-current',
   'assemble',
-  'enrich',
   'version',
   'profile',
   'help',
@@ -66,8 +72,15 @@ const KNOWN_SUBCOMMANDS = new Set([
 if (!KNOWN_SUBCOMMANDS.has(subcommand)) {
   console.error(`Unknown command: ${subcommand}\n`)
   console.error(
-    'Available commands: init, update, doctor, install-framework, swap-current, assemble, enrich, version, profile, help',
+    'Available commands: init, update, doctor, install-framework, swap-current, assemble, version, profile, help',
   )
+  process.exit(1)
+}
+
+// ─── Removed-in-v5 flags (clear error) ───────────────────────────────────────
+
+if (args.includes('--quick') || args.includes('--lite')) {
+  console.error('--quick was removed in v5 — init now installs everything directly.')
   process.exit(1)
 }
 
@@ -92,98 +105,6 @@ if (subcommand === 'version') {
 if (subcommand === 'profile') {
   await runProfile(subargs)
   process.exit(0)
-}
-
-// ─── enrich ──────────────────────────────────────────────────────────────────
-// Launches the configured provider's native enrich workflow.
-
-if (subcommand === 'enrich') {
-  const workspace = await resolveEnrichWorkspace(process.cwd())
-  const { provider, model: explicitModel, workflowArgs } = resolveEnrichOptions(
-    workspace.codeRoot,
-    subargs,
-    workspace.artifactRoot,
-  )
-  const model =
-    explicitModel ??
-    resolveConfiguredEnrichModel(workspace.codeRoot, workspace.artifactRoot) ??
-    'k3'
-  const enrichFlags = serializeWorkflowArgs(workflowArgs)
-  const launch =
-    provider === 'kimi'
-      ? {
-          command: process.execPath,
-          args: [
-            path.resolve(
-              workspace.artifactRoot,
-              '.kimi-code',
-              'specrails',
-              'run-skill.mjs',
-            ),
-            '--skill',
-            'specrails-enrich',
-            '--model',
-            model,
-            '--add-dir',
-            workspace.codeRoot,
-            ...(enrichFlags ? ['--args', enrichFlags] : []),
-          ],
-          label: 'Kimi Code',
-        }
-      : provider === 'gemini'
-        ? {
-            command: 'gemini',
-            args: [
-              '-p',
-              `/specrails:enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
-              '--output-format',
-              'stream-json',
-            ],
-            label: 'Gemini CLI',
-          }
-        : provider === 'codex'
-          ? {
-              command: 'codex',
-              args: [
-                'exec',
-                `run enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
-              ],
-              label: 'Codex CLI',
-            }
-          : {
-              command: 'claude',
-              args: [
-                '--command',
-                `/specrails:enrich${enrichFlags ? ` ${enrichFlags}` : ''}`,
-                '--dangerously-skip-permissions',
-              ],
-              label: 'Claude Code',
-            }
-  const result = spawnSync(
-    launch.command,
-    launch.args,
-    {
-      stdio: 'inherit',
-      cwd: provider === 'kimi' ? workspace.artifactRoot : process.cwd(),
-      env:
-        provider === 'kimi'
-          ? {
-              ...process.env,
-              SPECRAILS_REPO_DIR: workspace.codeRoot,
-            }
-          : process.env,
-      shell: process.platform === 'win32' && provider !== 'kimi',
-    },
-  )
-  if (result.error) {
-    console.error(
-      `\nFailed to launch ${launch.label} for enrich:`,
-      result.error.message,
-      `\nEnsure the configured ${provider} provider is installed and initialized.\n`,
-    )
-    process.exit(1)
-  }
-  process.exit(result.status ?? (result.error ? 1 : 0))
 }
 
 // ─── init: optional TUI short-circuit ────────────────────────────────────────
@@ -235,7 +156,7 @@ if (subcommand === 'init') {
     }
 
     // TUI succeeded — re-enter init with --from-config so the Node
-    // command reads provider/tier from install-config.yaml.
+    // command reads provider/agents from install-config.yaml.
     const nextArgs = subargs
       .filter((a) => a !== '--no-tui' && a !== '--no-direct')
       .concat(['--yes', '--from-config'])
@@ -272,7 +193,6 @@ Usage:
   specrails-core swap-current --framework-dir <path> --version <value> [--providers <csv>]
                                                                         Validate and atomically expose a framework version
   specrails-core assemble   --workspace <path> --framework-dir <path>   Assemble a workspace from the framework
-  specrails-core enrich     [--provider <value>] [workflow flags]       Run the configured provider's enrich workflow
   specrails-core profile    <validate|show> [<path>]                    Validate or pretty-print a profile JSON
   specrails-core version                                                Show installed version
 

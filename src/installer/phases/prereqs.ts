@@ -66,8 +66,8 @@ export interface PrereqResult {
    * OSS heuristics. Three signals must align for `isOss` to be true:
    * a public GitHub repo (via `gh repo view`), at least one CI workflow
    * file under `.github/workflows/`, and a `CONTRIBUTING.md` at the
-   * repo root or under `.github/`. Surfaced for the downstream
-   * `/specrails:enrich` flow to tailor the persona generation.
+   * repo root or under `.github/`. Surfaced for downstream tooling that
+   * wants to tailor behaviour to open-source projects.
    */
   ossSignals: OssSignals
 }
@@ -207,7 +207,6 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
     ok('OSS project detected (public repo + CI + CONTRIBUTING.md)')
   }
 
-  // 1.8 JIRA CLI — silently skipped when missing (only relevant in enrich).
   return { availability, provider, ossSignals }
 }
 

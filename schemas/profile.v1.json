@@ -43,7 +43,7 @@
       "type": "array",
       "minItems": 1,
       "items": { "$ref": "#/$defs/agentEntry" },
-      "description": "Ordered chain of agents that participate in the pipeline when this profile is active. Every profile (default + custom) must include the baseline trio (sr-architect, sr-developer, sr-reviewer) — the pipeline depends on all three. sr-merge-resolver and every other agent are optional add-ons selected at install time. Custom profiles add optional agents on top of the baseline.",
+      "description": "Ordered chain of agents that participate in the pipeline when this profile is active. Every profile (default + custom) must include the baseline trio (sr-architect, sr-developer, sr-reviewer) — the pipeline depends on all three, and they are the only agents the installer ships. Additional agents are user-authored 'custom-*' agents added on top of the baseline; a profile entry whose agent file does not exist is warned and skipped at run time.",
       "allOf": [
         {
           "description": "Required baseline agent: sr-architect",

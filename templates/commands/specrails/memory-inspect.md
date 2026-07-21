@@ -122,12 +122,14 @@ If `AGENT_FILTER` is set (single-agent mode), show the full content of each file
 
 ## Phase 4: Orphan Detection
 
-An **orphaned** memory directory is one whose agent name does not correspond to a known sr-agent persona.
+An **orphaned** memory directory is one whose agent name does not correspond to a known agent.
 
-Known sr-agent names (check for exact match):
-`sr-architect`, `sr-developer`, `sr-test-writer`, `sr-reviewer`, `sr-frontend-reviewer`, `sr-backend-reviewer`, `sr-security-reviewer`, `sr-doc-sync`, `sr-product-manager`
+Known agent names (check for exact match):
+`sr-architect`, `sr-developer`, `sr-reviewer`
 
-For each directory in `AGENT_DIRS`, check whether its `AGENT_NAME` is in the known list. Collect non-matching directories as `ORPHANED_DIRS`.
+Any directory whose name begins with `custom-` is a user- or profile-owned agent and is **never** orphaned — treat the `custom-` prefix as known.
+
+For each directory in `AGENT_DIRS`, check whether its `AGENT_NAME` is in the known list (or carries the `custom-` prefix). Collect non-matching directories as `ORPHANED_DIRS`.
 
 If `ORPHANED_DIRS` is non-empty, print:
 

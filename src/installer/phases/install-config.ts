@@ -10,9 +10,6 @@ import { pathExists, readTextFile, writeFileLf } from '../util/fs.js'
  */
 export type Provider = 'claude' | 'codex' | 'gemini' | 'kimi'
 
-/** Install tier selected at install time. */
-export type Tier = 'full' | 'quick'
-
 /** Cost / capability preset for the model picker. */
 export type ModelPreset = 'balanced' | 'budget' | 'max'
 
@@ -33,7 +30,6 @@ export interface InstallModelConfig {
 export interface InstallConfig {
   version: 1
   provider: Provider
-  tier?: Tier
   agents: {
     selected: string[]
     excluded?: string[]
@@ -167,9 +163,9 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
     )
   }
 
-  if (doc.tier !== undefined && doc.tier !== 'full' && doc.tier !== 'quick') {
-    errors.push(`unsupported tier '${String(doc.tier)}' (expected: full or quick)`)
-  }
+  // NOTE: a legacy `tier` field (`full`/`quick`) may still be present in pre-v5
+  // configs. It is intentionally ignored (not rejected and not carried forward)
+  // — v5 has no install tiers.
 
   const agents = doc.agents as Record<string, unknown> | undefined
   let selectedAgents: string[] = []
@@ -286,9 +282,6 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
   }
   // NOTE: a legacy `agent_teams` field may still be present in older configs.
   // It is intentionally ignored (not rejected) for backward compatibility.
-  if (doc.tier !== undefined) {
-    result.tier = doc.tier as Tier
-  }
   if (agents?.preset !== undefined) {
     result.agents.preset = agents.preset as ModelPreset
   }

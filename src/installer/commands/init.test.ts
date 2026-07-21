@@ -1,5 +1,6 @@
 import { chmodSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
+import { PassThrough } from 'node:stream'
 import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -7,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { isDir, isSymlink, mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
-import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit } from './init.js'
+import { resetLoggerStreams, setLoggerStreams } from '../util/logger.js'
+import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit, warnUnknownSelectedAgents } from './init.js'
 
 /**
  * Integration-style tests for `runInit`. Uses a real filesystem
@@ -74,7 +76,6 @@ async function setupFakeScriptDir(
     ),
     'js-yaml fixture notice\n',
   )
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
   writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
@@ -155,7 +156,7 @@ describe('runInit', () => {
     }
   }
 
-  it('installs into a fresh git repo on the quick tier', async () => {
+  it('installs the core agents into a fresh git repo', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -169,12 +170,10 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
     expect(result.provider).toBe('claude')
-    expect(result.tier).toBe('quick')
     expect(result.repoRoot).toBe(repoRoot)
 
     // Bundled-framework: the static framework is materialized ONCE under
@@ -228,7 +227,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       y: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
@@ -237,7 +235,7 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
-  it('accepts matching --provider + --from-config from the TUI re-entry flow', async () => {
+  it('reads provider + agents from install-config.yaml (tolerating a legacy tier key) when --from-config is passed', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -257,7 +255,7 @@ describe('runInit', () => {
       ].join('\n'),
     )
 
-    const result = await runInit({
+    await runInit({
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
@@ -265,12 +263,11 @@ describe('runInit', () => {
       relocate: true,
     })
 
-    expect(result.tier).toBe('quick')
     const ws = workspaceFor(repoRoot)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
-    // sr-merge-resolver is optional — not placed unless it appears in agents.selected
+    // Removed v4 agents never exist — only the core trio ships.
     expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
     // NOTE: this test pre-creates repo/.specrails/install-config.yaml (a USER
     // file), so the repo-immutability invariant is asserted in the other tests.
@@ -283,14 +280,7 @@ describe('runInit', () => {
     const repoRoot = path.join(tmpDir, 'repo-codex')
     mkdirp(repoRoot)
     await initRepo(repoRoot)
-    const result = await runInit({
-      'root-dir': repoRoot,
-      yes: true,
-      provider: 'codex',
-      'from-config': true,
-      quick: true,
-      relocate: true,
-    })
+    const result = await runInit({ 'root-dir': repoRoot, yes: true, provider: 'codex', relocate: true })
     expect(result.provider).toBe('codex')
     const ws = workspaceFor(repoRoot)
     // Provider-derived layout: .codex/ + AGENTS.md — under the workspace.
@@ -371,7 +361,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
     })
     expect(result.provider).toBe('claude')
 
@@ -415,7 +404,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
@@ -442,7 +430,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
       relocate: true,
     })
 
@@ -467,7 +454,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'kimi',
-      quick: true,
       relocate: true,
     })
 
@@ -513,7 +499,7 @@ describe('runInit', () => {
     const prevRelocate = process.env.SPECRAILS_RELOCATE
     process.env.SPECRAILS_RELOCATE = '1'
     try {
-      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude', quick: true })
+      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     } finally {
       if (prevRelocate === undefined) delete process.env.SPECRAILS_RELOCATE
       else process.env.SPECRAILS_RELOCATE = prevRelocate
@@ -569,7 +555,6 @@ describe('runInit', () => {
       'root-dir': repoRoot,
       yes: true,
       provider: 'claude',
-      quick: true,
     })
 
     expect(pathExists(path.join(repoRoot, 'openspec', 'changes', 'archive'))).toBe(true)
@@ -627,7 +612,6 @@ describe('runInit', () => {
         'root-dir': repoRoot,
         yes: true,
         provider: 'kimi',
-        quick: true,
       })
 
       expect(result.provider).toBe('kimi')
@@ -652,4 +636,39 @@ describe('runInit', () => {
       expect(manifest.primary_provider).toBe('kimi')
     },
   )
+})
+
+describe('warnUnknownSelectedAgents', () => {
+  const capture = (): { lines: string[]; restore: () => void } => {
+    const lines: string[] = []
+    const sink = new PassThrough()
+    sink.on('data', (chunk: Buffer) => lines.push(chunk.toString()))
+    setLoggerStreams({ out: sink, err: sink })
+    return { lines, restore: () => resetLoggerStreams() }
+  }
+
+  it('warns for each selected agent that no longer ships', () => {
+    const { lines, restore } = capture()
+    try {
+      warnUnknownSelectedAgents(['sr-architect', 'sr-frontend-developer', 'sr-test-writer'])
+    } finally {
+      restore()
+    }
+    const out = lines.join('')
+    expect(out).toContain(`'sr-frontend-developer'`)
+    expect(out).toContain(`'sr-test-writer'`)
+    expect(out).toContain('removed in v5')
+    expect(out).not.toContain(`'sr-architect'`)
+  })
+
+  it('is silent for the core trio and for undefined', () => {
+    const { lines, restore } = capture()
+    try {
+      warnUnknownSelectedAgents(['sr-architect', 'sr-developer', 'sr-reviewer'])
+      warnUnknownSelectedAgents(undefined)
+    } finally {
+      restore()
+    }
+    expect(lines.join('')).toBe('')
+  })
 })

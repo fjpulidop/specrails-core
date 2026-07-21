@@ -36,11 +36,10 @@ describe('manifest', () => {
       writeFileLf(path.join(scriptDir, 'templates', 'rules', 'r.md'), 'rule')
       writeFileLf(path.join(scriptDir, 'templates', 'node_modules', 'should-skip.txt'), 'x')
       writeFileLf(path.join(scriptDir, 'templates', 'package-lock.json'), '{}')
-      writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
       writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
     }
 
-    it('lists every template file plus the two bundled commands', () => {
+    it('lists every template file plus the bundled doctor command', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
       setupFakePackage(scriptDir)
@@ -56,7 +55,6 @@ describe('manifest', () => {
       expect(manifest.installed_at).toBe('2026-01-01T00:00:00Z')
       expect(Object.keys(manifest.artifacts)).toEqual([
         'commands/specrails/doctor.md',
-        'commands/specrails/enrich.md',
         'templates/agents/a.md',
         'templates/agents/b.md',
         'templates/rules/r.md',

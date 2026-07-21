@@ -203,9 +203,7 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
   } else {
     addFail(
       `${instructionsFile}: missing`,
-      provider !== 'claude'
-        ? 'Run specrails-core init to regenerate the provider instructions.'
-        : 'Run /specrails:enrich inside Claude Code to regenerate.',
+      'Run npx specrails-core update to regenerate.',
     )
   }
 
@@ -252,8 +250,8 @@ export async function runDoctor(flags: DoctorFlags = {}): Promise<DoctorResult> 
     info(
       `All ${passed + failed} checks passed. Run ${
         provider === 'kimi'
-          ? '/skill:specrails-get-backlog-specs'
-          : '/specrails:get-backlog-specs'
+          ? '/skill:specrails-implement'
+          : '/specrails:implement'
       } to get started.`,
     )
   } else {
