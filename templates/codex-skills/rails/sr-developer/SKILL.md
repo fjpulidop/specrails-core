@@ -72,9 +72,10 @@ note it in your reply — do not block on the architect.
    a. **RED — write the failing test (step N.1).**
       - Open the test file the task names. Create it if missing.
       - Add the test asserting the behaviour the task names.
-      - Run the test runner. The new test MUST fail. If it
-        unexpectedly passes, your test is wrong (it isn't
-        actually asserting the new behaviour) — rewrite it.
+      - Run **only that test file** (scoped run — e.g.
+        `npx vitest run <file>`, `pytest <file>`). The new test
+        MUST fail. If it unexpectedly passes, your test is wrong
+        (it isn't actually asserting the new behaviour) — rewrite it.
       - Tick `- [x] N.1` in `tasks.md` only when you have
         observed the test fail.
 
@@ -83,15 +84,23 @@ note it in your reply — do not block on the architect.
         modify it.
       - Write the minimum code to make the failing test pass.
         Resist adding code unrelated to the test.
-      - Run the test runner. ALL tests must pass — the new
-        one AND every prior one.
+      - Re-run **only that test file**. It must pass.
       - Tick `- [x] N.2`.
 
    c. **REFACTOR — clean up (step N.3, if present).**
       - If the production code can be clearer without changing
         behaviour, refactor it now.
-      - Re-run the test runner. All tests still pass.
+      - Re-run the test files covering the files you touched.
+        Still green.
       - Tick `- [x] N.3`.
+
+   **Test-execution economy (MANDATORY):** the full project
+   suite runs exactly ONCE — at the validation gate below.
+   Never run it inside a task cycle. When a scoped run fails,
+   carry forward only the failing test names and the relevant
+   error excerpt (≤50 lines), never a full runner log. If you
+   run the same command 3 times with no intervening code
+   change, STOP re-running and change the code or the test.
 
 3. **Honour the design's invariants and edge cases.** When the
    design's `Public API / surface` says a function takes `(x, y)`
@@ -115,15 +124,21 @@ The final task block in `tasks.md` is always the validation gate
 (`## N. Validation gate`). Run it:
 
 - Full project test suite (e.g. `npm test`, `pytest`,
-  `cargo test`). MUST pass.
+  `cargo test`). MUST pass. This is the ONE full-suite run
+  of your phase.
 - Project build if present (e.g. `npm run build`,
   `cargo build`). MUST succeed.
 - A grep for debug breadcrumbs (`console.log`, `print(`, etc.)
   in the files you touched — none should remain.
 
-If the gate fails, the offending file is your responsibility:
-fix it before handing off. Do not push the gate problem onto
-the reviewer.
+If the gate fails, the offending file is your responsibility.
+Fix it, re-running **only the failing test files** between
+fixes — you have a budget of 2 fix cycles, then ONE final
+full-suite run to confirm. If failures persist after that,
+reply `"BLOCKED: validation gate failing — <failing tests,
+verbatim>"` and end your turn. Never keep looping, never
+weaken or skip tests to force green, never hand a known
+failure silently to the reviewer.
 
 ## What you must NOT do
 

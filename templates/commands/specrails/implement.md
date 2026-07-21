@@ -271,6 +271,7 @@ Before parsing input, scan `$ARGUMENTS` for control flags:
 - If `--confidence-override "<reason>"` is present in `$ARGUMENTS`:
   - Set `CONFIDENCE_OVERRIDE_REASON=<reason>` (the quoted string immediately following `--confidence-override`)
   - Strip `--confidence-override` and the reason before further parsing.
+  - The one flag bypasses BOTH confidence gates: the architect's design-confidence gate (Phase 3a.3) and the reviewer's score gate (Phase 4b-conf).
 
 If none of these flags is present: `DRY_RUN=false`, `APPLY_MODE=false`, `CONFIDENCE_OVERRIDE_REASON=""`. Pipeline runs as normal.
 
@@ -545,6 +546,42 @@ Quick-check each architect's artifacts:
 
 **Pipeline state:** update `architect` → `done`. If any architect agent failed (skipped area): update `architect` → `failed` with error context `"sr-architect failed for: <area-names>"`.
 
+### 3a.3 Design confidence gate
+
+Implementation is the expensive phase — it only runs on designs the architect actually trusts. For each feature, read:
+
+```
+${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/design-confidence.json
+```
+
+- **File missing** (pre-gate architect output): print `[design-confidence] Warning: design-confidence.json not found for <name>. Proceeding without gate.` and continue — backward compatible.
+- **`confidence: "high"` or `"medium"`**: print `[design-confidence] <name>: <level>. Proceeding.` and continue to Phase 3b.
+- **`confidence: "low"`**:
+  - If `CONFIDENCE_OVERRIDE_REASON` is non-empty: print `[design-confidence] Override accepted for <name>. Reason: <CONFIDENCE_OVERRIDE_REASON>. Proceeding.` and continue.
+  - Otherwise **HALT this feature before any implementation cost is paid.** Print:
+
+    ```
+    ## Design Confidence Gate: BLOCKED — <name>
+
+    The architect could not form a confident design.
+
+    **Reason:** <reason>
+
+    **Blocking question:** <blocking_question>
+
+    ### Next Steps
+    1. Answer the question above (edit the ticket description or refine the spec), then re-run `/specrails:implement`.
+    2. Or, to accept the risk and implement the architect's best interpretation:
+       `/specrails:implement #N --confidence-override "reason"`
+
+    No implementation, git, or backlog operations were performed for this feature.
+    ```
+
+  - **Pipeline state:** `developer` → `skipped`, `failed_phase` = `architect`, `error_context` = `"design confidence low: <blocking_question>"`.
+  - In multi-feature mode, a `low` on one feature halts only that feature — the others continue normally. Halted features appear in the Phase 4e report with Status `BLOCKED (confidence)`.
+
+The OpenSpec artifacts the architect produced are intentionally left in place — the answered question turns them into a resumable starting point, not waste.
+
 ## Phase 3b: Implement
 
 ### Pre-flight: Verify Bash permission
@@ -554,6 +591,8 @@ Before launching any developer agent, run a trivial Bash command to confirm Bash
 ### Launch developers
 
 **Read reviewer learnings:** Check `.claude/agent-memory/sr-reviewer/common-fixes.md` and include in developer prompts.
+
+**Test-execution economy:** every developer prompt MUST include this reminder: *"Per-task test runs are SCOPED to the test file(s) the task touches. The full suite runs exactly once, at your validation gate. The reviewer owns the pipeline's authoritative full CI run."*
 
 #### Dry-Run: Redirect developer writes
 

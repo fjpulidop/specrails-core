@@ -112,9 +112,9 @@ After running CI checks, also review for:
 
 ## Workflow
 
-1. **Run all CI checks** (all layers, in the exact order CI runs them)
-2. **If anything fails**: Fix it, then re-run ALL checks from scratch (not just the failing one)
-3. **Repeat** up to 3 fix-and-verify cycles
+1. **Run all CI checks** (all layers, in the exact order CI runs them) — this is the pipeline's authoritative full run
+2. **If anything fails**: Fix it, then re-run **only the failed check, scoped to the failing files** where the runner supports it (`npx vitest run <file>`, `pytest <file>`, lint on the changed files). Do NOT re-run the entire ordered list after every individual fix
+3. **Repeat** up to 3 fix-and-verify cycles, then re-run the **full ordered check list ONE final time** to confirm everything passes together
 4. **Report** a summary of what passed, what failed, and what you fixed
 5. **Task Completion Gate** — Before archiving, verify all tasks are complete:
    - Read `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/tasks.md`
@@ -214,6 +214,9 @@ The `SECURITY_STATUS:` line is MANDATORY and machine-parsed by the orchestrator 
 
 - Never ask for clarification. Fix issues autonomously.
 - Always run ALL checks, even if you think nothing changed in a layer.
+- **Output economy**: when a check fails, carry forward only the failing test/rule names and the relevant error excerpt (≤50 lines) — never re-paste a full runner log into your reasoning.
+- **File re-read discipline**: a file you already read is in your context. Before reading it again, state in one sentence what you already learned from it — re-read only if it changed.
+- **Loop detection**: the same command run 3 times with no intervening code change and inconsistent results means STOP — reassess instead of re-running.
 - When fixing lint errors, understand the rule before applying a fix — don't just suppress with disable comments.
 - If a test fails, read the test AND the implementation to understand the root cause before fixing.
 - Attempt to fix High-severity findings that are straightforward (e.g., adding a missing `alt` attribute, adding a missing `LIMIT` to a query). Flag Critical or architecturally complex findings for human review — do NOT attempt to fix them automatically.

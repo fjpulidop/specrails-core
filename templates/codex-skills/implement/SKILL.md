@@ -129,6 +129,22 @@ If the architect replied with `BLOCKED: …`, stop the pipeline,
 write that reason into the final report, and exit without
 updating the ticket.
 
+**Design confidence gate.** Read
+`${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/design-confidence.json`
+(the architect writes it as part of its skill). File missing →
+warn and proceed (backward compatible). `high`/`medium` →
+proceed. `low` → **STOP before Phase 2** — implementation is the
+expensive phase and must not run on an unconfident design.
+Report:
+
+> `BLOCKED: design confidence low — <blocking_question>`
+>
+> Answer the question (edit the ticket description), then re-run
+> `$implement #N`. The OpenSpec artifacts are left in place as a
+> resumable starting point.
+
+Do NOT update the ticket, do NOT spawn the developer.
+
 ### 2. Phase 2 — Developer
 
 There is one developer rail. Unless an active profile routes the

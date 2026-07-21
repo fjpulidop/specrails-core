@@ -143,12 +143,13 @@ the table.
 
 ## 1. <First testable behaviour>
 - [ ] 1.1 Write a failing test in `<test-path>` that asserts
-       <behaviour>. Run the test runner; the new test MUST fail.
+       <behaviour>. Run that test file (scoped); the new test
+       MUST fail.
 - [ ] 1.2 Implement the minimum production code in `<src-path>`
-       to make the test pass. Run the test runner; ALL tests
-       MUST pass.
-- [ ] 1.3 Refactor if needed without changing behaviour. Run
-       the test runner; all tests still pass.
+       to make the test pass. Re-run that test file (scoped);
+       it MUST pass.
+- [ ] 1.3 Refactor if needed without changing behaviour. Re-run
+       the test files covering the touched files; still green.
 
 ## 2. <Next testable behaviour>
 - [ ] 2.1 Write a failing test...
@@ -260,13 +261,36 @@ written:
    If validation reports structural errors, fix the offending
    artefact and re-run until it passes. Do not hand off a change
    that fails `openspec validate`.
-2. Reply with two lines:
+2. **Emit design confidence** (mandatory). Write
+   `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<slug>/design-confidence.json`:
+   ```json
+   {
+     "schema_version": "1",
+     "change": "<slug>",
+     "agent": "architect",
+     "scored_at": "<ISO 8601>",
+     "confidence": "high | medium | low",
+     "reason": "<1-2 concrete sentences>",
+     "blocking_question": "<one focused question when low, else null>"
+   }
+   ```
+   Rubric — **high**: evidence conclusive, exact files/identifiers
+   located, design unambiguous. **medium**: likely correct but one
+   non-obvious assumption remains (name it in `reason`). **low**:
+   multiple plausible designs and you cannot choose without
+   information you don't have — `blocking_question` is the SINGLE
+   most blocking unknown, phrased so a human can answer it. Never
+   inflate: a `low` with a sharp question is a successful output —
+   it saves the whole implementation cost of building the wrong
+   thing.
+3. Reply with three lines:
    ```
    OpenSpec change: openspec/changes/<slug>/
    Plan written to <plan-path>; files to touch: <comma-separated list>
+   Design confidence: <high|medium|low>[ — blocking question: <question>]
    ```
-3. End your turn. The orchestrator will read your plan + the
-   tasks.md and spawn the developer next.
+4. End your turn. The orchestrator will read your plan + the
+   tasks.md and spawn the developer next (or halt on `low`).
 
 If you cannot produce a plan (ticket is too ambiguous, repo
 state is corrupt, etc.), instead reply with:

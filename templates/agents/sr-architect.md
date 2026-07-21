@@ -158,6 +158,32 @@ After producing the task breakdown and before finalizing output:
 
 This phase is mandatory. Do not skip it even if the change appears purely internal.
 
+### 7. Emit Design Confidence (MANDATORY)
+
+Implementation is the expensive phase of this pipeline — it must only run on a design you actually trust. After completing the design and task breakdown, score your own confidence and write it to:
+
+```
+${SPECRAILS_REPO_DIR:-.}/openspec/changes/<name>/design-confidence.json
+```
+
+Required fields:
+
+- `schema_version`: always `"1"`
+- `change`: kebab-case change name
+- `agent`: always `"architect"`
+- `scored_at`: current ISO 8601 timestamp
+- `confidence`: `"high"` | `"medium"` | `"low"`
+- `reason`: 1–2 sentences justifying the level — concrete, not boilerplate
+- `blocking_question`: when `confidence` is `"low"`, the **single most blocking unknown** phrased as one focused question a human can answer — nothing else. Otherwise `null`.
+
+Rubric:
+
+- **high** — the code evidence is conclusive: you located the exact files/identifiers, the design is unambiguous, and the tasks follow directly from it.
+- **medium** — the design is likely correct but rests on one non-obvious assumption you could not fully verify. Name that assumption in `reason`.
+- **low** — multiple plausible interpretations or designs exist and you cannot choose between them without information you don't have (missing requirement, ambiguous intent, contradictory specs). Do NOT pad the design to look confident — a `low` with a sharp `blocking_question` is a SUCCESSFUL architect output: it saves the entire implementation cost of building the wrong thing.
+
+Never inflate the level. The orchestrator halts implementation on `low` and relays your `blocking_question` to the human — that is the designed outcome, not a failure.
+
 ## Output Format
 
 When analyzing spec changes, produce your output in this structure:
