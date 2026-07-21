@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.0.0](https://github.com/fjpulidop/specrails-core/compare/v4.12.0...v5.0.0) (2026-07-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* simplify-core v5 + pipeline cost economy ([#331](https://github.com/fjpulidop/specrails-core/issues/331))
+
+### Features
+
+* simplify-core v5 + pipeline cost economy ([#331](https://github.com/fjpulidop/specrails-core/issues/331)) ([b8d9ca7](https://github.com/fjpulidop/specrails-core/commit/b8d9ca7387db6735c593043abd74ddbb77f9aacd))
+
 ## [4.12.0](https://github.com/fjpulidop/specrails-core/compare/v4.11.3...v4.12.0) (2026-07-20)
 
 
