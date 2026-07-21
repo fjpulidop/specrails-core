@@ -823,7 +823,6 @@ describe('Kimi scaffold', () => {
       codeRoot: repoRoot,
       provider: 'kimi',
       providerDir: '.kimi-code',
-      tier: 'quick',
     })
 
     const workflow = readTextFile(
@@ -1190,7 +1189,6 @@ describe('Kimi scaffold', () => {
       codeRoot: repoRoot,
       provider: 'kimi',
       providerDir: '.kimi-code',
-      tier: 'quick',
       materializeAllAgents: true,
     })
 
