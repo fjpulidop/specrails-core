@@ -1,12 +1,8 @@
 # Installation
 
-Install SpecRails into any git repository in two steps: install, then run `/specrails:enrich` inside your AI CLI.
-
-> ## 🧪 Codex (OpenAI) Support — Coming Soon (in Lab)
->
-> OpenAI Codex integration is currently being **tested in our lab** and **cannot be installed yet**. The installer will refuse any attempt to install with `--provider codex` and will guide you to use Claude Code. Codex-specific sections below describe the **planned behaviour** for when the feature ships.
-
-SpecRails supports **Claude Code** today, with **OpenAI Codex** coming soon. The installer detects which CLI you have and configures accordingly. See [Codex vs Claude Code](codex-vs-claude-code.md) for a feature comparison of the upcoming Codex support.
+Install SpecRails into any git repository in two steps: install, then run the
+provider-native enrich workflow. The scaffold supports Claude Code, Codex CLI,
+Gemini CLI, and Kimi Code.
 
 > **Looking for the comprehensive reference?** See [Installation & Setup](../installation.md) for full wizard phase details and advanced configuration.
 
@@ -21,12 +17,12 @@ SpecRails supports **Claude Code** today, with **OpenAI Codex** coming soon. The
 
 No Node.js required.
 
-### Scaffold method (npx / Codex)
+### Scaffold method (npx / any provider)
 
 | Tool | Version | Notes |
 |------|---------|-------|
-| **Node.js** | 18+ | Required for the installer |
-| **Claude Code** or **Codex CLI** | Latest | See [Codex vs Claude Code](codex-vs-claude-code.md) |
+| **Node.js** | 20.19.0+ | Required for the installer and pinned OpenSpec 1.4.1 CLI |
+| **Supported AI CLI** | Latest compatible version | Claude Code, Codex, Gemini, or Kimi 0.27.0+ |
 | **Git** | Any | Your project must be a git repository |
 
 Optional but recommended (both methods):
@@ -47,7 +43,7 @@ No cloning, no npm, nothing else. The plugin is now ready in all your Claude Cod
 
 To update later: `claude plugin update sr`
 
-### Scaffold method (Claude Code or Codex)
+### Scaffold method (Claude, Codex, Gemini, or Kimi)
 
 Run from inside your project directory:
 
@@ -56,7 +52,8 @@ cd your-project
 npx specrails-core@latest init --root-dir .
 ```
 
-The installer copies templates and commands into `.claude/` (Claude Code) or `.codex/` (Codex). It does not modify your existing code.
+The installer copies provider-native artifacts into `.claude/`, `.codex/`,
+`.gemini/`, or `.kimi-code/`. It does not modify your application source.
 
 #### Flags
 
@@ -64,7 +61,7 @@ The installer copies templates and commands into `.claude/` (Claude Code) or `.c
 |------|--------|
 | `--root-dir <path>` | Target directory (default: current directory) |
 | `--yes` / `-y` | Skip confirmation prompts |
-| `--provider <claude\|codex>` | Force a specific AI CLI (default: auto-detect) |
+| `--provider <claude\|codex\|gemini\|kimi>` | Force a specific AI CLI (default: auto-detect) |
 
 #### What gets installed (scaffold method)
 
@@ -80,9 +77,35 @@ your-project/
     └── settings.json             # Permissions
 ```
 
+**Kimi Code:**
+
+```text
+your-project/
+└── .kimi-code/
+    ├── AGENTS.md
+    ├── mcp.json
+    ├── personas/
+    ├── rules/
+    ├── specrails/
+    │   ├── run-skill.mjs
+    │   └── vendor/js-yaml/       # Managed parser + MIT license/provenance
+    └── skills/
+        ├── specrails-*/SKILL.md
+        ├── openspec-*/SKILL.md
+        └── sr-*/SKILL.md
+```
+
+Kimi discovers only direct children of `.kimi-code/skills`, so workflows,
+OpenSpec skills, managed `sr-*` roles, and user `custom-*` roles all live at
+that level rather than inside a `rails/` grouping directory. Non-skill persona
+data and the managed headless runner live outside the scanner root.
+
+See [Getting Started with Kimi](getting-started-kimi.md) for installation,
+login, models, effort, sessions, and headless execution details.
+
 **Codex (beta):**
 
-```
+```text
 your-project/
 ├── AGENTS.md                     # SpecRails agent instructions for Codex
 └── .codex/
@@ -102,10 +125,22 @@ After either installation method, open your AI CLI in your project and run:
 claude    # Claude Code
 # or
 codex     # Codex
+# or
+gemini    # Gemini CLI
+# or
+kimi      # Kimi Code
 ```
+
+Claude and Gemini:
 
 ```
 /specrails:enrich
+```
+
+Kimi:
+
+```text
+/skill:specrails-enrich
 ```
 
 By default, `/specrails:enrich` runs the full 5-phase wizard:

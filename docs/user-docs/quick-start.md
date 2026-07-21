@@ -2,12 +2,10 @@
 
 Get SpecRails running in your project in under 10 minutes.
 
-> **🧪 Using OpenAI Codex? — Coming Soon (in Lab).** Codex support is currently being tested in our lab and is not yet available for installation. The installer will refuse Codex installs and guide you to Claude Code. See the [Codex getting started guide](getting-started-codex.md) for a preview of the planned setup.
-
 ## Before you begin
 
 You need:
-- **Claude Code** — install from [docs.anthropic.com/en/docs/claude-code](https://docs.anthropic.com/en/docs/claude-code)
+- **One supported AI CLI** — Claude Code, Codex CLI, Gemini CLI, or Kimi Code
 - **A git repository** — your project must have a `.git` directory
 
 Optional:
@@ -21,7 +19,7 @@ Optional:
 claude plugin install sr
 ```
 
-### Scaffold method (if you need Node.js / Codex)
+### Scaffold method (all providers; requires Node.js)
 
 ```bash
 npx specrails-core@latest init --root-dir .
@@ -31,17 +29,22 @@ Your existing code is not touched by either method.
 
 ## Step 2: Run the enrich wizard
 
-Open Claude Code in your project:
+Open the selected provider in your project. For example:
 
 ```bash
-claude
+kimi
 ```
 
-Then run:
+Then activate enrich using that provider's syntax:
 
 ```
-/specrails:enrich
+/specrails:enrich              # Claude or Gemini
+/skill:specrails-enrich        # Kimi interactive TUI
 ```
+
+Codex activates the generated enrich skill from `.codex/skills/`. For provider
+details and headless Kimi usage, see the [installation guide](installation.md)
+and [Kimi guide](getting-started-kimi.md).
 
 The wizard runs the full 5-phase setup (about 5 minutes). It analyzes your codebase and configures SpecRails for your specific project:
 

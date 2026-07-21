@@ -1,7 +1,5 @@
 # Deployment
 
-> **🧪 Codex (OpenAI) Support — Coming Soon (in Lab).** Any Codex-specific option or step below describes the planned behaviour. Codex installation is currently disabled; the installer will guide you to Claude Code instead.
-
 SpecRails runs locally — no cloud infrastructure required. Choose the setup that fits your workflow.
 
 ## Options at a glance
@@ -9,7 +7,7 @@ SpecRails runs locally — no cloud infrastructure required. Choose the setup th
 | Option | Best for | Setup time |
 |--------|----------|------------|
 | [Plugin](#plugin-recommended) | Quick start, individual developers | ~1 minute |
-| [Local (npx)](#local-npx) | Scaffold/Codex, full offline control | ~2 minutes |
+| [Local (npx)](#local-npx) | Any supported provider, full offline control | ~2 minutes |
 | [Local (git clone)](#local-git-clone) | Customization, contributing | ~5 minutes |
 | [Docker](#docker) | Reproducible environments, teams | ~5 minutes |
 | [CI/CD](#cicd-github-actions) | Automated workflows, GitHub Actions | ~10 minutes |
@@ -31,7 +29,8 @@ claude plugin install sr
 
 ## Local — npx
 
-For Codex users or when you need full control over agent files.
+For Claude Code, Codex CLI, Gemini CLI, or Kimi Code users who need full
+control over agent files.
 
 ```bash
 npx specrails-core@latest init --root-dir .
@@ -43,7 +42,7 @@ This will:
 
 After install, open Claude Code or Codex and run `/specrails:setup` to configure.
 
-**Requirements:** Node.js ≥18, Claude Code or Codex CLI
+**Requirements:** Node.js ≥20.19.0 and one supported AI CLI
 
 ---
 
@@ -147,7 +146,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19.0'
 
       - name: Install SpecRails
         run: npm install -g specrails
@@ -180,7 +179,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '20.19.0'
 
       - name: Install SpecRails
         run: npm install -g specrails

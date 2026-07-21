@@ -15,6 +15,8 @@ describe('paths', () => {
     it('contains the documented reserved prefixes', () => {
       expect(RESERVED_PATHS).toContain('.specrails/profiles/')
       expect(RESERVED_PATHS).toContain('.claude/agents/custom-')
+      expect(RESERVED_PATHS).toContain('.kimi-code/skills/custom-')
+      expect(RESERVED_PATHS).toContain('.kimi-code/skills/rails/custom-')
     })
   })
 
@@ -27,10 +29,21 @@ describe('paths', () => {
     it('matches custom-* agent files', () => {
       expect(isReservedPath('.claude/agents/custom-foo.md')).toBe(true)
       expect(isReservedPath('.claude\\agents\\custom-bar.md')).toBe(true)
+      expect(isReservedPath('.kimi-code/skills/custom-auditor/SKILL.md')).toBe(true)
+      expect(isReservedPath('.kimi-code\\skills\\custom-auditor\\SKILL.md')).toBe(true)
+      expect(isReservedPath('.kimi-code/skills/rails/custom-auditor/SKILL.md')).toBe(true)
+      expect(isReservedPath('.kimi-code\\skills\\rails\\custom-auditor\\SKILL.md')).toBe(true)
     })
 
     it('does not match bundled sr-* agents', () => {
       expect(isReservedPath('.claude/agents/sr-architect.md')).toBe(false)
+      expect(isReservedPath('.kimi-code/skills/sr-architect/SKILL.md')).toBe(false)
+      expect(isReservedPath('.kimi-code/specrails/run-skill.mjs')).toBe(false)
+      expect(
+        isReservedPath(
+          '.kimi-code/specrails/vendor/js-yaml/js-yaml.mjs',
+        ),
+      ).toBe(false)
     })
 
     it('does not match other .specrails subtrees', () => {

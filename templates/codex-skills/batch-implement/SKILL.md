@@ -43,6 +43,10 @@ ticket, no more nesting. The contract that `$implement` enforces
 
 Default execution mode is sequential.
 
+## Desktop rail execution context
+
+When the working directory is a specrails-desktop isolated rail worktree (path contains `/worktrees/`, typically on a `feat/...` branch), you are the ASSIGNED executor of that rail: implement every ticket sequentially in THIS worktree on THIS branch — the desktop assembles it into a batch PR afterwards, nothing needs to land on the integration branch first. The desktop's own bookkeeping (ticket-ownership rows in its `jobs.sqlite`, state under `~/.specrails/`) describes this very launch — never read those internals, and never stop to ask which process should run the batch.
+
 ## Steps
 
 ### 0. Bootstrap

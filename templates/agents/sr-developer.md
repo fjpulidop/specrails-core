@@ -142,7 +142,7 @@ This gate is non-negotiable. Phase 4 is unreachable until every checkbox in task
 
 1. **RED** — Write a failing test that describes the expected behavior. Run **only that test file** (scoped run). Confirm it fails for the right reason.
 2. **GREEN** — Write the minimum production code to make the test pass. Re-run **only that test file**. Confirm it passes.
-3. **REFACTOR** — Clean up the code while keeping tests green. Re-run **the test files covering the files you touched** — not the whole suite.
+3. **REFACTOR** — Clean up the code while keeping tests green. Re-run **the test files covering the files you touched** — not the whole suite. The full suite runs exactly once, in Phase 4 — running it after every task multiplies wall-clock time without catching anything Phase 4 won't.
 
 ## Test-Execution Economy (MANDATORY)
 
@@ -181,6 +181,8 @@ Follow the project architecture strictly:
 **Prerequisite: Phase 4 is only reachable if the Phase 3 checkbox verification gate passed** — meaning every task in `${SPECRAILS_REPO_DIR:-.}/openspec/changes/<specName>/tasks.md` is marked `- [x]`. If any `- [ ]` items remain, return to Phase 3.
 
 **All tests MUST pass before you hand off to the reviewer. This is a hard gate — do not hand off with known failures.**
+
+This phase is the pipeline's **single full verification pass** — the inner TDD loop stayed scoped precisely so this one can be exhaustive.
 
 - Run the **full CI-equivalent verification suite** (see below) — this is the ONE full-suite run of your phase
 - If anything fails: fix it, then re-run **only the failing test files / failing check** — not the whole suite

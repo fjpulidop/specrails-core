@@ -7,6 +7,10 @@ import { pathExists, readTextFile } from '../util/fs.js'
 
 import { type Provider } from '../phases/provider-detect.js'
 import { derivedPaths } from '../phases/provider-detect.js'
+import {
+  assertFrameworkVersionComplete,
+  resolveRequiredFrameworkProviders,
+} from '../phases/framework-lifecycle.js'
 import { assembleProjectWorkspace, ensureCurrentSymlink } from '../phases/scaffold.js'
 import { ensureFramework } from './init.js'
 
@@ -38,6 +42,11 @@ export interface InstallFrameworkFlags {
 export interface SwapCurrentFlags {
   'framework-dir'?: string | boolean
   version?: string | boolean
+  /**
+   * Comma-separated provider set the caller materialized for this transition.
+   * The swap validator unions it with globally registered/current providers.
+   */
+  providers?: string | boolean
 }
 
 export interface AssembleFlags {
@@ -62,6 +71,8 @@ export interface InstallFrameworkOutcome {
 export interface SwapCurrentOutcome {
   frameworkDir: string
   version: string
+  /** Complete provider set validated before the pointer was moved. */
+  providers: Provider[]
 }
 
 export interface AssembleOutcome {
@@ -80,12 +91,55 @@ function requireString(value: string | boolean | undefined, flagName: string): s
   return value
 }
 
+const SAFE_FRAMEWORK_VERSION = /^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$/
+
+/**
+ * Framework versions become directory names under the shared framework store.
+ * Keep this deliberately narrower than an arbitrary path segment so a version
+ * accepted on POSIX remains safe when the same registry/store is consumed on
+ * Windows. It accepts normal semver, prerelease, and build identifiers while
+ * rejecting separators, dot segments, controls, and traversal payloads.
+ */
+function parseFrameworkVersion(value: string | boolean | undefined): string {
+  const version = requireString(value, 'version')
+  if (
+    version === '.' ||
+    version === '..' ||
+    version.includes('\0') ||
+    !SAFE_FRAMEWORK_VERSION.test(version)
+  ) {
+    throw new InstallerError(
+      `--version must be a safe framework version identifier, got: ${JSON.stringify(version)}`,
+      40,
+    )
+  }
+  return version
+}
+
 function parseProvider(value: string | boolean | undefined): Provider {
   const v = requireString(value, 'provider')
-  if (v !== 'claude' && v !== 'codex' && v !== 'gemini') {
-    throw new InstallerError(`--provider value must be 'claude', 'codex', or 'gemini', got: ${v}`, 40)
+  if (v !== 'claude' && v !== 'codex' && v !== 'gemini' && v !== 'kimi') {
+    throw new InstallerError(
+      `--provider value must be 'claude', 'codex', 'gemini', or 'kimi', got: ${v}`,
+      40,
+    )
   }
   return v
+}
+
+function parseProviders(value: string | boolean | undefined): Provider[] {
+  if (value === undefined) return []
+  const raw = requireString(value, 'providers')
+  const providers: Provider[] = []
+  for (const item of raw.split(',')) {
+    const provider = item.trim()
+    if (provider.length === 0) continue
+    providers.push(parseProvider(provider))
+  }
+  if (providers.length === 0) {
+    throw new InstallerError('--providers must contain at least one provider', 40)
+  }
+  return [...new Set(providers)]
 }
 
 /**
@@ -113,7 +167,7 @@ export async function runInstallFramework(
   const scriptDir = resolveScriptDir()
   const frameworkDir = path.resolve(requireString(flags['framework-dir'], 'framework-dir'))
   const provider = parseProvider(flags.provider)
-  const version = requireString(flags.version, 'version')
+  const version = parseFrameworkVersion(flags.version)
   const { providerDir } = derivedPaths(provider)
 
   const swapCurrent = flags['no-swap'] !== true
@@ -143,11 +197,18 @@ export async function runInstallFramework(
  */
 export async function runSwapCurrent(flags: SwapCurrentFlags): Promise<SwapCurrentOutcome> {
   const frameworkDir = path.resolve(requireString(flags['framework-dir'], 'framework-dir'))
-  const version = requireString(flags.version, 'version')
+  const version = parseFrameworkVersion(flags.version)
+  const requested = parseProviders(flags.providers)
+  const required = resolveRequiredFrameworkProviders({
+    frameworkDir,
+    requested,
+    registryHome: process.env.SPECRAILS_REGISTRY_HOME,
+  })
   step(`Swapping framework current → ${version} (${frameworkDir})`)
+  const providers = assertFrameworkVersionComplete(frameworkDir, version, required)
   ensureCurrentSymlink(frameworkDir, version)
-  ok(`current → ${version}`)
-  return { frameworkDir, version }
+  ok(`current → ${version} (${providers.join(', ')})`)
+  return { frameworkDir, version, providers }
 }
 
 /**
@@ -160,7 +221,7 @@ export async function runAssemble(flags: AssembleFlags): Promise<AssembleOutcome
   const workspace = path.resolve(requireString(flags.workspace, 'workspace'))
   const frameworkDir = path.resolve(requireString(flags['framework-dir'], 'framework-dir'))
   const provider = parseProvider(flags.provider)
-  const version = requireString(flags.version, 'version')
+  const version = parseFrameworkVersion(flags.version)
   const codeRoot = path.resolve(requireString(flags['code-root'], 'code-root'))
   const { providerDir } = derivedPaths(provider)
 

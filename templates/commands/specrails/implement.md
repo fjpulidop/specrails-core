@@ -862,7 +862,7 @@ Construct the reviewer's invocation prompt with:
 - `PIPELINE_CONTEXT`: a brief description of what was implemented
 - `MERGE_REPORT`: any files still in `requires_resolution` (multi-feature runs)
 - The security-exemptions config path: `.claude/security-exemptions.yaml` (if present)
-- Full CI commands
+- Full CI commands (reference material for its scoped-first verification policy — the reviewer runs diff-scoped tests plus fast static checks, escalating to one full pass only when its own fixes warrant it; the developer's Phase 4 full pass is the baseline)
 - Cross-feature merge issue checks
 - Instruction to record learnings to `common-fixes.md`
 - Instruction to archive completed changes via OpenSpec

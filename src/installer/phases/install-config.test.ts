@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -9,6 +9,7 @@ import {
   CONFIG_RELATIVE_PATH,
   InvalidConfigError,
   loadInstallConfig,
+  resolveProviderModelConfig,
   resolveConfigPath,
   validateInstallConfig,
   writeInstallConfig,
@@ -60,6 +61,152 @@ describe('install-config', () => {
       expect(result.provider).toBe('gemini')
     })
 
+    it('accepts kimi as a valid provider', () => {
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'kimi',
+        agents: { selected: ['sr-architect'] },
+      })
+      expect(result.provider).toBe('kimi')
+      expect(result.models).toEqual({
+        preset: 'balanced',
+        defaults: { model: 'k3' },
+        overrides: {},
+      })
+    })
+
+    it.each(['balanced', 'budget', 'max'] as const)(
+      'resolves the %s preset to an explicit Kimi model id',
+      (preset) => {
+        expect(resolveProviderModelConfig('kimi', preset)).toEqual({
+          preset,
+          defaults: { model: 'k3' },
+          overrides: {},
+        })
+      },
+    )
+
+    it('retains exact custom Kimi aliases without Claude interpretation', () => {
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'kimi',
+        agents: { selected: ['sr-architect'] },
+        models: {
+          preset: 'max',
+          defaults: { model: 'sonnet' },
+          overrides: { 'sr-architect': 'company/custom-kimi' },
+        },
+      })
+      expect(result.models).toEqual({
+        preset: 'max',
+        defaults: { model: 'sonnet' },
+        overrides: { 'sr-architect': 'company/custom-kimi' },
+      })
+    })
+
+    it.each([
+      '--yolo',
+      'team model',
+      ' team/model',
+      'team/model ',
+      'team/model\n--yolo',
+      `a${'b'.repeat(128)}`,
+    ])('rejects unsafe Kimi model id %j before installation', (model) => {
+      expect(() =>
+        validateInstallConfig({
+          version: 1,
+          provider: 'kimi',
+          agents: { selected: ['sr-architect'] },
+          models: {
+            preset: 'balanced',
+            defaults: { model },
+            overrides: { 'sr-reviewer': model },
+          },
+        }),
+      ).toThrow(/safe Kimi model id/)
+    })
+
+    it('rejects blank Kimi model identifiers', () => {
+      expect(() =>
+        validateInstallConfig({
+          version: 1,
+          provider: 'kimi',
+          agents: { selected: ['sr-architect'] },
+          models: {
+            preset: 'balanced',
+            defaults: { model: '  ' },
+            overrides: {},
+          },
+        }),
+      ).toThrow(/safe Kimi model id/)
+    })
+
+    it('validates every selected and excluded agent id', () => {
+      try {
+        validateInstallConfig({
+          version: 1,
+          provider: 'kimi',
+          agents: {
+            selected: ['sr-architect', '../escape', 42, '-leading'],
+            excluded: ['sr-reviewer', 'UPPERCASE', 'x'.repeat(65)],
+          },
+        })
+        throw new Error('expected config validation to fail')
+      } catch (err) {
+        expect(err).toBeInstanceOf(InvalidConfigError)
+        expect((err as InvalidConfigError).errors).toEqual(
+          expect.arrayContaining([
+            expect.stringContaining(`'agents.selected[1]'`),
+            expect.stringContaining(`'agents.selected[2]'`),
+            expect.stringContaining(`'agents.selected[3]'`),
+            expect.stringContaining(`'agents.excluded[1]'`),
+            expect.stringContaining(`'agents.excluded[2]'`),
+          ]),
+        )
+      }
+    })
+
+    it('rejects duplicate and overlapping selected/excluded agents', () => {
+      try {
+        validateInstallConfig({
+          version: 1,
+          provider: 'kimi',
+          agents: {
+            selected: ['sr-architect', 'sr-architect', 'sr-reviewer'],
+            excluded: ['sr-reviewer', 'sr-reviewer'],
+          },
+        })
+        throw new Error('expected config validation to fail')
+      } catch (err) {
+        expect(err).toBeInstanceOf(InvalidConfigError)
+        const messages = (err as InvalidConfigError).errors.join('\n')
+        expect(messages).toContain(
+          `'agents.selected' must not contain duplicate agent id 'sr-architect'`,
+        )
+        expect(messages).toContain(
+          `'agents.excluded' must not contain duplicate agent id 'sr-reviewer'`,
+        )
+        expect(messages).toContain(
+          `'agents.selected' and 'agents.excluded' must not overlap: sr-reviewer`,
+        )
+      }
+    })
+
+    it('rejects unsafe per-agent override keys', () => {
+      expect(() =>
+        validateInstallConfig({
+          version: 1,
+          provider: 'kimi',
+          agents: { selected: ['sr-architect'] },
+          models: {
+            preset: 'balanced',
+            defaults: { model: 'k3' },
+            overrides: { '../escape': 'k3' },
+          },
+        }),
+      ).toThrow(/models\.overrides.*lowercase kebab-case agent id/)
+    })
+
     it('accepts an optional preset', () => {
       const result = validateInstallConfig({
         version: 1,
@@ -103,14 +250,14 @@ describe('install-config', () => {
       }
     })
 
-    it('rejects codex provider with a coming-soon message', () => {
-      try {
-        validateInstallConfig({ version: 1, provider: 'codex', agents: { selected: [] } })
-      } catch (err) {
-        const msgs = (err as InvalidConfigError).errors.join('\n')
-        expect(msgs).toContain('Codex')
-        expect(msgs).toContain('coming soon')
-      }
+    it('accepts codex as a valid provider', () => {
+      const result = validateInstallConfig({
+        version: 1,
+        provider: 'codex',
+        agents: { selected: [] },
+      })
+      expect(result.provider).toBe('codex')
+      expect(result.models?.defaults.model).toBe('gpt-5.5-mini')
     })
 
     it('rejects missing agents.selected', () => {
@@ -185,6 +332,7 @@ describe('install-config', () => {
       expect(cfg!.provider).toBe('claude')
       expect(cfg!.agents.selected).toEqual(['sr-architect', 'sr-developer'])
       expect(cfg!.agents.preset).toBe('balanced')
+      expect(cfg!.models?.defaults.model).toBe('sonnet')
     })
 
     it('surfaces YAML parse errors as InvalidConfigError', () => {
@@ -205,6 +353,46 @@ describe('install-config', () => {
       const cfg = loadInstallConfig(p)
       expect(cfg!.provider).toBe('claude')
       expect(cfg!.agents.preset).toBe('max')
+      expect(cfg!.models).toEqual({
+        preset: 'max',
+        defaults: { model: 'sonnet' },
+        overrides: {
+          'sr-architect': 'opus',
+          'sr-product-manager': 'opus',
+        },
+      })
+    })
+  })
+
+  describe('integration contract consistency', () => {
+    it('publishes exactly the config providers and preset values the validator resolves', () => {
+      const contract = JSON.parse(
+        readFileSync(path.join(process.cwd(), 'integration-contract.json'), 'utf8'),
+      ) as {
+        schemaVersion: string
+        configSchema: { fields: Record<string, string> }
+        modelPresets: Record<
+          'balanced' | 'budget' | 'max',
+          {
+            defaults: { model: string }
+            overrides: Record<string, string>
+          }
+        >
+      }
+
+      expect(contract.schemaVersion).toBe('3.2')
+      expect(contract.configSchema.fields.provider).toBe(
+        'string — claude | codex | gemini | kimi',
+      )
+      expect(contract.configSchema.fields.provider).not.toContain('auto')
+
+      for (const preset of ['balanced', 'budget', 'max'] as const) {
+        const resolved = resolveProviderModelConfig('claude', preset)
+        expect(contract.modelPresets[preset]).toMatchObject({
+          defaults: resolved.defaults,
+          overrides: resolved.overrides,
+        })
+      }
     })
   })
 })

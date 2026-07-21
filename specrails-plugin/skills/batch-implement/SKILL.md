@@ -22,7 +22,18 @@ Macro-orchestrator above `/specrails:implement`. Accepts a set of feature refere
 - **`--wave-size N`**: max features per wave regardless of concurrency (default: unlimited)
 - **`--dry-run` / `--preview`**: passed through to each `/specrails:implement` invocation; no git or backlog operations will run
 
-**IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — background agents cannot request permissions interactively.
+**IMPORTANT:** Before running, ensure Read/Write/Bash/Glob/Grep permissions are set to "allow" — subagents cannot request permissions interactively.
+
+---
+
+## Desktop rail execution context (isolated worktree)
+
+specrails-desktop launches this command INSIDE an isolated rail worktree allocated for the batch. Detect it: the working directory path contains `/worktrees/` (e.g. `~/.specrails/projects/<slug>/worktrees/ticket-N`), typically on a `feat/...` branch. When that is the case, ALL of the following hold — they override any instinct to the contrary:
+
+- **You ARE the assigned executor of this rail.** The desktop's own bookkeeping (rail slots, ticket-ownership rows in its `jobs.sqlite`, state under `~/.specrails/`) describes THIS very launch — it is never evidence of a competing process. NEVER read specrails-desktop's internal databases or state files, and NEVER stop to ask "which process should run this batch".
+- **The current worktree + current branch ARE the workspace for the WHOLE batch.** Implement every ticket here, in dependency order — including tickets whose refs differ from the branch name. The desktop assembles this branch into a batch PR after you finish; nothing needs to land on the integration branch (main) first. Do NOT create sibling worktrees, do NOT switch branches, do NOT run any ticket "against main in the base repo".
+- **Run tickets SEQUENTIALLY (effective concurrency 1)** regardless of `--concurrency`: parallel pipelines editing one shared checkout corrupt each other. Wave order still sequences the work; only the parallelism collapses.
+- Everything else (per-ticket `/specrails:implement` delegation, wave gates, failure isolation, final report) applies unchanged.
 
 ---
 
@@ -205,7 +216,8 @@ For each wave `W`:
      ```
      /specrails:implement <ref1> <ref2> ... [--dry-run]
      ```
-   - Run invocations in the batch in parallel (`run_in_background: true`).
+   - Run invocations in the batch **concurrently in the FOREGROUND**: emit every agent invocation for the batch in a single message with `run_in_background: false`. They still run in parallel, and your turn blocks until all of them return.
+   - **NEVER use `run_in_background: true`, and NEVER end your reply while a wave is still running.** In headless/pipeline execution (`claude -p`, specrails-desktop loops) the host tears the process down as soon as your turn ends — background agents are killed before they write a single file. Replies like "wave 1 is running in the background, I'll pick it up when it finishes" lose the entire wave.
    - Wait for all in the batch to complete before starting the next batch.
    - **COMPLETION GUARD**: Do not exit the wave loop early. Even if invocations take a long time or return errors, record outcomes and continue to the next batch/wave. Always reach Phase 3 (Batch Report).
 3. For each completed invocation, record outcome in `WAVE_RESULTS`:

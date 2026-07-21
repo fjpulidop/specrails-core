@@ -2,13 +2,25 @@ import { createHash } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { isDir, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import {
+  isDir,
+  isSymlink,
+  listDir,
+  pathExists,
+  readTextFile,
+  writeFileLf,
+} from '../util/fs.js'
+import {
+  assembleProjectWorkspace,
   detectExistingSetup,
+  ensureCurrentSymlink,
+  installFramework,
   scaffoldInstallation,
+  translateClaudeTextForKimi,
   translateOpsxSkillCallsForGemini,
   writeGeminiAgentAcknowledgments,
 } from './scaffold.js'
@@ -730,5 +742,669 @@ describe('writeGeminiAgentAcknowledgments', () => {
     const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
     expect(ack[workspace]['sr-architect']).toBe(sha('ws-arch\n'))
     expect(ack[repo]).toBeUndefined() // repo is NOT the key under relocation
+  })
+})
+
+describe('Kimi scaffold', () => {
+  let tmpDir: string
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-kimi-scaffold-'))
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+  })
+
+  function setupKimiSource(scriptDir: string): void {
+    setupRichFakeSource(scriptDir)
+    writeFileLf(
+      path.join(scriptDir, 'templates', 'kimi', 'specrails', 'run-skill.mjs'),
+      '// managed Kimi runner fixture\n',
+    )
+    writeFileLf(
+      path.join(
+        scriptDir,
+        'templates',
+        'kimi',
+        'specrails',
+        'vendor',
+        'js-yaml',
+        'js-yaml.mjs',
+      ),
+      '// vendored js-yaml fixture\n',
+    )
+    writeFileLf(
+      path.join(
+        scriptDir,
+        'templates',
+        'kimi',
+        'specrails',
+        'vendor',
+        'js-yaml',
+        'LICENSE',
+      ),
+      'js-yaml fixture license\n',
+    )
+    writeFileLf(
+      path.join(
+        scriptDir,
+        'templates',
+        'kimi',
+        'specrails',
+        'vendor',
+        'js-yaml',
+        'NOTICE.md',
+      ),
+      'js-yaml fixture notice\n',
+    )
+    writeFileLf(
+      path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
+      [
+        '---',
+        'name: sr-architect',
+        'description: "Architecture role"',
+        'model: sonnet',
+        '---',
+        'Run Skill("opsx:ff", "<change>") and read .claude/rules/.',
+        '',
+      ].join('\n'),
+    )
+  }
+
+  it('renders directory workflows and rail roles without Claude invocation syntax', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo')
+    setupKimiSource(scriptDir)
+
+    scaffoldInstallation({
+      scriptDir,
+      artifactRoot: repoRoot,
+      codeRoot: repoRoot,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      tier: 'quick',
+    })
+
+    const workflow = readTextFile(
+      path.join(repoRoot, '.kimi-code', 'skills', 'specrails-implement', 'SKILL.md'),
+    )
+    expect(workflow).toContain('name: specrails-implement')
+    expect(workflow).toContain('description:')
+    expect(workflow).toContain('Skill(skill="specrails-implement"')
+    expect(workflow).toContain('kimi-code/k3')
+    expect(workflow).not.toContain('/specrails:')
+    expect(workflow).not.toContain('/skill:')
+    expect(workflow).not.toContain('subagent_type')
+    expect(workflow).not.toContain('.claude/')
+
+    const role = readTextFile(
+      path.join(repoRoot, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md'),
+    )
+    expect(role).toContain('name: sr-architect')
+    expect(role).toContain(
+      'Skill(skill="openspec-ff-change", args="<change>")',
+    )
+    expect(role).toContain('.kimi-code/rules/')
+    expect(role).not.toContain('Skill("opsx:')
+    expect(role).not.toContain('/skill:')
+
+    const instructions = readTextFile(path.join(repoRoot, '.kimi-code', 'AGENTS.md'))
+    expect(instructions).toContain('/skill:specrails-<command>')
+    expect(pathExists(path.join(repoRoot, '.kimi-code', 'mcp.json'))).toBe(true)
+    expect(pathExists(path.join(repoRoot, 'AGENTS.md'))).toBe(false)
+    expect(pathExists(path.join(repoRoot, '.kimi-code', 'commands'))).toBe(false)
+    expect(pathExists(path.join(repoRoot, '.kimi-code', 'agents'))).toBe(false)
+    expect(
+      pathExists(
+        path.join(repoRoot, '.kimi-code', 'specrails', 'run-skill.mjs'),
+      ),
+    ).toBe(true)
+    expect(
+      pathExists(
+        path.join(
+          repoRoot,
+          '.kimi-code',
+          'specrails',
+          'vendor',
+          'js-yaml',
+          'js-yaml.mjs',
+        ),
+      ),
+    ).toBe(true)
+    expect(
+      pathExists(
+        path.join(repoRoot, '.kimi-code', 'skills', 'specrails', 'run-skill.mjs'),
+      ),
+    ).toBe(false)
+  })
+
+  it('rematerializes a same-version framework that still has nested role skills', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework')
+    setupKimiSource(scriptDir)
+
+    const initial = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    expect(initial.materialized).toBe(true)
+
+    const skillsDir = path.join(initial.providerFrameworkDir, 'skills')
+    rmSync(path.join(skillsDir, 'sr-architect'), { recursive: true, force: true })
+    writeFileLf(
+      path.join(skillsDir, 'rails', 'sr-architect', 'SKILL.md'),
+      'undiscoverable-pre-release-role\n',
+    )
+
+    const repaired = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    expect(repaired.materialized).toBe(true)
+    expect(pathExists(path.join(skillsDir, 'rails'))).toBe(false)
+    expect(pathExists(path.join(skillsDir, 'sr-architect', 'SKILL.md'))).toBe(true)
+
+    const idempotent = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    expect(idempotent.materialized).toBe(false)
+  })
+
+  it('repairs a same-version framework that predates the managed skill runner', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework-runner-repair')
+    setupKimiSource(scriptDir)
+
+    const initial = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    const runnerPath = path.join(
+      initial.providerFrameworkDir,
+      'specrails',
+      'run-skill.mjs',
+    )
+    rmSync(runnerPath, { force: true })
+
+    const repaired = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    expect(repaired.materialized).toBe(true)
+    expect(readTextFile(runnerPath)).toBe('// managed Kimi runner fixture\n')
+  })
+
+  it('repairs a same-version framework missing the runner YAML vendor', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework-vendor-repair')
+    setupKimiSource(scriptDir)
+
+    const initial = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    const vendorPath = path.join(
+      initial.providerFrameworkDir,
+      'specrails',
+      'vendor',
+      'js-yaml',
+      'js-yaml.mjs',
+    )
+    rmSync(vendorPath, { force: true })
+
+    const repaired = installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    expect(repaired.materialized).toBe(true)
+    expect(readTextFile(vendorPath)).toBe('// vendored js-yaml fixture\n')
+  })
+
+  it('assembles granular skills while preserving OpenSpec, custom roles, and user MCP config', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework')
+    const workspace = path.join(tmpDir, 'workspace')
+    const codeRoot = path.join(tmpDir, 'repo')
+    setupKimiSource(scriptDir)
+
+    installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    ensureCurrentSymlink(frameworkDir, '1.2.3')
+    writeFileLf(
+      path.join(workspace, '.kimi-code', 'skills', 'rails', 'custom-auditor', 'SKILL.md'),
+      'custom-role-byte-content\n',
+    )
+    writeFileLf(
+      path.join(workspace, '.kimi-code', 'skills', 'openspec-apply-change', 'SKILL.md'),
+      'corrected-upstream-byte-content\n',
+    )
+    writeFileLf(path.join(workspace, '.kimi-code', 'mcp.json'), '{"user":true}\n')
+
+    const assembled = assembleProjectWorkspace({
+      workspace,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+      codeRoot,
+      scriptDir,
+    })
+
+    expect(
+      readTextFile(
+        path.join(workspace, '.kimi-code', 'skills', 'custom-auditor', 'SKILL.md'),
+      ),
+    ).toBe('custom-role-byte-content\n')
+    expect(pathExists(path.join(workspace, '.kimi-code', 'skills', 'rails'))).toBe(false)
+    expect(
+      readTextFile(
+        path.join(workspace, '.kimi-code', 'skills', 'openspec-apply-change', 'SKILL.md'),
+      ),
+    ).toBe('corrected-upstream-byte-content\n')
+    expect(readTextFile(path.join(workspace, '.kimi-code', 'mcp.json'))).toBe('{"user":true}\n')
+    expect(
+      pathExists(
+        path.join(workspace, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md'),
+      ),
+    ).toBe(true)
+    expect(
+      pathExists(path.join(workspace, '.kimi-code', 'skills', 'specrails-implement', 'SKILL.md'),
+    )).toBe(true)
+    expect(pathExists(path.join(workspace, '.kimi-code', 'AGENTS.md'))).toBe(true)
+    expect(pathExists(path.join(workspace, 'AGENTS.md'))).toBe(false)
+    expect(
+      readTextFile(
+        path.join(workspace, '.kimi-code', 'specrails', 'run-skill.mjs'),
+      ),
+    ).toBe('// managed Kimi runner fixture\n')
+    expect(
+      readTextFile(
+        path.join(
+          workspace,
+          '.kimi-code',
+          'specrails',
+          'vendor',
+          'js-yaml',
+          'LICENSE',
+        ),
+      ),
+    ).toBe('js-yaml fixture license\n')
+    expect(assembled.links.specrails).toBe(
+      process.platform === 'win32' ? 'junction' : 'symlink',
+    )
+  })
+
+  it('never overwrites a flat custom role when the legacy nested migration conflicts', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework')
+    const workspace = path.join(tmpDir, 'workspace-conflict')
+    setupKimiSource(scriptDir)
+
+    installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    ensureCurrentSymlink(frameworkDir, '1.2.3')
+    writeFileLf(
+      path.join(workspace, '.kimi-code', 'skills', 'custom-auditor', 'SKILL.md'),
+      'canonical-custom-role\n',
+    )
+    writeFileLf(
+      path.join(
+        workspace,
+        '.kimi-code',
+        'skills',
+        'rails',
+        'custom-auditor',
+        'SKILL.md',
+      ),
+      'legacy-conflicting-role\n',
+    )
+
+    assembleProjectWorkspace({
+      workspace,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+      codeRoot: path.join(tmpDir, 'repo-conflict'),
+      scriptDir,
+    })
+
+    expect(
+      readTextFile(
+        path.join(workspace, '.kimi-code', 'skills', 'custom-auditor', 'SKILL.md'),
+      ),
+    ).toBe('canonical-custom-role\n')
+    expect(
+      readTextFile(
+        path.join(
+          workspace,
+          '.kimi-code',
+          'skills',
+          'rails',
+          'custom-auditor',
+          'SKILL.md',
+        ),
+      ),
+    ).toBe('legacy-conflicting-role\n')
+  })
+
+  it('keeps MCP registries as isolated real files across relocated workspaces', () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const frameworkDir = path.join(tmpDir, 'framework')
+    const workspaceA = path.join(tmpDir, 'workspace-a')
+    const workspaceB = path.join(tmpDir, 'workspace-b')
+    setupKimiSource(scriptDir)
+
+    installFramework({
+      scriptDir,
+      frameworkDir,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      version: '1.2.3',
+    })
+    ensureCurrentSymlink(frameworkDir, '1.2.3')
+    for (const [workspace, repo] of [
+      [workspaceA, path.join(tmpDir, 'repo-a')],
+      [workspaceB, path.join(tmpDir, 'repo-b')],
+    ]) {
+      assembleProjectWorkspace({
+        workspace,
+        frameworkDir,
+        provider: 'kimi',
+        providerDir: '.kimi-code',
+        version: '1.2.3',
+        codeRoot: repo,
+        scriptDir,
+      })
+    }
+
+    const mcpA = path.join(workspaceA, '.kimi-code', 'mcp.json')
+    const mcpB = path.join(workspaceB, '.kimi-code', 'mcp.json')
+    const frameworkMcp = path.join(
+      frameworkDir,
+      '1.2.3',
+      '.kimi-code',
+      'mcp.json',
+    )
+    expect(isSymlink(mcpA)).toBe(false)
+    expect(isSymlink(mcpB)).toBe(false)
+    expect(pathExists(frameworkMcp)).toBe(false)
+
+    writeFileLf(mcpA, '{"mcpServers":{"desktop-project-a":{"command":"a"}}}\n')
+    expect(readTextFile(mcpB)).toBe('{\n  "mcpServers": {}\n}\n')
+    expect(pathExists(frameworkMcp)).toBe(false)
+  })
+
+  it('translates provider paths, workflow names, and non-uniform OpenSpec ids', () => {
+    expect(
+      translateClaudeTextForKimi(
+        'Skill("opsx:sync") /specrails:why /sr:implement .claude/agents/sr-reviewer.md subagent_type',
+      ),
+    ).toBe(
+      'Skill(skill="openspec-sync-specs", args="") ' +
+        'Skill(skill="specrails-why", args=<arguments following this command>) ' +
+        'Skill(skill="specrails-implement", args=<arguments following this command>) ' +
+        '.kimi-code/skills/sr-reviewer/SKILL.md role_skill',
+    )
+  })
+
+  it('renders the complete real-template inventory with no forbidden provider syntax', async () => {
+    const scriptDir = process.cwd()
+    const repoRoot = path.join(tmpDir, 'real-inventory')
+    scaffoldInstallation({
+      scriptDir,
+      artifactRoot: repoRoot,
+      codeRoot: repoRoot,
+      provider: 'kimi',
+      providerDir: '.kimi-code',
+      tier: 'quick',
+      materializeAllAgents: true,
+    })
+
+    const canonicalCommands = listDir(path.join(scriptDir, 'templates', 'commands', 'specrails'))
+      .filter((entry) => entry.endsWith('.md') && path.basename(entry) !== 'setup.md')
+      .map((entry) => `specrails-${path.basename(entry, '.md')}`)
+      .sort()
+    const workflowRoot = path.join(repoRoot, '.kimi-code', 'skills')
+    const generatedSkillDirs = listDir(workflowRoot).filter((entry) => isDir(entry))
+    expect(generatedSkillDirs.map((entry) => path.basename(entry))).not.toContain('rails')
+    expect(generatedSkillDirs.map((entry) => path.basename(entry))).not.toContain('personas')
+    for (const skillDir of generatedSkillDirs) {
+      expect(pathExists(path.join(skillDir, 'SKILL.md'))).toBe(true)
+    }
+
+    const workflows = generatedSkillDirs
+      .filter((entry) => isDir(entry) && path.basename(entry).startsWith('specrails-'))
+      .map((entry) => path.basename(entry))
+      .sort()
+    expect(workflows).toEqual(canonicalCommands)
+
+    const canonicalRoles = listDir(path.join(scriptDir, 'templates', 'agents'))
+      .filter((entry) => entry.endsWith('.md'))
+      .map((entry) => path.basename(entry, '.md'))
+      .sort()
+    const roles = generatedSkillDirs
+      .filter((entry) => isDir(entry) && path.basename(entry).startsWith('sr-'))
+      .map((entry) => path.basename(entry))
+      .sort()
+    expect(roles).toEqual(canonicalRoles)
+
+    const allSkillFiles = [
+      ...workflows.map((name) => path.join(workflowRoot, name, 'SKILL.md')),
+      ...roles.map((name) => path.join(workflowRoot, name, 'SKILL.md')),
+    ]
+    for (const skillFile of allSkillFiles) {
+      const rendered = readTextFile(skillFile)
+      expect(rendered).toMatch(/^---\nname: [^\n]+\ndescription: [^\n]+\ntype: prompt\n---\n/)
+      expect(rendered).not.toContain('.claude')
+      expect(rendered).not.toContain('/specrails:')
+      expect(rendered).not.toContain('/skill:')
+      expect(rendered).not.toContain('subagent_type')
+      expect(rendered).not.toContain('Skill("opsx:')
+      expect(rendered).toContain('## Kimi runtime context contract')
+      expect(rendered).not.toMatch(/\{\{[A-Z_]+\}\}/)
+    }
+    for (const workflow of workflows) {
+      const rendered = readTextFile(
+        path.join(workflowRoot, workflow, 'SKILL.md'),
+      )
+      expect(rendered).toContain(
+        '--role-wave-file .specrails/kimi-role-wave.json',
+      )
+      expect(rendered).toContain('"roles": [')
+      expect(rendered).toContain('"workspace": "current"')
+      expect(rendered).toContain('"profile": "inherit"')
+      expect(rendered).toContain('`"worktree:<feature-id>"`')
+      expect(rendered).toContain('manifest `baseCommit`')
+      expect(rendered).not.toContain('ROLE_ARGS=')
+      expect(rendered).not.toContain('ROLE_MODEL=')
+    }
+
+    const implement = readTextFile(
+      path.join(workflowRoot, 'specrails-implement', 'SKILL.md'),
+    )
+    expect(implement).toContain('.kimi-code/skills/$id/SKILL.md')
+    expect(implement).toContain('parsed `AGENT_MODEL` map')
+    expect(implement).toContain(
+      '"model": "<exact profile model or k3>"',
+    )
+    expect(implement).toContain('.kimi-code/specrails/run-skill.mjs')
+    expect(implement).toContain(
+      '--role-wave-file .specrails/kimi-role-wave.json',
+    )
+    expect(implement).toContain(
+      '--role-wave-status <stable-run-id>',
+    )
+    expect(implement).toContain(
+      '--role-merge-file .specrails/kimi-role-merge.json',
+    )
+    expect(implement).toContain('--role-wave-cleanup <run>')
+    expect(implement).toContain('"kimi_role_wave": {')
+    expect(implement).toContain('Every change is `{status:"A"|"M"|"D",path}`')
+    expect(implement).toContain('Filenames may contain spaces, Unicode')
+    expect(implement).not.toContain('cp <worktree-path>/<file>')
+    expect(implement).not.toContain('git -C <worktree-path> diff main')
+    expect(implement).not.toContain('ROLE_ARGS=')
+    expect(implement).not.toContain('ROLE_MODEL=')
+    expect(implement).not.toContain('--args "$ROLE_ARGS"')
+    expect(implement).not.toContain('-p "/skill:$ROLE_ID')
+    expect(implement).not.toContain('${AGENT_MODEL[')
+    expect(implement).toContain('--add-dir "${SPECRAILS_REPO_DIR:-.}"')
+    expect(implement).toContain('.specrails/profiles/kimi-default.json')
+    expect(implement).not.toContain('.specrails/profiles/project-default.json')
+    expect(implement).not.toContain('.kimi-code/agents/')
+    expect(implement).not.toContain('Apply per-agent model overrides')
+    expect(implement).toContain('KIMI_PR_CREATE')
+
+    const batch = readTextFile(
+      path.join(workflowRoot, 'specrails-batch-implement', 'SKILL.md'),
+    )
+    expect(batch).toContain('`skill:"specrails-implement"`')
+    expect(batch).toContain('`workspace:"worktree:<feature-id>"`')
+    expect(batch).toContain('effective concurrency')
+    expect(batch).toContain('`--role-wave-status`')
+    expect(batch).toContain('Do not call multiple built-in `Skill` tools')
+    expect(batch).toContain('KIMI_BACKLOG_VIEW')
+
+    const telemetry = readTextFile(
+      path.join(workflowRoot, 'specrails-telemetry', 'SKILL.md'),
+    )
+    expect(telemetry).toContain('session_index.jsonl')
+    expect(telemetry).toContain('type:"usage.record"')
+    expect(telemetry).toContain('`cost_usd:null`')
+    expect(telemetry).not.toContain('published Claude pricing')
+
+    const retry = readTextFile(
+      path.join(workflowRoot, 'specrails-retry', 'SKILL.md'),
+    )
+    expect(retry).toContain('`KIMI_ROLE_WAVE`')
+    expect(retry).toContain('--role-wave-status <run>')
+    expect(retry).toContain('never cleanup before')
+
+    const installedRunner = await import(
+      pathToFileURL(
+        path.join(repoRoot, '.kimi-code', 'specrails', 'run-skill.mjs'),
+      ).href
+    ) as {
+      parseSkillDocument: (source: string) => {
+        description: string
+        argumentNames: string[]
+      }
+      prepareSkillLaunch: (options: {
+        providerRoot: string
+        skill: string
+        model: string
+        rawArgs: string
+        sessionId?: string
+        additionalDirs: string[]
+        attachmentPaths: string[]
+      }) => {
+        prompt: string
+        kimiArgs: string[]
+      }
+      resolveKimiLaunch: (
+        args: string[],
+        options: {
+          platform: string
+          binary: string
+          readFile: () => string
+          fileExists: () => boolean
+        },
+      ) => {
+        command: string
+        args: string[]
+        stdinText?: string
+      }
+      windowsCommandLineLength: (command: string, args: string[]) => number
+    }
+    const parsed = installedRunner.parseSkillDocument(
+      [
+        '---',
+        'name: installed-yaml',
+        'description: >-',
+        '  Loaded through the copied',
+        '  vendored parser',
+        'arguments: &args [target, 7, mode]',
+        'metadata: { copy: true }',
+        '---',
+        '$target $mode',
+      ].join('\n'),
+    )
+    expect(parsed.description).toBe(
+      'Loaded through the copied vendored parser',
+    )
+    expect(parsed.argumentNames).toEqual(['target', 'mode'])
+
+    const windowsShim =
+      'C:\\Users\\Jane Doe\\AppData\\Roaming\\npm\\kimi.cmd'
+    const windowsShimSource =
+      '@ECHO off\r\n"%_prog%" "%dp0%\\node_modules\\@moonshot-ai\\kimi-code\\dist\\main.mjs" %*\r\n'
+    let largestMaterializedPrompt = 0
+    for (const skillFile of allSkillFiles) {
+      const skill = path.basename(path.dirname(skillFile))
+      const prepared = installedRunner.prepareSkillLaunch({
+        providerRoot: path.join(repoRoot, '.kimi-code'),
+        skill,
+        model: 'k3',
+        rawArgs: 'ticket #42 — contexto Unicode 🚀\nsegunda línea',
+        sessionId: 'ses_prompt_budget',
+        additionalDirs: [],
+        attachmentPaths: [],
+      })
+      largestMaterializedPrompt = Math.max(
+        largestMaterializedPrompt,
+        prepared.prompt.length,
+      )
+      const launch = installedRunner.resolveKimiLaunch(prepared.kimiArgs, {
+        platform: 'win32',
+        binary: windowsShim,
+        readFile: () => windowsShimSource,
+        fileExists: () => false,
+      })
+      expect(launch.stdinText).toBe(prepared.prompt)
+      expect(launch.args).not.toContain(prepared.prompt)
+      expect(
+        installedRunner.windowsCommandLineLength(
+          launch.command,
+          launch.args,
+        ),
+      ).toBeLessThanOrEqual(30_000)
+    }
+    // Proves the test exercises the historical CreateProcess regression rather
+    // than only small fixtures: implement/enrich exceed 60K materialized.
+    expect(largestMaterializedPrompt).toBeGreaterThan(60_000)
   })
 })

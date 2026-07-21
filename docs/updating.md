@@ -8,7 +8,8 @@ The update system uses a **manifest-based approach**:
 
 1. During installation, SpecRails generates `.specrails/specrails-manifest.json` — a checksum of every installed file
 2. On update, the new templates from the latest specrails-core release are re-applied
-3. Reserved paths (`.specrails/profiles/**`, `.claude/agents/custom-*.md`) are preserved by construction — the installer never touches them
+3. Reserved paths (`.specrails/profiles/**`, provider-specific `custom-*`
+   roles, OpenSpec skills, and user MCP entries) are preserved by construction
 
 ## Running an update
 
@@ -21,9 +22,13 @@ Cross-platform (macOS, Linux, Windows). No bash, no python required — the inst
 ### What happens
 
 1. **Version check** — reads existing `.specrails/specrails-version`; aborts if no specrails install is detected
-2. **Provider resolution** — detects whether the project uses Claude (`.claude/`) or Codex (`.codex/`)
+2. **Provider resolution** — detects Claude (`.claude/`), Codex (`.codex/`),
+   Gemini (`.gemini/`), or Kimi (`.kimi-code/`). In a multi-provider workspace,
+   pass `--provider` to select the tree being refreshed.
 3. **Re-scaffold** — re-applies templates from the latest specrails-core into `.specrails/setup-templates/` and the provider directory
-4. **Reserved paths** — `.specrails/profiles/**` and `.claude/agents/custom-*.md` are skipped; your team profiles and custom agents survive untouched
+4. **Reserved paths** — profiles and provider-specific custom roles are skipped;
+   Kimi also preserves `openspec-*`, unknown skill directories, and existing
+   `.kimi-code/mcp.json` entries
 5. **Manifest refresh** — rewrites `specrails-manifest.json` and `specrails-version` to the new core version
 
 ## Selective updates (`--only`)
@@ -49,6 +54,19 @@ Prints what the update would do without writing any files. Useful for inspecting
 | **Rules** (`.claude/rules/`) | Re-written from latest templates |
 | **Agent memory** (`.claude/agent-memory/`) | Untouched (created on first install only) |
 | **install-config.yaml** | Untouched |
+| **Kimi workflows** (`.kimi-code/skills/specrails-*`) | Re-written from latest templates |
+| **Kimi roles** (`.kimi-code/skills/sr-*`) | Re-written according to the selected agent set |
+| **Kimi custom roles** (`.kimi-code/skills/custom-*`) | **Always preserved** |
+| **Kimi OpenSpec skills** (`.kimi-code/skills/openspec-*`) | Preserved and normalized from legacy `.kimi/skills` when needed |
+| **Kimi MCP config** (`.kimi-code/mcp.json`) | Existing entries preserved; SpecRails-owned entries merged additively |
+| **Kimi headless runner** (`.kimi-code/specrails/`) | Runner, vendored YAML parser, MIT license, and provenance notice are re-written together from the latest trusted Core template; they are managed code, not user skills |
+
+Kimi discovers only immediate child directories of `.kimi-code/skills`.
+Updates therefore migrate the pre-release
+`.kimi-code/skills/rails/custom-*` layout to direct `custom-*` children when
+the destination is free, and regenerate managed `sr-*` roles at the direct
+level. If both legacy and direct versions of a custom role exist, neither is
+overwritten or deleted: `doctor` reports the conflict for manual resolution.
 
 ## Rolling back
 

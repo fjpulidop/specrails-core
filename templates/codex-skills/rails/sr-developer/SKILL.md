@@ -84,7 +84,10 @@ note it in your reply — do not block on the architect.
         modify it.
       - Write the minimum code to make the failing test pass.
         Resist adding code unrelated to the test.
-      - Re-run **only that test file**. It must pass.
+      - Re-run **only that test file** (`npx vitest run
+        <file>`, `pytest <file>`, …). It must pass. The full
+        suite runs once, at the validation gate — not after
+        every task.
       - Tick `- [x] N.2`.
 
    c. **REFACTOR — clean up (step N.3, if present).**
@@ -124,8 +127,9 @@ The final task block in `tasks.md` is always the validation gate
 (`## N. Validation gate`). Run it:
 
 - Full project test suite (e.g. `npm test`, `pytest`,
-  `cargo test`). MUST pass. This is the ONE full-suite run
-  of your phase.
+  `cargo test`). MUST pass. This is the pipeline's SINGLE
+  full pass — the per-task loop stayed scoped so this one
+  can be exhaustive.
 - Project build if present (e.g. `npm run build`,
   `cargo build`). MUST succeed.
 - A grep for debug breadcrumbs (`console.log`, `print(`, etc.)

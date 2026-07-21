@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.12.0](https://github.com/fjpulidop/specrails-core/compare/v4.11.3...v4.12.0) (2026-07-20)
+
+
+### Features
+
+* add Kimi Code as a first-class AI provider ([#328](https://github.com/fjpulidop/specrails-core/issues/328)) ([796d2eb](https://github.com/fjpulidop/specrails-core/commit/796d2eb0cd246410c64acd25b14844e48e2902ab))
+
+## [4.11.3](https://github.com/fjpulidop/specrails-core/compare/v4.11.2...v4.11.3) (2026-07-18)
+
+
+### Bug Fixes
+
+* **batch-implement:** teach the orchestrator its desktop rail execution context ([#326](https://github.com/fjpulidop/specrails-core/issues/326)) ([12836cf](https://github.com/fjpulidop/specrails-core/commit/12836cfe3ab870e3b0d6b1852e9604b7e68bbe47))
+
+## [4.11.2](https://github.com/fjpulidop/specrails-core/compare/v4.11.1...v4.11.2) (2026-07-18)
+
+
+### Bug Fixes
+
+* **batch-implement:** run wave invocations in the foreground ([#324](https://github.com/fjpulidop/specrails-core/issues/324)) ([165a924](https://github.com/fjpulidop/specrails-core/commit/165a92477102fcdec5f2b4cf01c6d6b2f031d924))
+
 ## [4.11.1](https://github.com/fjpulidop/specrails-core/compare/v4.11.0...v4.11.1) (2026-07-05)
 
 

@@ -21,6 +21,7 @@ import {
   closeSync,
   existsSync,
   fsyncSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -125,6 +126,197 @@ export interface ResolveOptions {
   now?: string
 }
 
+const SUPPORTED_PROVIDERS = new Set(['claude', 'codex', 'gemini', 'kimi'])
+const SAFE_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const REQUIRED_ENTRY_PATHS = [
+  'workspaceDir',
+  'artifactRoot',
+  'stateDir',
+  'ticketsPath',
+  'backlogConfigPath',
+  'profilesDir',
+  'pluginsStateDir',
+  'fileSummariesDir',
+] as const satisfies ReadonlyArray<keyof ProjectEntry>
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && !value.includes('\0')
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || isNonEmptyString(value)
+}
+
+function isSupportedProvider(value: unknown): boolean {
+  return typeof value === 'string' && SUPPORTED_PROVIDERS.has(value)
+}
+
+function samePath(left: string, right: string): boolean {
+  return normalizeKey(path.resolve(left)) === normalizeKey(path.resolve(right))
+}
+
+function isPathContained(root: string, candidate: string, allowRoot = true): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate))
+  if (relative === '') return allowRoot
+  return (
+    relative !== '..' &&
+    !relative.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(relative)
+  )
+}
+
+/**
+ * Resolve every existing prefix while retaining a not-yet-created suffix.
+ * Unlike `realpathSafe`, a dangling symlink or an existing non-directory parent
+ * is invalid: treating either lexically would hide a later filesystem escape.
+ */
+function resolveForContainment(candidate: string): string | undefined {
+  let cursor = path.resolve(candidate)
+  const missingSuffix: string[] = []
+  for (;;) {
+    try {
+      const metadata = lstatSync(cursor)
+      if (missingSuffix.length > 0) {
+        let followed
+        try {
+          followed = statSync(cursor)
+        } catch {
+          return undefined
+        }
+        if (!followed.isDirectory()) return undefined
+      } else if (!metadata.isFile() && !metadata.isDirectory() && !metadata.isSymbolicLink()) {
+        return undefined
+      }
+      let realPrefix: string
+      try {
+        realPrefix = realpathSync(cursor)
+      } catch {
+        return undefined
+      }
+      return path.resolve(realPrefix, ...missingSuffix)
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') return undefined
+      const parent = path.dirname(cursor)
+      if (parent === cursor) return undefined
+      missingSuffix.unshift(path.basename(cursor))
+      cursor = parent
+    }
+  }
+}
+
+function hasValidProviderSet(entry: Record<string, unknown>): boolean {
+  if (!Array.isArray(entry.providers) || entry.providers.length === 0) return false
+  if (!entry.providers.every(isSupportedProvider)) return false
+  if (new Set(entry.providers).size !== entry.providers.length) return false
+  return (
+    isSupportedProvider(entry.primaryProvider) &&
+    entry.primaryProvider === entry.providers[0]
+  )
+}
+
+/**
+ * Validate one untrusted registry row before it can influence resolution or a
+ * subsequent read-modify-write. The registry stores derived subpaths
+ * explicitly so Desktop's layout remains authoritative; Core only requires
+ * that those opaque paths stay lexically and physically inside the immutable
+ * per-slug workspace.
+ */
+function isValidProjectEntry(
+  key: string,
+  value: unknown,
+  home: string | undefined,
+): value is ProjectEntry {
+  if (!isRecord(value)) return false
+  if (
+    !isNonEmptyString(value.repoPath) ||
+    !path.isAbsolute(value.repoPath) ||
+    !isNonEmptyString(value.codeRoot) ||
+    !path.isAbsolute(value.codeRoot) ||
+    !isNonEmptyString(value.slug) ||
+    !SAFE_SLUG.test(value.slug) ||
+    (value.source !== 'desktop' && value.source !== 'core-standalone') ||
+    !hasValidProviderSet(value) ||
+    !isOptionalString(value.coreVersion) ||
+    !isOptionalString(value.createdAt) ||
+    !isOptionalString(value.lastInstallAt) ||
+    !isOptionalString(value.desktopProjectId) ||
+    !isOptionalString(value.updatedAt)
+  ) {
+    return false
+  }
+
+  for (const field of REQUIRED_ENTRY_PATHS) {
+    const candidate = value[field]
+    if (!isNonEmptyString(candidate) || !path.isAbsolute(candidate)) return false
+  }
+  const validatedPaths = value as Record<
+    (typeof REQUIRED_ENTRY_PATHS)[number],
+    string
+  >
+
+  const canonicalRepo = canonicalizeRepoPath(value.repoPath)
+  if (
+    !samePath(value.repoPath, canonicalRepo) ||
+    normalizeKey(canonicalRepo) !== key ||
+    !samePath(value.codeRoot, canonicalRepo) ||
+    !samePath(value.codeRoot, canonicalizeRepoPath(value.codeRoot))
+  ) {
+    return false
+  }
+
+  const lexicalHome = path.resolve(resolveHome(home))
+  const lexicalSpecrailsRoot = path.join(lexicalHome, '.specrails')
+  const lexicalProjectsRoot = path.join(lexicalSpecrailsRoot, 'projects')
+  const lexicalWorkspace = path.join(
+    lexicalProjectsRoot,
+    value.slug,
+    'workspace',
+  )
+  if (
+    !samePath(validatedPaths.workspaceDir, lexicalWorkspace) ||
+    !samePath(validatedPaths.artifactRoot, lexicalWorkspace)
+  ) {
+    return false
+  }
+
+  const realHome = resolveForContainment(lexicalHome)
+  const realSpecrailsRoot = resolveForContainment(lexicalSpecrailsRoot)
+  const realProjectsRoot = resolveForContainment(lexicalProjectsRoot)
+  const realWorkspace = resolveForContainment(lexicalWorkspace)
+  if (
+    realHome === undefined ||
+    realSpecrailsRoot === undefined ||
+    realProjectsRoot === undefined ||
+    realWorkspace === undefined ||
+    !isPathContained(realHome, realSpecrailsRoot, false) ||
+    !samePath(realProjectsRoot, path.join(realSpecrailsRoot, 'projects')) ||
+    !samePath(
+      realWorkspace,
+      path.join(realProjectsRoot, value.slug, 'workspace'),
+    )
+  ) {
+    return false
+  }
+
+  for (const field of REQUIRED_ENTRY_PATHS) {
+    const candidate = validatedPaths[field]
+    const realCandidate = resolveForContainment(candidate)
+    if (
+      !isPathContained(lexicalWorkspace, candidate) ||
+      realCandidate === undefined ||
+      !isPathContained(realWorkspace, realCandidate)
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 /**
  * Slug derivation — byte-identical to specrails-desktop's `slugify`
  * (`server/desktop-router.ts`). Do not "improve" it; parity is the contract.
@@ -187,7 +379,12 @@ export function canonicalizeRepoPath(repoPathInput: string): string {
 
 /** The per-project sub-path layout under a workspace dir. Single source of the
  *  layout so writer and (allocation) reader never disagree. */
-export function workspaceLayout(home: string, slug: string, canon: string): Omit<
+export function workspaceLayout(
+  home: string,
+  slug: string,
+  canon: string,
+  primaryProvider: string = 'claude',
+): Omit<
   ProjectEntry,
   'providers' | 'primaryProvider' | 'coreVersion' | 'createdAt' | 'lastInstallAt' | 'source' | 'desktopProjectId'
 > {
@@ -199,13 +396,20 @@ export function workspaceLayout(home: string, slug: string, canon: string): Omit
     workspaceDir,
     artifactRoot: workspaceDir,
     codeRoot: canon,
-    stateDir: path.join(workspaceDir, '.claude'),
+    stateDir: path.join(workspaceDir, providerStateDirectory(primaryProvider)),
     ticketsPath: path.join(specrailsDir, 'local-tickets.json'),
     backlogConfigPath: path.join(specrailsDir, 'backlog-config.json'),
     profilesDir: path.join(specrailsDir, 'profiles'),
     pluginsStateDir: path.join(specrailsDir, 'plugins'),
     fileSummariesDir: path.join(specrailsDir, 'file-summaries'),
   }
+}
+
+function providerStateDirectory(provider: string): string {
+  if (provider === 'codex') return '.codex'
+  if (provider === 'gemini') return '.gemini'
+  if (provider === 'kimi') return '.kimi-code'
+  return '.claude'
 }
 
 /** The in-repo layout, used when there is no registry entry (legacy fallback). */
@@ -265,18 +469,37 @@ export function readRegistryOrEmpty(home?: string): RegistryFile {
   const p = registryPath(home)
   if (!existsSync(p)) return empty
   try {
-    const parsed = JSON.parse(readFileSync(p, 'utf8')) as RegistryFile
+    const parsed = JSON.parse(readFileSync(p, 'utf8')) as unknown
     if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      typeof parsed.schemaVersion !== 'number' ||
-      parsed.schemaVersion > REGISTRY_SCHEMA_VERSION ||
-      typeof parsed.projects !== 'object' ||
-      parsed.projects === null
+      !isRecord(parsed) ||
+      parsed.schemaVersion !== REGISTRY_SCHEMA_VERSION ||
+      !isRecord(parsed.projects)
     ) {
       return empty
     }
-    return parsed
+
+    const candidates: Array<[string, ProjectEntry]> = []
+    const slugCounts = new Map<string, number>()
+    for (const [key, entry] of Object.entries(parsed.projects)) {
+      if (!isValidProjectEntry(key, entry, home)) continue
+      candidates.push([key, entry])
+      slugCounts.set(entry.slug, (slugCounts.get(entry.slug) ?? 0) + 1)
+    }
+
+    const projects: Record<string, ProjectEntry> = {}
+    for (const [key, entry] of candidates) {
+      // Two repos must never resolve to the same writable workspace. Treat
+      // every side of an ambiguous slug as absent instead of choosing a winner.
+      if (slugCounts.get(entry.slug) === 1) projects[key] = entry
+    }
+
+    const result: RegistryFile = {
+      schemaVersion: REGISTRY_SCHEMA_VERSION,
+      projects,
+    }
+    if (typeof parsed.generator === 'string') result.generator = parsed.generator
+    if (typeof parsed.updatedAt === 'string') result.updatedAt = parsed.updatedAt
+    return result
   } catch {
     return empty
   }
@@ -403,9 +626,9 @@ function buildEntry(
   slug: string,
   opts: ResolveOptions,
 ): ProjectEntry {
-  const providers = opts.providers && opts.providers.length > 0 ? opts.providers : ['claude']
+  const providers = validateProvidersForWrite(opts.providers, true)
   const now = opts.now ?? new Date().toISOString()
-  const layout = workspaceLayout(home, slug, canon)
+  const layout = workspaceLayout(home, slug, canon, providers[0])
   const entry: ProjectEntry = {
     ...layout,
     providers,
@@ -419,6 +642,21 @@ function buildEntry(
   return entry
 }
 
+function validateProvidersForWrite(
+  providers: string[] | undefined,
+  useDefault: boolean,
+): string[] {
+  if (providers === undefined || providers.length === 0) {
+    return useDefault ? ['claude'] : []
+  }
+  if (!providers.every(isSupportedProvider)) {
+    throw new Error(
+      `Unsupported registry provider: ${providers.find((provider) => !isSupportedProvider(provider)) ?? ''}`,
+    )
+  }
+  return [...new Set(providers)]
+}
+
 /**
  * The shared resolver both tools run. Given a repo path, returns where that
  * repo's artifacts live. With `allocate:true`, creates + persists an entry when
@@ -429,11 +667,31 @@ export function resolveArtifacts(repoPathInput: string, opts: ResolveOptions = {
   const home = opts.home
   const canon = canonicalizeRepoPath(repoPathInput)
   const key = normalizeKey(canon)
+  const requestedProviders = validateProvidersForWrite(opts.providers, false)
 
   // Fast path: lock-free read for a pure lookup.
   const reg = readRegistryOrEmpty(home)
   const existing = reg.projects[key]
-  if (existing) return entryToResolution(key, existing)
+  if (existing) {
+    const needsProviderMerge =
+      opts.allocate === true &&
+      existing.source === 'core-standalone' &&
+      requestedProviders.some((provider) => !existing.providers.includes(provider))
+    if (!needsProviderMerge) return entryToResolution(key, existing)
+    return withFileLock(home, () => {
+      const fresh = readRegistryOrEmpty(home)
+      const current = fresh.projects[key]
+      if (!current) return legacyResolution(canon)
+      const providers = [...new Set([...current.providers, ...requestedProviders])]
+      current.providers = providers
+      current.primaryProvider = current.primaryProvider || providers[0] || 'claude'
+      current.lastInstallAt = opts.now ?? new Date().toISOString()
+      if (opts.coreVersion) current.coreVersion = opts.coreVersion
+      fresh.updatedAt = current.lastInstallAt
+      atomicWrite(registryPath(home), JSON.stringify(fresh, null, 2) + '\n')
+      return entryToResolution(key, current)
+    })
+  }
 
   if (!opts.allocate) return legacyResolution(canon)
 

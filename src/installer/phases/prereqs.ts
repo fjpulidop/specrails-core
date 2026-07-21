@@ -10,10 +10,35 @@ import {
   type Provider,
   type ProviderAvailability,
   assertClaudeAuthenticated,
+  assertKimiAuthenticated,
   claudeVersion,
   detectAvailability,
+  isSupportedKimiVersion,
+  kimiVersion,
+  MIN_KIMI_VERSION,
   resolveProvider,
 } from './provider-detect.js'
+
+/**
+ * OpenSpec 1.4.1, which the installer invokes during the default init/update
+ * flow, requires Node >=20.19.0. Keep this floor independent from Kimi's npm
+ * package requirement: SpecRails launches an externally installed Kimi CLI and
+ * does not require the Kimi npm distribution.
+ */
+export const MIN_NODE_VERSION = '20.19.0'
+
+export function isSupportedNodeVersion(version: string): boolean {
+  const parsed = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version.trim())
+  if (!parsed) return false
+
+  const actual = parsed.slice(1, 4).map(Number)
+  const minimum = MIN_NODE_VERSION.split('.').map(Number)
+  for (let index = 0; index < minimum.length; index++) {
+    if (actual[index]! > minimum[index]!) return true
+    if (actual[index]! < minimum[index]!) return false
+  }
+  return true
+}
 
 /**
  * Phase 1 prerequisite bundle. Mirrors install.sh's Phase 1 flow but
@@ -61,6 +86,16 @@ export interface OssSignals {
  * lines matching the retired bash output.
  */
 export async function checkPrerequisites(options: PrereqOptions): Promise<PrereqResult> {
+  const nodeVersion = process.versions.node
+  if (!isSupportedNodeVersion(nodeVersion)) {
+    throw new PrerequisiteError(
+      `Node.js ${nodeVersion} is unsupported. SpecRails requires Node.js ` +
+        `${MIN_NODE_VERSION} or newer because OpenSpec 1.4.1 uses that runtime floor. ` +
+        'Install a supported Node.js release from https://nodejs.org/',
+    )
+  }
+  ok(`Node.js: ${nodeVersion}`)
+
   if (!(await gitInstalled())) {
     throw new PrerequisiteError(
       'git is required but not on PATH. Install git: https://git-scm.com/',
@@ -96,11 +131,42 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
       ok(`Provider: claude (--provider flag)`)
     }
   }
+  if (provider === 'kimi') {
+    if (availability.kimi) {
+      const v = await kimiVersion()
+      if (!isSupportedKimiVersion(v) && !options.skipPrereqs) {
+        throw new PrerequisiteError(
+          `Kimi Code ${v} is unsupported. Upgrade to ${MIN_KIMI_VERSION} or newer: ` +
+            'https://www.kimi.com/code/docs/en/kimi-code-cli/guides/getting-started.html',
+        )
+      }
+      ok(`Kimi Code CLI: ${v}`)
+    } else if (options.explicitProvider === 'kimi') {
+      if (!options.skipPrereqs) {
+        throw new PrerequisiteError(
+          'Kimi Code CLI is not installed. Install it from https://www.kimi.com/code/docs/en/ ' +
+            'and retry, or run with SPECRAILS_SKIP_PREREQS=1 for fixture generation.',
+        )
+      }
+      ok('Provider: kimi (--provider flag)')
+    }
+  }
 
   // 1.3 Authentication for the selected provider.
   if (provider === 'claude') {
     await assertClaudeAuthenticated({ skipPrereqs: options.skipPrereqs })
     ok('Claude: authenticated')
+  }
+  if (provider === 'kimi' && availability.kimi) {
+    const status = await assertKimiAuthenticated({ skipPrereqs: options.skipPrereqs })
+    if (status === 'authenticated') {
+      ok('Kimi: authentication evidence found')
+    } else if (status === 'unknown') {
+      info(
+        'Kimi authentication could not be proven without a billable prompt; ' +
+          'the first workflow will report 401/login errors. Run `kimi login` if needed.',
+      )
+    }
   }
 
   // 1.4 npm — required for running the TUI and for the `update` command.
@@ -109,7 +175,7 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
       warn('npm not found (skipped — SPECRAILS_SKIP_PREREQS=1)')
     } else {
       throw new PrerequisiteError(
-        'npm is required but not on PATH. Install Node.js 20+ from https://nodejs.org/',
+        `npm is required but not on PATH. Install Node.js ${MIN_NODE_VERSION}+ from https://nodejs.org/`,
       )
     }
   } else {
