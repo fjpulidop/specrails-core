@@ -109,16 +109,27 @@ a screenshot/manual-check note in the design's
 "Open questions". A criterion with **no** mapping is a
 blocker finding.
 
-### 5. Re-run the full validation gate
+### 5. Verify the gate — scoped-first
 
-Use the command from the design's `Validation` section in the
-plan artefact (or the final block of `tasks.md`):
+The developer's validation gate already ran the full suite
+green; re-running the whole thing on an untouched tree
+re-buys information the pipeline already has. So:
 
-- Project test suite (`npm test`, `pytest`, `cargo test`, …).
-  Confirm it passes. Capture the count.
-- Project build if present (`npm run build`, …). Confirm it
-  succeeds.
-- If neither runner exists, run whatever fallback the design
+- Run the tests SCOPED to the diff — the test files covering
+  every changed source file, per-file (`npx vitest run
+  <file>`, `pytest <file>`, `cargo test <name>`, …). Confirm
+  green; capture the count.
+- Run the full suite yourself ONLY when: you modified
+  production code in this review, the diff touches
+  build/config/test infrastructure, or a scoped failure has
+  an unclear blast radius. Then finish with ONE clean full
+  pass (plus the build if present) — never repeated full
+  passes between fixes.
+- If you changed nothing and the scoped runs are green,
+  record the developer's gate as the pass of record — in the
+  confidence artefact set `tests.ran` to the scoped command
+  and say so in `tests.details`.
+- If no test runner exists, run whatever fallback the design
   named (`node --check`, etc.).
 
 ### 6. Write the confidence artefact
