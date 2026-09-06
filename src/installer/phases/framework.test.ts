@@ -71,6 +71,24 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
   })
 
   describe('installFramework', () => {
+    it('refreshes a framework under Unicode paths without losing sibling provider bytes', () => {
+      const scriptDir = path.join(tmpDir, 'Paquete español')
+      const fwDir = path.join(tmpDir, 'José User Home', 'framework')
+      setupFakeScriptDir(scriptDir)
+      const input = {
+        scriptDir, frameworkDir: fwDir, provider: 'claude' as const,
+        providerDir: '.claude', version: '5.0.0',
+      }
+      installFramework(input)
+      const sibling = path.join(fwDir, '5.0.0', '.codex', 'skills', 'Guía', '契約.md')
+      writeFileLf(sibling, 'unchanged sibling provider instructions')
+      writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), '# updated architecture')
+      expect(installFramework(input).materialized).toBe(true)
+      expect(readTextFile(path.join(fwDir, '5.0.0', '.claude', 'agents', 'sr-architect.md')))
+        .toBe('# updated architecture')
+      expect(readTextFile(sibling)).toBe('unchanged sibling provider instructions')
+    })
+
     it('materializes the provider-static subtree once under <frameworkDir>/<version>/<providerDir>', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const fwDir = path.join(tmpDir, 'framework')

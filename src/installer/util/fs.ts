@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer'
+import { randomUUID } from 'node:crypto'
 import {
-  cpSync,
+  constants,
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -85,13 +87,20 @@ export function readBytes(filePath: string): Buffer {
  */
 export function copyFile(src: string, dest: string): void {
   mkdirp(path.dirname(dest))
+  const temporary = path.join(path.dirname(dest), `.${path.basename(dest)}.copy-${randomUUID()}`)
   try {
-    cpSync(src, dest)
+    // cpSync's native overwrite removes a UTF-8 path incorrectly on Windows
+    // Node 22 even with a nonzero mode (nodejs/node#61878). Stage via libuv then
+    // replace the entry, preserving linked referents and the old file on error.
+    copyFileSync(src, temporary, constants.COPYFILE_EXCL | constants.COPYFILE_FICLONE)
+    renameSync(temporary, dest)
   } catch (err) {
     throw new FilesystemError(
       `failed to copy ${src} → ${dest}: ${(err as Error).message}`,
       dest,
     )
+  } finally {
+    rmSync(temporary, { force: true })
   }
 }
 

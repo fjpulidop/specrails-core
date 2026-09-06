@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { linkSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
@@ -67,6 +67,37 @@ describe('fs', () => {
   })
 
   describe('copyFile', () => {
+    it('replaces a linked destination without mutating its referent or deleting it on copy failure', () => {
+      const src = path.join(tmpDir, 'Origen español', 'source.md')
+      const referent = path.join(tmpDir, 'Shared instructions.md')
+      const dest = path.join(tmpDir, 'José User Home', '契約.md')
+      writeFileLf(src, 'new project instructions')
+      writeFileLf(referent, 'shared instructions remain untouched')
+      mkdirp(path.dirname(dest))
+      linkSync(referent, dest)
+      copyFile(src, dest)
+      expect(readTextFile(dest)).toBe('new project instructions')
+      expect(readTextFile(referent)).toBe('shared instructions remain untouched')
+      expect(() => copyFile(path.join(tmpDir, 'missing.md'), dest)).toThrow(FilesystemError)
+      expect(readTextFile(dest)).toBe('new project instructions')
+      expect(readdirSync(path.dirname(dest))).toEqual(['契約.md'])
+    })
+
+    it('overwrites existing Unicode files during repeated file and directory copies', () => {
+      const src = path.join(tmpDir, 'Origen español', '契約.md')
+      const dest = path.join(tmpDir, 'José User Home', 'Guía', '契約.md')
+      writeFileLf(src, 'first source bytes')
+      writeFileLf(dest, 'existing destination bytes')
+      copyFile(src, dest)
+      expect(readTextFile(dest)).toBe('first source bytes')
+      writeFileLf(src, 'replacement source bytes')
+      copyFile(src, dest)
+      expect(readTextFile(dest)).toBe('replacement source bytes')
+      writeFileLf(src, 'directory overlay bytes')
+      copyDir(path.dirname(src), path.dirname(dest))
+      expect(readTextFile(dest)).toBe('directory overlay bytes')
+    })
+
     it('copies a single file into a new directory tree', () => {
       const src = path.join(tmpDir, 'src.txt')
       const dest = path.join(tmpDir, 'out', 'dest.txt')
