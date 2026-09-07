@@ -53,9 +53,14 @@ export async function runCommand(
   // POSIX double-quotes work; Windows cmd.exe also accepts them when
   // we escape inner double quotes as `""`.
   const finalArgs = useShell ? args.map(quoteArgForShell) : args
+  // cmd.exe re-tokenises the command itself as well: an absolute interpreter
+  // path with spaces (a bundled node.exe under "Program Files", a user profile
+  // with a space) was split at its first space and reported "is not
+  // recognized as an internal or external command".
+  const finalCmd = useShell ? quoteArgForShell(cmd) : cmd
 
   return new Promise<RunResult>((resolve, reject) => {
-    const child = spawn(cmd, finalArgs, spawnOpts)
+    const child = spawn(finalCmd, finalArgs, spawnOpts)
     let stdout = ''
     let stderr = ''
     let timer: NodeJS.Timeout | null = null
