@@ -1,6 +1,6 @@
 {
   "name": "specrails-core",
-  "version": "4.12.0",
+  "version": "4.12.1",
   "description": "Provider-independent AI agent workflow system for Claude Code, Codex, Gemini CLI, and Kimi Code",
   "type": "module",
   "bin": {

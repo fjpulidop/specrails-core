@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.12.1](https://github.com/fjpulidop/specrails-core/compare/v4.12.0...v4.12.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* copy installer artifacts safely under Unicode paths (backport of 71afe812; Node 22 `cpSync` overwrite defect on Windows, nodejs/node#61878)
+
 ## [4.12.0](https://github.com/fjpulidop/specrails-core/compare/v4.11.3...v4.12.0) (2026-07-20)
 
 
