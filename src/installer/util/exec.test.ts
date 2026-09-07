@@ -50,6 +50,21 @@ describe('exec', () => {
       5000,
     )
 
+    it.skipIf(process.platform !== 'win32')('quotes a command path containing spaces on Windows', async () => {
+      const { mkdtempSync, copyFileSync, rmSync } = await import('node:fs')
+      const { tmpdir } = await import('node:os')
+      const path = await import('node:path')
+      const dir = mkdtempSync(path.join(tmpdir(), 'exec with spaces '))
+      const node = path.join(dir, 'node with spaces.exe')
+      copyFileSync(process.execPath, node)
+      try {
+        const result = await runCommand(node, ['-e', 'process.stdout.write("ok")'], { inherit: false })
+        expect(result.stdout).toBe('ok')
+      } finally {
+        rmSync(dir, { recursive: true, force: true })
+      }
+    })
+
     it('quotes args containing spaces so they reach the child as one token', async () => {
       // Asserts that an arg with embedded whitespace round-trips
       // through the shell wrapper unchanged. Reproduces the production
