@@ -6,6 +6,7 @@
 ### Bug Fixes
 
 * copy installer artifacts safely under Unicode paths (backport of 71afe812; Node 22 `cpSync` overwrite defect on Windows, nodejs/node#61878)
+* quote the command path when `runCommand` runs through cmd.exe, so OpenSpec init works when the bundled Node lives under a path with spaces (`Program Files`, a user profile with a space)
 
 ## [4.12.0](https://github.com/fjpulidop/specrails-core/compare/v4.11.3...v4.12.0) (2026-07-20)
 
