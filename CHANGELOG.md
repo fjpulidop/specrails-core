@@ -1,5 +1,17 @@
 # Changelog
 
+## [5.1.0](https://github.com/fjpulidop/specrails-core/compare/v5.0.0...v5.1.0) (2026-09-07)
+
+
+### Features
+
+* make provider pipelines and Core updates reliable ([#334](https://github.com/fjpulidop/specrails-core/issues/334)) ([f3abc04](https://github.com/fjpulidop/specrails-core/commit/f3abc043510dc928abee30f54f8496c907149ad1))
+
+
+### Bug Fixes
+
+* **installer:** quote the command path when running through cmd.exe ([#344](https://github.com/fjpulidop/specrails-core/issues/344)) ([624a5e8](https://github.com/fjpulidop/specrails-core/commit/624a5e8341d81e92d602e81be1faa8d830d7c90c))
+
 ## [5.0.0](https://github.com/fjpulidop/specrails-core/compare/v4.12.0...v5.0.0) (2026-07-21)
 
 
