@@ -1,10 +1,11 @@
-import { closeSync, constants, cpSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { realpathSync as requireRealpath } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { InstallerError } from './errors.js'
 import { isReservedPath, RESERVED_PATHS } from './paths.js'
+import { restoreTree, snapshotTree, type LinkRecord } from './fs.js'
 
 function exists(file: string): boolean {
   try { lstatSync(file); return true } catch (error) {
@@ -100,33 +101,69 @@ function removeForRollback(target: string, relative: string): void {
   rmSync(target, { recursive: true, force: true })
 }
 
+/**
+ * A surface the transaction protects.
+ *
+ * `snapshotContents: false` marks a surface whose CONTENTS must not be copied:
+ * the versioned framework store, which `installFramework` already rebuilds from
+ * a content-hash stamp and stages through a temp directory. Rollback still
+ * removes such a surface when the install CREATED it, and leaves a pre-existing
+ * one exactly as it stands — copying it bought no safety and cost a full copy of
+ * the framework store on every install.
+ */
+export type ProtectedSurface = string | { path: string; snapshotContents: boolean }
+
+interface SurfaceSnapshot {
+  target: string
+  saved: string
+  present: boolean
+  snapshotContents: boolean
+  links: LinkRecord[]
+}
+
 /** Snapshot only installer-owned surfaces; never follow links into a shared framework.
  * Backups survive a failed rollback and their location is reported for recovery.
+ *
+ * Snapshotting requires NO filesystem privilege: links are recorded by target
+ * rather than recreated (see `snapshotTree`), so a protected surface that is —
+ * or contains — a Windows junction no longer fails the install on an account
+ * without SeCreateSymbolicLinkPrivilege.
  */
-export async function withInstallRollback<T>(paths: string[], apply: () => Promise<T>): Promise<T> {
+export async function withInstallRollback<T>(paths: ProtectedSurface[], apply: () => Promise<T>): Promise<T> {
   const backup = mkdtempSync(path.join(os.tmpdir(), 'specrails-update-backup-'))
-  const snapshots = [...new Set(paths)].map((target, index) => ({ target, saved: path.join(backup, String(index)), present: exists(target) }))
+  const seen = new Set<string>()
+  const snapshots: SurfaceSnapshot[] = []
+  for (const entry of paths) {
+    const target = typeof entry === 'string' ? entry : entry.path
+    if (seen.has(target)) continue
+    seen.add(target)
+    snapshots.push({
+      target,
+      saved: path.join(backup, String(snapshots.length)),
+      present: exists(target),
+      snapshotContents: typeof entry === 'string' ? true : entry.snapshotContents,
+      links: [],
+    })
+  }
   let retainBackup = false
   try {
-    // Snapshot destinations are new: keep traversal in JS to avoid Node 22's
-    // native Unicode directory-copy defect on Windows (nodejs/node#61878).
-    for (const row of snapshots) if (row.present) cpSync(row.target, row.saved, { recursive: true, dereference: false, verbatimSymlinks: true, filter: () => true, mode: constants.COPYFILE_FICLONE })
+    for (const row of snapshots) {
+      if (row.present && row.snapshotContents) row.links = snapshotTree(row.target, row.saved)
+    }
     try { return await apply() } catch (error) {
       const failures: string[] = []
       for (const row of [...snapshots].reverse()) {
         try {
+          // A pre-existing surface we deliberately did not copy is left alone:
+          // there is no backup to put back, and removing it would destroy work
+          // the transaction never owned.
+          if (row.present && !row.snapshotContents) continue
           const relative = path.basename(row.target)
           removeForRollback(row.target, relative)
           if (row.present) {
             mkdirSync(path.dirname(row.target), { recursive: true })
-            cpSync(row.saved, row.target, {
-              recursive: true, dereference: false, verbatimSymlinks: true, mode: constants.COPYFILE_FICLONE,
-              // Node 20 on Windows passes namespaced paths (\\?\) to
-              // cpSync filters; newer releases may pass ordinary paths. Put
-              // both operands in the same namespace before checking ownership.
-              filter: (source) => !isReservedPath(
-                [relative, path.relative(path.toNamespacedPath(row.saved), path.toNamespacedPath(source)).split(path.sep).join('/')].filter(Boolean).join('/'),
-              ),
+            restoreTree(row.saved, row.target, row.links, {
+              skip: (rel) => isReservedPath([relative, rel].filter(Boolean).join('/')),
             })
           }
         } catch (restoreError) { failures.push(`${row.target}: ${(restoreError as Error).message}`) }

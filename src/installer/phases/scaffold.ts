@@ -689,6 +689,13 @@ export function installFramework(input: InstallFrameworkInput): InstallFramework
     // Preserve all sibling providers while rebuilding the requested provider.
     // The stage is new: JS traversal keeps these copies away from Node 22's
     // native Unicode directory-copy defect on Windows (nodejs/node#61878).
+    //
+    // INVARIANT: the framework store holds real files only. `cpSync` with
+    // `verbatimSymlinks` does not copy a link, it RECREATES it via
+    // `symlinkSync` without a type — a privileged operation on Windows that
+    // throws EPERM on an ordinary account (this is what broke `init` in 5.1.0;
+    // see `withInstallRollback`). If the store ever gains a link, this call has
+    // to move to `snapshotTree`/`restoreTree` in `util/fs.ts`.
     if (isDir(versionDir)) cpSync(versionDir, stagedVersionDir, { recursive: true, dereference: false, verbatimSymlinks: true, filter: () => true, mode: constants.COPYFILE_FICLONE })
     else mkdirp(stagedVersionDir)
   // Framework provider trees are entirely Core-owned. Rebuilding from a clean

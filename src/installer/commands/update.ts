@@ -191,7 +191,13 @@ export async function runUpdate(flags: UpdateFlags): Promise<UpdateResult> {
   const surfaces = [
     ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', '.gitignore'].map((name) => path.join(artifactRoot, name)),
     ...['specrails-version', 'specrails-manifest.json', 'setup-templates', 'runtime'].map((name) => path.join(artifactRoot, '.specrails', name)),
-    path.join(fwDir, 'current'), path.join(fwDir, currentVersion),
+    path.join(fwDir, 'current'),
+    // Contents deliberately NOT snapshotted: `installFramework` rebuilds a
+    // version tree whenever its content stamp does not match and stages
+    // through a temp dir, so copying the whole framework store per install
+    // insured a risk that is already covered. A version dir this install
+    // CREATED is still removed on rollback.
+    { path: path.join(fwDir, currentVersion), snapshotContents: false },
   ]
   return withInstallRollback(surfaces, async () => {
   // ─── v5 migration: remove artefacts a pre-v5 install left behind ─────

@@ -11,6 +11,8 @@ import {
   atomicSymlinkSwap,
   copyDir,
   copyFile,
+  restoreTree,
+  snapshotTree,
   isDir,
   isFile,
   isSymlink,
@@ -281,6 +283,92 @@ describe('fs', () => {
       expect(realpathSync(current)).toBe(realpathSync(v2))
       // No leftover temp link.
       expect(pathExists(path.join(tmpDir, `.current.tmp-${process.pid}`))).toBe(false)
+    })
+  })
+  describe('snapshotTree / restoreTree', () => {
+    it('records a link by target instead of creating one', () => {
+      const target = path.join(tmpDir, 'versioned')
+      mkdirp(target)
+      writeFileLf(path.join(target, 'agent.md'), 'body')
+      const link = path.join(tmpDir, 'current')
+      symlinkOrCopy(target, link)
+
+      const backup = path.join(tmpDir, 'backup')
+      const records = snapshotTree(link, backup)
+
+      expect(records).toEqual([{ rel: '', target }])
+      // Nothing at all is written for a link — the record IS the backup.
+      expect(pathExists(backup)).toBe(false)
+    })
+
+    it('records nested links and copies the regular files around them', () => {
+      const shared = path.join(tmpDir, 'shared')
+      mkdirp(shared)
+      writeFileLf(path.join(shared, 'implement.md'), 'shared')
+      const surface = path.join(tmpDir, 'workspace')
+      mkdirp(path.join(surface, 'agents'))
+      writeFileLf(path.join(surface, 'settings.json'), '{}')
+      writeFileLf(path.join(surface, 'agents', 'sr-architect.md'), 'agent')
+      symlinkOrCopy(shared, path.join(surface, 'commands'))
+
+      const backup = path.join(tmpDir, 'backup')
+      const records = snapshotTree(surface, backup)
+
+      expect(records).toEqual([{ rel: 'commands', target: shared }])
+      expect(readTextFile(path.join(backup, 'settings.json'))).toBe('{}')
+      expect(readTextFile(path.join(backup, 'agents', 'sr-architect.md'))).toBe('agent')
+      expect(pathExists(path.join(backup, 'commands'))).toBe(false)
+    })
+
+    it('round-trips a surface, links included', () => {
+      const shared = path.join(tmpDir, 'shared')
+      mkdirp(shared)
+      writeFileLf(path.join(shared, 'implement.md'), 'shared')
+      const surface = path.join(tmpDir, 'workspace')
+      mkdirp(surface)
+      writeFileLf(path.join(surface, 'settings.json'), '{"v":1}')
+      symlinkOrCopy(shared, path.join(surface, 'commands'))
+
+      const backup = path.join(tmpDir, 'backup')
+      const records = snapshotTree(surface, backup)
+
+      removePath(surface)
+      restoreTree(backup, surface, records)
+
+      expect(readTextFile(path.join(surface, 'settings.json'))).toBe('{"v":1}')
+      expect(isSymlink(path.join(surface, 'commands'))).toBe(true)
+      expect(readTextFile(path.join(surface, 'commands', 'implement.md'))).toBe('shared')
+    })
+
+    it('honours the skip predicate so a reserved entry is never overwritten', () => {
+      const surface = path.join(tmpDir, 'workspace')
+      mkdirp(surface)
+      writeFileLf(path.join(surface, 'keep.json'), 'old')
+      writeFileLf(path.join(surface, 'replace.json'), 'old')
+
+      const backup = path.join(tmpDir, 'backup')
+      const records = snapshotTree(surface, backup)
+
+      writeFileLf(path.join(surface, 'keep.json'), 'edited during install')
+      writeFileLf(path.join(surface, 'replace.json'), 'edited during install')
+      restoreTree(backup, surface, records, { skip: (rel) => rel === 'keep.json' })
+
+      expect(readTextFile(path.join(surface, 'keep.json'))).toBe('edited during install')
+      expect(readTextFile(path.join(surface, 'replace.json'))).toBe('old')
+    })
+
+    it('restores a link whose target is gone as a dangling pointer, not a failure', () => {
+      const target = path.join(tmpDir, 'versioned')
+      mkdirp(target)
+      const link = path.join(tmpDir, 'current')
+      symlinkOrCopy(target, link)
+      const records = snapshotTree(link, path.join(tmpDir, 'backup'))
+
+      removePath(link)
+      removePath(target)
+      restoreTree(path.join(tmpDir, 'backup'), link, records)
+
+      expect(isSymlink(link)).toBe(true)
     })
   })
 })
