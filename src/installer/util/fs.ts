@@ -344,3 +344,155 @@ export function atomicSymlinkSwap(target: string, linkPath: string): void {
     renameSync(tmp, linkPath)
   }
 }
+
+/**
+ * One link found while snapshotting a protected surface.
+ *
+ * `rel` is the POSIX path of the link RELATIVE to the snapshot root, and is the
+ * empty string when the surface itself is a link.
+ */
+export interface LinkRecord {
+  rel: string
+  target: string
+}
+
+/**
+ * Copy `src` to `dest` for a rollback snapshot WITHOUT ever creating a link.
+ *
+ * `fs.cpSync(..., { dereference: false, verbatimSymlinks: true })` looks like the
+ * obvious primitive, but it does not copy a link — it RECREATES it with
+ * `symlinkSync(target, dest)` and never passes a `type`. Node then autodetects
+ * `'file'`/`'dir'`, never `'junction'`, and a `'file'`/`'dir'` symlink on Windows
+ * requires SeCreateSymbolicLinkPrivilege. On an ordinary account that raises
+ * EPERM, so merely BACKING UP a surface that contains a link (every
+ * `<frameworkDir>/current`, every assembled workspace provider dir) failed before
+ * the install had done anything at all.
+ *
+ * Links are therefore RECORDED, not reproduced: the returned records carry each
+ * link's target, and {@link restoreTree} puts them back through
+ * {@link symlinkOrCopy}, which already knows the junction-first, copy-fallback
+ * dance. Taking a snapshot needs no filesystem privilege on any platform.
+ *
+ * Inode types that are neither link, directory nor file are skipped — the same
+ * stance {@link copyDir} takes. Walking in JS also keeps these copies away from
+ * Node 22's native Unicode directory-copy defect on Windows (nodejs/node#61878),
+ * which the `cpSync` call this replaced had to work around explicitly.
+ */
+export function snapshotTree(src: string, dest: string): LinkRecord[] {
+  const records: LinkRecord[] = []
+
+  const walk = (currentSrc: string, currentDest: string, rel: string): void => {
+    let stat
+    try {
+      stat = lstatSync(currentSrc)
+    } catch {
+      return /* vanished between listing and stat — nothing to preserve */
+    }
+
+    if (stat.isSymbolicLink()) {
+      try {
+        records.push({ rel, target: readlinkSync(currentSrc) })
+      } catch {
+        /* unreadable link: nothing to record, nothing to restore */
+      }
+      return
+    }
+
+    if (stat.isDirectory()) {
+      mkdirp(currentDest)
+      for (const name of listNames(currentSrc)) {
+        walk(path.join(currentSrc, name), path.join(currentDest, name), rel === '' ? name : `${rel}/${name}`)
+      }
+      return
+    }
+
+    if (stat.isFile()) copyFile(currentSrc, currentDest)
+  }
+
+  walk(src, dest, '')
+  return records
+}
+
+/**
+ * Put a snapshot taken by {@link snapshotTree} back at `target`.
+ *
+ * `skip(rel)` receives the same POSIX-relative paths the records use ('' for the
+ * root) and suppresses restoring that entry — the reserved-path rule, so a file
+ * the user created or edited while the install was running is never overwritten
+ * by a stale backup copy.
+ */
+export function restoreTree(
+  saved: string,
+  target: string,
+  links: LinkRecord[],
+  options: { skip?: (rel: string) => boolean } = {},
+): void {
+  const skip = options.skip ?? (() => false)
+
+  const rootLink = links.find((record) => record.rel === '')
+  if (rootLink) {
+    if (!skip('')) restoreLink(rootLink.target, target)
+    return
+  }
+
+  const walk = (currentSaved: string, currentTarget: string, rel: string): void => {
+    if (skip(rel)) return
+    let stat
+    try {
+      stat = lstatSync(currentSaved)
+    } catch {
+      return
+    }
+    if (stat.isDirectory()) {
+      mkdirp(currentTarget)
+      for (const name of listNames(currentSaved)) {
+        walk(path.join(currentSaved, name), path.join(currentTarget, name), rel === '' ? name : `${rel}/${name}`)
+      }
+      return
+    }
+    if (stat.isFile()) copyFile(currentSaved, currentTarget)
+  }
+
+  walk(saved, target, '')
+
+  // Links last: their parent directories exist by now.
+  for (const record of links) {
+    if (skip(record.rel)) continue
+    restoreLink(record.target, path.join(target, ...record.rel.split('/')))
+  }
+}
+
+/**
+ * Recreate a recorded link at `linkPath`. Delegates to {@link symlinkOrCopy} so
+ * Windows gets a junction (no privilege required) and an unprivileged machine
+ * with no link mechanism at all still ends up with the right CONTENTS.
+ *
+ * A target that no longer exists cannot be copied, so the pointer is recreated
+ * verbatim where the platform allows a dangling link rather than failing the
+ * whole rollback.
+ */
+export function restoreLink(target: string, linkPath: string): void {
+  if (pathExists(target)) {
+    symlinkOrCopy(target, linkPath)
+    return
+  }
+  removePath(linkPath)
+  mkdirp(path.dirname(linkPath))
+  try {
+    symlinkSync(target, linkPath, process.platform === 'win32' ? 'junction' : 'dir')
+  } catch (err) {
+    throw new FilesystemError(
+      `cannot restore link to a missing target (${target}): ${(err as Error).message}`,
+      linkPath,
+    )
+  }
+}
+
+/** `readdirSync` wrapped as a typed {@link FilesystemError}, as {@link copyDir} does. */
+function listNames(dir: string): string[] {
+  try {
+    return readdirSync(dir)
+  } catch (err) {
+    throw new FilesystemError(`failed to read directory: ${(err as Error).message}`, dir)
+  }
+}
