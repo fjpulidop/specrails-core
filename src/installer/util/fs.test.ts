@@ -296,7 +296,11 @@ describe('fs', () => {
       const backup = path.join(tmpDir, 'backup')
       const records = snapshotTree(link, backup)
 
-      expect(records).toEqual([{ rel: '', target }])
+      // `readlinkSync` reports a junction's target in the namespaced `\\?\C:\…`
+      // form on some Windows/Node combinations, so compare where it RESOLVES
+      // rather than how it is spelled.
+      expect(records.map((record) => record.rel)).toEqual([''])
+      expect(realpathSync(records[0]!.target)).toBe(realpathSync(target))
       // Nothing at all is written for a link — the record IS the backup.
       expect(pathExists(backup)).toBe(false)
     })
@@ -314,7 +318,8 @@ describe('fs', () => {
       const backup = path.join(tmpDir, 'backup')
       const records = snapshotTree(surface, backup)
 
-      expect(records).toEqual([{ rel: 'commands', target: shared }])
+      expect(records.map((record) => record.rel)).toEqual(['commands'])
+      expect(realpathSync(records[0]!.target)).toBe(realpathSync(shared))
       expect(readTextFile(path.join(backup, 'settings.json'))).toBe('{}')
       expect(readTextFile(path.join(backup, 'agents', 'sr-architect.md'))).toBe('agent')
       expect(pathExists(path.join(backup, 'commands'))).toBe(false)
