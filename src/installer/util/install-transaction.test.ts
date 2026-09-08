@@ -155,6 +155,40 @@ describe('withInstallRollback without symlink privilege', () => {
 })
 
 describe('the versioned framework store is not copied', () => {
+  it('protects the exact surface list `init` passes (the reported Windows failure)', async () => {
+    // Verbatim shape of the crash reported from an unprivileged Windows box:
+    //
+    //   EPERM: operation not permitted, symlink
+    //     'C:\\Users\\<user>\\.specrails\\framework\\5.1.0'
+    //     -> 'C:\\Users\\<user>\\AppData\\Local\\Temp\\specrails-update-backup-XXXXXX\\11'
+    //       at onLink (node:internal/fs/cp/cp-sync:195:12)
+    //       at withInstallRollback (install-transaction.js:152:17)
+    //
+    // Index 11 is `<frameworkDir>/current` — the twelfth surface — on a fresh
+    // workspace where the eleven before it do not exist yet.
+    const { dir, current, oldVersion, newVersion } = framework()
+    const workspace = path.join(root, 'workspace')
+    mkdirSync(path.join(workspace, '.specrails'), { recursive: true })
+    const surfaces = [
+      ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', '.gitignore']
+        .map((name) => path.join(workspace, name)),
+      ...['specrails-version', 'specrails-manifest.json', 'setup-templates', 'runtime']
+        .map((name) => path.join(workspace, '.specrails', name)),
+      current,
+      { path: newVersion, snapshotContents: false },
+    ]
+
+    await expect(withInstallRollback(surfaces, async () => {
+      mkdirSync(newVersion)
+      throw new Error('install failed')
+    })).rejects.toThrow('install failed')
+
+    expect(readlinkSync(current)).toBe(oldVersion)
+    expect(existsSync(newVersion)).toBe(false)
+    expect(existsSync(path.join(dir, '5.0.0', 'agent.md'))).toBe(true)
+  })
+
+
   it('leaves a pre-existing version directory untouched and makes no copy of it', async () => {
     const { dir, oldVersion } = framework()
     writeFileSync(path.join(oldVersion, 'extra.md'), 'added by a sibling install')
