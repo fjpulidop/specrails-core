@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.1.1](https://github.com/fjpulidop/specrails-core/compare/v5.1.0...v5.1.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **installer:** snapshot installs without symlink privilege ([#345](https://github.com/fjpulidop/specrails-core/issues/345)) ([09a2ebd](https://github.com/fjpulidop/specrails-core/commit/09a2ebdbda02a7b077a08ecb3ab4fd1d5cd31da3))
+
 ## [5.1.0](https://github.com/fjpulidop/specrails-core/compare/v5.0.0...v5.1.0) (2026-09-07)
 
 
