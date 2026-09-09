@@ -1,8 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs'
+import { load as yaml } from 'js-yaml'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { integrity, releaseVersion, validateVersions, validateArtifact, validatePackFiles, validateRelease, run } from './release-utils.mjs'
 import { awaitCi, selectCiRun, isCurrentMain } from './await-ci.mjs'
 import { readArtifact, publishedState, assertMonotonicRelease, compareStableVersions } from './publish-package.mjs'
@@ -141,4 +143,62 @@ test('Release Please metadata gate skips old main pushes and fails closed on API
   assert.equal(await isCurrentMain({ ...input, fetchImpl: async () => response(200, { object: { sha: 'b'.repeat(40) } }) }), false)
   await assert.rejects(isCurrentMain({ ...input, fetchImpl: async () => response(403) }), /HTTP 403/)
   await assert.rejects(isCurrentMain({ ...input, fetchImpl: async () => response(200, {}) }), /no valid main SHA/)
+})
+
+
+test('automatic publication takes checkout, expected SHA and artifact CI from the release tag evidence', () => {
+  const { jobs } = yaml(readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8'))
+  const evidence = jobs['release-evidence']
+  assert.ok(evidence, 'the tagged commit needs its own CI gate after Release Please')
+  const checkout = evidence.steps.find(step => step.uses?.startsWith('actions/checkout@') && step.with.path === 'release-source')
+  assert.equal(checkout.with.ref, "${{ format('refs/tags/{0}', needs.release-please.outputs.tag) }}")
+  assert.equal(evidence.steps.find(step => step.id === 'ci').env.RELEASE_CI_SHA, '${{ steps.release.outputs.sha }}')
+  assert.equal(evidence.permissions['id-token'], undefined)
+  assert.equal(evidence.steps[0].with.ref, undefined, 'orchestration helpers come from the triggering workflow, not the older tag')
+  assert.equal(evidence.steps.find(step => step.id === 'release')['working-directory'], 'release-source')
+  assert.match(evidence.steps.find(step => step.id === 'release').run, /GITHUB_WORKSPACE\/scripts\/validate-release/)
+  assert.ok(jobs.publish.needs.includes('release-evidence'))
+  assert.match(jobs.publish.if, /needs\.release-evidence\.result == 'success'/)
+  const publishCheckout = jobs.publish.steps.find(step => step.uses?.startsWith('actions/checkout@'))
+  const validate = jobs.publish.steps.find(step => step.id === 'release')
+  assert.equal(publishCheckout.with.ref, validate.env.EXPECTED_SHA)
+  assert.match(validate.env.EXPECTED_SHA, /needs\.release-evidence\.outputs\.sha/)
+  assert.doesNotMatch(validate.env.EXPECTED_SHA, /github\.sha/)
+  const download = jobs.publish.steps.find(step => step.uses?.startsWith('actions/download-artifact@') && step.if.includes("'push'"))
+  assert.equal(download.with['run-id'], '${{ needs.release-evidence.outputs.run_id }}')
+})
+
+test('a delayed release selects the tagged ancestor CI and rejects the triggering commit artifact', async () => {
+  const temp = mkdtempSync(path.join(os.tmpdir(), 'core-delayed-release-'))
+  try {
+    const env = isolatedEnvironment(temp)
+    const git = (...args) => run('git', ['-C', temp, '-c', 'user.name=Release Fixture', '-c', 'user.email=fixture@example.invalid', ...args], { env })
+    git('init', '--initial-branch=main')
+    mkdirSync(path.join(temp, 'empty-hooks')); git('config', 'core.hooksPath', path.join(temp, 'empty-hooks'))
+    for (const [index, name] of ['package.json', 'package-lock.json', '.release-please-manifest.json'].entries()) writeFileSync(path.join(temp, name), JSON.stringify(versions()[index]))
+    git('add', '.'); git('commit', '-m', 'release version')
+    const tagged = git('rev-parse', 'HEAD'); git('tag', 'v5.0.0')
+    writeFileSync(path.join(temp, 'test-fix'), 'later test-only change'); git('add', '.'); git('commit', '-m', 'fix CI')
+    const trigger = git('rev-parse', 'HEAD'); git('update-ref', 'refs/remotes/origin/main', trigger)
+    assert.throws(() => validateRelease(temp, 'v5.0.0', trigger), /tested commit/)
+    git('checkout', '--detach', 'refs/tags/v5.0.0')
+    const release = validateRelease(temp, 'v5.0.0')
+    assert.equal(release.sha, tagged)
+    const workflow_runs = [ciRun({ id: 20, head_sha: trigger }), ciRun({ id: 10, head_sha: tagged })]
+    const input = { repository: 'owner/repo', sha: release.sha, token: 'fixture-token', fetchImpl: async () => response(200, { workflow_runs }) }
+    assert.equal(await awaitCi(input), '10')
+    // Exercise the actual CLI environment wiring used by Actions, including a
+    // later GITHUB_SHA. Stub only the network response, never run a publication.
+    const output = path.join(temp, 'actions-output')
+    const fetchStub = path.join(temp, 'fetch-stub.mjs')
+    writeFileSync(fetchStub, `globalThis.fetch = async url => { if (!url.includes('head_sha=${tagged}')) throw new Error('Requested CI for the wrong commit'); return { ok: true, json: async () => (${JSON.stringify({ workflow_runs })}) }; };`)
+    const cli = path.resolve('scripts/await-ci.mjs')
+    run(process.execPath, ['--import', pathToFileURL(fetchStub).href, cli], { env: { ...env, GITHUB_REPOSITORY: 'owner/repo', GITHUB_SHA: trigger, RELEASE_CI_SHA: tagged, GH_TOKEN: 'fixture-token', GITHUB_OUTPUT: output } })
+    assert.match(readFileSync(output, 'utf8'), /run_id=10/)
+
+    assert.equal(validateArtifact({ ...manifest, sha: tagged }, bytes, release).sha, tagged)
+    assert.throws(() => validateArtifact({ ...manifest, sha: trigger }, bytes, release), /identity/)
+    workflow_runs[1].conclusion = 'failure'
+    await assert.rejects(awaitCi(input), /CI .* is failure/)
+  } finally { rmSync(temp, { recursive: true, force: true }) }
 })

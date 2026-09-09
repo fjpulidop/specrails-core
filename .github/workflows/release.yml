@@ -77,6 +77,47 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
 
+  # Release Please can create an older version tag after a later main push
+  # unblocks release processing. Select CI/artifacts for that tag, not the push.
+  release-evidence:
+    needs: [ci-gate, release-please]
+    if: github.event_name == 'push' && needs.ci-gate.result == 'success' && needs.release-please.outputs.created == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha: ${{ steps.release.outputs.sha }}
+      run_id: ${{ steps.ci.outputs.run_id }}
+    steps:
+      # Keep the current orchestration helpers: an older tag may predate
+      # RELEASE_CI_SHA support. Validate its source in a separate checkout.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: release-source
+          ref: ${{ format('refs/tags/{0}', needs.release-please.outputs.tag) }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+      - name: Resolve and validate the release tag commit
+        id: release
+        working-directory: release-source
+        env:
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag }}
+        run: node "$GITHUB_WORKSPACE/scripts/validate-release.mjs"
+      - name: Require successful CI for the tagged commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CI_SHA: ${{ steps.release.outputs.sha }}
+        run: node scripts/await-ci.mjs
+
   prepare-manual:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -121,8 +162,8 @@ jobs:
           retention-days: 14
 
   publish:
-    needs: [ci-gate, release-please, prepare-manual]
-    if: always() && ((github.event_name == 'workflow_dispatch' && needs.prepare-manual.result == 'success') || (github.event_name == 'push' && needs.ci-gate.result == 'success' && needs.release-please.outputs.created == 'true'))
+    needs: [release-evidence, release-please, prepare-manual]
+    if: always() && ((github.event_name == 'workflow_dispatch' && needs.prepare-manual.result == 'success') || (github.event_name == 'push' && needs.release-evidence.result == 'success' && needs.release-please.outputs.created == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -134,7 +175,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-manual.outputs.sha || github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-manual.outputs.sha || needs.release-evidence.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
@@ -145,7 +186,7 @@ jobs:
         id: release
         env:
           RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || needs.release-please.outputs.tag }}
-          EXPECTED_SHA: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-manual.outputs.sha || github.sha }}
+          EXPECTED_SHA: ${{ github.event_name == 'workflow_dispatch' && needs.prepare-manual.outputs.sha || needs.release-evidence.outputs.sha }}
         run: node scripts/validate-release.mjs
       - name: Download the exact tarball tested by CI
         if: github.event_name == 'push'
@@ -153,7 +194,7 @@ jobs:
         with:
           name: core-package
           path: ${{ runner.temp }}/core-package
-          run-id: ${{ needs.ci-gate.outputs.run_id }}
+          run-id: ${{ needs.release-evidence.outputs.run_id }}
           github-token: ${{ github.token }}
       - name: Download the exact tarball tested by manual recovery
         if: github.event_name == 'workflow_dispatch'

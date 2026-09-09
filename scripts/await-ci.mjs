@@ -32,7 +32,7 @@ export async function awaitCi({ repository, sha, token, fetchImpl = fetch, sleep
 }
 if (isMain(import.meta.url)) {
   try {
-    const input = { repository: process.env.GITHUB_REPOSITORY, sha: process.env.GITHUB_SHA, token: process.env.GH_TOKEN }
+    const input = { repository: process.env.GITHUB_REPOSITORY, sha: process.argv.includes('--current-main') ? process.env.GITHUB_SHA : (process.env.RELEASE_CI_SHA || process.env.GITHUB_SHA), token: process.env.GH_TOKEN }
     if (process.argv.includes('--current-main')) {
       const current = await isCurrentMain(input)
       appendFileSync(process.env.GITHUB_OUTPUT, `current=${current}\n`)
@@ -40,7 +40,7 @@ if (isMain(import.meta.url)) {
     } else {
       const runId = await awaitCi(input)
       appendFileSync(process.env.GITHUB_OUTPUT, `run_id=${runId}\n`)
-      console.log(`CI passed for ${process.env.GITHUB_SHA} (run ${runId})`)
+      console.log(`CI passed for ${input.sha} (run ${runId})`)
     }
   } catch (error) { console.error(error.message); process.exitCode = 1 }
 }
