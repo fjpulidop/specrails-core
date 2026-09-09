@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.2](https://github.com/fjpulidop/specrails-core/compare/v5.2.1...v5.2.2) (2026-09-09)
+
+
+### Bug Fixes
+
+* **runtime:** exclude agent session identity from verification receipts ([#352](https://github.com/fjpulidop/specrails-core/issues/352)) ([cd163db](https://github.com/fjpulidop/specrails-core/commit/cd163dba023148b079b21b064be5a71663d6fc56))
+
 ## [5.2.1](https://github.com/fjpulidop/specrails-core/compare/v5.2.0...v5.2.1) (2026-09-09)
 
 
