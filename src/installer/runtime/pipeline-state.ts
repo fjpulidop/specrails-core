@@ -82,7 +82,14 @@ export interface PipelineState {
 }
 export interface PreviewFile { repositoryId: string; path: string; operation: 'write' | 'delete'; sourcePath?: string; contentHash?: string }
 const PHASES: PipelinePhase[] = ['architect', 'developer', 'reviewer', 'archive', 'ship', 'ci']
-const TRANSPORT_ENV_KEYS = new Set(['_', 'PWD', 'OLDPWD', 'SHLVL'])
+// Session identity belongs to the agent transport, not the checked application.
+// Keep this list explicit: provider configuration, application inputs and host
+// scope/configuration (including SPECRAILS_*) must still invalidate receipts.
+const TRANSPORT_ENV_KEYS = new Set([
+  '_', 'PWD', 'OLDPWD', 'SHLVL',
+  'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET',
+  'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION',
+])
 function verificationEnvironmentKeys(env: NodeJS.ProcessEnv, overrideKeys: string[] = []): string[] {
   return Object.keys(env).filter((key) => env[key] !== undefined && !TRANSPORT_ENV_KEYS.has(key) && !overrideKeys.includes(key)).sort()
 }

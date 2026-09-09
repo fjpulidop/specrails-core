@@ -443,6 +443,42 @@ describe('concurrent journal recovery', () => {
 
 
 describe('application environment evidence', () => {
+  it('reuses verification across agent sessions and a host process without session identity', () => {
+    initializePipeline(context, change)
+    const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
+    const module = path.join(root, 'runtime.mjs')
+    write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+    const contextFile = path.join(root, 'context.json')
+    write(contextFile, JSON.stringify(context))
+    const sessionKeys = ['CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION']
+    const baseEnv = { ...process.env }
+    for (const key of sessionKeys) delete baseEnv[key]
+    const invoke = (operation: string, env: NodeJS.ProcessEnv) => {
+      const result = spawnSync(process.execPath, ['--input-type=module', '-e', [
+        `import { verifyPipeline, inspectPipeline } from ${JSON.stringify(pathToFileURL(module).href)};`,
+        'import { readFileSync } from "node:fs";',
+        'const context = JSON.parse(readFileSync(process.argv[1], "utf8"));',
+        operation,
+      ].join('\n'), contextFile], { env, encoding: 'utf8', timeout: 20_000 })
+      expect(result.error).toBeUndefined()
+      expect(result.status, result.stderr).toBe(0)
+      return JSON.parse(result.stdout)
+    }
+    const session = (suffix: string) => ({ ...baseEnv, ...Object.fromEntries(sessionKeys.map(key => [key, `fixture-${suffix}-${key}`])) })
+    const receipt = invoke(`process.stdout.write(JSON.stringify(await verifyPipeline(context, ${JSON.stringify(request())})));`, session('first'))
+    expect(receipt.valid).toBe(true)
+    for (const key of sessionKeys) expect(receipt.commands[0].environmentKeys).not.toContain(key)
+    const inspect = 'process.stdout.write(JSON.stringify(inspectPipeline(context)));'
+    for (const env of [session('second'), baseEnv]) {
+      expect(invoke(inspect, env).verification.valid).toBe(true)
+    }
+    for (const key of ['NODE_OPTIONS', 'npm_config_registry', 'SPECRAILS_EXECUTION_CONTEXT', 'SPECRAILS_PROFILE_PATH', 'CLAUDE_CODE_CUSTOM_CONFIG']) {
+      expect(invoke(inspect, { ...baseEnv, [key]: key === 'NODE_OPTIONS' ? '--no-warnings' : 'changed-fixture-value' }).verification.valid).toBe(false)
+    }
+    write(path.join(context.artifactRoot, 'code.js'), 'module.exports = 2\n')
+    expect(invoke(inspect, baseEnv).verification.reasons).toContain('Candidate files changed')
+  }, 30_000)
+
   it('invalidates changed, added or removed application environment inputs', async () => {
     initializePipeline(context, change)
     vi.stubEnv('PIPELINE_APP_MODE', 'test-a')
