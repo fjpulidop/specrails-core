@@ -289,3 +289,14 @@ Verdict: <"clean" | "fix needed: <one-sentence>" | "blocked: <reason>">
 Then end your turn. The orchestrator decides whether to spawn
 a second developer pass (if "fix needed") or to close the
 ticket (if "clean").
+
+
+## Structured acceptance handoff
+
+Follow the executable pipeline acceptance contract. Return a `stateDir/acceptance.json`
+request covering every frozen requirement with evidence, explicit exceptions, required
+and supplementary checks (including benchmark scope/limitations), and concrete findings.
+Have the coordinator record it with `acceptance --request` before reviewer done and
+archive-check. Inspect visual evidence at supported viewports and extreme states for
+visual changes. A confidence score or checked tasks cannot substitute for acceptance.
+Do not self-authorize material scope changes; cite actual existing user/host decisions.

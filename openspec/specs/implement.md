@@ -309,3 +309,24 @@ When `DRY_RUN=true`, the gate still evaluates scores. If `CONFIDENCE_BLOCKED=tru
 ### Multi-Feature Mode
 
 In multi-feature mode, each feature's confidence score is evaluated independently after its reviewer completes. A block on one feature does not block other features from proceeding to Phase 4c. Each feature's gate outcome is recorded independently in the Phase 4e report.
+
+
+## Runtime acceptance and completion contract
+
+The runtime SHALL require a candidate-bound acceptance report before reviewer completion
+and archive approval. Every frozen criterion SHALL appear once with exact text, status
+and concrete evidence. When criteria are absent, the frozen description (or title) is
+the requirement at index zero. Missing, stale, pending or blocked acceptance and failed
+required checks SHALL prevent archive even when task boxes and command receipts pass.
+
+Accepted exceptions SHALL retain reason, impact, materiality, attribution and approval
+reference. Material changes SHALL require recorded user/host acceptance. Attribution is
+an accountable reviewer assertion, not cryptographic proof of human authorization.
+Supplementary check failures SHALL remain visible as validation with exceptions.
+Measurements SHALL declare scope and limitations; Node results do not certify GPU or
+browser frame performance. Review findings SHALL accompany numeric confidence.
+
+Status SHALL separate implementation, validation, archive and delivery; host ownership
+SHALL report pending-host delivery. Operational notes SHALL reside in stateDir and
+SHALL NOT invalidate candidate evidence. Phase timings and retry attempts SHALL be
+recorded when transitions occur; unattributed phase cost SHALL remain unavailable.

@@ -259,12 +259,15 @@
       "status",
       "phase",
       "verify",
+      "acceptance",
       "archive-check",
       "preview",
       "apply-preview"
     ],
     "statePath": "<backlogRoot>/.specrails/pipeline/<runId>/state.json",
     "verification": "Successful argv-based commands captured by the runtime, bound to frozen scope, candidate files and relevant execution environment. Unknown or stale evidence cannot pass archive.",
-    "hostOwnership": "Host worktrees are used directly; host git/backlog are not mutated by Core delivery."
+    "hostOwnership": "Host worktrees are used directly; host git/backlog are not mutated by Core delivery.",
+    "acceptance": "acceptance --request JSON records every exact frozen requirement, evidence, exception authority, check scope/limitations and findings. Required by reviewer done/archive-check; bound to scope, candidate and design.",
+    "completion": "status.completion separates implementation, validation (verified|with-exceptions|pending|blocked), archive and delivery (pending-host|complete|pending); status.phases includes observed durationMs and attempts."
   }
 }

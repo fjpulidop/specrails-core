@@ -51,3 +51,46 @@ make paid model calls or claim identical behavior across every native CLI releas
 
 See [Core installation and update consistency](core-updates.md) for version
 selection, rollback and Desktop integration.
+
+
+## Acceptance evidence and completion
+
+
+After development, normal review MUST write `stateDir/acceptance.json` and run
+`acceptance --request <absolute-path>` before `phase --phase reviewer --status done`.
+The request is `{criteria: [...], checks: [...], findings: [...]}`:
+- Each criterion has `specId` (string), `criterionIndex` (zero-based), `requirement`
+  (exact frozen text), `status` (`met`, `exception`, `blocked`, `pending`) and a
+  nonempty `evidence` array of concrete code/test/capture references and observations.
+  Cover every frozen acceptance criterion once. If a spec has no explicit criteria,
+  use its complete frozen description (or title if empty) at index 0.
+- An `exception` MUST include `{reason, impact, material, acceptedBy, approvalEvidence}`.
+  `acceptedBy` is `reviewer`, `user`, or `host`. Material scope changes require actual
+  user/host authorization; do not invent approval or label material changes minor.
+  Previously authorized decisions need no new confirmation. Unresolved requirements
+  remain `blocked` or `pending`, never `met` through a rewritten interpretation.
+- Each check has `{name, status, required, evidence, scope, limitations}`; status is
+  `passed`, `failed`, or `unavailable`. Include required and supplementary checks from
+  the design. Record the original required classification; never downgrade a failed
+  check to make the gate pass. For benchmarks state what is measured and excluded:
+  a Node microbenchmark does not establish browser Canvas/GPU/frame performance.
+- `findings` lists concrete review conclusions, risks and resolutions; use an empty
+  array only when no findings remain. Numeric confidence cannot replace this report.
+
+The runtime binds this evidence to frozen scope, source and design. Missing/stale
+acceptance or unresolved requirements/required checks block review and archive.
+Accepted exceptions and supplementary failures produce `with-exceptions` validation.
+Replacing the report requires review and archive authorization again; a green command
+receipt alone is insufficient. Evidence references and approval attribution remain
+reviewer assertions, not independently authenticated proof of human approval.
+
+Keep operational completion notes, check requests and reports in `stateDir` from
+start to finish. Run scoped checks for repairs and one final full verification after
+all edits. Reuse that full receipt while runtime status says it is valid and its
+commands cover required checks. New prose/phase handoffs alone do not warrant reruns.
+
+End with ONE concise summary from runtime `status.completion`: implementation,
+validation (including exceptions), archive, delivery, and evidence references.
+Host-owned delivery stays `pending-host`; do not call uncommitted files "landed".
+Report phase durations/attempts from `status.phases`; report per-phase cost only when
+provider telemetry attributes it, otherwise unavailable. Do not invent cost splits.

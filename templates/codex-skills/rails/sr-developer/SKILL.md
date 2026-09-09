@@ -205,3 +205,12 @@ no executable behaviour to test), reply with:
 
 and end your turn. Do not invent half-implementations or
 skip the RED step to pretend a task was completed.
+
+
+## Verification evidence handoff
+
+Keep operational notes and check requests under runtime `stateDir`, outside the design
+artifacts. Supply evidence per frozen requirement and report failed/unavailable checks.
+Declare benchmark scope and exclusions; Node timings do not prove browser frame time.
+Use scoped checks during repairs and one final full receipt, reused while valid.
+Return a concise handoff; the coordinator owns the single final run summary.

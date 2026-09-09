@@ -36,14 +36,47 @@ export interface VerificationReceipt {
   id: string; kind: 'full' | 'scoped'; scopeHash: string; candidateHash: string
   commands: CommandReceipt[]; completedAt: string; valid: boolean; reason?: string
 }
-interface PhaseRecord { status: PhaseStatus; reason?: string; candidateHash?: string; artifactHash?: string; completedAt?: string }
+export interface AcceptanceCriterion {
+  specId: string
+  criterionIndex: number
+  requirement: string
+  status: 'met' | 'exception' | 'blocked' | 'pending'
+  evidence: string[]
+  exception?: { reason: string; impact: string; material: boolean; acceptedBy: 'reviewer' | 'user' | 'host'; approvalEvidence: string }
+}
+export interface AcceptanceCheck {
+  name: string
+  status: 'passed' | 'failed' | 'unavailable'
+  required: boolean
+  evidence: string[]
+  /** What was measured and what remains outside the measurement. */
+  scope: string
+  limitations: string
+}
+export interface AcceptanceReport {
+  criteria: AcceptanceCriterion[]
+  checks: AcceptanceCheck[]
+  findings: string[]
+}
+export interface AcceptanceReceipt extends AcceptanceReport {
+  scopeHash: string; candidateHash: string; artifactHash: string; recordedAt: string
+}
+export interface PipelineCompletion {
+  implementation: 'complete' | 'incomplete'
+  validation: 'verified' | 'with-exceptions' | 'pending' | 'blocked'
+  archive: PhaseStatus
+  delivery: 'pending-host' | 'complete' | 'pending'
+  reasons: string[]
+}
+interface PhaseRecord { startedAt?: string; durationMs?: number; attempts?: number; status: PhaseStatus; reason?: string; candidateHash?: string; artifactHash?: string; completedAt?: string }
 export interface PipelineState {
   schemaVersion: 1; runId: string; change: string; context: PipelineContext; scopeHash: string
   revision: number; createdAt: string; updatedAt: string
   phases: Record<PipelinePhase, PhaseRecord>
   verification?: VerificationReceipt
+  acceptance?: AcceptanceReceipt
   archivePath?: string
-  archiveApproval?: { candidateHash: string; artifactHash: string; confidenceHash: string }
+  archiveApproval?: { candidateHash: string; artifactHash: string; confidenceHash: string; acceptanceHash: string }
   artifactExclusions: string[]
   preview?: { baseHash: string; files: PreviewFile[]; createdAt: string }
 }
@@ -121,6 +154,7 @@ export function validatePipelineContext(input: unknown): PipelineContext {
     if (spec.acceptanceCriteria !== undefined && (!Array.isArray(spec.acceptanceCriteria) || !spec.acceptanceCriteria.every((x) => typeof x === 'string'))) fail('Invalid acceptance criteria')
     return { id: spec.id as string | number, title: spec.title, description: spec.description, ...(spec.repositoryIds ? { repositoryIds: spec.repositoryIds as string[] } : {}), ...(spec.acceptanceCriteria ? { acceptanceCriteria: spec.acceptanceCriteria as string[] } : {}) }
   })
+  if (!specs.length || new Set(specs.map(spec => String(spec.id))).size !== specs.length) fail('Frozen scope needs unique nonempty specs')
   const backlogRoot = directory(data.backlogRoot)
   const backlogPath = data.backlogPath === undefined ? path.join(backlogRoot, '.specrails', 'local-tickets.json') : String(data.backlogPath)
   if (!path.isAbsolute(backlogPath) || !within(backlogRoot, path.resolve(backlogPath))) fail('Backlog path escapes backlogRoot')
@@ -314,6 +348,80 @@ function taskGate(state: PipelineState): void {
   const tasks = readFileSync(path.join(activeArtifactPath(state), 'tasks.md'), 'utf8')
   if (!/^\s*-\s+\[x\]/m.test(tasks) || /^\s*-\s+\[ \]/m.test(tasks)) fail('Required implementation tasks remain incomplete')
 }
+/** Stable indices refer to the frozen scope, never to rewritten design text.
+ * When no explicit AC list exists, the frozen description is the requirement. */
+function frozenCriteria(context: PipelineContext): Array<Pick<AcceptanceCriterion, 'specId' | 'criterionIndex' | 'requirement'>> {
+  return context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [spec.description || spec.title])
+    .map((requirement, criterionIndex) => ({ specId: String(spec.id), criterionIndex, requirement })))
+}
+function nonempty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
+function evidence(value: unknown): value is string[] { return Array.isArray(value) && value.length > 0 && value.every(nonempty) }
+function acceptanceReport(context: PipelineContext, input: unknown): AcceptanceReport {
+  const report = object(input)
+  const expected = frozenCriteria(context)
+  if (!Array.isArray(report.criteria) || report.criteria.length !== expected.length) fail('Acceptance must cover every frozen requirement exactly once')
+  const seen = new Set<string>()
+  const criteria = report.criteria.map((raw): AcceptanceCriterion => {
+    const row = object(raw)
+    const match = expected.find(item => item.specId === row.specId && item.criterionIndex === row.criterionIndex)
+    const key = String(row.specId) + ':' + String(row.criterionIndex)
+    if (!match || match.requirement !== row.requirement || seen.has(key)) fail('Acceptance requirement differs from frozen scope or is duplicated')
+    seen.add(key)
+    if (!['met', 'exception', 'blocked', 'pending'].includes(String(row.status)) || !evidence(row.evidence)) fail('Acceptance needs a valid status and concrete evidence for every requirement')
+    let exception: AcceptanceCriterion['exception']
+    if (row.status === 'exception') {
+      const entry = object(row.exception)
+      if (!nonempty(entry.reason) || !nonempty(entry.impact) || typeof entry.material !== 'boolean'
+        || !['reviewer', 'user', 'host'].includes(String(entry.acceptedBy)) || !nonempty(entry.approvalEvidence)) fail('Exception needs reason, impact and recorded acceptance')
+      if (entry.material && entry.acceptedBy === 'reviewer') fail('Material scope exceptions require user or host acceptance')
+      exception = entry as unknown as NonNullable<AcceptanceCriterion['exception']>
+    } else if (row.exception !== undefined) fail('Exception details require exception status')
+    return { ...match, status: row.status as AcceptanceCriterion['status'], evidence: row.evidence, ...(exception ? { exception } : {}) }
+  })
+  if (!Array.isArray(report.checks) || !Array.isArray(report.findings) || !report.findings.every(nonempty)) fail('Acceptance needs checks and findings arrays')
+  const checks = report.checks.map((raw): AcceptanceCheck => {
+    const check = object(raw)
+    if (!nonempty(check.name) || !['passed', 'failed', 'unavailable'].includes(String(check.status)) || typeof check.required !== 'boolean'
+      || !evidence(check.evidence) || !nonempty(check.scope) || !nonempty(check.limitations)) fail('Check needs status, evidence, measurement scope and limitations')
+    return { name: check.name, status: check.status as AcceptanceCheck['status'], required: check.required, evidence: check.evidence, scope: check.scope, limitations: check.limitations }
+  })
+  return { criteria, checks, findings: report.findings as string[] }
+}
+function inspectAcceptance(state: PipelineState): { valid: boolean; status: PipelineCompletion['validation']; reasons: string[]; receipt?: AcceptanceReceipt } {
+  const receipt = state.acceptance
+  if (!receipt) return { valid: false, status: 'pending', reasons: ['No acceptance evidence'] }
+  const reasons: string[] = []
+  try { acceptanceReport(state.context, receipt) } catch (error) {
+    return { valid: false, status: 'blocked', reasons: [error instanceof Error ? error.message : String(error)] }
+  }
+  if (receipt.scopeHash !== state.scopeHash || receipt.candidateHash !== fingerprintCandidate(state) || receipt.artifactHash !== artifactFingerprint(state)) reasons.push('Acceptance evidence is stale')
+  for (const row of receipt.criteria ?? []) if (row.status === 'blocked' || row.status === 'pending') reasons.push('Unresolved requirement: ' + row.requirement)
+  for (const check of receipt.checks ?? []) if (check.required && check.status !== 'passed') reasons.push('Required check did not pass: ' + check.name)
+  const exceptions = receipt.criteria?.some(row => row.status === 'exception') || receipt.checks?.some(check => check.status !== 'passed')
+  return { valid: reasons.length === 0, status: reasons.length ? 'blocked' : exceptions ? 'with-exceptions' : 'verified', reasons, receipt }
+}
+function acceptanceGate(state: PipelineState): void {
+  const acceptance = inspectAcceptance(state)
+  if (!acceptance.valid) fail('Acceptance blocked: ' + acceptance.reasons.join('; '))
+}
+export function recordAcceptance(contextInput: unknown, input: unknown): PipelineState {
+  const context = validatePipelineContext(contextInput)
+  const report = acceptanceReport(context, input)
+  return locked(context, () => {
+    const state = readState(context)
+    if (state.phases.developer.status !== 'done' || state.phases.archive.status === 'done') fail('Record acceptance after development and before archive')
+    state.acceptance = { ...report, scopeHash: state.scopeHash, candidateHash: fingerprintCandidate(state), artifactHash: artifactFingerprint(state), recordedAt: new Date().toISOString() }
+    // Replacing even just an exception decision requires a new review/approval.
+    for (const phase of PHASES.slice(2)) {
+      if (phase === 'reviewer' && state.phases[phase].status === 'running') continue
+      const { durationMs, attempts } = state.phases[phase]
+      state.phases[phase] = { status: 'pending', durationMs, attempts }
+    }
+    state.archiveApproval = undefined
+    saveState(state)
+    return state
+  })
+}
 export function checkArchive(contextInput: unknown): PipelineState {
   const context = validatePipelineContext(contextInput)
   return locked(context, () => {
@@ -327,7 +435,8 @@ export function checkArchive(contextInput: unknown): PipelineState {
   if (state.phases.architect.artifactHash !== artifactFingerprint(state)) fail('Architecture artifacts changed after design approval')
   taskGate(state)
   confidenceGate(state)
-  state.archiveApproval = { candidateHash: fingerprintCandidate(state), artifactHash: artifactFingerprint(state), confidenceHash: digest(readFileSync(path.join(activeArtifactPath(state), 'confidence-score.json'))) }
+  acceptanceGate(state)
+  state.archiveApproval = { candidateHash: fingerprintCandidate(state), artifactHash: artifactFingerprint(state), confidenceHash: digest(readFileSync(path.join(activeArtifactPath(state), 'confidence-score.json'))), acceptanceHash: digest(canonical(state.acceptance)) }
   saveState(state)
   return state
   })
@@ -344,6 +453,11 @@ export function transitionPipeline(contextInput: unknown, phase: PipelinePhase, 
       const before = PHASES.slice(0, PHASES.indexOf(phase))
       if (before.some((p) => !['done', 'skipped'].includes(state.phases[p].status))) fail('A required earlier phase is incomplete')
     }
+    const previous = state.phases[phase]
+    const now = new Date().toISOString()
+    const timing = { attempts: previous.attempts ?? 0, durationMs: previous.durationMs ?? 0 }
+    if (previous.status === 'running' && previous.startedAt) timing.durationMs += Math.max(0, Date.parse(now) - Date.parse(previous.startedAt))
+    if (status === 'running' && previous.status !== 'running') timing.attempts += 1
     if (status === 'done') {
       if (phase === 'architect') {
         const root = activeArtifactPath(state)
@@ -362,7 +476,7 @@ export function transitionPipeline(contextInput: unknown, phase: PipelinePhase, 
         const verification = inspectReceipt(state)
         if (!verification.valid) fail('Fresh full verification required: ' + verification.reasons.join('; '))
       }
-      if (phase === 'reviewer') confidenceGate(state)
+      if (phase === 'reviewer') { confidenceGate(state); acceptanceGate(state) }
       if (phase === 'archive') {
         const archiveRoot = path.join(context.artifactRoot, 'openspec', 'changes', 'archive')
         const candidates = existsSync(archiveRoot) ? readdirSync(archiveRoot).filter((name) => name.endsWith('-' + state.change)) : []
@@ -372,11 +486,11 @@ export function transitionPipeline(contextInput: unknown, phase: PipelinePhase, 
         taskGate(state)
         confidenceGate(state)
         const approval = state.archiveApproval
-        if (!approval || approval.candidateHash !== fingerprintCandidate(state) || approval.artifactHash !== artifactFingerprint(state) || approval.confidenceHash !== digest(readFileSync(path.join(activeArtifactPath(state), 'confidence-score.json')))) fail('Archive was not authorized for this exact reviewed candidate')
+        if (!approval || approval.acceptanceHash !== digest(canonical(state.acceptance)) || approval.candidateHash !== fingerprintCandidate(state) || approval.artifactHash !== artifactFingerprint(state) || approval.confidenceHash !== digest(readFileSync(path.join(activeArtifactPath(state), 'confidence-score.json')))) fail('Archive was not authorized for this exact reviewed candidate')
       }
-      state.phases[phase] = { status, candidateHash: fingerprintCandidate(state), artifactHash: artifactFingerprint(state), completedAt: new Date().toISOString() }
+      state.phases[phase] = { ...timing, status, candidateHash: fingerprintCandidate(state), artifactHash: artifactFingerprint(state), completedAt: new Date().toISOString() }
     } else {
-      state.phases[phase] = { status, ...(reason ? { reason } : {}) }
+      state.phases[phase] = { ...timing, status, ...(status === 'running' ? { startedAt: now } : {}), ...(reason ? { reason } : {}) }
       if (status === 'running') for (const later of PHASES.slice(PHASES.indexOf(phase) + 1)) state.phases[later] = { status: 'pending' }
     }
     saveState(state)
@@ -386,6 +500,7 @@ export function transitionPipeline(contextInput: unknown, phase: PipelinePhase, 
 export function inspectPipeline(contextInput: unknown): {
   schemaVersion: 1; runId: string; change: string; context: PipelineContext; stateDir: string
   resumePhase: PipelinePhase | null; phases: PipelineState['phases']; verification: ReturnType<typeof inspectReceipt>
+  acceptance: ReturnType<typeof inspectAcceptance>; completion: PipelineCompletion
 } {
   const context = validatePipelineContext(contextInput)
   const state = readState(context)
@@ -403,7 +518,18 @@ export function inspectPipeline(contextInput: unknown): {
     }
   }
   if (!verification.valid && state.phases.developer.status === 'done' && (resumePhase === null || ['archive', 'ship', 'ci'].includes(resumePhase))) resumePhase = 'reviewer'
-  return { schemaVersion: 1, runId: context.runId, change: state.change, context, stateDir: pipelineStateDirectory(context), resumePhase, phases: state.phases, verification }
+  const acceptance = inspectAcceptance(state)
+  if (!acceptance.valid && state.phases.reviewer.status === 'done' && (resumePhase === null || ['archive', 'ship', 'ci'].includes(resumePhase))) resumePhase = 'reviewer'
+  const reviewed = state.phases.reviewer.status === 'done'
+  const completion: PipelineCompletion = {
+    implementation: state.phases.developer.status === 'done' && state.phases.architect.artifactHash === artifactFingerprint(state)
+      && (state.phases.developer.candidateHash === candidate || (reviewed && state.phases.reviewer.candidateHash === candidate)) ? 'complete' : 'incomplete',
+    validation: !verification.valid ? 'blocked' : !reviewed ? 'pending' : acceptance.status,
+    archive: state.phases.archive.status,
+    delivery: context.ownership.git === 'host' ? 'pending-host' : state.phases.ship.status === 'done' && state.phases.ci.status === 'done' ? 'complete' : 'pending',
+    reasons: [...verification.reasons, ...acceptance.reasons],
+  }
+  return { schemaVersion: 1, runId: context.runId, change: state.change, context, stateDir: pipelineStateDirectory(context), resumePhase, phases: state.phases, verification, acceptance, completion }
 }
 function validateCommand(context: PipelineContext, raw: unknown): VerificationCommand & { cwd: string } {
   const command = object(raw)
@@ -632,6 +758,9 @@ export async function runPipelineCommand(flags: Record<string, string | boolean>
     case 'init': result = initializePipeline(context, String(flags.change ?? '')); break
     case 'status': result = inspectPipeline(context); break
     case 'phase': result = transitionPipeline(context, String(flags.phase) as PipelinePhase, String(flags.status) as PhaseStatus, typeof flags.reason === 'string' ? flags.reason : undefined); break
+    case 'acceptance':
+      if (typeof flags.request !== 'string') fail('Provide --request with acceptance evidence JSON')
+      result = recordAcceptance(context, readJson(flags.request)); break
     case 'archive-check': result = checkArchive(context); break
     case 'verify':
     case 'apply-preview': {

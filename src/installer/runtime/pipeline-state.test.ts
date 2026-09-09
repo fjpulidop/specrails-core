@@ -5,7 +5,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -20,7 +20,11 @@ function artifacts(): string {
   write(path.join(dir, 'specs', 'filter', 'spec.md'), '# Filter behavior')
   return dir
 }
+function accepted(): AcceptanceReport {
+  return { criteria: context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [spec.description || spec.title]).map((requirement, criterionIndex) => ({ specId: String(spec.id), criterionIndex, requirement, status: 'met' as const, evidence: ['code.js: inspected behavior and executed regression'] }))), checks: [], findings: [] }
+}
 function score(overall = 95): void {
+  recordAcceptance(context, accepted())
   write(path.join(context.artifactRoot, 'openspec', 'changes', change, 'confidence-score.json'), JSON.stringify({
     change, overall, aspects: { type_correctness: 95, pattern_adherence: 95, test_coverage: 95, security: 95, architectural_alignment: 95 },
   }))
@@ -468,4 +472,88 @@ describe('application environment evidence', () => {
       expect(status.verification.receipt!.commands[0]!.environmentOverrideKeys).toContain('DATABASE_URL')
     } finally { vi.unstubAllEnvs() }
   })
+})
+
+
+describe('semantic acceptance and honest completion', () => {
+  it('requires evidence even with all tasks, tests and numeric confidence passing', async () => {
+    await developed()
+    score()
+    const file = path.join(pipelineStateDirectory(validatePipelineContext(context)), 'state.json')
+    const state = JSON.parse(readFileSync(file, 'utf8')); delete state.acceptance; write(file, JSON.stringify(state))
+    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('No acceptance evidence')
+    expect(inspectPipeline(context).completion).toMatchObject({ implementation: 'complete', validation: 'pending', delivery: 'pending-host' })
+  })
+  it('rejects missing, duplicated and rewritten criteria across batch tickets', async () => {
+    context.specs.push({ id: 2, title: 'Second', description: 'Second requirement', acceptanceCriteria: ['Browser performance', 'Readable HUD'] })
+    await developed()
+    const report = accepted()
+    expect(() => recordAcceptance(context, { ...report, criteria: report.criteria.slice(0, 1) })).toThrow('every frozen')
+    expect(() => recordAcceptance(context, { ...report, criteria: report.criteria.map(() => report.criteria[0]) })).toThrow('duplicated')
+    report.criteria[0]!.requirement = 'Weaker interpretation'
+    expect(() => recordAcceptance(context, report)).toThrow('frozen scope')
+  })
+  it('requires explicit authority for material exceptions and exposes supplementary failures', async () => {
+    await developed(); score()
+    const report = accepted()
+    report.criteria[0]!.status = 'exception'
+    report.criteria[0]!.exception = { reason: 'Hold panel does not exist', impact: 'Next preview used instead', material: true, acceptedBy: 'reviewer', approvalEvidence: 'review notes' }
+    expect(() => recordAcceptance(context, report)).toThrow('user or host')
+    report.criteria[0]!.exception!.acceptedBy = 'user'
+    report.criteria[0]!.exception!.approvalEvidence = 'User approved alternative HUD in ticket #1'
+    report.checks.push({ name: 'Browser timing', required: false, status: 'unavailable', evidence: ['browser.log'], scope: 'Browser frames', limitations: 'Node test excludes rendering and GPU' })
+    recordAcceptance(context, report)
+    transitionPipeline(context, 'reviewer', 'done')
+    expect(inspectPipeline(context).completion.validation).toBe('with-exceptions')
+    expect(checkArchive(context).archiveApproval?.acceptanceHash).toMatch(/^[a-f0-9]{64}$/)
+  })
+  it.each(['blocked', 'pending'] as const)('blocks review on unresolved %s requirements', async status => {
+    await developed(); score(); const report = accepted(); report.criteria[0]!.status = status
+    recordAcceptance(context, report)
+    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('Unresolved requirement')
+  })
+  it('does not allow a required browser check to hide behind passing Node commands', async () => {
+    await developed(); score(); const report = accepted()
+    report.checks.push({ name: 'Frame timing', required: true, status: 'failed', evidence: ['capture.log'], scope: 'Real browser rendering', limitations: 'Capture deadlocked' })
+    recordAcceptance(context, report)
+    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('Required check')
+  })
+  it('invalidates evidence on source edits and review approval on report replacement', async () => {
+    await developed(); score(); transitionPipeline(context, 'reviewer', 'done'); checkArchive(context)
+    recordAcceptance(context, accepted())
+    expect(() => checkArchive(context)).toThrow('Review must complete')
+    transitionPipeline(context, 'reviewer', 'done')
+    write(path.join(context.artifactRoot, 'code.js'), 'module.exports = 2')
+    expect(inspectPipeline(context).acceptance).toMatchObject({ valid: false, status: 'blocked' })
+    await verifyPipeline(context, request())
+    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('stale')
+  })
+  it('keeps notes in stateDir from invalidating a reusable receipt', async () => {
+    await developed(); const receipt = inspectPipeline(context).verification.receipt!.id
+    write(path.join(pipelineStateDirectory(validatePipelineContext(context)), 'developer-completion-notes.md'), 'Operational notes')
+    score(); transitionPipeline(context, 'reviewer', 'done')
+    expect(inspectPipeline(context).verification).toMatchObject({ valid: true, receipt: { id: receipt } })
+  })
+  it('accumulates phase time and attempts without counting repeated running as a retry', async () => {
+    initializePipeline(context, change); artifacts()
+    transitionPipeline(context, 'architect', 'running')
+    transitionPipeline(context, 'architect', 'running')
+    transitionPipeline(context, 'architect', 'blocked', 'Need clarification')
+    transitionPipeline(context, 'architect', 'running')
+    const phase = transitionPipeline(context, 'architect', 'done').phases.architect
+    expect(phase.attempts).toBe(2)
+    expect(phase.durationMs).toBeGreaterThanOrEqual(0)
+  })
+})
+
+
+it('preserves elapsed reviewer time when the active reviewer records acceptance', async () => {
+  await developed()
+  transitionPipeline(context, 'reviewer', 'running')
+  const file = path.join(pipelineStateDirectory(validatePipelineContext(context)), 'state.json')
+  const state = JSON.parse(readFileSync(file, 'utf8'))
+  state.phases.reviewer.startedAt = new Date(Date.now() - 2000).toISOString()
+  write(file, JSON.stringify(state))
+  score()
+  expect(transitionPipeline(context, 'reviewer', 'done').phases.reviewer.durationMs).toBeGreaterThanOrEqual(2000)
 })
