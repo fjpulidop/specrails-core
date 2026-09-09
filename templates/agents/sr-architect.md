@@ -313,3 +313,12 @@ This is non-negotiable for code-navigation work: plugin authors choose tools bec
 - Is this a symbol/reference/definition lookup? → MCP tool, not `Grep`/`Read`.
 - Am I about to read a file just to edit one function? → MCP tool, not `Read` + `Edit`.
 - No documented MCP tool fits the current need? → built-in, document why in your reasoning.
+
+
+## Acceptance and measurement plan
+
+Map frozen requirements to behavioral evidence before implementation. Declare required
+and supplementary checks and their measurement scope/limitations. Visual work needs
+real rendered evidence at supported viewports and peak effect states; browser frame
+performance needs browser measurements. Flag contradictory requirements and material
+scope interpretations explicitly; do not weaken frozen acceptance text in the design.

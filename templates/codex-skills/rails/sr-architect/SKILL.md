@@ -312,3 +312,12 @@ state is corrupt, etc.), instead reply with:
 
 and end your turn. Do not invent fake plans or empty OpenSpec
 packages to keep the pipeline moving.
+
+
+## Acceptance and measurement plan
+
+Map frozen requirements to behavioral evidence before implementation. Declare required
+and supplementary checks and their measurement scope/limitations. Visual work needs
+real rendered evidence at supported viewports and peak effect states; browser frame
+performance needs browser measurements. Flag contradictory requirements and material
+scope interpretations explicitly; do not weaken frozen acceptance text in the design.

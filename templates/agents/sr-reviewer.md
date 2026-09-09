@@ -369,3 +369,14 @@ This is non-negotiable for code-navigation work: plugin authors choose tools bec
 - Is this a symbol/reference/definition lookup? → MCP tool, not `Grep`/`Read`.
 - Am I about to read a file just to edit one function? → MCP tool, not `Read` + `Edit`.
 - No documented MCP tool fits the current need? → built-in, document why in your reasoning.
+
+
+## Structured acceptance handoff
+
+Follow the executable pipeline acceptance contract. Return a `stateDir/acceptance.json`
+request covering every frozen requirement with evidence, explicit exceptions, required
+and supplementary checks (including benchmark scope/limitations), and concrete findings.
+Have the coordinator record it with `acceptance --request` before reviewer done and
+archive-check. Inspect visual evidence at supported viewports and extreme states for
+visual changes. A confidence score or checked tasks cannot substitute for acceptance.
+Do not self-authorize material scope changes; cite actual existing user/host decisions.

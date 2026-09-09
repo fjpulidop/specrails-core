@@ -272,3 +272,12 @@ Guidelines:
 ## MEMORY.md
 
 Your MEMORY.md is currently empty.
+
+
+## Verification evidence handoff
+
+Keep operational notes and check requests under runtime `stateDir`, outside the design
+artifacts. Supply evidence per frozen requirement and report failed/unavailable checks.
+Declare benchmark scope and exclusions; Node timings do not prove browser frame time.
+Use scoped checks during repairs and one final full receipt, reused while valid.
+Return a concise handoff; the coordinator owns the single final run summary.
