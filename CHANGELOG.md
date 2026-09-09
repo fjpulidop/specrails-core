@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.0](https://github.com/fjpulidop/specrails-core/compare/v5.1.1...v5.2.0) (2026-09-09)
+
+
+### Features
+
+* **runtime:** require acceptance evidence before completing implement ([#347](https://github.com/fjpulidop/specrails-core/issues/347)) ([2255646](https://github.com/fjpulidop/specrails-core/commit/2255646a4aedcfb6e036b049d78cf2361ee60194))
+
 ## [5.1.1](https://github.com/fjpulidop/specrails-core/compare/v5.1.0...v5.1.1) (2026-09-08)
 
 
