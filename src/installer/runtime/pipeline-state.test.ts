@@ -40,6 +40,9 @@ async function developed(): Promise<void> {
   await verifyPipeline(context, request())
   transitionPipeline(context, 'developer', 'done')
 }
+// This fixture performs six real Git processes before each test. Windows CI
+// can exceed Vitest's default 10s hook timeout under load, independently of
+// the 60s testTimeout. Keep the same bounded budget for fixture setup only.
 beforeEach(() => {
   root = mkdtempSync(path.join(os.tmpdir(), 'core-pipeline-'))
   const repos = ['front', 'back'].map((name) => {
@@ -59,7 +62,7 @@ beforeEach(() => {
   const workspace = path.join(root, 'workspace')
   mkdirSync(workspace)
   context = { schemaVersion: 1, runId: 'fixture-run', backlogRoot: workspace, artifactRoot: repos[0]!.path, artifactRepositoryId: 'front', repositories: repos, ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Shared filter', description: 'Changes Front and Back', repositoryIds: ['front', 'back'] }] }
-})
+}, 60_000)
 afterEach(() => { rmSync(root, { recursive: true, force: true }) })
 
 describe('pipeline runtime journal and verification receipts', () => {
