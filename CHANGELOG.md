@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.1](https://github.com/fjpulidop/specrails-core/compare/v5.2.0...v5.2.1) (2026-09-09)
+
+
+### Bug Fixes
+
+* **release:** bind publication to the tagged commit CI ([#350](https://github.com/fjpulidop/specrails-core/issues/350)) ([3e922b8](https://github.com/fjpulidop/specrails-core/commit/3e922b8d907a64539403d723d3bcb20b00b1c7c0))
+
 ## [5.2.0](https://github.com/fjpulidop/specrails-core/compare/v5.1.1...v5.2.0) (2026-09-09)
 
 
