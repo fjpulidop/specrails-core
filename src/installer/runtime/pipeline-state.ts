@@ -362,7 +362,16 @@ function inspectReceipt(state: PipelineState, env = process.env): { valid: boole
     if (command.exitCode !== 0) reasons.push('Command failed: ' + command.command)
     if (command.environmentPolicy !== 'isolated-transport-v1') reasons.push('Verification environment policy changed; run full verification again: ' + command.command)
     const currentKeys = verificationEnvironmentKeys(env, command.environmentOverrideKeys ?? [])
-    if (canonical(currentKeys) !== canonical(command.environmentKeys) || command.environmentHash !== environmentHash(currentKeys, {}, env)) reasons.push('Verification environment changed: ' + command.command)
+    if (canonical(currentKeys) !== canonical(command.environmentKeys) || command.environmentHash !== environmentHash(currentKeys, {}, env)) {
+      const previousKeys = command.environmentKeys ?? []
+      const added = currentKeys.filter(key => !previousKeys.includes(key))
+      const removed = previousKeys.filter(key => !currentKeys.includes(key))
+      // Names explain process handoff drift without retaining or revealing
+      // values. A changed aggregate hash cannot identify which value changed.
+      const summarize = (keys: string[]) => keys.slice(0, 10).map(key => JSON.stringify(key)).join(', ') + (keys.length > 10 ? ` (+${keys.length - 10} more)` : '')
+      const details = [added.length ? 'added keys: ' + summarize(added) : '', removed.length ? 'removed keys: ' + summarize(removed) : ''].filter(Boolean)
+      reasons.push('Verification environment changed: ' + command.command + ' (' + (details.join('; ') || 'recorded environment values differ') + ')')
+    }
   }
   return { valid: reasons.length === 0, reasons: [...new Set(reasons)], receipt }
 }

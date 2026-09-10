@@ -467,6 +467,26 @@ describe('concurrent journal recovery', () => {
 
 
 describe('application environment evidence', () => {
+  it('diagnoses added and removed environment keys without disclosing their values', async () => {
+    initializePipeline(context, change)
+    vi.stubEnv('PIPELINE_APP_MODE', 'initial-private-value')
+    vi.stubEnv('PIPELINE_NEW_INPUT', undefined)
+    try {
+      await verifyPipeline(context, request())
+      vi.stubEnv('PIPELINE_APP_MODE', undefined)
+      vi.stubEnv('PIPELINE_NEW_INPUT', 'another-private-value')
+      let reasons = inspectPipeline(context).verification.reasons.join('; ')
+      expect(reasons).toContain('added keys: "PIPELINE_NEW_INPUT"')
+      expect(reasons).toContain('removed keys: "PIPELINE_APP_MODE"')
+      expect(reasons).not.toContain('private-value')
+      vi.stubEnv('PIPELINE_NEW_INPUT', undefined)
+      vi.stubEnv('PIPELINE_APP_MODE', 'changed-private-value')
+      reasons = inspectPipeline(context).verification.reasons.join('; ')
+      expect(reasons).toContain('recorded environment values differ')
+      expect(reasons).not.toContain('private-value')
+    } finally { vi.unstubAllEnvs() }
+  })
+
   it('isolates mixed-case Windows transport and replaces inherited Path with an explicit PATH', () => {
     const base = { Path: 'inherited', claudecode: '1', Claude_Code_Session_Id: 'session', App_Mode: 'test' }
     expect(verificationEnvironment(base, { PATH: 'requested' }, 'win32')).toEqual({ PATH: 'requested', APP_MODE: 'test' })

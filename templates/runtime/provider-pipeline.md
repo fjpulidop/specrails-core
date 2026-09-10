@@ -56,6 +56,11 @@ it explicitly in the command's `env`; the override is bound without storing its
 value. Older environment-policy receipts require one fresh full verification;
 never edit a receipt to make it current. Keep notes and temporary verification
 requests under `stateDir`, outside the candidate source tree.
+For an environment mismatch, retain the runtime's added/removed key names in
+the failure report; values are deliberately not printed. When only recorded
+values differ, the aggregate hash cannot identify the individual variable.
+Do not work around recurring handoff failures by repeatedly refreshing the same
+checks until one process accepts them; report the mismatch for diagnosis.
 Automatic untracked files under known provider `agent-memory/` directories are
 runtime notes, not candidate inputs. Tracked memory, provider settings and skills
 remain candidate inputs and changing them requires fresh verification.
