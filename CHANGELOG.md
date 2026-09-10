@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.2.3](https://github.com/fjpulidop/specrails-core/compare/v5.2.2...v5.2.3) (2026-09-10)
+
+
+### Bug Fixes
+
+* **runtime:** preserve verification across provider handoffs ([#354](https://github.com/fjpulidop/specrails-core/issues/354)) ([17af7b9](https://github.com/fjpulidop/specrails-core/commit/17af7b9a913a2226324326ca6734e0abb00fc15b))
+
 ## [5.2.2](https://github.com/fjpulidop/specrails-core/compare/v5.2.1...v5.2.2) (2026-09-09)
 
 
