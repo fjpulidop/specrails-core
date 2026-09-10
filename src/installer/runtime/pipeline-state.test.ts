@@ -5,7 +5,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -105,6 +105,30 @@ describe('pipeline runtime journal and verification receipts', () => {
     expect(failed.valid).toBe(false)
     expect(failed.commands[0]).toMatchObject({ exitCode: 7, output: 'real failure' })
     expect(inspectPipeline(context).verification.valid).toBe(false)
+  })
+
+  it('keeps receipts valid after automatic memory writes but tracks skills, settings and committed memory', async () => {
+    initializePipeline(context, change)
+    await verifyPipeline(context, request())
+    for (const repo of context.repositories) {
+      for (const provider of ['.claude', '.codex', '.gemini', '.kimi-code', '.specrails']) {
+        write(path.join(repo.path, provider, 'agent-memory', 'sr-reviewer', 'MEMORY.md'), 'Review notes after verification')
+      }
+    }
+    expect(inspectPipeline(context).verification.valid).toBe(true)
+    for (const file of ['.claude/settings.json', '.claude/skills/check/SKILL.md', '.claude/agent-memory-extra/note.md']) {
+      const target = path.join(context.artifactRoot, file)
+      write(target, 'candidate input')
+      expect(inspectPipeline(context).verification.reasons).toContain('Candidate files changed')
+      rmSync(target)
+    }
+    const memory = '.claude/agent-memory/sr-reviewer/MEMORY.md'
+    const result = spawnSync('git', ['-C', context.artifactRoot, 'add', memory], { encoding: 'utf8' })
+    expect(result.status, result.stderr).toBe(0)
+    expect(inspectPipeline(context).verification.reasons).toContain('Candidate files changed')
+    await verifyPipeline(context, request())
+    write(path.join(context.artifactRoot, memory), 'Changed tracked memory')
+    expect(inspectPipeline(context).verification.reasons).toContain('Candidate files changed')
   })
 
   it('does not overwrite a valid full receipt with narrower scoped checks', async () => {
@@ -443,6 +467,16 @@ describe('concurrent journal recovery', () => {
 
 
 describe('application environment evidence', () => {
+  it('isolates mixed-case Windows transport and replaces inherited Path with an explicit PATH', () => {
+    const base = { Path: 'inherited', claudecode: '1', Claude_Code_Session_Id: 'session', App_Mode: 'test' }
+    expect(verificationEnvironment(base, { PATH: 'requested' }, 'win32')).toEqual({ PATH: 'requested', APP_MODE: 'test' })
+    expect(verificationEnvironment({ PATH: 'inherited', APP_MODE: 'test' }, { Path: 'requested' }, 'win32'))
+      .toEqual(verificationEnvironment(base, { PATH: 'requested' }, 'win32'))
+    expect(verificationEnvironment(base, { CLAUDECODE: 'explicit' }, 'win32').CLAUDECODE).toBe('explicit')
+    expect(verificationEnvironment(base, { PATH: 'requested' }, 'linux')).toMatchObject({ Path: 'inherited', PATH: 'requested', claudecode: '1' })
+    expect(() => verificationEnvironment({ Path: 'one', PATH: 'two' }, {}, 'win32')).toThrow('Ambiguous verification environment key: PATH')
+  })
+
   it('reuses verification across agent sessions and a host process without session identity', () => {
     initializePipeline(context, change)
     const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
@@ -450,9 +484,9 @@ describe('application environment evidence', () => {
     write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
     const contextFile = path.join(root, 'context.json')
     write(contextFile, JSON.stringify(context))
-    const sessionKeys = ['CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION']
+    const sessionKeys = ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_EFFORT', 'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION']
     const baseEnv = { ...process.env }
-    for (const key of sessionKeys) delete baseEnv[key]
+    for (const key of Object.keys(baseEnv)) if (sessionKeys.includes(process.platform === 'win32' ? key.toUpperCase() : key)) delete baseEnv[key]
     const invoke = (operation: string, env: NodeJS.ProcessEnv) => {
       const result = spawnSync(process.execPath, ['--input-type=module', '-e', [
         `import { verifyPipeline, inspectPipeline } from ${JSON.stringify(pathToFileURL(module).href)};`,
@@ -464,8 +498,9 @@ describe('application environment evidence', () => {
       expect(result.status, result.stderr).toBe(0)
       return JSON.parse(result.stdout)
     }
-    const session = (suffix: string) => ({ ...baseEnv, ...Object.fromEntries(sessionKeys.map(key => [key, `fixture-${suffix}-${key}`])) })
-    const receipt = invoke(`process.stdout.write(JSON.stringify(await verifyPipeline(context, ${JSON.stringify(request())})));`, session('first'))
+    const session = (suffix: string) => ({ ...baseEnv, ...Object.fromEntries(sessionKeys.map(key => [process.platform === 'win32' && suffix === 'first' ? key.toLowerCase() : key, `fixture-${suffix}-${key}`])) })
+    const checks = request(`if (${JSON.stringify(sessionKeys)}.some(key => process.env[key] !== undefined)) process.exit(23)`)
+    const receipt = invoke(`process.stdout.write(JSON.stringify(await verifyPipeline(context, ${JSON.stringify(checks)})));`, session('first'))
     expect(receipt.valid).toBe(true)
     for (const key of sessionKeys) expect(receipt.commands[0].environmentKeys).not.toContain(key)
     const inspect = 'process.stdout.write(JSON.stringify(inspectPipeline(context)));'
@@ -477,7 +512,60 @@ describe('application environment evidence', () => {
     }
     write(path.join(context.artifactRoot, 'code.js'), 'module.exports = 2\n')
     expect(invoke(inspect, baseEnv).verification.reasons).toContain('Candidate files changed')
-  }, 30_000)
+  })
+
+  it('requires one fresh verification for receipts from the previous environment policy', async () => {
+    initializePipeline(context, change)
+    await verifyPipeline(context, request())
+    const file = path.join(pipelineStateDirectory(context), 'state.json')
+    const state = JSON.parse(readFileSync(file, 'utf8'))
+    for (const command of state.verification.commands) delete command.environmentPolicy
+    write(file, JSON.stringify(state))
+    expect(inspectPipeline(context).verification).toMatchObject({ valid: false })
+    expect(inspectPipeline(context).verification.reasons.join(';')).toContain('policy changed; run full verification again')
+    await verifyPipeline(context, request())
+    expect(inspectPipeline(context).verification.valid).toBe(true)
+  })
+
+  it('executes explicit transport overrides as bound inputs without persisting their values', async () => {
+    initializePipeline(context, change)
+    const checks = request('if (!process.env.CLAUDE_CODE_SESSION_ID || process.env.CLAUDE_CODE_SESSION_ID !== process.env.EXPECTED_SESSION) process.exit(17)')
+    for (const command of checks.commands) command.env = { CLAUDE_CODE_SESSION_ID: 'explicit-fixture-input', EXPECTED_SESSION: 'explicit-fixture-input' }
+    const receipt = await verifyPipeline(context, checks)
+    expect(receipt.valid).toBe(true)
+    expect(receipt.commands[0]!.environmentOverrideKeys).toContain('CLAUDE_CODE_SESSION_ID')
+    expect(JSON.stringify(receipt)).not.toContain('explicit-fixture-input')
+    expect(receipt.commands[0]!.environmentOverridesHash).toMatch(/^[a-f0-9]{64}$/)
+    expect(receipt.commands[0]).not.toHaveProperty('env')
+    vi.stubEnv('CLAUDE_CODE_SESSION_ID', 'another-session')
+    try { expect(inspectPipeline(context).verification.valid).toBe(true) }
+    finally { vi.unstubAllEnvs() }
+  })
+
+  it('keeps reviewed and archived work valid after an agent hands back to the host', async () => {
+    vi.stubEnv('CLAUDECODE', '1')
+    vi.stubEnv('CLAUDE_CODE_SESSION_ID', 'developer-session')
+    try {
+      await developed()
+      const receiptId = inspectPipeline(context).verification.receipt!.id
+      vi.stubEnv('CLAUDE_CODE_SESSION_ID', 'reviewer-session')
+      score()
+      transitionPipeline(context, 'reviewer', 'done')
+      checkArchive(context)
+      const destination = path.join(context.artifactRoot, 'openspec', 'changes', 'archive', '2026-09-10-' + change)
+      mkdirSync(path.dirname(destination), { recursive: true })
+      renameSync(path.join(context.artifactRoot, 'openspec', 'changes', change), destination)
+      transitionPipeline(context, 'archive', 'done')
+      transitionPipeline(context, 'ship', 'skipped')
+      transitionPipeline(context, 'ci', 'skipped')
+      vi.stubEnv('CLAUDECODE', undefined)
+      vi.stubEnv('CLAUDE_CODE_SESSION_ID', undefined)
+      expect(inspectPipeline(context)).toMatchObject({ resumePhase: null, verification: { valid: true, receipt: { id: receiptId } } })
+      vi.stubEnv('NODE_ENV', 'changed-application-environment')
+      expect(inspectPipeline(context).verification.valid).toBe(false)
+      expect(inspectPipeline(context).resumePhase).toBe('reviewer')
+    } finally { vi.unstubAllEnvs() }
+  })
 
   it('invalidates changed, added or removed application environment inputs', async () => {
     initializePipeline(context, change)

@@ -48,6 +48,17 @@ Run verification through `verify --request <absolute-json-file>` with
 `{kind:"full"|"scoped",commands:[{repositoryId,command,args,cwd?,env?}]}`. The helper
 records actual exits and candidate fingerprints. Reuse only a current valid full
 receipt reported by `status`; semantic acceptance review remains mandatory.
+Checks run without the runtime's known agent session/launcher metadata. Changing
+that metadata between developer, reviewer and host does not invalidate a receipt.
+Application inputs (including PATH, NODE_OPTIONS, npm configuration and custom
+variables) remain verified. If a check needs session metadata as an input, declare
+it explicitly in the command's `env`; the override is bound without storing its
+value. Older environment-policy receipts require one fresh full verification;
+never edit a receipt to make it current. Keep notes and temporary verification
+requests under `stateDir`, outside the candidate source tree.
+Automatic untracked files under known provider `agent-memory/` directories are
+runtime notes, not candidate inputs. Tracked memory, provider settings and skills
+remain candidate inputs and changing them requires fresh verification.
 Missing/low design confidence, unchecked tasks, missing/failed review and stale
 verification block success. Record reviewer done after semantic review, then run
 `archive-check`. ONLY a successful gate authorizes reviewer archive-only execution.
