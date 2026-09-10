@@ -29,6 +29,7 @@ export interface VerificationCommand {
 export interface VerificationRequest { kind: 'full' | 'scoped'; commands: VerificationCommand[] }
 export interface CommandReceipt {
   repositoryId: string; command: string; args: string[]; cwd: string
+  environmentPolicy?: 'isolated-transport-v1'
   environmentHash: string; environmentKeys: string[]; environmentOverrideKeys: string[]; environmentOverridesHash: string
   exitCode: number; durationMs: number; output: string
 }
@@ -83,15 +84,32 @@ export interface PipelineState {
 export interface PreviewFile { repositoryId: string; path: string; operation: 'write' | 'delete'; sourcePath?: string; contentHash?: string }
 const PHASES: PipelinePhase[] = ['architect', 'developer', 'reviewer', 'archive', 'ship', 'ci']
 // Session identity belongs to the agent transport, not the checked application.
-// Keep this list explicit: provider configuration, application inputs and host
-// scope/configuration (including SPECRAILS_*) must still invalidate receipts.
+// Remove these from check subprocesses too, so ignored identity cannot become
+// an unrecorded test input. Explicit command.env inputs remain bound overrides.
+// Keep provider configuration, application inputs and host scope/configuration
+// (including SPECRAILS_*) in the evidence; never exclude an entire prefix.
 const TRANSPORT_ENV_KEYS = new Set([
   '_', 'PWD', 'OLDPWD', 'SHLVL',
+  'AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_EFFORT',
   'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET',
   'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION',
 ])
 function verificationEnvironmentKeys(env: NodeJS.ProcessEnv, overrideKeys: string[] = []): string[] {
-  return Object.keys(env).filter((key) => env[key] !== undefined && !TRANSPORT_ENV_KEYS.has(key) && !overrideKeys.includes(key)).sort()
+  return Object.keys(normalizeVerificationEnvironment(env)).filter((key) => !TRANSPORT_ENV_KEYS.has(key) && !overrideKeys.includes(key)).sort()
+}
+function normalizeVerificationEnvironment(env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = Object.create(null)
+  for (const [raw, value] of Object.entries(env)) {
+    if (value === undefined) continue
+    const key = platform === 'win32' ? raw.toUpperCase() : raw
+    if (Object.hasOwn(result, key) && result[key] !== value) fail('Ambiguous verification environment key: ' + key)
+    result[key] = value
+  }
+  return result
+}
+export function verificationEnvironment(env: NodeJS.ProcessEnv, overrides: Record<string, string> = {}, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  const normalized = normalizeVerificationEnvironment(env, platform)
+  return { ...Object.fromEntries(Object.entries(normalized).filter(([key]) => !TRANSPORT_ENV_KEYS.has(key))), ...normalizeVerificationEnvironment(overrides, platform) }
 }
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -257,20 +275,34 @@ function fileFingerprint(file: string, ancestors = new Set<string>(), budget = {
   if (linkedTree && budget.bytes > 256 * 1024 * 1024) fail('Linked candidate inputs exceed fingerprint byte limit: ' + file)
   return (stat.mode & 0o111 ? 'executable:' : 'file:') + digest(readFileSync(file))
 }
-function trackedFiles(repo: PipelineRepository): string[] {
+function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: boolean }> {
   // A provider's temporary GIT_CONFIG_COUNT/excludesFile must not hide
   // candidate files from verification or change receipt validity at handoff.
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')))
   env.GIT_CONFIG_NOSYSTEM = '1'
   env.GIT_CONFIG_GLOBAL = process.platform === 'win32' ? 'NUL' : '/dev/null'
-  const result = spawnSync('git', ['-c', 'core.excludesFile=', '-C', repo.path, 'ls-files', '-z', '--cached', '--others', '--exclude-standard'], { env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true })
-  if (result.error || result.status !== 0) fail('Cannot fingerprint repository ' + repo.name + ': ' + (result.error?.message ?? result.stderr))
-  return [...new Set(result.stdout.split('\0').filter(Boolean))].sort()
+  const list = (args: string[]): string[] => {
+    const result = spawnSync('git', ['-c', 'core.excludesFile=', '-C', repo.path, 'ls-files', '-z', ...args], { env, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024, windowsHide: true })
+    if (result.error || result.status !== 0) fail('Cannot fingerprint repository ' + repo.name + ': ' + (result.error?.message ?? result.stderr))
+    return result.stdout.split('\0').filter(Boolean)
+  }
+  const tracked = new Set(list(['--cached']))
+  return [...new Set([...tracked, ...list(['--others', '--exclude-standard'])])].sort().map(file => ({ file, tracked: tracked.has(file) }))
+}
+function untrackedAgentMemory(relative: string): boolean {
+  // Native project memory can be written automatically after a role finishes,
+  // even when the role keeps explicit notes under stateDir. Exclude only known
+  // generated memory roots; tracked files and provider settings/skills still
+  // belong to the candidate. Do not hide arbitrary provider directory content.
+  return ['.claude', '.codex', '.gemini', '.kimi-code', '.specrails'].some(provider =>
+    relative === provider + '/agent-memory' || relative.startsWith(provider + '/agent-memory/'))
 }
 export function fingerprintCandidate(state: PipelineState): string {
   const entries = state.context.repositories.map((repo) => ({
     id: repo.id, path: repo.path,
-    files: trackedFiles(repo).filter((file) => !excluded(state, repo, relativeUnix(file))).map((file) => [relativeUnix(file), fileFingerprint(path.join(repo.path, file))]),
+    files: trackedFiles(repo)
+      .filter(({ file, tracked }) => !excluded(state, repo, relativeUnix(file)) && (tracked || !untrackedAgentMemory(relativeUnix(file))))
+      .map(({ file }) => [relativeUnix(file), fileFingerprint(path.join(repo.path, file))]),
   }))
   return digest(canonical(entries))
 }
@@ -316,7 +348,8 @@ export function initializePipeline(contextInput: unknown, change: string): Pipel
   })
 }
 function environmentHash(keys: string[], overrides: Record<string, string> = {}, env = process.env): string {
-  return digest(canonical(Object.fromEntries(keys.map((key) => [key, overrides[key] ?? env[key] ?? null]))))
+  const normalized = normalizeVerificationEnvironment(env)
+  return digest(canonical(Object.fromEntries(keys.map((key) => [key, overrides[key] ?? normalized[key] ?? null]))))
 }
 function inspectReceipt(state: PipelineState, env = process.env): { valid: boolean; reasons: string[]; receipt?: VerificationReceipt } {
   const receipt = state.verification
@@ -327,8 +360,18 @@ function inspectReceipt(state: PipelineState, env = process.env): { valid: boole
   if (receipt.candidateHash !== fingerprintCandidate(state)) reasons.push('Candidate files changed')
   for (const command of receipt.commands) {
     if (command.exitCode !== 0) reasons.push('Command failed: ' + command.command)
+    if (command.environmentPolicy !== 'isolated-transport-v1') reasons.push('Verification environment policy changed; run full verification again: ' + command.command)
     const currentKeys = verificationEnvironmentKeys(env, command.environmentOverrideKeys ?? [])
-    if (canonical(currentKeys) !== canonical(command.environmentKeys) || command.environmentHash !== environmentHash(currentKeys, {}, env)) reasons.push('Verification environment changed: ' + command.command)
+    if (canonical(currentKeys) !== canonical(command.environmentKeys) || command.environmentHash !== environmentHash(currentKeys, {}, env)) {
+      const previousKeys = command.environmentKeys ?? []
+      const added = currentKeys.filter(key => !previousKeys.includes(key))
+      const removed = previousKeys.filter(key => !currentKeys.includes(key))
+      // Names explain process handoff drift without retaining or revealing
+      // values. A changed aggregate hash cannot identify which value changed.
+      const summarize = (keys: string[]) => keys.slice(0, 10).map(key => JSON.stringify(key)).join(', ') + (keys.length > 10 ? ` (+${keys.length - 10} more)` : '')
+      const details = [added.length ? 'added keys: ' + summarize(added) : '', removed.length ? 'removed keys: ' + summarize(removed) : ''].filter(Boolean)
+      reasons.push('Verification environment changed: ' + command.command + ' (' + (details.join('; ') || 'recorded environment values differ') + ')')
+    }
   }
   return { valid: reasons.length === 0, reasons: [...new Set(reasons)], receipt }
 }
@@ -580,10 +623,12 @@ export function verificationInvocation(command: string, args: string[], cwd: str
 
 async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void): Promise<CommandReceipt> {
   const started = Date.now()
-  const overrideKeys = Object.keys(command.env ?? {}).sort()
+  const overrides = normalizeVerificationEnvironment(command.env ?? {}) as Record<string, string>
+  const overrideKeys = Object.keys(overrides).sort()
   const keys = verificationEnvironmentKeys(process.env, overrideKeys)
   const hash = environmentHash(keys)
-  const overridesHash = digest(canonical(command.env ?? {}))
+  const overridesHash = digest(canonical(overrides))
+  const env = verificationEnvironment(process.env, overrides)
   let output = ''
   let exitCode = -1
   await new Promise<void>((resolve) => {
@@ -592,8 +637,8 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     let done = false
     const finish = (code: number): void => { if (done) return; done = true; exitCode = code; if (timer) clearTimeout(timer); resolve() }
     try {
-      const invocation = verificationInvocation(command.command, command.args, command.cwd)
-      child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env: { ...process.env, ...command.env }, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+      const invocation = verificationInvocation(command.command, command.args, command.cwd, process.platform, env)
+      child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     } catch (error) { output = String(error); finish(-1); return }
     const receive = (chunk: Buffer): void => { const text = chunk.toString('utf8'); output = (output + text).slice(-32_000); log(text) }
     child.stdout?.on('data', receive); child.stderr?.on('data', receive)
@@ -608,7 +653,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       finish(-1)
     }, command.timeoutMs)
   })
-  return { repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, environmentHash: hash, environmentKeys: keys, environmentOverrideKeys: overrideKeys, environmentOverridesHash: overridesHash, exitCode, durationMs: Date.now() - started, output }
+  return { repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, environmentPolicy: 'isolated-transport-v1', environmentHash: hash, environmentKeys: keys, environmentOverrideKeys: overrideKeys, environmentOverridesHash: overridesHash, exitCode, durationMs: Date.now() - started, output }
 }
 export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}): Promise<VerificationReceipt> {
   const context = validatePipelineContext(contextInput)
