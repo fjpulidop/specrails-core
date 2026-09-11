@@ -3,6 +3,16 @@
   "version": "5.2.3",
   "description": "Provider-independent AI agent workflow system for Claude Code, Codex, Gemini CLI, and Kimi Code",
   "type": "module",
+  "exports": {
+    "./agent-runtime": {
+      "types": "./dist/agent-runtime/index.d.ts",
+      "import": "./dist/agent-runtime/index.js",
+      "default": "./dist/agent-runtime/index.js"
+    },
+    "./package.json": "./package.json",
+    "./integration-contract.json": "./integration-contract.json",
+    "./schemas/agent-runtime.schema.json": "./schemas/agent-runtime.schema.json"
+  },
   "bin": {
     "specrails-core": "bin/specrails-core.mjs"
   },
@@ -68,11 +78,15 @@
   },
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
+    "@langchain/core": "1.2.10",
+    "@langchain/langgraph": "1.4.14",
     "ajv": "^8.18.0",
+    "cross-spawn": "7.0.6",
     "js-yaml": "^4.1.0",
     "picocolors": "^1.1.1"
   },
   "devDependencies": {
+    "@types/cross-spawn": "6.0.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^4.1.5",

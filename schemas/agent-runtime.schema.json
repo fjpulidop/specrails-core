@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://specrails.dev/schemas/agent-runtime.schema.json",
+  "title": "Specrails programmatic agent runtime",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "enabled", "providers", "agents", "verification"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "enabled": { "type": "boolean" },
+    "providers": { "type": "array", "items": { "oneOf": [
+      { "type": "object", "additionalProperties": false, "required": ["id", "kind", "cli"], "properties": {
+        "id": { "$ref": "#/definitions/id" }, "kind": { "const": "cli" }, "cli": { "enum": ["claude", "codex", "gemini", "kimi"] }
+      } },
+      { "type": "object", "additionalProperties": false, "required": ["id", "kind", "baseUrl"], "properties": {
+        "id": { "$ref": "#/definitions/id" }, "kind": { "const": "openai-compatible" },
+        "baseUrl": { "type": "string", "pattern": "^https?://[^/?#@]+(?:/[^?#]*)?$" },
+        "apiKeyEnv": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+      } }
+    ] } },
+    "agents": { "type": "object", "additionalProperties": false, "required": ["architect", "developer", "reviewer"], "properties": {
+      "architect": { "$ref": "#/definitions/agent" }, "developer": { "$ref": "#/definitions/agent" }, "reviewer": { "$ref": "#/definitions/agent" }
+    } },
+    "limits": { "type": "object", "additionalProperties": false, "properties": {
+      "maxAttempts": { "$ref": "#/definitions/positiveInteger" }, "maxTokens": { "$ref": "#/definitions/positiveInteger" },
+      "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 }, "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
+    } },
+    "verification": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["repositoryId", "command", "args"], "properties": {
+      "repositoryId": { "$ref": "#/definitions/id" }, "command": { "type": "string", "minLength": 1 },
+      "args": { "type": "array", "items": { "type": "string" } }, "cwd": { "type": "string", "minLength": 1 },
+      "env": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "additionalProperties": { "type": "string" } },
+      "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
+    } } },
+    "approvalBeforeArchive": { "type": "boolean" }
+  },
+  "definitions": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+    "positiveInteger": { "type": "integer", "minimum": 1 },
+    "agent": { "type": "object", "additionalProperties": false, "required": ["provider"], "properties": {
+      "provider": { "$ref": "#/definitions/id" }, "model": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$" },
+      "maxTurns": { "$ref": "#/definitions/positiveInteger" }
+    } }
+  }
+}

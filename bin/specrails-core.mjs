@@ -62,6 +62,7 @@ const KNOWN_SUBCOMMANDS = new Set([
   'update',
   'doctor',
   'pipeline',
+  'runtime',
   'install-framework',
   'swap-current',
   'assemble',
