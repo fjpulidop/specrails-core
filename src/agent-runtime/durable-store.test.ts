@@ -1,15 +1,55 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { acquireWorkflowLease, fingerprint, readWorkflowState } from './durable-store.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { acquireWorkflowLease, fingerprint, readWorkflowState, writeWorkflowState } from './durable-store.js'
+
+import type { WorkflowState } from './workflow-types.js'
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...actual, rename: vi.fn(actual.rename) }
+})
+
+function checkpoint(): WorkflowState {
+  return {
+    schemaVersion: 2, runId: 'run', traceId: 'trace', workflowId: 'test', workflowVersion: '1',
+    workflowFingerprint: 'workflow', inputFingerprint: 'input', status: 'running',
+    createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
+    nextStep: null, nextAttempt: 1, transitions: 0, executionCount: 0,
+    steps: {}, history: [], events: [], budget: {},
+    usage: { costUsd: 0, inputTokens: 0, outputTokens: 0, knownCostUsd: 0, knownTokens: 0, durationMs: 0 },
+  }
+}
 
 let directory: string
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'specrails-store-')) })
-afterEach(async () => { await rm(directory, { recursive: true, force: true }) })
+afterEach(async () => { vi.restoreAllMocks(); vi.mocked(rename).mockReset(); await rm(directory, { recursive: true, force: true }) })
 
 describe('portable durable workflow storage', () => {
+  it.each(['EPERM', 'EBUSY', 'EACCES'])('retries transient Windows %s errors without losing the checkpoint', async code => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const state = checkpoint()
+    await writeWorkflowState(directory, state)
+    vi.mocked(rename).mockRejectedValueOnce(Object.assign(new Error('Sharing violation'), { code }))
+    const updated = { ...state, status: 'succeeded' as const }
+    await writeWorkflowState(directory, updated)
+    expect(await readWorkflowState(directory, 'run')).toEqual(updated)
+    expect(await readdir(join(directory, 'run'))).toEqual(['checkpoint.json'])
+  })
+
+  it('preserves the previous checkpoint and removes the temporary file when Windows retries are exhausted', async () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+    const state = checkpoint()
+    await writeWorkflowState(directory, state)
+    const error = Object.assign(new Error('Sharing violation'), { code: 'EPERM' })
+    vi.mocked(rename).mockRejectedValue(error)
+    await expect(writeWorkflowState(directory, { ...state, status: 'succeeded' })).rejects.toBe(error)
+    expect(await readWorkflowState(directory, 'run')).toEqual(state)
+    expect(await readdir(join(directory, 'run'))).toEqual(['checkpoint.json'])
+  })
+
   it('grants one owner, refuses a live owner, and permits a later owner', async () => {
     const release = await acquireWorkflowLease(directory, 'run')
     await expect(acquireWorkflowLease(directory, 'run')).rejects.toMatchObject({ code: 'LOCKED' })

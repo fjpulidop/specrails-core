@@ -92,7 +92,7 @@ export async function writeWorkflowEnvelope(directory: string, envelope: Workflo
   }
   try {
     // Node's rename replaces an existing file on supported macOS and Windows filesystems.
-    await rename(temporary, join(root, 'checkpoint.json'))
+    await renameReplacing(temporary, join(root, 'checkpoint.json'))
     // POSIX directory sync makes the rename durable; Windows cannot open directories this way.
     if (process.platform !== 'win32') {
       const directoryHandle = await open(root, 'r')
@@ -100,6 +100,18 @@ export async function writeWorkflowEnvelope(directory: string, envelope: Workflo
     }
   } finally {
     await rm(temporary, { force: true })
+  }
+}
+
+// Windows reports EPERM/EBUSY when a scanner or reader briefly holds the target;
+// the rename is retried before it is reported as a persistence failure.
+async function renameReplacing(from: string, to: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try { await rename(from, to); return } catch (error) {
+      const code = errorCode(error)
+      if (process.platform !== 'win32' || attempt >= 10 || (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES')) throw error
+      await new Promise(resolve => setTimeout(resolve, 10 * (attempt + 1)))
+    }
   }
 }
 

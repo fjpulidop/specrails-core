@@ -177,12 +177,19 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
     const state = existing ?? initialState(options, definitionFingerprint, inputFingerprint)
     let graphStore: SerializedGraphStore | undefined = envelope?.graph
     let elapsedMark = performance.now()
-    const persist = async (): Promise<void> => {
-      const elapsed = performance.now()
-      state.usage.durationMs += Math.max(0, elapsed - elapsedMark)
-      elapsedMark = elapsed
-      state.updatedAt = new Date().toISOString()
-      await writeWorkflowEnvelope(options.directory, { state, ...(graphStore ? { graph: graphStore } : {}) })
+    // Ledger receipts and LangGraph checkpoints share one file; writes are
+    // queued so two envelopes never race for the same rename.
+    let persistQueue: Promise<void> = Promise.resolve()
+    const persist = (): Promise<void> => {
+      const next = persistQueue.catch(() => undefined).then(async () => {
+        const elapsed = performance.now()
+        state.usage.durationMs += Math.max(0, elapsed - elapsedMark)
+        elapsedMark = elapsed
+        state.updatedAt = new Date().toISOString()
+        await writeWorkflowEnvelope(options.directory, { state, ...(graphStore ? { graph: graphStore } : {}) })
+      })
+      persistQueue = next
+      return next
     }
     const commit = async (...events: EventInput[]): Promise<void> => {
       const now = new Date().toISOString()
@@ -493,7 +500,8 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
     const maxAttempts = Math.max(...ids.map(id => options.workflow.nodes[id]!.maxAttempts ?? 1))
     let output: unknown
     try {
-      output = state.nextStep === null ? {} : await graph.invoke(graphInput, { ...startConfig, recursionLimit: maxTransitions * maxAttempts + 2 })
+      // Persist each graph checkpoint before starting the next node, including crash recovery.
+      output = state.nextStep === null ? {} : await graph.invoke(graphInput, { ...startConfig, durability: 'sync', recursionLimit: maxTransitions * maxAttempts + 2 })
     } catch (error) {
       if (error instanceof StepTerminated || isGraphInterrupt(error)) return clone(state)
       if (state.status === 'running') await finish(controller.signal.aborted ? stopped() : 'failed', controller.signal.aborted ? stoppedReason() : error instanceof Error ? error.message : String(error))

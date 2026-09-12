@@ -273,7 +273,7 @@ describe('durable LangGraph workflow', () => {
     expect(write).not.toHaveBeenCalled()
     expect(await runWorkflow({ ...definition, invalidate: ['write'] })).toEqual(blocked)
     const recovered = await runWorkflow({ ...definition, recoverInterrupted: ['write'] })
-    expect(recovered.status).toBe('succeeded')
+    expect(recovered.status, recovered.error).toBe('succeeded')
     expect(read).not.toHaveBeenCalled()
     expect(write).toHaveBeenCalledTimes(1)
   })
@@ -414,15 +414,26 @@ describe('execution bounds', () => {
   })
 
   it('propagates a duration deadline and waits for the owned callback to stop', async () => {
-    let stopped = false
-    const state = await runWorkflow(options([{ id: 'read', run: async (_graph, context) => {
-      await new Promise<void>(resolve => context.signal.addEventListener('abort', () => resolve(), { once: true }))
-      stopped = true
-      throw new Error('deadline')
-    } }], { budget: { maxDurationMs: 100 } }))
-    expect(stopped).toBe(true)
-    expect(state.status).toBe('blocked')
-    expect(state.error).toContain('duration')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      let stopped = false
+      let entered!: () => void
+      const started = new Promise<void>(resolve => { entered = resolve })
+      const pending = runWorkflow(options([{ id: 'read', run: async (_graph, context) => {
+        const aborted = new Promise<void>(resolve => context.signal.addEventListener('abort', () => resolve(), { once: true }))
+        entered()
+        await aborted
+        stopped = true
+        throw new Error('deadline')
+      } }], { budget: { maxDurationMs: 60_000 } }))
+      await started
+      expect(stopped).toBe(false)
+      await vi.advanceTimersByTimeAsync(60_000)
+      const state = await pending
+      expect(stopped).toBe(true)
+      expect(state.status).toBe('blocked')
+      expect(state.error).toContain('duration')
+    } finally { vi.useRealTimers() }
   })
 
   it('honors cancellation before executing any phase', async () => {

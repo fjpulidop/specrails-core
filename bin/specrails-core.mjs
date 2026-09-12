@@ -400,6 +400,10 @@ async function runNodeCli(argv) {
     process.exit(1)
   }
   const code = await mod.main(argv)
+  // Let pipe writes drain before exiting; runtime status can exceed a pipe buffer.
+  await Promise.all([process.stdout, process.stderr].map(stream =>
+    new Promise((resolve, reject) => stream.write('', error => error ? reject(error) : resolve()))
+  ))
   process.exit(code)
 }
 
