@@ -14,7 +14,7 @@ function request(overrides: Partial<AgentRequest> = {}): AgentRequest {
   return { role: 'reviewer', cwd, allowedRoots: [cwd], prompt: 'Return the review JSON', model: 'k3', ...overrides }
 }
 afterEach(() => { for (const cwd of temporary.splice(0)) rmSync(cwd, { recursive: true, force: true }) })
-interface HarnessOptions { mode?: string; fail?: string; operation?: string; path?: string; changesMode?: boolean; stopReason?: string; toolCalls?: number; multipleRoots?: boolean; responseFixture?: string }
+interface HarnessOptions { permissionTitle?: string; mode?: string; fail?: string; operation?: string; path?: string; changesMode?: boolean; stopReason?: string; toolCalls?: number; multipleRoots?: boolean; responseFixture?: string }
 function harness(input: AgentRequest, options: HarnessOptions = {}): { runProcess: CliProcessRunner; messages: Record<string, unknown>[] } {
   const messages: Record<string, unknown>[] = []
   const runProcess: CliProcessRunner = async (_invocation, settings) => {
@@ -42,14 +42,14 @@ function harness(input: AgentRequest, options: HarnessOptions = {}): { runProces
         switch (message.method) {
           case 'initialize': receive({ id: message.id, result: { protocolVersion: 1, agentInfo: { name: 'Kimi Code CLI', version: '0.27.0' }, agentCapabilities: { sessionCapabilities: options.multipleRoots ? { additionalDirectories: {} } : {} } } }); break
           case 'session/new': receive({ id: message.id, result: { sessionId: 'test-session', configOptions: [{ id: 'mode', currentValue: 'default', options: [{ value: options.mode ?? 'plan', name: 'Plan' }] }] } }); break
-          case 'session/set_mode': expect(params?.modeId).toBe('plan'); receive({ id: message.id, result: {} }); break
+          case 'session/set_mode': expect(params?.modeId).toBe(input.role === 'developer' ? 'auto' : 'plan'); receive({ id: message.id, result: {} }); break
           case 'session/set_config_option': expect(params).toMatchObject({ configId: 'model', value: 'kimi-code/k3' }); receive({ id: message.id, result: {} }); break
           case 'session/prompt': {
             promptId = message.id
             expect(params?.prompt).toEqual([{ type: 'text', text: input.prompt }])
             const operation = options.operation ?? 'fs/read_text_file'
             const reverseParams = operation === 'session/request_permission'
-              ? { toolCall: { kind: 'edit', rawInput: { path: path.join(input.cwd, 'source.ts') } }, options: [{ kind: 'allow_once', optionId: 'allow' }] }
+              ? { toolCall: { title: options.permissionTitle, kind: 'edit', rawInput: { path: path.join(input.cwd, 'source.ts') } }, options: [{ kind: 'allow_once', optionId: 'allow' }] }
               : { path: options.path ?? path.join(input.cwd, 'source.ts') }
             receive({ id: 'reverse-request', method: operation, params: { sessionId: 'test-session', ...reverseParams } })
             break
@@ -69,6 +69,21 @@ describe('Kimi 0.27 read-only ACP compatibility', () => {
     expect(fake.messages.find(message => message.id === 'reverse-request')?.result).toEqual({ content: 'export const value = 42\n' })
     expect(result).toMatchObject({ structured: { approved: true }, usage: { inputTokens: null, outputTokens: null, costUsd: null } })
   })
+  it('forwards the fixed OpenSpec server and approves only its exact tool during a plan role', async () => {
+    const input = request({ role: 'architect' })
+    const fake = harness(input, { operation: 'session/request_permission', permissionTitle: 'mcp__specrails_openspec__workflow' })
+    const bridge = { command: process.execPath, args: ['/runtime/openspec-tool-server.js', '/runtime/context.json'] }
+    await executeKimiReadonlyAcp(input, { ...fake, openspecBridge: bridge })
+    expect(fake.messages.find(item => item.method === 'session/new')?.params).toMatchObject({ mcpServers: [{ name: 'specrails_openspec', ...bridge, env: [] }] })
+    expect(fake.messages.find(item => item.id === 'reverse-request')?.result).toEqual({ outcome: { outcome: 'selected', optionId: 'allow' } })
+    await expect(executeKimiReadonlyAcp(input, { ...harness(input, { operation: 'session/request_permission', permissionTitle: 'mcp__other__workflow' }), openspecBridge: bridge })).rejects.toMatchObject({ code: 'tool_policy_violation' })
+  })
+  it('admits developer ACP auto mode with the same scoped OpenSpec server', async () => {
+    const input = request({ role: 'developer' })
+    const fake = harness(input, { mode: 'auto', operation: 'session/request_permission' })
+    await executeKimiReadonlyAcp(input, { ...fake, openspecBridge: { command: process.execPath, args: ['/bridge.js'] } })
+    expect(fake.messages.find(item => item.method === 'initialize')?.params).toMatchObject({ clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false } })
+  })
   it('automatically chooses ACP for old Kimi after a nonbilling help probe', async () => {
     const input = request(), fake = harness(input)
     const runProcess = vi.fn<CliProcessRunner>(async (invocation, settings) => invocation.args[0] === '--help' ? { stdout: '--prompt <prompt>', stderr: '', exitCode: 0 } : fake.runProcess(invocation, settings))
@@ -82,7 +97,7 @@ describe('Kimi 0.27 read-only ACP compatibility', () => {
     expect(result.structured).toEqual({ approved: true, summary: 'Verified source' })
     expect(result.text).toBe('{"approved":true,"summary":"Verified source"}')
     expect(onEvent).toHaveBeenCalledWith({ kind: 'text', text: 'I will inspect the source first.' })
-    expect(onEvent).toHaveBeenCalledWith({ kind: 'tool-start', tool: 'Read source.ts' })
+    expect(onEvent).toHaveBeenCalledWith({ kind: 'tool-start', tool: 'Read source.ts', detail: 'source.ts', targetPaths: ['source.ts'] })
   })
   it.each(['fs/write_text_file', 'terminal/create', 'session/request_permission'])('denies %s and refuses to certify a result after a forbidden attempt', async operation => {
     const input = request(), fake = harness(input, { operation })

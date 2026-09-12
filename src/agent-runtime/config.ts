@@ -33,9 +33,9 @@ function score(value: unknown, field: string, floor: number): number {
 }
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
-  if (typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
+  if (config.enabled !== undefined && typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
   const providers = config.providers.map((item, i): RuntimeProviderConfig => {
     const field = `providers[${i}]`, provider = object(item, field)
@@ -117,7 +117,19 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
       architect.onLowConfidence = raw.onLowConfidence
     }
   }
-  return { schemaVersion: 1, enabled: config.enabled, providers, agents, verification,
+  let rolePrompts: RuntimeConfig['rolePrompts']
+  if (config.rolePrompts !== undefined) {
+    const raw = object(config.rolePrompts, 'rolePrompts')
+    keys(raw, ROLES, 'rolePrompts')
+    rolePrompts = {}
+    for (const [role, value] of Object.entries(raw)) {
+      const text = string(value, `rolePrompts.${role}`)
+      if (text.length > 20000) fail(`rolePrompts.${role}`, 'maximum 20000 characters')
+      rolePrompts[role as AgentRole] = text
+    }
+  }
+  return { schemaVersion: 1, enabled: true, providers, agents, verification,
+    ...(rolePrompts === undefined ? {} : { rolePrompts }),
     ...(config.limits === undefined ? {} : { limits: { ...config.limits as RuntimeConfig['limits'] } }),
     ...(config.approvalBeforeArchive === undefined ? {} : { approvalBeforeArchive: config.approvalBeforeArchive }),
     ...(review === undefined ? {} : { review }),

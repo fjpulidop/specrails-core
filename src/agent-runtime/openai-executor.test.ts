@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -12,7 +12,7 @@ function request(overrides: Partial<AgentRequest> = {}): AgentRequest {
   return { role: 'developer', cwd: root, allowedRoots: [root], prompt: 'Implement the requested task', model: 'local-model', maxTurns: 4, ...overrides }
 }
 const provider = { id: 'local', kind: 'openai-compatible' as const, baseUrl: 'http://localhost:11434/v1' }
-function response(message: Record<string, unknown>, usage?: Record<string, number>, finishReason = 'stop'): Response {
+function response(message: Record<string, unknown>, usage?: Record<string, unknown>, finishReason = 'stop'): Response {
   return new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', ...message }, finish_reason: finishReason }], ...(usage ? { usage } : {}) }), { headers: { 'Content-Type': 'application/json' } })
 }
 afterEach(async () => {
@@ -20,6 +20,29 @@ afterEach(async () => {
   for (const root of temporary.splice(0)) rmSync(root, { recursive: true, force: true })
 })
 describe('OpenAI-compatible coding executor', () => {
+  it('searches, reads a range and patches through API tools while retaining cache usage', async () => {
+    const input = request({ maxTurns: 4 }), sent: Record<string, unknown>[] = []
+    writeFileSync(path.join(input.cwd, 'code.ts'), 'export const value = 1\n')
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, options) => {
+      const body = JSON.parse(options!.body as string)
+      sent.push(body)
+      const turn = sent.length
+      const name = ['search_text', 'read_lines', 'apply_patch'][turn - 1]
+      const args = turn === 1 ? { path: '.', query: 'value' } : turn === 2 ? { path: 'code.ts', startLine: 1, endLine: 1 } : { path: 'code.ts', oldText: 'value = 1', newText: 'value = 2', expectedHash: JSON.parse(body.messages.at(-1).content).hash }
+      return response(name ? { tool_calls: [{ id: `tool-${turn}`, type: 'function', function: { name, arguments: JSON.stringify(args) } }] } : { content: '{"implemented":true}' }, { prompt_tokens: 100, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 80 } })
+    })
+    const result = await new OpenAICompatibleExecutor(provider, { fetch }).execute(input)
+    expect(readFileSync(path.join(input.cwd, 'code.ts'), 'utf8')).toBe('export const value = 2\n')
+    expect(result.usage).toEqual({ inputTokens: 400, outputTokens: 20, costUsd: null, uncachedInputTokens: 80, cacheReadInputTokens: 320, cacheWriteInputTokens: null })
+  })
+  it('keeps cache totals unknown when a later response omits cache counters', async () => {
+    let turn = 0
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => ++turn === 1
+      ? response({ tool_calls: [{ id: 'list', type: 'function', function: { name: 'list_files', arguments: '{"path":"."}' } }] }, { prompt_tokens: 10, completion_tokens: 1, prompt_tokens_details: { cached_tokens: 8 } })
+      : response({ content: 'done' }, { prompt_tokens: 20, completion_tokens: 1 }))
+    const result = await new OpenAICompatibleExecutor(provider, { fetch }).execute(request())
+    expect(result.usage).toMatchObject({ inputTokens: 30, outputTokens: 2, cacheReadInputTokens: null, uncachedInputTokens: null })
+  })
   it('executes a real file tool loop and sums usage without fabricating USD cost', async () => {
     const input = request(), sent: Record<string, unknown>[] = []
     const fetch = vi.fn<typeof globalThis.fetch>(async (_url, options) => {

@@ -1,3 +1,4 @@
+import { prepareOpenSpec, roleOpenSpecContext } from './openspec.js'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -17,7 +18,7 @@ import { readWorkflowState, runWorkflow } from './workflow.js'
 import type { JsonValue, WorkflowEvent, WorkflowSpan, WorkflowState } from './workflow-types.js'
 
 export const RUNTIME_API_VERSION = 1
-export const CORE_WORKFLOW_VERSION = '3'
+export const CORE_WORKFLOW_VERSION = '4'
 export const CORE_PACKAGE_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 export { parseAgentObject }
 
@@ -48,7 +49,6 @@ export interface CoreWorkflowOptions {
 export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<WorkflowState> {
   const context = validatePipelineContext(options.context)
   const config = validateRuntimeConfig(options.config, { registeredProviderIds: options.registry?.ids() })
-  if (!config.enabled) throw new Error('Programmatic agent runtime is disabled')
   if (context.ownership.git !== 'host') throw new Error('Programmatic runtime requires host-owned delivery; Core shipping is not implemented by this workflow')
   if (!SLUG.test(options.change) || options.change.length > 100) throw new Error('Invalid workflow change name')
   if (!context.specs.length) throw new Error('Programmatic implementation requires a frozen spec or goal')
@@ -60,6 +60,7 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
   const state = initializePipeline(context, options.change)
   const directory = path.join(pipelineStateDirectory(context), 'agent-workflow')
   const previous = await readWorkflowState(directory, context.runId)
+  if (previous && previous.workflowVersion !== CORE_WORKFLOW_VERSION) throw new Error('This run uses the earlier artifact protocol. Its logs remain available, but resuming with OpenSpec delta workflows requires a new implementation run.')
   if (!previous && existsSync(path.join(context.artifactRoot, 'openspec/changes', options.change))) {
     throw new Error('Change already exists without a programmatic checkpoint; use a new change name')
   }
@@ -69,13 +70,19 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
       throw new Error('Archived run evidence changed; start a new run for the changed candidate or environment')
     }
   }
+  const prepared = prepareOpenSpec(context.artifactRoot, options.change, directory)
+  const openspec = Object.fromEntries((['architect', 'developer', 'reviewer'] as const).map(role => {
+    const provider = config.providers.find(item => item.id === config.agents[role].provider)
+    return [role, roleOpenSpecContext(prepared, context.artifactRoot, options.change, directory, role, provider?.kind === 'cli' ? provider.cli : 'claude')]
+  })) as Record<AgentRole, ReturnType<typeof roleOpenSpecContext>>
+  for (const role of ['architect', 'developer', 'reviewer'] as const) await registry.get(config.agents[role].provider).validateOpenSpec?.(openspec[role])
   const attempts = config.limits?.maxAttempts ?? 3
   const note = (role: AgentRole, text: string): void => { try { options.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
-  const invoke = createRoleInvoker({ context, config, registry, onAgentEvent: options.onAgentEvent })
-  const nodes = coreNodes({ context, config, change: options.change, attempts, policy: resolveReviewPolicy(config), invoke, note, onVerificationOutput: options.onVerificationOutput })
+  const invoke = createRoleInvoker({ context, config, registry, openspec, onAgentEvent: options.onAgentEvent })
+  const nodes = coreNodes({ context, config, openspec, change: options.change, attempts, policy: resolveReviewPolicy(config), invoke, note, onVerificationOutput: options.onVerificationOutput })
   return runWorkflow<CoreStateType>({
     directory, runId: context.runId,
-    input: JSON.parse(JSON.stringify({ context, config, change: options.change, coreVersion: CORE_PACKAGE_VERSION, instructionsVersion: ROLE_INSTRUCTIONS_VERSION })) as JsonValue,
+    input: JSON.parse(JSON.stringify({ context, config, change: options.change, coreVersion: CORE_PACKAGE_VERSION, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, openspec: prepared.identity })) as JsonValue,
     resume: options.resume, signal: options.signal, approve: options.approve, answer: options.answer, recoverInterrupted: options.recoverInterrupted, invalidate: options.invalidate,
     budget: { maxCostUsd: config.limits?.maxCostUsd, maxTokens: config.limits?.maxTokens, maxDurationMs: config.limits?.timeoutMs },
     onEvent: options.onEvent, onSpan: options.onSpan,
@@ -90,7 +97,7 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
         && options.recoverInterrupted?.includes('archive')
         && journal(context).phases.archive.status === 'running'
         && !existsSync(child(context.artifactRoot, 'openspec/changes/' + options.change))) {
-        archive(context, options.change)
+        await archive(context, options.change)
       }
       const inspection = inspectPipeline(context)
       if (stepId === 'architect') return inspection.phases.architect.status === 'done' && inspection.resumePhase !== 'architect'

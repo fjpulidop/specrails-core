@@ -1,21 +1,15 @@
-description = "Resume incomplete Gemini phases from the shared executable journal."
+description = "Programmatic implementation with durable recovery."
 
 prompt = '''
-Call the installed pipeline helper `status` for the requested change and run.
-Use its `context`, `resumePhase`, phases and verification to select the earliest
-invalid phase. If legacy artifacts have no journal, initialize without deleting
-work and validate each claimed completed phase before recording it.
+# Resume a programmatic implementation
 
-Read `.gemini/commands/specrails/implement.toml` and drive its remaining role
-stages directly through invoke_agent(agent_name, prompt). Do not spawn another
-implement orchestrator. Every call starts with the full bounded handoff including
-frozen acceptance criteria, all repository paths, artifactRoot, change/plan/tasks,
-last result and next action. Do not assume native session continuity or `.gemini`
-legacy pipeline-state files. A blocked phase is retriable, not intentionally skipped.
+Resolve the exact saved context for the requested run. Do not initialize a replacement, guess the latest change, or discard work.
 
-Do not repeat completed valid design/development after a reviewer failure. If
-review actually requires code changes, record developer running and pass the exact
-findings. Follow the same progress-bound continuation and one-round repair limits.
-Archive-check must succeed before reviewer archive-only authorization. Preserve
-host ownership and report unresolved work honestly with its durable resume point.
+```sh
+node .specrails/runtime/agent-runtime.mjs status --context <absolute-context>
+node .specrails/runtime/agent-runtime.mjs resume --context <absolute-context>
+```
+
+Use the saved scope and configuration. Pass an answer, approval or recovery flag only for the corresponding pending request with user authorization. The runtime selects the next phase and preserves valid completed work; never invoke roles directly or edit phase receipts. Preserve host ownership of Git, worktrees and backlog. Report the structured result and outstanding delivery actions.
+
 '''

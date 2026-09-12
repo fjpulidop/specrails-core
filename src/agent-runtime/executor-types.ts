@@ -1,4 +1,5 @@
 import type { VerificationCommand } from '../installer/runtime/pipeline-state.js'
+import type { CacheTokenUsage } from './efficiency-types.js'
 
 export type AgentRole = 'architect' | 'developer' | 'reviewer'
 export type CliProvider = 'claude' | 'codex' | 'gemini' | 'kimi'
@@ -9,6 +10,7 @@ export interface RuntimeAgentConfig { provider: string; model?: string; maxTurns
 export type ReviewAspectName = 'type_correctness' | 'pattern_adherence' | 'test_coverage' | 'security' | 'architectural_alignment'
 export interface RuntimeConfig {
   schemaVersion: 1
+  rolePrompts?: Partial<Record<AgentRole, string>>
   enabled: boolean
   providers: RuntimeProviderConfig[]
   agents: Record<AgentRole, RuntimeAgentConfig>
@@ -21,16 +23,20 @@ export interface RuntimeConfig {
   architect?: { onLowConfidence?: 'ask' | 'proceed' }
 }
 /** Null means unavailable, including when a CLI never reports billing. */
-export interface AgentUsage { inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
+export interface AgentUsage extends CacheTokenUsage { inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
 export interface AgentEvent {
   kind: 'text' | 'tool-start' | 'tool-end' | 'usage'
   text?: string
   tool?: string
   /** Short human-readable tool target, such as a file path or command. Never a complete transcript. */
   detail?: string
+  /** Untruncated tool paths for repository attribution; never file contents. */
+  targetPaths?: string[]
+  cwd?: string
   usage?: AgentUsage
 }
 export interface AgentRequest {
+  openspec?: import('./openspec.js').OpenSpecRoleContext
   role: AgentRole
   prompt: string
   cwd: string
@@ -56,6 +62,7 @@ export interface AgentResult {
 export type AgentLimits = Pick<AgentRequest, 'maxTokens' | 'maxCostUsd'>
 export interface AgentExecutor {
   /** Side-effect-free preflight. Custom executors own their limit capabilities. */
+  validateOpenSpec?(context: import('./openspec.js').OpenSpecRoleContext): Promise<void>
   validateLimits?(limits: AgentLimits): void
   execute(request: AgentRequest): Promise<AgentResult>
 }

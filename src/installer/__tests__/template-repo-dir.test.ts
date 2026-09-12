@@ -283,9 +283,9 @@ describe('STAGE 3 — runtime templates point repo-resident artifacts at ${SPECR
     // A sanity anchor so the test cannot pass merely because everything is
     // allow-listed: assert the real wrapping landed in the key spots.
     const implement = readFileSync(T('commands/specrails/implement.md'), 'utf8')
-    expect(implement).toContain('${SPECRAILS_REPO_DIR:-.}/openspec/changes/<change>/')
-    expect(implement).toContain('explicit selected repository ID/path')
-    expect(implement).toContain('Host-owned git: no staging, commits, pushes, PRs')
+    expect(implement).toContain('SPECRAILS_EXECUTION_CONTEXT')
+    expect(implement).toContain('selected repositories and ownership')
+    expect(implement).toContain('Desktop owns worktrees, commits, PRs and backlog delivery')
     expect(implement).not.toContain('cp <worktree-path>')
 
     const dev = readFileSync(T('agents/sr-developer.md'), 'utf8')
@@ -293,8 +293,8 @@ describe('STAGE 3 — runtime templates point repo-resident artifacts at ${SPECR
     expect(dev).toContain("resolved against its task's repository")
 
     const retry = readFileSync(T('commands/specrails/retry.md'), 'utf8')
-    expect(retry).toContain('${SPECRAILS_REPO_DIR:-.}')
-    expect(retry).toContain('Preserve context.specs, selected roots, backlog identity and ownership')
+    expect(retry).toContain('absolute-context')
+    expect(retry).toContain('Preserve host ownership of Git, worktrees and backlog')
   })
 
   it('does NOT wrap run-state paths — they follow the workspace (cwd-relative)', () => {

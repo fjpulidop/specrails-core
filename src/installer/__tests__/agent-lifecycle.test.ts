@@ -178,44 +178,13 @@ function readCodexSkill(relPath: string): string {
   return readFileSync(path.join(repoRoot, 'templates', 'codex-skills', relPath), 'utf8')
 }
 
-describe('codex implement orchestrator archive contract', () => {
-  const content = readCodexSkill(path.join('implement', 'SKILL.md'))
-
-  it('uses the official archive workflow after the executable approval', () => {
-    expect(content).toContain('archive-check')
-    expect(content).toContain('installed official archive workflow')
-    expect(content).toContain('Preserve approved confidence bytes')
-  })
-
-  it('includes archive and delivery in the durable completion sequence', () => {
-    expect(content).toContain('architect → developer → reviewer → archive → ship → ci')
-    expect(content).toContain('no complete/done claim while a required gate or repository is incomplete')
-  })
-
-  it('checks approval before authorizing archive-only and recording completion', () => {
-    const gateIndex = content.indexOf('Run `archive-check`')
-    const archiveIndex = content.indexOf('ARCHIVE_ONLY=true')
-    const doneIndex = content.indexOf('phase --phase archive --status done')
-    expect(gateIndex).toBeGreaterThanOrEqual(0)
-    expect(archiveIndex).toBeGreaterThan(gateIndex)
-    expect(doneIndex).toBeGreaterThan(archiveIndex)
-  })
-
-  it('closes only the owning backlog after delivery and frozen scope comparison', () => {
-    expect(content).toContain('Host-owned backlog remains untouched')
-    expect(content).toContain('required delivery succeeds')
-    expect(content).toContain('ticket requirements still match frozen')
-    expect(content).toContain('`context.backlogPath`')
-  })
-
-  it('verifies the archive landed under openspec/changes/archive/<slug>', () => {
-    expect(content).toMatch(/changes\/archive\/[^\n]*<slug>/)
-  })
-
-  it('delegates the clean archive close to sr-reviewer with authorization', () => {
-    expect(content).toMatch(/\$sr-reviewer/)
-    expect(content).toMatch(/ARCHIVE_ONLY=true/)
-    expect(content).toMatch(/ARCHIVE_AUTHORIZED=true/)
+describe('implementation entry points use the programmatic lifecycle', () => {
+  it.each(['implement', 'batch-implement', 'retry'])('%s delegates lifecycle control to the runtime', name => {
+    const text = readFileSync(path.join(repoRoot, 'templates', 'codex-skills', name, 'SKILL.md'), 'utf8')
+    expect(text).toContain('agent-runtime.mjs')
+    expect(text).toContain('resume --context')
+    expect(text).not.toContain('spawn_agent')
+    expect(text).not.toContain('archive-only')
   })
 })
 

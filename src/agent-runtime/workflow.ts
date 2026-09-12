@@ -354,6 +354,13 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
             return interrupt(request) as R
           },
           reportUsage: usage => { validateUsage(usage); accountUsage(state, usage); reported = addUsage(reported ?? { costUsd: 0, inputTokens: 0, outputTokens: 0 }, usage) },
+          reportInvocation: async invocation => {
+            validateUsage(invocation.usage)
+            if (!Number.isFinite(invocation.durationMs) || invocation.durationMs < 0 || !Number.isSafeInteger(invocation.toolCalls) || invocation.toolCalls < 0) throw new TypeError('Invalid invocation measurement')
+            ;(history.invocations ??= []).push(clone(invocation))
+            if (reported) history.usage = reported
+            await persist()
+          },
           remainingBudget: () => ({
             ...(state.budget.maxTokens === undefined ? {} : { maxTokens: Math.max(0, state.budget.maxTokens - state.usage.knownTokens) }),
             ...(state.budget.maxCostUsd === undefined ? {} : { maxCostUsd: Math.max(0, state.budget.maxCostUsd - state.usage.knownCostUsd) }),

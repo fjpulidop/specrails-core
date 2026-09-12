@@ -4,10 +4,15 @@
   "title": "Specrails programmatic agent runtime",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "enabled", "providers", "agents", "verification"],
+  "required": ["schemaVersion", "providers", "agents", "verification"],
   "properties": {
     "schemaVersion": { "const": 1 },
-    "enabled": { "type": "boolean" },
+    "rolePrompts": { "type": "object", "additionalProperties": false, "properties": {
+      "architect": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
+      "developer": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
+      "reviewer": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" }
+    } },
+    "enabled": { "type": "boolean", "deprecated": true, "description": "Accepted for saved configuration compatibility; implementation always uses the agent runtime." },
     "providers": { "type": "array", "items": { "oneOf": [
       { "type": "object", "additionalProperties": false, "required": ["id", "kind", "cli"], "properties": {
         "id": { "$ref": "#/definitions/id" }, "kind": { "const": "cli" }, "cli": { "enum": ["claude", "codex", "gemini", "kimi"] }

@@ -1,5 +1,6 @@
+import { OpenSpecTools } from './openspec.js'
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -11,6 +12,7 @@ import { readWorkflowEnvelope, writeWorkflowEnvelope } from './durable-store.js'
 import type { WorkflowState } from './workflow-types.js'
 import { runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
+import { runtimeEfficiency } from './efficiency.js'
 
 let root: string
 let context: PipelineContext
@@ -20,7 +22,7 @@ const usage = { costUsd: 0.1, inputTokens: 20, outputTokens: 10 }
 const architecture = {
   proposal: '# Feature\nImplement the frozen feature.', design: '# Design\nUpdate both selected repositories.',
   tasks: [{ title: 'Implement the feature and validate both repositories' }],
-  specs: [{ name: 'feature', content: '# Feature\n## Requirement: Implement shared behavior\n### Scenario: Requested behavior\n- Both repositories return 2.\n' }], confidence: 'high',
+  specs: [{ name: 'feature', content: '## ADDED Requirements\n### Requirement: Implement shared behavior\nBoth repositories SHALL return 2.\n#### Scenario: Requested behavior\n- **WHEN** the feature is called\n- **THEN** Both repositories return 2.\n' }], confidence: 'high',
 }
 const acceptance = { criteria: [{ specId: '7', criterionIndex: 0, status: 'met', evidence: ['code.cjs returns 2 in both repositories'] }], checks: [], findings: [] }
 const review = {
@@ -44,10 +46,24 @@ function fake(execute?: (request: AgentRequest) => Promise<AgentResult>): { regi
   const calls: AgentRequest[] = []
   return { calls, registry: new ExecutorRegistry().register('fixture', { execute: async request => {
     calls.push(request)
-    if (execute) return execute(request)
-    if (request.role === 'architect') return result(architecture)
-    if (request.role === 'developer') { develop(); return result('Implemented and marked completed tasks') }
-    return result(review)
+    const tools = new OpenSpecTools(request.openspec!)
+    await tools.execute({ action: 'load_skill' })
+    if (request.role !== 'architect') await tools.execute({ action: 'instructions', artifact: 'apply' })
+    const response = execute ? await execute(request) : request.role === 'architect' ? result(architecture) : request.role === 'developer' ? (develop(), result('Implemented and marked completed tasks')) : result(review)
+    if (request.role === 'architect') {
+      let output: Record<string, unknown>
+      try { output = parseAgentObject(response.text) } catch { return response }
+      if (typeof output.proposal === 'string' && typeof output.design === 'string') {
+        await tools.execute({ action: 'new' })
+        const items = output.specs as typeof architecture.specs
+        const files: [string, string, string][] = [['proposal', 'proposal.md', output.proposal], ['design', 'design.md', output.design], ...items.map(item => ['specs', 'specs/' + item.name + '/spec.md', item.content] as [string, string, string]), ['tasks', 'tasks.md', (output.tasks as typeof architecture.tasks).map((task, i) => '- [ ] ' + (i + 1) + '. ' + task.title).join('\n') + '\n']]
+        for (const [artifact, file, content] of files) {
+          await tools.execute({ action: 'instructions', artifact })
+          await tools.execute({ action: 'write_artifact', path: file, content })
+        }
+      }
+    }
+    return response
   } }) }
 }
 function opts(registry: ExecutorRegistry, overrides: Partial<CoreWorkflowOptions> = {}): CoreWorkflowOptions {
@@ -122,6 +138,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(output).toContain('real verification passed')
     expect(state.usage.costUsd).toBeCloseTo(0.3)
     expect(state.usage.inputTokens).toBe(60)
+    expect(runtimeEfficiency(state).total).toMatchObject({ providerCalls: 3, inputTokens: 60, outputTokens: 30, cacheReadInputTokens: null })
     const inspection = inspectPipeline(context)
     expect(inspection.verification.valid).toBe(true)
     expect(inspection.resumePhase).toBeNull()
@@ -132,6 +149,120 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(context.repositories.map(repository => git(repository.path, ['rev-parse', 'HEAD']))).toEqual(heads)
     expect((await runCoreWorkflow(opts(registry, { resume: true }))).status).toBe('succeeded')
     expect(calls).toHaveLength(3)
+  })
+
+  it('passes frozen custom definitions to every role while retaining output contracts', async () => {
+    config.rolePrompts = { architect: 'Custom architecture', developer: 'Custom implementation', reviewer: 'Custom review' }
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    for (const call of calls) {
+      expect(call.prompt).toContain(config.rolePrompts[call.role])
+      expect(call.prompt).toContain('## Output contract')
+      expect(call.prompt).toContain('## Frozen scope')
+    }
+  })
+
+  it('requires the developer itself to execute the official apply workflow', async () => {
+    const original = fake()
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      if (request.role !== 'developer') return original.registry.execute('fixture', request)
+      develop()
+      return result('Implementation complete, without loading or executing apply')
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('failed')
+    expect(state.error).toContain('Required OpenSpec role workflow was not executed')
+    expect(journalFile().phases.reviewer.status).not.toBe('done')
+  })
+
+  it.each([true, false])('repairs an omitted reviewer workflow once without replaying implementation (session: %s)', async session => {
+    const original = fake(), calls: AgentRequest[] = []
+    let reviews = 0
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls.push(request)
+      if (request.role !== 'reviewer') return original.registry.execute('fixture', request)
+      if (++reviews === 1) return { ...result(review), ...(session ? { sessionId: 'review-session' } : {}) }
+      expect(request.resumeSessionId).toBe(session ? 'review-session' : undefined)
+      expect(request.prompt).toContain('Do not merely resend the JSON')
+      expect(request.prompt).toContain('openspec-verify-change')
+      if (!session) expect(request.prompt).toContain('Acceptance criteria to certify')
+      return original.registry.execute('fixture', request)
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer', 'reviewer'])
+    expect(state.usage.costUsd).toBeCloseTo(0.4)
+    expect(state.history.filter(item => item.stepId === 'verify')).toHaveLength(1)
+    expect(state.events.some(event => event.type === 'step_failed')).toBe(false)
+  })
+
+  it('accepts the reported reviewer tool sequence without a redundant repair', async () => {
+    const original = fake(), calls: AgentRequest[] = []
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls.push(request)
+      if (request.role !== 'reviewer') return original.registry.execute('fixture', request)
+      const tools = new OpenSpecTools(request.openspec!)
+      await tools.execute({ action: 'load_skill' })
+      await tools.execute({ action: 'status' })
+      await tools.execute({ action: 'instructions', artifact: 'specs' })
+      await tools.execute({ action: 'validate' })
+      return result(review)
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+    expect(state.history.filter(item => item.stepId === 'verify')).toHaveLength(1)
+    expect(state.usage.costUsd).toBeCloseTo(0.3)
+  })
+
+  it('bounds repeated workflow omissions and resumes the failed review without replaying valid phases', async () => {
+    const original = fake(), calls: AgentRequest[] = []
+    let comply = false
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls.push(request)
+      if (request.role === 'reviewer' && !comply) return { ...result(review), sessionId: 'review-session' }
+      return original.registry.execute('fixture', request)
+    } })
+    const failed = await runCoreWorkflow(opts(registry))
+    expect(failed.status).toBe('failed')
+    expect(failed.error).toContain('reviewer must execute openspec-verify-change')
+    expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(2)
+    expect(existsSync(active())).toBe(true)
+    comply = true
+    const resumed = await runCoreWorkflow(opts(registry, { resume: true }))
+    expect(resumed.status, resumed.error).toBe('succeeded')
+    expect(calls.filter(call => call.role === 'architect')).toHaveLength(1)
+    expect(calls.filter(call => call.role === 'developer')).toHaveLength(1)
+    expect(resumed.history.filter(item => item.stepId === 'verify')).toHaveLength(1)
+  })
+
+  it('archives deltas with the real framework and preserves unrelated main requirements', async () => {
+    const main = path.join(context.artifactRoot, 'openspec/specs/feature/spec.md')
+    write(main, '# Feature\n\n## Purpose\nExisting behavior for the shared feature.\n\n## Requirements\n### Requirement: Existing behavior\nThe system SHALL preserve the existing behavior.\n#### Scenario: Existing call\n- **WHEN** calling the existing feature\n- **THEN** preserve its behavior.\n')
+    const { registry } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    const merged = readFileSync(main, 'utf8')
+    expect(merged).toContain('Requirement: Existing behavior')
+    expect(merged).toContain('Requirement: Implement shared behavior')
+    expect(merged).not.toContain('ADDED Requirements')
+  })
+
+  it('recovers partially published main specs without applying the delta twice', async () => {
+    const { registry, calls } = fake()
+    expect((await runCoreWorkflow(opts(registry))).status).toBe('succeeded')
+    const archived = await interruptAfterArchiveRename()
+    renameSync(archived, active())
+    const receipt = JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'openspec-archive.json'), 'utf8')) as { writes: { path: string; before: string | null }[] }
+    const first = receipt.writes[0]!
+    const file = path.join(context.artifactRoot, first.path)
+    if (first.before === null) rmSync(file)
+    else writeFileSync(file, first.before)
+    const resumed = await runCoreWorkflow(opts(registry, { resume: true, recoverInterrupted: ['archive'] }))
+    expect(resumed.status, resumed.error).toBe('succeeded')
+    expect(calls).toHaveLength(3)
+    expect(readFileSync(file, 'utf8')).toContain('Requirement: Implement shared behavior')
   })
 
   it('persists archive approval and resumes without rerunning valid agents', async () => {
@@ -179,7 +310,8 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'developer', 'reviewer'])
     expect(state.steps.verify?.visits).toBe(2)
     expect(calls[1]!.resumeSessionId).toBeUndefined()
-    expect(calls[1]!.prompt).toContain('real verification passed'.length ? 'Core will run these verification commands' : '')
+    expect(calls[1]!.prompt).toContain('Core owns these complete verification commands')
+    expect(calls[1]!.prompt).toContain('do not duplicate that full run')
   })
 
   it('starts a fresh developer turn when the previous session cannot be continued', async () => {
@@ -197,6 +329,10 @@ describe('programmatic Core host with real evidence gates', () => {
     const state = await runCoreWorkflow(opts(registry))
     expect(state.status, state.error).toBe('succeeded')
     expect(calls.filter(call => call.role === 'developer').map(call => Boolean(call.resumeSessionId))).toEqual([false, true, false])
+    const metrics = runtimeEfficiency(state)
+    expect(metrics.total).toMatchObject({ providerCalls: 5, costUsd: null })
+    expect(metrics.phases.find(phase => phase.stepId === 'developer')).toMatchObject({ attempts: 2, measuredAttempts: 2, providerCalls: 3, costUsd: null })
+    expect(state.history.filter(attempt => attempt.stepId === 'developer').flatMap(attempt => attempt.invocations ?? []).map(call => call.status)).toEqual(['succeeded', 'failed', 'succeeded'])
     expect(calls.at(-2)!.prompt).toContain('## Your task: implementation')
   })
 
@@ -258,7 +394,7 @@ describe('programmatic Core host with real evidence gates', () => {
     const { registry, calls } = fake(async request => {
       if (request.role === 'architect') {
         architectCalls++
-        if (architectCalls === 1) return { ...result('Here is my plan:\n' + JSON.stringify({ ...architecture, tasks: [] })), sessionId: 'arch-session' }
+        if (architectCalls === 1) return { ...result('Here is my plan:\n' + JSON.stringify({ ...architecture, confidence: 'invalid' })), sessionId: 'arch-session' }
         expect(request.resumeSessionId).toBe('arch-session')
         expect(request.prompt).toContain('could not be used')
         return result(architecture)
@@ -486,12 +622,12 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(state.events.every(event => event.traceId === state.traceId)).toBe(true)
   })
 
-  it('rejects malformed structured artifacts before writing partial architecture', async () => {
+  it('rejects artifact paths outside the admitted change', async () => {
     const { registry } = fake(async () => result({ ...architecture, specs: [{ name: '../escape', content: 'malicious' }] }))
     const state = await runCoreWorkflow(opts(registry))
     expect(state.status).toBe('failed')
-    expect(state.error).toContain('Invalid specification name')
-    expect(existsSync(active('proposal.md'))).toBe(false)
+    expect(state.error).toContain('Not a spec-driven artifact')
+    expect(existsSync(path.join(root, 'escape'))).toBe(false)
   })
 
   it('freezes runtime configuration and never snapshots inherited secrets', async () => {
@@ -538,7 +674,6 @@ describe('programmatic Core host with real evidence gates', () => {
 
   it('validates scope and full repository verification before invoking providers', async () => {
     const { registry, calls } = fake()
-    await expect(runCoreWorkflow(opts(registry, { config: { ...config, enabled: false } }))).rejects.toThrow('disabled')
     await expect(runCoreWorkflow(opts(registry, { context: { ...context, ownership: { ...context.ownership, git: 'core' } } }))).rejects.toThrow('host-owned delivery')
     await expect(runCoreWorkflow(opts(registry, { change: '../escape' }))).rejects.toThrow('change name')
     await expect(runCoreWorkflow(opts(registry, { config: { ...config, verification: [...config.verification, { repositoryId: 'outside', command: process.execPath, args: [] }] } }))).rejects.toThrow('Invalid verification command')

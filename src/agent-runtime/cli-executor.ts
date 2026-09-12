@@ -1,6 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
+import { providerDiagnostic } from './provider-diagnostic.js'
+import { toolEvent } from './tool-event.js'
+import { openSpecPrompt, writeOpenSpecBridge } from './openspec.js'
+import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import { sumCacheUsage, type CacheTokenUsage } from './efficiency-types.js'
 import { normalizeKimiCliModel } from '../installer/runtime/kimi.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentEvent, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type CliProvider } from './executor-types.js'
 import { runCliProcess, type CliInvocation, type CliProcessRunner } from './cli-process.js'
@@ -10,7 +15,7 @@ import { executeKimiReadonlyAcp } from './kimi-acp.js'
 import { assertGeminiAdminPolicyAvailable, GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
 export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
-export interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string }
+export interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
 const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
 
@@ -27,13 +32,14 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
   const resume = request.resumeSessionId
   switch (provider) {
     case 'claude': return { command: 'claude', stdin: request.prompt, args: [
-      '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 24), ...model,
+      '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 100), ...model,
       // Project instructions and rules stay visible; the user's global config,
       // memory and plugins never leak into an autonomous role.
       '--setting-sources', 'project,local',
       ...(readOnly
-        ? ['--tools', 'Read,Grep,Glob', '--permission-mode', 'plan', '--strict-mcp-config']
+        ? ['--tools', options.mcpConfigFile ? 'Read,Grep,Glob,ToolSearch' : 'Read,Grep,Glob', '--permission-mode', options.mcpConfigFile ? 'dontAsk' : 'plan', '--strict-mcp-config', ...(options.mcpConfigFile ? ['--allowedTools', 'Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow'] : [])]
         : ['--tools', 'default', '--disallowedTools', CLAUDE_DEVELOPER_DISALLOWED, '--dangerously-skip-permissions']),
+      ...(options.mcpConfigFile ? ['--mcp-config', options.mcpConfigFile] : []),
       ...(request.outputSchema ? ['--json-schema', JSON.stringify(request.outputSchema)] : []),
       ...(request.maxCostUsd === undefined ? [] : ['--max-budget-usd', String(request.maxCostUsd)]),
       ...extraRoots.flatMap(root => ['--add-dir', root]),
@@ -41,7 +47,9 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
     ] }
     case 'codex': {
       const sandbox = readOnly ? 'read-only' : 'workspace-write'
-      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...model]
+      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...model,
+        ...(options.openspecBridge ? ['-c', 'mcp_servers.specrails_openspec.command=' + JSON.stringify(options.openspecBridge.command), '-c', 'mcp_servers.specrails_openspec.args=' + JSON.stringify(options.openspecBridge.args), '-c', 'mcp_servers.specrails_openspec.default_tools_approval_mode="approve"', '-c', 'mcp_servers.specrails_openspec.required=true'] : []),
+      ]
       // `codex exec resume` has no --sandbox flag; the same policy travels as a config override.
       if (resume) return { command: 'codex', stdin: request.prompt, args: ['exec', 'resume', ...common, '-c', `sandbox_mode="${sandbox}"`, resume, '-'] }
       return { command: 'codex', stdin: request.prompt, args: [
@@ -79,21 +87,20 @@ function number(value: unknown): number | null { return typeof value === 'number
 function textBlocks(value: unknown): string {
   return Array.isArray(value) ? value.map(raw => object(raw)).filter(block => block.type === 'text' && typeof block.text === 'string').map(block => block.text).join('') : ''
 }
-function shorten(value: unknown, limit = 160): string | undefined {
-  if (typeof value !== 'string' || !value.trim()) return undefined
-  const single = value.replace(/\s+/g, ' ').trim()
-  return single.length > limit ? single.slice(0, limit - 1) + '…' : single
+function claudeCacheUsage(reported: Record<string, unknown>): CacheTokenUsage {
+  if (reported.cache_read_input_tokens === undefined && reported.cache_creation_input_tokens === undefined) return {}
+  return { uncachedInputTokens: number(reported.input_tokens), cacheReadInputTokens: number(reported.cache_read_input_tokens), cacheWriteInputTokens: number(reported.cache_creation_input_tokens) }
 }
-/** Short, human-readable tool activity for host logs; never a transcript. */
-function toolEvent(tool: string, input: unknown): AgentEvent {
-  const args = object(input)
-  const detail = shorten(args.file_path ?? args.path ?? args.command ?? args.pattern ?? args.query ?? args.notebook_path ?? args.url)
-  return { kind: 'tool-start', tool, ...(detail ? { detail } : {}) }
+function inclusiveCacheUsage(reported: Record<string, unknown>): CacheTokenUsage {
+  const cached = number(reported.cached_input_tokens), input = number(reported.input_tokens)
+  if (reported.cached_input_tokens === undefined) return {}
+  return { cacheReadInputTokens: cached !== null && input !== null && cached <= input ? cached : null, uncachedInputTokens: cached !== null && input !== null && cached <= input ? input - cached : null, cacheWriteInputTokens: null }
 }
-interface ParsedCliResult extends AgentResult { terminal: boolean; failed: boolean; turns: number }
+interface ParsedCliResult extends AgentResult { terminal: boolean; failed: boolean; turns: number; failureKind?: 'max_turns' | 'cost_budget' | 'structured_output_retries' }
 export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCliResult {
   let text = '', terminal = false, failed = false, sessionId: string | undefined, turns = 0
   let usage = unknownUsage()
+  let failureKind: ParsedCliResult['failureKind']
   let structured: Record<string, unknown> | undefined
   const claudeMessages = new Map<string, AgentUsage>()
   for (const line of stdout.split(/\r?\n/)) {
@@ -109,25 +116,29 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
         if (messageText) text = messageText
         const id = typeof message.id === 'string' ? message.id : `anonymous-${claudeMessages.size}`
         const input = number(reported.input_tokens)
-        claudeMessages.set(id, { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: null })
+        claudeMessages.set(id, { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: null, ...claudeCacheUsage(reported) })
         turns = claudeMessages.size
       }
       if (event.type === 'result' && object(event.origin).kind !== 'task-notification') {
         terminal = true
         failed ||= event.is_error === true || (typeof event.subtype === 'string' && event.subtype !== 'success')
+        if (event.subtype === 'error_max_turns') failureKind = 'max_turns'
+        if (event.subtype === 'error_max_budget_usd') failureKind = 'cost_budget'
+        if (event.subtype === 'error_max_structured_output_retries') failureKind = 'structured_output_retries'
         if (typeof event.result === 'string') text = event.result
         // --json-schema returns the validated object separately from the text.
         if (event.structured_output && typeof event.structured_output === 'object' && !Array.isArray(event.structured_output)) structured = event.structured_output as Record<string, unknown>
         const reported = object(event.usage), input = number(reported.input_tokens)
-        usage = { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: number(event.total_cost_usd) }
+        usage = { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: number(event.total_cost_usd), ...claudeCacheUsage(reported) }
       }
     } else if (provider === 'codex') {
+      if (event.type === 'turn.failed' || event.type === 'error') failed = true
       if (event.type === 'item.completed') {
         const item = object(event.item)
         if (item.type === 'agent_message' && typeof item.text === 'string') text = item.text
         if (item.type === 'agent_message' || ['command_execution', 'mcp_tool_call', 'function_call', 'local_shell_call'].includes(String(item.type))) turns++
       }
-      if (event.type === 'turn.completed') { terminal = true; const reported = object(event.usage); usage = { inputTokens: number(reported.input_tokens), outputTokens: number(reported.output_tokens), costUsd: null } }
+      if (event.type === 'turn.completed') { terminal = true; failed = false; const reported = object(event.usage); usage = { inputTokens: number(reported.input_tokens), outputTokens: number(reported.output_tokens), costUsd: null, ...inclusiveCacheUsage(reported) } }
     } else if (provider === 'gemini') {
       if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') { text += event.content; if (!event.delta) turns++ }
       // Assistant deltas before a tool belong to an intermediate turn. Keep
@@ -144,10 +155,10 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
   }
   if (provider === 'claude' && !terminal && claudeMessages.size) {
     const messages = [...claudeMessages.values()]
-    usage = { inputTokens: messages.some(message => message.inputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.inputTokens ?? 0), 0), outputTokens: messages.some(message => message.outputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.outputTokens ?? 0), 0), costUsd: null }
+    usage = { inputTokens: messages.some(message => message.inputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.inputTokens ?? 0), 0), outputTokens: messages.some(message => message.outputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.outputTokens ?? 0), 0), costUsd: null, ...sumCacheUsage(messages) }
   }
   if (structured && !text.trim()) text = JSON.stringify(structured)
-  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text) }
+  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text), ...(failureKind ? { failureKind } : {}) }
 }
 /** Live tool activity for one streamed JSON line, or undefined when the line carries none. */
 export function cliToolEvents(provider: CliProvider, event: Record<string, unknown>): AgentEvent[] {
@@ -157,9 +168,9 @@ export function cliToolEvents(provider: CliProvider, event: Record<string, unkno
   }
   if (provider === 'codex' && event.type === 'item.started') {
     const item = object(event.item)
-    if (['command_execution', 'local_shell_call'].includes(String(item.type))) return [toolEvent('shell', { command: item.command })]
+    if (['command_execution', 'local_shell_call'].includes(String(item.type))) return [toolEvent('shell', { command: item.command, cwd: item.cwd })]
     if (['mcp_tool_call', 'function_call'].includes(String(item.type))) return [toolEvent(typeof item.name === 'string' ? item.name : 'tool', item.arguments)]
-    if (item.type === 'file_change') return [toolEvent('edit', { path: Array.isArray(item.changes) ? object(item.changes[0]).path : undefined })]
+    if (item.type === 'file_change') return [toolEvent('edit', { paths: Array.isArray(item.changes) ? item.changes.map(change => object(change).path) : [] })]
     return []
   }
   if (provider === 'gemini' && event.type === 'tool_use') return [toolEvent(typeof event.tool_name === 'string' ? event.tool_name : 'tool', event.parameters)]
@@ -170,6 +181,21 @@ export function cliToolEvents(provider: CliProvider, event: Record<string, unkno
 }
 export class CliExecutor implements AgentExecutor {
   constructor(private readonly provider: CliProvider, private readonly options: CliExecutorOptions = {}) {}
+  private readonly capabilityChecks = new Map<string, Promise<void>>()
+  async validateOpenSpec(context: import('./openspec.js').OpenSpecRoleContext): Promise<void> {
+    const key = context.role === 'developer' ? 'write' : 'read'
+    let checked = this.capabilityChecks.get(key)
+    if (!checked) {
+      checked = (async () => {
+        if (this.provider === 'gemini' && key === 'read') assertGeminiAdminPolicyAvailable()
+        const help = await (this.options.runProcess ?? runCliProcess)({ command: this.provider, args: this.provider === 'kimi' ? ['acp', '--help'] : ['--help'] }, { cwd: context.root, timeoutMs: 10000, env: this.options.env })
+        const flags = this.provider === 'claude' ? ['--mcp-config', '--allowedTools'] : this.provider === 'codex' ? ['--config'] : this.provider === 'gemini' && key === 'read' ? ['--admin-policy'] : []
+        if (help.exitCode !== 0 || flags.some(flag => !help.stdout.includes(flag))) throw new AgentExecutionError(`The installed ${this.provider} CLI lacks the required OpenSpec transport. Upgrade this CLI or select another provider.`, 'provider_capability_unsupported')
+      })()
+      this.capabilityChecks.set(key, checked)
+    }
+    await checked
+  }
   validateLimits(limits: AgentLimits): void {
     if (limits.maxCostUsd !== undefined && this.provider !== 'claude') throw new AgentExecutionError(`A strict USD cap is unsupported by the ${this.provider} CLI. Use Claude's native cap or remove the dollar cap.`, 'cost_limit_unsupported')
     if (limits.maxTokens !== undefined && this.provider === 'kimi') throw new AgentExecutionError('Kimi does not report authoritative token usage. Remove the token cap or select another provider for this role.', 'usage_unavailable')
@@ -178,18 +204,34 @@ export class CliExecutor implements AgentExecutor {
     validateAgentRequest(request)
     this.validateLimits(request)
     const scope = canonicalWorkspace(request.cwd, request.allowedRoots)
-    const normalized = { ...request, cwd: scope.cwd, allowedRoots: scope.roots }
+    const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
     let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0
     const assistantIds = new Set<string>()
     const scratch = (): string => temporary ??= mkdtempSync(path.join(tmpdir(), 'specrails-' + this.provider + '-role-'))
     try {
+      const openspecBridge = request.openspec ? writeOpenSpecBridge(request.openspec, scratch()) : undefined
+      let mcpConfigFile: string | undefined
+      let executionEnv = this.options.env
+      if (openspecBridge) {
+        mcpConfigFile = path.join(scratch(), 'mcp.json')
+        writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers: { specrails_openspec: openspecBridge } }), { mode: 0o600 })
+        if (this.provider === 'gemini') {
+          const env = this.options.env ?? process.env
+          const systemPath = env.GEMINI_CLI_SYSTEM_SETTINGS_PATH ?? (process.platform === 'darwin' ? '/Library/Application Support/GeminiCli/settings.json' : process.platform === 'win32' ? 'C:\\ProgramData\\gemini-cli\\settings.json' : '/etc/gemini-cli/settings.json')
+          const settings = existsSync(systemPath) ? JSON.parse(readFileSync(systemPath, 'utf8')) : {}
+          if (settings.mcp?.allowed || settings.mcp?.excluded || settings.admin?.mcp?.enabled === false) throw new AgentExecutionError('Gemini administrator MCP restrictions require explicit OpenSpec server admission', 'provider_capability_unsupported')
+          writeFileSync(mcpConfigFile, JSON.stringify({ ...settings, mcpServers: { ...settings.mcpServers, specrails_openspec: { ...openspecBridge, trust: true, includeTools: ['workflow'] } } }), { mode: 0o600 })
+          executionEnv = { ...env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: mcpConfigFile }
+        }
+        if (this.provider === 'kimi') return await executeKimiReadonlyAcp(normalized, { ...this.options, openspecBridge })
+      }
       if (this.provider === 'gemini' && request.role !== 'developer') {
         assertGeminiAdminPolicyAvailable()
         const help = await runner({ command: 'gemini', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })
         if (help.exitCode !== 0 || !help.stdout.includes('--admin-policy')) throw new AgentExecutionError('Gemini architect/reviewer roles require --admin-policy support for an enforced read-only tool allowlist. Upgrade Gemini CLI or select another provider for this role.', 'provider_capability_unsupported')
         geminiPolicyFile = path.join(scratch(), 'readonly.toml')
-        writeFileSync(geminiPolicyFile, GEMINI_READONLY_POLICY, { mode: 0o600 })
+        writeFileSync(geminiPolicyFile, (openspecBridge ? '[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "workflow"\ndecision = "allow"\npriority = 1000\n\n' : '') + GEMINI_READONLY_POLICY, { mode: 0o600 })
       }
       if (this.provider === 'kimi' && request.role !== 'developer') {
         const help = await runner({ command: 'kimi', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })
@@ -200,10 +242,10 @@ export class CliExecutor implements AgentExecutor {
       }
       if (this.provider === 'codex' && request.outputSchema && !request.resumeSessionId) {
         codexSchemaFile = path.join(scratch(), 'output-schema.json')
-        writeFileSync(codexSchemaFile, JSON.stringify(request.outputSchema), { mode: 0o600 })
+        writeFileSync(codexSchemaFile, JSON.stringify(codexOutputSchema(request.outputSchema)), { mode: 0o600 })
       }
-      const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile }), {
-        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, env: this.options.env,
+      const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
+        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, env: executionEnv,
         onLine: line => {
           stream += line + '\n'
           let event: Record<string, unknown>
@@ -222,14 +264,23 @@ export class CliExecutor implements AgentExecutor {
             if (event.type === 'tool_use') turns++
             if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') delta = event.content
           } else if (this.provider === 'kimi' && event.role === 'assistant') { turns++; delta = typeof event.content === 'string' ? event.content : textBlocks(event.content) }
-          if (turns > (request.maxTurns ?? 24)) throw new AgentExecutionError('CLI exceeded its configured turn/tool limit', 'max_turns', parseCliOutput(this.provider, stream).usage)
+          if (turns > (request.maxTurns ?? 100)) throw new AgentExecutionError('CLI exceeded its configured turn/tool limit', 'max_turns', parseCliOutput(this.provider, stream).usage)
           for (const tool of cliToolEvents(this.provider, event)) request.onEvent?.(tool)
           if (delta) request.onEvent?.({ kind: 'text', text: delta })
         },
       })
       const parsed = parseCliOutput(this.provider, result.stdout)
       request.onEvent?.({ kind: 'usage', usage: parsed.usage })
-      if (result.exitCode !== 0 || parsed.failed) throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}. Check provider authentication, model access and limits.`, 'provider_execution_error', parsed.usage)
+      if (parsed.failureKind) {
+        const message = parsed.failureKind === 'max_turns'
+          ? `${this.provider} reached the configured limit of ${request.maxTurns ?? 100} turns for ${request.role}. Inspect partial changes before recovery; a higher limit requires a new run configuration.`
+          : parsed.failureKind === 'cost_budget' ? `${this.provider} reached its configured cost budget.` : `${this.provider} exhausted structured output retries.`
+        throw new AgentExecutionError(message, parsed.failureKind, parsed.usage)
+      }
+      if (result.exitCode !== 0 || parsed.failed) {
+        const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
+        throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`, 'provider_execution_error', parsed.usage)
+      }
       if (!parsed.terminal || !parsed.text.trim()) throw new AgentExecutionError(`${this.provider} exited without a successful final result`, 'incomplete_response', parsed.usage)
       if (request.maxTokens !== undefined) {
         if (parsed.usage.inputTokens === null || parsed.usage.outputTokens === null) throw new AgentExecutionError(`${this.provider} did not report usage needed for the token limit`, 'usage_unavailable', parsed.usage)
@@ -237,6 +288,10 @@ export class CliExecutor implements AgentExecutor {
       }
       // The final text was already streamed as it arrived; re-emitting it would
       // print every summary twice in host logs.
+      if (this.provider === 'codex' && request.outputSchema && parsed.structured) {
+        parsed.structured = restoreOptionalFields(parsed.structured, request.outputSchema) as Record<string, unknown>
+        parsed.text = JSON.stringify(parsed.structured)
+      }
       return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured }
     } catch (error) {
       if (error instanceof AgentExecutionError) {

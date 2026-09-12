@@ -1,27 +1,32 @@
-# Batch Implement
+# Programmatic implementation
 
-**Input:** $ARGUMENTS — selected ticket references, dependency hints, --dry-run/--preview or existing aggregate change for retry.
+Implement the requested spec or batch through the installed agent runtime. The runtime owns architecture, development, verification, review and archive; do not delegate these phases yourself or launch a second coordinator.
 
-## One scope and one candidate
+## Freeze the requested scope
 
-Use implement's installed runtime and immutable execution context. Host context.specs[] is the batch; never replace it from another repository's backlog. Standalone init --change <aggregate-change> --tickets "17,18" freezes local entries once; freeform/multi-repo uses explicit scope request/context.
+Use the supplied absolute `SPECRAILS_EXECUTION_CONTEXT` unchanged. It defines runId, specs and acceptance criteria, artifactRoot, selected repositories and ownership. For standalone use, admit the exact requested tickets once with:
 
-There is **one aggregate OpenSpec change and one journal**, not a full pipeline per ticket. Delegate to implement once with all frozen specs and selected roots. Architect, developer, reviewer, confidence, archive and delivery gates are mandatory and resumable.
+```sh
+node .specrails/runtime/pipeline.mjs init --change <stable-change> --tickets "<requested-ids>"
+```
 
-## Dependency plan
+For a free-form request use `--scope-request <absolute-json>` with the user's specs and criteria. Use the returned absolute context path. Never select a different run by modification time or replace scope from mutable backlog. Multiple tickets share one aggregate context and one runtime invocation.
 
-1. Validate dependency IDs against selected specs/completed external prerequisites; reject cycles or missing prerequisites.
-2. One architect designs shared contracts and task groups labeled with ticket/repository ID. Cross-repository behavior belongs to the same acceptance matrix.
-3. Execute dependency-ordered groups in supplied roots; serialize shared-file/contract changes. Profile routing selects appropriate roles; each handoff includes exact context/runtime paths.
-4. Collect foreground terminal results. Task start or unsupported PASS is not completion.
-5. Scoped tests support development; one full receipt covers the aggregate candidate and cross-repository integration. Reviewer reuses it unchanged; edits need a fresh final full pass.
+## Execute
 
-Never recursively launch implement for each wave, change the run identity, allocate nested worktrees, guess a main branch, merge copied file lists or delete supplied roots. Respect host/Core ownership from entry.
+```sh
+node .specrails/runtime/agent-runtime.mjs run --context <absolute-context> --config .specrails/agent-runtime.json --change <stable-change>
+```
 
-## Acceptance and completion
+Desktop launches this runtime directly and freezes its resolved global connections and project settings. Standalone installations provide a local configuration. If required runtime/configuration files are missing, repair the Core installation; do not fall back to a prompt-orchestrated implementation.
 
-Review every ticket's criteria before canonical confidence. Runtime reviewer and archive approval gates precede official archive. Missing implementation/regressions, low confidence or one required failed repo keeps the batch incomplete; preserve per-ticket/repository retry progress.
+Wait for the foreground process. Report its structured status, acceptance and verification evidence. A process failure or pause preserves progress; it does not authorize a replacement run. Resume only the exact saved execution:
 
-Preview remains unverified until runtime apply checks an unchanged base and executes checks on applied candidate. Retry resumes earliest invalid phase, preserving valid design and successful delivery.
+```sh
+node .specrails/runtime/agent-runtime.mjs status --context <absolute-context>
+node .specrails/runtime/agent-runtime.mjs resume --context <absolute-context>
+```
 
-Core-owned backlog may close only after complete delivery and matching current/frozen requirements. Host-owned backlog remains for host acceptance. Report partial outcomes and preserve reviewable work.
+Answers, approvals and recovery flags must correspond to the pending request and user authorization. Resume keeps the saved models, scope and configuration. Never manually rewrite phase receipts, bypass review, or treat provider prose as completion.
+
+Honor the context's ownership throughout: Desktop owns worktrees, commits, PRs and backlog delivery. Runtime success prepares a reviewed candidate; host delivery remains a separate action. Preview requests must not invoke mutating execution.

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { constants, cpSync, mkdtempSync, renameSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import {
   atomicSymlinkSwap,
@@ -190,7 +191,7 @@ const SKILL_FROM_COMMAND: Record<string, { command: string; description: string 
   'sr-batch-implement': {
     command: 'batch-implement',
     description:
-      'sr:batch-implement — Batch implementation orchestrator. Accepts multiple feature references, computes dependency-aware execution waves, invokes sr:implement per wave.',
+      'sr:batch-implement — Run multiple frozen specs as one programmatic agent workflow.',
   },
   'sr-compat-check': {
     command: 'compat-check',
@@ -436,20 +437,7 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
     )
   }
 
-  const pipelineContract = providerPipelineContract(input.scriptDir)
-  if (input.provider === 'codex') {
-    for (const name of ['implement', 'batch-implement', 'retry']) {
-      prependSkillContract(path.join(input.artifactRoot, '.codex', 'skills', name, 'SKILL.md'), pipelineContract)
-    }
-  } else if (input.provider === 'gemini') {
-    for (const name of ['implement', 'batch-implement', 'retry']) {
-      const file = path.join(input.artifactRoot, '.gemini', 'commands', 'specrails', `${name}.toml`)
-      if (pipelineContract && pathExists(file)) {
-        const source = readTextFile(file)
-        writeFileLf(file, source.replace("prompt = '''\n", "prompt = '''\n" + pipelineContract))
-      }
-    }
-  }
+
 
   // --- Codex provider settings + AGENTS.md initial content ---
   if (input.provider === 'codex') {
@@ -1665,19 +1653,17 @@ function writeKimiWorkflowSkill(args: {
   writeFileLf(
     args.dest,
     frontmatter +
+      (['implement', 'batch-implement', 'retry'].includes(args.commandName) ? rendered :
       (pathExists(path.join(path.dirname(args.src), '..', '..', 'runtime', 'provider-pipeline.md'))
         ? readTextFile(path.join(path.dirname(args.src), '..', '..', 'runtime', 'provider-pipeline.md')) + '\n' : '') +
       KIMI_NESTED_SKILL_CONTRACT +
       KIMI_ROLE_EXECUTION_CONTRACT +
       KIMI_RUNTIME_CONTEXT_CONTRACT +
-      rendered,
+      rendered),
   )
 }
 
 function adaptKimiWorkflowBody(commandName: string, body: string): string {
-  if (commandName === 'batch-implement') {
-    return adaptKimiBatchImplement(body)
-  }
   if (commandName === 'auto-propose-backlog-specs') {
     return adaptKimiAutoPropose(body)
   }
@@ -1690,36 +1676,7 @@ function adaptKimiWorkflowBody(commandName: string, body: string): string {
   if (commandName === 'telemetry') {
     return renderKimiTelemetryWorkflow()
   }
-  if (commandName === 'retry') {
-    return adaptKimiRetry(body)
-  }
-  if (commandName !== 'implement') return body
-  return body.replace(
-    '##### Invocation configuration',
-    [
-      '##### Kimi invocation configuration',
-      '',
-      'Keep the parsed `AGENT_MODEL` map as structured orchestration data.',
-      'Resolve each role model from its exact profile value and put it in the',
-      'role-wave JSON `model` field; absent values use `k3`. Shell variables',
-      'from earlier tools are not persistent. Never rewrite role frontmatter',
-      'or translate a Claude model alias into a Kimi model.',
-      '',
-      'Every implementation role uses `workspace:"current"` and the same',
-      'aggregate execution context. Serialize writers within supplied roots;',
-      'no per-ticket full pipeline, nested worktree, copied-file merge or',
-      'replacement run. The runner preserves shared backlog and frozen specs',
-      'even though each role has a private execution cwd.',
-      '',
-    ].join('\n'),
-  )
-}
-
-function adaptKimiBatchImplement(body: string): string {
-  return body.replace(
-    'Delegate to implement once with all frozen specs and selected roots.',
-    'Activate `Skill(skill="specrails-implement", args="<all original arguments>")` once in this orchestrator with all frozen specs and selected roots. Do not launch a role wave of full implementations or one implementation per ticket.',
-  )
+  return body
 }
 
 function adaptKimiAutoPropose(body: string): string {
@@ -1742,21 +1699,6 @@ function adaptKimiAutoPropose(body: string): string {
     .replaceAll('After the Explore agent completes:', 'After the sr-product-analyst role completes:')
 }
 
-function adaptKimiRetry(body: string): string {
-  return body + [
-    '',
-    '## Kimi direct-role continuation',
-    '',
-    'Use the existing runtime status and exact absolute context. Invoke only',
-    'the required sr-* or profile role through a foreground role wave, using',
-    '`workspace:"current"`; do not activate a nested specrails-implement.',
-    'Pass the complete bounded handoff explicitly, including every frozen',
-    'criterion, selected roots, current phase and next action. Native session',
-    'memory is not a substitute. Preserve valid completed phases and source',
-    'work when a later reviewer or archive step is blocked.',
-    '',
-  ].join('\n')
-}
 
 function renderKimiEnrichWorkflow(): string {
   return [
@@ -2318,19 +2260,6 @@ function renderInitialGeminiMd(repoRoot: string): string {
   ].join('\n')
 }
 
-function providerPipelineContract(scriptDir: string): string {
-  const source = path.join(scriptDir, 'templates', 'runtime', 'provider-pipeline.md')
-  return pathExists(source) ? readTextFile(source) + '\n\n' : ''
-}
-
-function prependSkillContract(file: string, contract: string): void {
-  if (!contract || !pathExists(file)) return
-  const source = readTextFile(file)
-  const end = source.startsWith('---\n') ? source.indexOf('\n---\n', 4) : -1
-  const index = end < 0 ? 0 : end + 5
-  writeFileLf(file, source.slice(0, index) + '\n' + contract + source.slice(index))
-}
-
 function assertPipelineRuntimeSource(scriptDir: string): void {
   const contractFile = path.join(scriptDir, 'integration-contract.json')
   if (!pathExists(contractFile)) return
@@ -2340,7 +2269,7 @@ function assertPipelineRuntimeSource(scriptDir: string): void {
   }
 }
 
-function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifactRoot'>): number {
+function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifactRoot' | 'provider'>): number {
   const source = path.join(input.scriptDir, 'dist', 'installer', 'runtime', 'pipeline-state.js')
   // Source-only fixture installations may not include a compiled runtime.
   if (!pathExists(source)) return 0
@@ -2349,6 +2278,23 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
   writeFileLf(path.join(dest, 'pipeline.mjs'),
     "import { runPipelineCli } from './pipeline-state.mjs'\n" +
     "process.exitCode = await runPipelineCli(process.argv.slice(2))\n")
+  const runtime = path.join(input.scriptDir, 'dist', 'agent-runtime', 'cli.js')
+  if (pathExists(runtime)) {
+    writeFileLf(path.join(dest, 'agent-runtime.mjs'),
+      `import { runRuntimeCommand } from ${JSON.stringify(pathToFileURL(runtime).href)}\n` +
+      `import { parseArgs } from ${JSON.stringify(pathToFileURL(path.join(input.scriptDir, 'dist', 'installer', 'cli.js')).href)}\n` +
+      "const { subcommand, flags, positionals } = parseArgs(process.argv.slice(2))\n" +
+      "try { process.exitCode = await runRuntimeCommand(flags, [subcommand, ...positionals].filter(Boolean)) } catch (error) { console.error(error.message); process.exitCode = 1 }\n")
+    const configPath = path.join(input.artifactRoot, '.specrails', 'agent-runtime.json')
+    if (!pathExists(configPath)) {
+      const provider = input.provider
+      writeFileLf(configPath, JSON.stringify({ schemaVersion: 1, enabled: true,
+        providers: [{ id: provider, kind: 'cli', cli: provider }],
+        agents: Object.fromEntries(['architect', 'developer', 'reviewer'].map(role => [role, { provider, maxTurns: 100 }])), verification: [],
+      }, null, 2) + '\n')
+    }
+    return 3
+  }
   return 2
 }
 

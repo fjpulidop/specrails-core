@@ -32,13 +32,13 @@ describe('installed provider pipeline fixtures', () => {
       ? path.join(workspace, providerDir, 'commands', 'specrails', 'batch-implement.toml')
       : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-batch-implement' : 'batch-implement', 'SKILL.md')
     const emitted = readFileSync(workflow, 'utf8')
-    expect(emitted).toContain('Executable pipeline contract')
-    expect(emitted).toContain('archive-check')
+    expect(emitted).toContain('agent-runtime.mjs run --context')
+    expect(emitted).toContain('do not delegate these phases yourself')
     if (provider === 'gemini') {
       const role = readFileSync(path.join(workspace, providerDir, 'agents', 'sr-developer.md'), 'utf8')
       const metadata = yaml(role.split('---')[1]!) as { tools: string[] }
       expect(metadata.tools).toContain('activate_skill')
-      expect(readFileSync(path.join(workspace, providerDir, 'commands', 'specrails', 'retry.toml'), 'utf8')).toContain('invoke_agent(agent_name, prompt)')
+      expect(readFileSync(path.join(workspace, providerDir, 'commands', 'specrails', 'retry.toml'), 'utf8')).toContain('agent-runtime.mjs resume --context')
     }
     const backlog = { tickets: { '1': { status: 'todo' }, '2': { status: 'todo' } } }
     write(path.join(workspace, '.specrails', 'local-tickets.json'), backlog)
@@ -48,6 +48,10 @@ describe('installed provider pipeline fixtures', () => {
       specs: [{ id: 1, title: 'Web', description: 'Frozen web criteria', repositoryIds: ['web'] }, { id: 2, title: 'API', description: 'Frozen API criteria', repositoryIds: ['api'] }],
       ownership: { git: 'host', backlog: 'host', worktrees: 'host' } }
     const contextFile = path.join(workspace, 'context.json'); write(contextFile, context)
+    const runtimeStatus = spawnSync(process.execPath, [path.join(workspace, '.specrails/runtime/agent-runtime.mjs'), 'status', '--context', contextFile], { cwd: workspace, encoding: 'utf8' })
+    expect(runtimeStatus.status, runtimeStatus.stderr).toBe(0)
+    expect(JSON.parse(runtimeStatus.stdout)).toMatchObject({ type: 'runtime-status', state: null })
+    expect(JSON.parse(readFileSync(path.join(workspace, '.specrails/agent-runtime.json'), 'utf8')).agents.developer).toEqual({ provider, maxTurns: 100 })
     const runtime = path.join(workspace, '.specrails', 'runtime', 'pipeline.mjs')
     const call = (...args: string[]) => spawnSync(process.execPath, [runtime, ...args, '--context', contextFile], { cwd: workspace, encoding: 'utf8' })
     expect(call('init', '--change', 'aggregate-change').status).toBe(0)

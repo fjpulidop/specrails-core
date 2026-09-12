@@ -77,14 +77,17 @@
     "ci": "npm run typecheck && npm run test:scripts && npm run test:coverage && npm run check:package"
   },
   "dependencies": {
+    "@fission-ai/openspec": "1.4.1",
     "@inquirer/prompts": "^7.0.0",
     "@langchain/core": "1.2.10",
     "@langchain/langgraph": "1.4.14",
     "@langchain/langgraph-checkpoint": "1.1.5",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "ajv": "^8.18.0",
     "cross-spawn": "7.0.6",
     "js-yaml": "^4.1.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "zod": "4.6.2"
   },
   "devDependencies": {
     "@types/cross-spawn": "6.0.6",
