@@ -39,7 +39,7 @@ export function verifyPackage(root, outputDir) {
     assert.ok(existsSync(runtimeEntry), 'Programmatic runtime must ship in the package')
     assert.ok(existsSync(path.join(installed, 'dist', 'agent-runtime', 'index.d.ts')), 'Programmatic types must ship')
     run(process.execPath, ['--input-type=module', '-e',
-      'import {pathToFileURL} from "node:url"; const runtime=await import(pathToFileURL(process.argv[1]).href); if(runtime.RUNTIME_API_VERSION!==1)throw Error("Incompatible runtime"); const state=await runtime.runWorkflow({directory:process.argv[2],runId:"package-agent-smoke",input:null,workflow:{id:"package-smoke",version:"1",steps:[{id:"verify",execute:async()=>({status:"succeeded",usage:{costUsd:0,inputTokens:0,outputTokens:0}})}]}}); if(state.status!=="succeeded")throw Error("Workflow failed");',
+      'import {pathToFileURL} from "node:url"; const runtime=await import(pathToFileURL(process.argv[1]).href); if(runtime.RUNTIME_API_VERSION!==1)throw Error("Incompatible runtime"); const schema=runtime.Annotation.Root({notes:runtime.Annotation({reducer:(a,b)=>[...a,...b],default:()=>[]})}); const state=await runtime.runWorkflow({directory:process.argv[2],runId:"package-agent-smoke",input:null,workflow:{id:"package-smoke",version:"1",schema,entry:"verify",nodes:{verify:{ends:[],run:async()=>({status:"succeeded",update:{notes:["checked"]},usage:{costUsd:0,inputTokens:0,outputTokens:0}})}}}}); if(state.status!=="succeeded"||state.steps.verify.update.notes[0]!=="checked")throw Error("Workflow failed");',
       runtimeEntry, path.join(temp, 'agent-smoke')], { cwd: temp, env })
     assert.equal(contract.execution?.schemaVersion, 1)
     assert.equal(contract.execution?.runtime, '.specrails/runtime/pipeline.mjs')

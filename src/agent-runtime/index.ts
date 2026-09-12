@@ -1,3 +1,5 @@
+/** Hosts define graph state with LangGraph's Annotation without a direct LangGraph dependency. */
+export { Annotation } from '@langchain/langgraph'
 export * from './executor-types.js'
 export * from './config.js'
 export * from './executors.js'
