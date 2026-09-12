@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import type { AgentRole, RuntimeConfig, RuntimeProviderConfig } from './executor-types.js'
+import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewAspect } from './graph/review-policy.js'
 
 const ROLES: AgentRole[] = ['architect', 'developer', 'reviewer']
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
@@ -24,9 +25,15 @@ function positive(value: unknown, field: string, integer = true): number {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0 || (integer && !Number.isSafeInteger(value))) fail(field, 'expected a positive finite number' + (integer ? ' (integer)' : ''))
   return value
 }
+/** Review thresholds may only tighten Core's own gate; the pipeline journal enforces the floor regardless of configuration. */
+function score(value: unknown, field: string, floor: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) fail(field, 'expected a number from 0 to 100')
+  if (value < floor) fail(field, `must be at least ${floor}, Core's own review gate`)
+  return value
+}
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'limits', 'verification', 'approvalBeforeArchive'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
   if (typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
@@ -88,9 +95,33 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     return structuredClone(command)
   }) as unknown as RuntimeConfig['verification']
   if (config.approvalBeforeArchive !== undefined && typeof config.approvalBeforeArchive !== 'boolean') fail('approvalBeforeArchive', 'expected boolean')
+  let review: RuntimeConfig['review']
+  if (config.review !== undefined) {
+    const raw = object(config.review, 'review')
+    keys(raw, ['minScore', 'aspects'], 'review')
+    review = {}
+    if (raw.minScore !== undefined) review.minScore = score(raw.minScore, 'review.minScore', DEFAULT_REVIEW_POLICY.minScore)
+    if (raw.aspects !== undefined) {
+      const aspects = object(raw.aspects, 'review.aspects')
+      keys(aspects, [...REVIEW_ASPECTS], 'review.aspects')
+      review.aspects = Object.fromEntries(Object.entries(aspects).map(([name, value]) => [name, score(value, `review.aspects.${name}`, DEFAULT_REVIEW_POLICY.aspects[name as ReviewAspect])])) as RuntimeConfig['review'] extends { aspects?: infer A } ? A : never
+    }
+  }
+  let architect: RuntimeConfig['architect']
+  if (config.architect !== undefined) {
+    const raw = object(config.architect, 'architect')
+    keys(raw, ['onLowConfidence'], 'architect')
+    architect = {}
+    if (raw.onLowConfidence !== undefined) {
+      if (raw.onLowConfidence !== 'ask' && raw.onLowConfidence !== 'proceed') fail('architect.onLowConfidence', 'expected "ask" or "proceed"')
+      architect.onLowConfidence = raw.onLowConfidence
+    }
+  }
   return { schemaVersion: 1, enabled: config.enabled, providers, agents, verification,
     ...(config.limits === undefined ? {} : { limits: { ...config.limits as RuntimeConfig['limits'] } }),
     ...(config.approvalBeforeArchive === undefined ? {} : { approvalBeforeArchive: config.approvalBeforeArchive }),
+    ...(review === undefined ? {} : { review }),
+    ...(architect === undefined ? {} : { architect }),
   }
 }
 export function loadRuntimeConfig(file: string, options?: { registeredProviderIds?: string[] }): RuntimeConfig {

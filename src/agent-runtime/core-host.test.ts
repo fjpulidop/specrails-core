@@ -7,9 +7,10 @@ import { runCoreWorkflow, parseAgentObject, type CoreWorkflowOptions } from './c
 import { createExecutorRegistry, ExecutorRegistry } from './executors.js'
 import { AgentExecutionError, type AgentRequest, type AgentResult, type RuntimeConfig } from './executor-types.js'
 import { inspectPipeline, pipelineStateDirectory, type PipelineContext, type PipelineState } from '../installer/runtime/pipeline-state.js'
-import { writeWorkflowState } from './durable-store.js'
+import { readWorkflowEnvelope, writeWorkflowEnvelope } from './durable-store.js'
 import type { WorkflowState } from './workflow-types.js'
 import { runRuntimeCommand } from './cli.js'
+import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 
 let root: string
 let context: PipelineContext
@@ -21,9 +22,11 @@ const architecture = {
   tasks: [{ title: 'Implement the feature and validate both repositories' }],
   specs: [{ name: 'feature', content: '# Feature\n## Requirement: Implement shared behavior\n### Scenario: Requested behavior\n- Both repositories return 2.\n' }], confidence: 'high',
 }
+const acceptance = { criteria: [{ specId: '7', criterionIndex: 0, status: 'met', evidence: ['code.cjs returns 2 in both repositories'] }], checks: [], findings: [] }
 const review = {
   approved: true, summary: 'Inspected both repositories and real verification evidence', issues: [], score: 90,
   aspects: { type_correctness: 90, pattern_adherence: 90, test_coverage: 90, security: 90, architectural_alignment: 90 },
+  acceptance,
 }
 function write(file: string, text: string): void { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text) }
 function git(repository: string, args: string[]): string {
@@ -50,7 +53,15 @@ function fake(execute?: (request: AgentRequest) => Promise<AgentResult>): { regi
 function opts(registry: ExecutorRegistry, overrides: Partial<CoreWorkflowOptions> = {}): CoreWorkflowOptions {
   return { context, config, change, registry, ...overrides }
 }
-async function interruptAfterArchiveRename(completed: WorkflowState): Promise<string> {
+/** Edits the durable ledger the way a dead process leaves it: the LangGraph history stays intact. */
+async function patchLedger(mutate: (state: WorkflowState) => void): Promise<void> {
+  const directory = path.join(pipelineStateDirectory(context), 'agent-workflow')
+  const envelope = (await readWorkflowEnvelope(directory, context.runId))!
+  mutate(envelope.state)
+  await writeWorkflowEnvelope(directory, envelope)
+}
+function journalFile(): PipelineState { return JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'state.json'), 'utf8')) as PipelineState }
+async function interruptAfterArchiveRename(): Promise<string> {
   const journalPath = path.join(pipelineStateDirectory(context), 'state.json')
   const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as PipelineState
   // Reconstruct durable state after rename but before Core saved its archive receipt.
@@ -62,11 +73,12 @@ async function interruptAfterArchiveRename(completed: WorkflowState): Promise<st
   journal.phases.ship = { status: 'pending' }
   journal.phases.ci = { status: 'pending' }
   writeFileSync(journalPath, JSON.stringify(journal))
-  completed.status = 'running'
-  completed.nextStep = 'archive'
-  completed.steps.archive!.status = 'running'
-  completed.history.at(-1)!.status = 'running'
-  await writeWorkflowState(path.join(pipelineStateDirectory(context), 'agent-workflow'), completed)
+  await patchLedger(state => {
+    state.status = 'running'
+    state.nextStep = 'archive'
+    state.steps.archive!.status = 'running'
+    state.history.at(-1)!.status = 'running'
+  })
   return archived
 }
 beforeEach(() => {
@@ -328,13 +340,150 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(existsSync(active())).toBe(true)
   })
 
-  it('blocks low-confidence architecture before invoking development', async () => {
-    const { registry, calls } = fake(async () => result({ ...architecture, confidence: 'low' }))
-    const state = await runCoreWorkflow(opts(registry))
-    expect(state.status).toBe('blocked')
-    expect(state.error).toContain('Design confidence is low')
+  it('pauses a low-confidence design on its question and resumes the architect with the answer', async () => {
+    const question = 'Should both repositories share one module?'
+    const answered: string[] = []
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') {
+        if (request.prompt.includes('## Answers from the requester')) { answered.push(request.prompt); return result(architecture) }
+        return result({ ...architecture, confidence: 'low', question })
+      }
+      if (request.role === 'developer') { develop(); return result('Done') }
+      return result(review)
+    })
+    const paused = await runCoreWorkflow(opts(registry))
+    expect(paused.status).toBe('paused')
+    expect(paused.error).toBe(question)
+    expect(paused.pendingQuestion).toMatchObject({ stepId: 'architect', question })
+    // Without a session the investigation pass is impossible, so the question is asked at once.
     expect(calls).toHaveLength(1)
     expect(readFileSync(active('proposal.md'), 'utf8')).toContain('# Feature')
+    expect(JSON.parse(readFileSync(active('design-confidence.json'), 'utf8'))).toEqual({ confidence: 'low', question })
+    expect(inspectPipeline(context).phases.architect.status).toBe('blocked')
+    expect((await runCoreWorkflow(opts(registry, { resume: true }))).status).toBe('paused')
+    expect(calls).toHaveLength(1)
+    const state = await runCoreWorkflow(opts(registry, { resume: true, answer: 'Yes, one shared module.' }))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    expect(answered[0]).toContain('1. Yes, one shared module.')
+    expect(state.steps.architect?.visits).toBe(1)
+    expect(state.pendingQuestion).toBeUndefined()
+    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
+  })
+
+  it('lets the architect investigate once in its own session before anyone is asked', async () => {
+    let architectCalls = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') {
+        architectCalls++
+        if (architectCalls === 1) return { ...result({ ...architecture, confidence: 'low', question: 'Which module owns the value?' }), sessionId: 'arch-session' }
+        expect(request.resumeSessionId).toBe('arch-session')
+        expect(request.prompt).toContain('confidence was low')
+        expect(request.prompt).toContain('Which module owns the value?')
+        return { ...result(architecture), sessionId: 'arch-session' }
+      }
+      if (request.role === 'developer') { develop(); return result('Done') }
+      return result(review)
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    expect(state.steps.architect?.output).toMatchObject({ confidence: 'high', assumed: false, deepenPasses: 1 })
+    expect(state.pendingQuestion).toBeUndefined()
+  })
+
+  it('proceeds on stated assumptions after the investigation when the project prefers autonomy', async () => {
+    config.architect = { onLowConfidence: 'proceed' }
+    const low = { ...architecture, confidence: 'low', question: 'Which module owns the value?' }
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return { ...result(low), sessionId: 'arch-session' }
+      if (request.role === 'developer') { develop(); return result('Done') }
+      return result(review)
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    expect(state.steps.architect?.output).toMatchObject({ confidence: 'low', assumed: true, deepenPasses: 1 })
+  })
+
+  it('records acceptance evidence from the reviewer and from Core\'s own verification receipts', async () => {
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls[2]!.prompt).toContain('spec `7`, criterion 0: Both repositories return 2')
+    const journal = journalFile()
+    expect(journal.acceptance?.criteria).toEqual([{ specId: '7', criterionIndex: 0, requirement: 'Both repositories return 2', status: 'met', evidence: ['code.cjs returns 2 in both repositories'] }])
+    expect(journal.acceptance?.checks.map(check => [check.name.split(':')[0], check.status, check.required])).toEqual([['front', 'passed', true], ['back', 'passed', true]])
+    expect(inspectPipeline(context).completion).toMatchObject({ implementation: 'complete', validation: 'verified', archive: 'done', delivery: 'pending-host' })
+  })
+
+  it('asks the reviewer to resend acceptance evidence that does not certify every frozen requirement', async () => {
+    let reviews = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'developer') { develop(); return result('Done') }
+      reviews++
+      if (reviews === 1) return { ...result({ ...review, acceptance: { criteria: [], checks: [], findings: [] } }), sessionId: 'review-session' }
+      expect(request.resumeSessionId).toBe('review-session')
+      expect(request.prompt).toContain('Invalid acceptance report')
+      return result(review)
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(2)
+  })
+
+  it('refuses reviewer approval while a frozen requirement is unresolved', async () => {
+    const { registry } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'developer') { develop(); return result('Done') }
+      return result({ ...review, acceptance: { ...acceptance, criteria: [{ ...acceptance.criteria[0], status: 'pending' }] } })
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('failed')
+    expect(state.error).toContain('Unresolved requirement')
+    expect(inspectPipeline(context).acceptance).toMatchObject({ valid: false, status: 'blocked', reasons: ['Unresolved requirement: Both repositories return 2'] })
+    expect(inspectPipeline(context).phases.reviewer.status).toBe('running')
+  })
+
+  it('applies project review thresholds and reports them to the reviewer', async () => {
+    config.review = { minScore: 95, aspects: { security: 91 } }
+    let reviews = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'developer') { develop(); return result('Done') }
+      return result(++reviews === 1 ? review : { ...review, score: 96, aspects: { ...review.aspects, security: 92 } })
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer', 'developer', 'reviewer'])
+    expect(calls[2]!.prompt).toContain('`score` is at least 95')
+    expect(calls[2]!.prompt).toContain('`security` ≥ 91')
+    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
+  })
+
+  it('records the developer\'s structured summary and shows it to the reviewer', async () => {
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'developer') { develop(); return result({ summary: 'Both modules now return 2', files: ['code.cjs'], tests: [], verification: 'ran the configured checks', incomplete: [] }) }
+      return result(review)
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls[1]!.outputSchema).toBe(DEVELOPER_OUTPUT_SCHEMA)
+    expect(state.steps.developer?.output).toMatchObject({ structured: true, summary: 'Both modules now return 2', files: ['code.cjs'] })
+    expect(calls[2]!.prompt).toContain('## Developer summary')
+    expect(calls[2]!.prompt).toContain('code.cjs')
+    expect(calls[2]!.prompt).toContain('ran the configured checks')
+  })
+
+  it('emits trace-correlated spans for every finished role attempt', async () => {
+    const spans: string[] = []
+    const { registry } = fake()
+    const state = await runCoreWorkflow(opts(registry, { onSpan: span => { spans.push(`${span.stepId}:${span.status}`); expect(span.traceId).toBe(state.traceId) } }))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(spans).toEqual(['architect:succeeded', 'developer:succeeded', 'verify:succeeded', 'reviewer:succeeded', 'archive:succeeded'])
+    expect(state.events.every(event => event.traceId === state.traceId)).toBe(true)
   })
 
   it('rejects malformed structured artifacts before writing partial architecture', async () => {
@@ -452,7 +601,7 @@ describe('programmatic Core host with real evidence gates', () => {
     const completed = await runCoreWorkflow(opts(registry))
     expect(completed.status, completed.error).toBe('succeeded')
     const journalPath = path.join(pipelineStateDirectory(context), 'state.json')
-    await interruptAfterArchiveRename(completed)
+    await interruptAfterArchiveRename()
     expect((await runCoreWorkflow(opts(registry, { resume: true }))).status).toBe('blocked')
     expect((JSON.parse(readFileSync(journalPath, 'utf8')) as PipelineState).phases.archive.status).toBe('running')
     const resumed = await runCoreWorkflow(opts(registry, { resume: true, recoverInterrupted: ['archive'] }))
@@ -463,8 +612,8 @@ describe('programmatic Core host with real evidence gates', () => {
 
   it.each(['candidate', 'artifacts'])('refuses changed %s during interrupted archive recovery', async changed => {
     const { registry, calls } = fake()
-    const completed = await runCoreWorkflow(opts(registry))
-    const archived = await interruptAfterArchiveRename(completed)
+    expect((await runCoreWorkflow(opts(registry))).status).toBe('succeeded')
+    const archived = await interruptAfterArchiveRename()
     if (changed === 'candidate') write(path.join(context.artifactRoot, 'code.cjs'), 'module.exports = 3\n')
     else write(path.join(archived, 'design.md'), '# Changed after original archive approval\n')
     await expect(runCoreWorkflow(opts(registry, { resume: true, recoverInterrupted: ['archive'] }))).rejects.toThrow('not authorized for this exact reviewed candidate')
@@ -473,17 +622,18 @@ describe('programmatic Core host with real evidence gates', () => {
 
   it('reconciles host delivery markers after an archive receipt was already committed', async () => {
     const { registry, calls } = fake()
-    const completed = await runCoreWorkflow(opts(registry))
+    expect((await runCoreWorkflow(opts(registry))).status).toBe('succeeded')
     const journalPath = path.join(pipelineStateDirectory(context), 'state.json')
     const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as PipelineState
     journal.phases.ship = { status: 'pending' }
     journal.phases.ci = { status: 'pending' }
     writeFileSync(journalPath, JSON.stringify(journal))
-    completed.status = 'running'
-    completed.nextStep = 'archive'
-    completed.steps.archive!.status = 'running'
-    completed.history.at(-1)!.status = 'running'
-    await writeWorkflowState(path.join(pipelineStateDirectory(context), 'agent-workflow'), completed)
+    await patchLedger(state => {
+      state.status = 'running'
+      state.nextStep = 'archive'
+      state.steps.archive!.status = 'running'
+      state.history.at(-1)!.status = 'running'
+    })
     const recovered = await runCoreWorkflow(opts(registry, { resume: true, recoverInterrupted: ['archive'] }))
     expect(recovered.status, recovered.error).toBe('succeeded')
     expect(calls).toHaveLength(3)
@@ -493,11 +643,12 @@ describe('programmatic Core host with real evidence gates', () => {
 
   it('provides compact status independent of accumulated phase output size', async () => {
     const { registry } = fake()
-    const completed = await runCoreWorkflow(opts(registry))
+    expect((await runCoreWorkflow(opts(registry))).status).toBe('succeeded')
     const largeOutput = { summary: 'x'.repeat(3 * 1024 * 1024) }
-    completed.steps.developer!.output = largeOutput
-    completed.history.find(attempt => attempt.stepId === 'developer')!.output = largeOutput
-    await writeWorkflowState(path.join(pipelineStateDirectory(context), 'agent-workflow'), completed)
+    await patchLedger(state => {
+      state.steps.developer!.output = largeOutput
+      state.history.find(attempt => attempt.stepId === 'developer')!.output = largeOutput
+    })
     const file = path.join(root, 'context.json')
     writeFileSync(file, JSON.stringify(context))
     let full: unknown

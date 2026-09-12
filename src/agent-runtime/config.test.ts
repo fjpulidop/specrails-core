@@ -32,9 +32,22 @@ describe('runtime configuration and registration', () => {
     (value: RuntimeConfig) => { value.providers.push({ id: 'api', kind: 'openai-compatible', baseUrl: 'https://provider.test/v1?api_key=secret' }) },
     (value: RuntimeConfig) => { value.providers.push({ id: 'api', kind: 'openai-compatible', baseUrl: 'file:///private', apiKeyEnv: 'sk-not-an-env' }) },
     (value: RuntimeConfig) => { value.verification.push({ repositoryId: 'main', command: 'npm', args: [], env: { API_KEY: 'do-not-save' } }) },
+    (value: RuntimeConfig) => { value.review = { minScore: 101 } },
+    (value: RuntimeConfig) => { value.review = { aspects: { security: 74 } } },
+    (value: RuntimeConfig) => { value.review = { minScore: 69 } },
+    (value: RuntimeConfig) => { Object.assign(value, { architect: { onLowConfidence: 'guess' } }) },
+    (value: RuntimeConfig) => { Object.assign(value, { review: { aspects: { readability: 90 } } }) },
   ])('rejects malformed, ambiguous or credential-bearing configuration', mutate => {
     const value = config(); mutate(value)
     expect(() => validateRuntimeConfig(value)).toThrow('Invalid runtime config')
+  })
+  it('lets projects tighten the review gate and choose how a low-confidence design proceeds', () => {
+    const value = config()
+    value.review = { minScore: 85, aspects: { security: 90, test_coverage: 60 } }
+    value.architect = { onLowConfidence: 'proceed' }
+    expect(validateRuntimeConfig(value)).toEqual(value)
+    expect(() => validateRuntimeConfig({ ...value, review: { minScore: 60 } })).toThrow("at least 70, Core's own review gate")
+    expect(() => validateRuntimeConfig({ ...value, review: { aspects: { security: 70 } } })).toThrow('review.aspects.security')
   })
   it('supports programmatic providers absent from serialized provider definitions', async () => {
     const value = config(); value.agents.developer.provider = 'my-ai'

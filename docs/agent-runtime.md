@@ -4,15 +4,16 @@ Core can execute implementation as a local TypeScript workflow:
 
 ```text
 architect → developer → verify → reviewer → archive
-                ↑          │         │
-                └──────────┴─────────┘  bounded corrections
+    │           ↑          │         │
+    │           └──────────┴─────────┘  bounded corrections
+    └─ investigate once, then ask (or proceed on stated assumptions)
 ```
 
-LangGraph controls the phase transitions. Core supplies the role instructions, writes structured architecture and review artifacts, executes verification commands, and checks the exact candidate before archive. Provider adapters execute one role; they do not invoke a platform's implementation prompt or skill.
+The workflow is a [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview) state graph. LangGraph owns the traversal, the typed state and its reducers, the checkpoint history, dynamic interrupts (approvals and questions) and time travel; Core owns the role instructions, the structured artifacts, the verification subprocesses, the acceptance evidence, the receipts, budgets, leases and interrupted-write recovery. Provider adapters execute one role; they do not invoke a platform's implementation prompt or skill.
 
 The developer role has the same autonomy the legacy Implement step had: it edits files and runs commands inside its CLI's own sandbox (Claude `--tools default --dangerously-skip-permissions` with nested agents and skills disallowed, Codex `workspace-write`, Gemini `--yolo`, Kimi print mode), so it can run the project's tests before handing off. Architect and reviewer roles stay read-only. Claude roles load only project settings (`--setting-sources project,local`), so `CLAUDE.md` and `.claude/rules` apply while the user's global memory and plugins do not.
 
-This page describes the current source implementation, **runtime API 1**. An older published Core package can have the same major version and lack this export. Build the paired checkout when developing this feature; do not assume `@latest` contains unreleased changes.
+This page describes the current source implementation, **runtime API 1**, workflow version 3, checkpoint envelope format 2. An older published Core package can have the same major version and lack this export. Build the paired checkout when developing this feature; do not assume `@latest` contains unreleased changes.
 
 ## Requirements and ownership
 
@@ -21,7 +22,7 @@ This page describes the current source implementation, **runtime API 1**. An old
 - A frozen execution context and a new change name. Verification commands are optional: configured commands run as given, the architect proposes the project's own checks for repositories that have none, and a repository with no automated check is admitted and recorded as unverified in the receipt.
 - `ownership.git: "host"`. The runtime implements and archives; its caller owns worktrees, commits, pushes, pull requests and backlog delivery. It rejects Core-owned Git delivery rather than reporting success while shipping remains pending.
 
-Specrails, LangGraph and the newly added runtime infrastructure are open source and require no paid orchestration service, tracing backend, Python daemon or database server. Model inference, hardware and existing provider CLIs retain their own costs and license terms. No model download or provider subscription is included.
+Specrails, LangGraph and the runtime infrastructure are open source and require no paid orchestration service, tracing backend, Python daemon or database server. Model inference, hardware and existing provider CLIs retain their own costs and license terms. No model download or provider subscription is included.
 
 ## Configure providers and roles
 
@@ -51,11 +52,17 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
   "verification": [
     { "repositoryId": "app", "command": "node", "args": ["--test"] }
   ],
-  "approvalBeforeArchive": true
+  "review": { "minScore": 80, "aspects": { "security": 85 } },
+  "architect": { "onLowConfidence": "ask" },
+  "approvalBeforeArchive": false
 }
 ```
 
-`verification` may be an empty array. At run time Core builds the effective plan from the configured commands plus the architect's proposals for uncovered repositories; the plan is frozen in the architect's step output and reused by every verification and resume. When the plan covers no repository at all, the run still passes through task completion and review, and the receipt lists those repositories under `unverifiedRepositories`.
+`verification` may be an empty array. At run time Core builds the effective plan from the configured commands plus the architect's proposals for uncovered repositories; the plan is frozen in the graph state and reused by every verification and resume. When the plan covers no repository at all, the run still passes through task completion and review, and the receipt lists those repositories under `unverifiedRepositories`.
+
+`review` tightens the review gate. Core's own gate is the floor: overall score at least 70, `security` at least 75, every other aspect at least 60. A lower value is rejected by validation, because the pipeline journal enforces the floor regardless of configuration. The reviewer is told the effective thresholds.
+
+`architect.onLowConfidence` decides what happens when the architect still reports low confidence after its investigation pass (see [Questions and approvals](#questions-and-approvals)): `ask` (default) pauses the run with the architect's question; `proceed` continues on the assumptions the architect stated, recording `design-confidence.json` as `medium` with `assumed: true` and the original `reportedConfidence`.
 
 Set any role's `provider` to `kimi` to use Kimi. A CLI role's optional `model` is passed to that provider; omitting it uses the CLI's default. Provider IDs are aliases, so you can configure several endpoints or replace an executor without changing workflow code.
 
@@ -63,7 +70,7 @@ To use the local endpoint, set the desired role to `{"provider":"local","model":
 
 For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provider configuration and set that variable in the process launching Core. Omit `apiKeyEnv` when no key is required. URLs cannot contain credentials, query parameters or fragments. Verification commands inherit process credentials; do not put secrets into their persisted `env` overrides.
 
-The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references. Runtime configuration is separate from the existing [profile v1 schema](../schemas/profile.v1.json); it does not translate legacy profile routing into programmatic phases.
+The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from the existing [profile v1 schema](../schemas/profile.v1.json); it does not translate legacy profile routing into programmatic phases.
 
 ## Run from the CLI
 
@@ -94,21 +101,31 @@ Desktop constructs the execution context automatically. For standalone use, crea
 }
 ```
 
-On Windows use absolute paths such as `C:/work/app` or JSON-escaped `C:\\work\\app`. Repository paths must identify existing Git repositories. Multi-repository contexts list every selected repository; `artifactRoot` must be the path of `artifactRepositoryId`. Verification must cover each repository ID. Choose a fresh, portable run ID and a new kebab-case change name.
+On Windows use absolute paths such as `C:/work/app` or JSON-escaped `C:\\work\\app`. Repository paths must identify existing Git repositories. Multi-repository contexts list every selected repository; `artifactRoot` must be the path of `artifactRepositoryId`. Choose a fresh, portable run ID and a new kebab-case change name. Every acceptance criterion (or the description when a spec has none) becomes a frozen requirement the reviewer must certify.
 
 ```sh
 specrails-core runtime api
 specrails-core runtime validate --config .specrails/agent-runtime.json
 specrails-core runtime run --context .specrails/context.json --config .specrails/agent-runtime.json --change keyboard-navigation
 specrails-core runtime status --context .specrails/context.json
+specrails-core runtime resume --context .specrails/context.json --answer "Keep the existing shortcut map"
 specrails-core runtime resume --context .specrails/context.json --approve archive
 ```
 
-The commands work in macOS shells and PowerShell; quote paths containing spaces. Verification uses `command` plus an `args` array, not a shell command string. Prefer portable Node/npm commands over Bash scripts when the project supports Windows.
+The commands work in macOS shells and PowerShell; quote paths and answers containing spaces. Verification uses `command` plus an `args` array, not a shell command string. Prefer portable Node/npm commands over Bash scripts when the project supports Windows.
 
-Run and resume emit JSON lines for workflow events, agent events, verification output and a final result. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for pending approval, and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review and archive completed; host delivery remains separate.
+Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
-`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion:"..."}` without invoking providers. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains phase status, usage and verification metadata while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
+`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion:"..."}` without invoking providers. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
+
+## Questions and approvals
+
+The graph pauses through LangGraph interrupts; the host resumes it with the matching answer.
+
+- **Low design confidence.** When the architect reports `low`, Core first asks the same architect session to investigate the code once more and decide from evidence. If confidence is still low, the run pauses with the architect's single blocking question (`pendingQuestion`), the draft proposal is left on disk for inspection, and `resume --answer <text>` re-runs the architect with the answer as authoritative input. With `architect.onLowConfidence: "proceed"` the run continues on the stated assumptions instead of pausing.
+- **Archive approval.** With `approvalBeforeArchive: true` the run pauses before archive (`pendingApproval`); `resume --approve archive` grants it. The default is no approval, so a fully autonomous run implements, verifies, reviews and archives without a human in the loop.
+
+A resumed node collects its answer before doing any work, so the pass that asked the question is never repeated. Approvals and answers are persisted; a granted approval survives interruption, but invalidated candidate evidence clears it.
 
 ## Recovery and durable state
 
@@ -116,16 +133,16 @@ State lives below `<backlogRoot>/.specrails/pipeline/<runId>/`:
 
 | File | Purpose |
 | --- | --- |
-| `state.json` and `receipts/` | Authoritative Core gates and verification evidence |
+| `state.json` and `receipts/` | Authoritative Core gates, verification and acceptance evidence |
 | `agent-runtime-request.json` | Frozen CLI change name and runtime configuration |
-| `agent-workflow/<runId>/checkpoint.json` | Atomic workflow state, attempts, outputs, usage and ordered events |
+| `agent-workflow/<runId>/checkpoint.json` | One atomic envelope: the host ledger (attempts, receipts, usage, ordered events, pending interrupts) and the complete LangGraph checkpoint history |
 | `agent-workflow/<runId>/.lease/` | Exclusive runtime process ownership |
 
-Resume uses the saved configuration and change. It rejects a different frozen input, Core/instruction identity or workflow definition. Valid completed phases are retained; stale evidence invalidates the affected phase and downstream work. Once archived, changed evidence requires a new run.
+Resume uses the saved configuration and change. It rejects a different frozen input, Core/instruction identity or workflow definition. Valid completed phases are retained; stale evidence invalidates the affected phase and everything declared after it, and the graph travels back in time to the checkpoint taken right before that phase last ran, so its predecessors' state is exactly what it saw then. The ledger is authoritative for which node runs next: if LangGraph's own position disagrees after a crash, traversal follows the ledger. Once archived, changed evidence requires a new run.
 
 Correction loops stay cheap: when verification or review sends work back, the developer's previous provider session is resumed with a short correction prompt (Claude `--resume`, Codex `exec resume`, Gemini `--resume`, Kimi `--session`), so the code it wrote and the reasons behind it are already in context. If the session is gone the developer starts a fresh full turn with the same feedback. Unchecked tasks in `tasks.md` are returned to the developer as feedback, not treated as a workflow failure. A run blocked at `limits.maxAttempts` can be resumed explicitly: the resume grants a fresh attempt budget and transition ceiling; visits and history keep the complete record.
 
-Architect and reviewer replies are validated against a JSON Schema (Claude `--json-schema`, Codex `--output-schema`; other providers are parsed leniently, accepting fenced or prefixed objects). An unusable reply gets one repair turn inside the same session before the phase fails.
+Architect and reviewer replies are validated against a JSON Schema (Claude `--json-schema`, Codex `--output-schema`; other providers are parsed leniently, accepting fenced or prefixed objects). The developer finishes with a structured summary (files, tests, verification run, incomplete tasks) validated the same way; a provider that returns prose instead is recorded as such rather than repaired. An unusable architect or reviewer reply gets one repair turn inside the same session before the phase fails.
 
 ```sh
 # Retry a reported failure with the same frozen configuration.
@@ -140,9 +157,15 @@ specrails-core runtime resume --context .specrails/context.json --invalidate ver
 
 Inspect the saved phase and worktree before using `--recover`; it authorizes repeating an effect whose completion was not durably recorded. Dead local process leases can be reclaimed. Live, remote or unverifiable leases are never silently stolen. Do not delete a lease while its process may still be running.
 
-Approval requests and grants are persisted. A granted approval survives interruption, but invalidated candidate evidence clears it. Recovery after an archive-directory move rechecks the saved exact-candidate approval before finalizing Core's receipt. It does not rerun earlier agents or waive the archive gate.
+Cancellation propagates to owned provider and verification processes. Programmatic callbacks must cooperate with `AbortSignal` and finish subprocess cleanup before returning; the engine retains its lease until they settle. A write step that settles after cancellation is recorded as interrupted and requires explicit recovery.
 
-Cancellation propagates to owned provider and verification processes. Programmatic callbacks must cooperate with `AbortSignal` and finish subprocess cleanup before returning; the engine retains its lease until they settle. Interrupted writes require explicit recovery.
+## Acceptance evidence
+
+Core 5.2 requires acceptance evidence before a change can be archived. The runtime produces it without a separate role:
+
+- The reviewer receives every frozen acceptance criterion with stable coordinates (`specId`, `criterionIndex`) and certifies each one as `met`, `exception`, `blocked` or `pending` with concrete evidence. A reviewer may only accept a non-material exception itself; material scope changes stay `blocked`.
+- Core records the verification commands it actually ran as required checks (passed or failed by exit code, with the receipt id as evidence), repositories admitted without a check as unavailable checks, and the reviewer's own inspections as supplementary, never required, checks.
+- The report is validated against the frozen scope inside the reviewer turn (a malformed report gets the repair turn), then bound to the exact candidate before the reviewer verdict is recorded. Unresolved requirements or a failed required check block review and archive; the CLI status exposes the reasons.
 
 ## Budgets and provider capability differences
 
@@ -154,7 +177,7 @@ Cancellation propagates to owned provider and verification processes. Programmat
 | `limits.maxTokens` | Rejects missing required usage or an observed overrun; CLI accounting may arrive only after a call |
 | `limits.maxCostUsd` | Accepted by the built-in Claude executor through its native dollar limit; rejected by built-in Codex, Gemini, Kimi and OpenAI-compatible executors |
 
-Do not configure `maxCostUsd` for a mixed-provider run unless every selected custom executor can enforce the requested cap. An observed token limit cannot guarantee that an opaque CLI stops before spending those tokens. Unknown usage stays `null`; known spend is tracked as a lower bound, never fabricated as zero. Local endpoints can report zero cost, but absent billing data remains unknown.
+Do not configure `maxCostUsd` for a mixed-provider run unless every selected custom executor can enforce the requested cap. An observed token limit cannot guarantee that an opaque CLI stops before spending those tokens. Provider spend is accounted the moment each call returns, so a pause or failure after a call never loses it. Unknown usage stays `null`; known spend is tracked as a lower bound, never fabricated as zero. Local endpoints can report zero cost, but absent billing data remains unknown.
 
 Kimi read-only roles use an enforced custom agent when the CLI exposes `--agent-file`; the Kimi 0.27 fallback uses ACP plan mode with scoped reads and denied writes/terminal operations. Unsupported ACP modes or multi-repository capabilities fail explicitly. Kimi lacks authoritative token accounting, so its built-in executor rejects token and dollar caps. Configure another provider for a role when its installed Kimi version cannot expose the required repository scope.
 
@@ -174,11 +197,12 @@ const controller = new AbortController()
 const state = await runCoreWorkflow({
   context, config, change: 'keyboard-navigation', signal: controller.signal,
   onEvent: event => process.stdout.write(JSON.stringify(event) + '\n'),
+  onSpan: span => process.stdout.write(JSON.stringify(span) + '\n'),
 })
-console.log(state.status, state.nextStep)
+console.log(state.status, state.nextStep, state.pendingQuestion?.question)
 ```
 
-Programmatic hosts retain their input/config and supply the same values with `resume: true`. The CLI additionally creates the frozen request file for you.
+Programmatic hosts retain their input/config and supply the same values with `resume: true`, plus `approve`, `answer`, `recoverInterrupted` or `invalidate` as needed. The CLI additionally creates the frozen request file for you.
 
 Register an executor directly to add a provider in code. This example registers a private local endpoint with no CLI installation:
 
@@ -210,7 +234,30 @@ A custom executor implements `AgentExecutor.execute(request): Promise<AgentResul
 
 An optional, side-effect-free `validateLimits({maxTokens, maxCostUsd})` method rejects unsupported limits before any role runs. Built-in executors provide this preflight; custom registrations own their capabilities. Core also validates the complete verification command plan against the frozen repository scope before creating a run or invoking providers.
 
-For a different host workflow, use `runWorkflow()` with typed callback steps. Each declares `id`, `effect`, optional retry bounds and `execute(context)`. A result supplies `status`, optional output/usage and optional `next` for conditional routing. Write retries require `retrySafe: true`; interrupted writes still require explicit recovery. `readWorkflowState(directory, runId)` is read-only. Observer exceptions cannot replay a committed step.
+For a different host workflow, use `runWorkflow()` with a LangGraph state schema and typed nodes:
+
+```ts
+import { Annotation } from '@langchain/langgraph'
+import { runWorkflow } from 'specrails-core/agent-runtime'
+
+const State = Annotation.Root({ notes: Annotation<string[]>({ reducer: (a, b) => [...a, ...b], default: () => [] }) })
+await runWorkflow<typeof State.State>({
+  directory, runId, input: { change }, workflow: {
+    id: 'my-host', version: '1', schema: State, entry: 'plan',
+    nodes: {
+      plan: { ends: ['build'], run: async () => ({ status: 'succeeded', update: { notes: ['planned'] } }) },
+      build: { effect: 'write', ends: ['plan'], run: async (state, context) => {
+        context.reportUsage({ costUsd: 0.1, inputTokens: 10, outputTokens: 5 })
+        if (state.notes.length < 2) return { status: 'succeeded', next: 'plan' }
+        context.interrupt({ kind: 'approval', reason: 'Ship it?' })
+        return { status: 'succeeded', next: null }
+      } },
+    },
+  },
+})
+```
+
+Each node declares its `effect`, optional retry bounds, its possible successors (`ends`) and `run(state, context)`. A result supplies `status`, an optional graph `update` (merged through the schema's reducers), an optional ledger `output` and an optional `next` for conditional routing; `null` completes the workflow. Node names must not collide with state channel names. Nodes pause with `context.interrupt()` and report provider spend with `context.reportUsage()` as it happens. Write retries require `retrySafe: true`; interrupted writes still require explicit recovery. `readWorkflowState(directory, runId)` is read-only. Observer exceptions cannot replay a committed step. The Core nodes themselves are exported as `coreNodes(deps)` for hosts that want to reuse a phase inside another graph.
 
 ## Tools, specifications and compatibility
 

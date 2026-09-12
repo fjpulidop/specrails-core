@@ -20,12 +20,13 @@ async function readStdin(): Promise<unknown> {
   }
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
-function compactState(state: WorkflowState | null) {
+/** The host-facing summary: phase status, pending interrupts and usage without accumulated outputs. */
+export function compactState(state: WorkflowState | null) {
   if (!state) return null
   return {
-    runId: state.runId, status: state.status, nextStep: state.nextStep, updatedAt: state.updatedAt,
-    error: state.error, pendingApproval: state.pendingApproval, usage: state.usage,
-    steps: Object.fromEntries(Object.entries(state.steps).map(([id, step]) => [id, { status: step.status }])),
+    runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, updatedAt: state.updatedAt,
+    error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage,
+    steps: Object.fromEntries(Object.entries(state.steps).map(([id, step]) => [id, { status: step.status, visits: step.visits }])),
   }
 }
 function compactPipeline(pipeline: ReturnType<typeof inspectPipeline> | null) {
@@ -34,6 +35,7 @@ function compactPipeline(pipeline: ReturnType<typeof inspectPipeline> | null) {
   return {
     schemaVersion: pipeline.schemaVersion, runId: pipeline.runId, change: pipeline.change,
     stateDir: pipeline.stateDir, resumePhase: pipeline.resumePhase, phases: pipeline.phases,
+    completion: pipeline.completion, acceptance: { valid: pipeline.acceptance.valid, status: pipeline.acceptance.status, reasons: pipeline.acceptance.reasons },
     verification: {
       ...pipeline.verification,
       receipt: receipt ? { ...receipt, commands: receipt.commands.map(command => ({ ...command, output: undefined })) } : undefined,
@@ -43,6 +45,12 @@ function compactPipeline(pipeline: ReturnType<typeof inspectPipeline> | null) {
 function stringFlag(flags: Record<string, string | boolean>, key: string): string {
   const value = flags[key]
   if (typeof value !== 'string' || !value) throw new Error('Missing --' + key)
+  return value
+}
+function optionalString(flags: Record<string, string | boolean>, key: string): string | undefined {
+  const value = flags[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || !value.trim()) throw new Error('--' + key + ' needs a nonempty value')
   return value
 }
 function list(flags: Record<string, string | boolean>, key: string): string[] | undefined {
@@ -67,7 +75,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       'specrails-core runtime validate --stdin',
       'specrails-core runtime run --context <json> --config <json> --change <kebab-case>',
       'specrails-core runtime status --context <json> [--compact]',
-      'specrails-core runtime resume --context <json> [--approve archive] [--recover developer] [--invalidate verify]',
+      'specrails-core runtime resume --context <json> [--approve archive] [--answer <text>] [--recover developer] [--invalidate verify]',
     ] })
     return 0
   }
@@ -98,6 +106,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     request = read(requestFile) as typeof request
     if (flags.config || flags.change) throw new Error('Resume uses the frozen configuration and change; start a new run to change them')
   } else {
+    if (flags.answer !== undefined || flags.approve !== undefined) throw new Error('Answers and approvals apply to runtime resume')
     request = { change: stringFlag(flags, 'change'), config: validateRuntimeConfig(read(stringFlag(flags, 'config'))) }
     const serialized = JSON.stringify(request, null, 2) + '\n'
     mkdirSync(path.dirname(requestFile), { recursive: true, mode: 0o700 })
@@ -114,12 +123,13 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
   try {
     const state = await runCoreWorkflow({
       context, change: request.change, config: request.config, resume: command === 'resume', signal: controller.signal,
-      approve: list(flags, 'approve'), recoverInterrupted: list(flags, 'recover'), invalidate: list(flags, 'invalidate'),
+      approve: list(flags, 'approve'), answer: optionalString(flags, 'answer'), recoverInterrupted: list(flags, 'recover'), invalidate: list(flags, 'invalidate'),
       onEvent: event => emit({ type: 'workflow-event', event }),
+      onSpan: span => emit({ type: 'span', span }),
       onAgentEvent: (role, event) => emit({ type: 'agent-event', role, event }),
       onVerificationOutput: text => emit({ type: 'verification-output', text }),
     })
-    emit({ type: 'runtime-result', runId: state.runId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0) })
+    emit({ type: 'runtime-result', runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0) })
     return state.status === 'succeeded' ? 0 : state.status === 'paused' ? 2 : 1
   } finally { process.off('SIGINT', abort); process.off('SIGTERM', abort) }
 }

@@ -31,11 +31,22 @@
       "env": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "additionalProperties": { "type": "string" } },
       "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
     } } },
-    "approvalBeforeArchive": { "type": "boolean" }
+    "approvalBeforeArchive": { "type": "boolean" },
+    "review": { "type": "object", "additionalProperties": false, "description": "Review gate thresholds; unset fields keep Core's defaults (score 70, security 75, other aspects 60).", "properties": {
+      "minScore": { "$ref": "#/definitions/score" },
+      "aspects": { "type": "object", "additionalProperties": false, "properties": {
+        "type_correctness": { "$ref": "#/definitions/score" }, "pattern_adherence": { "$ref": "#/definitions/score" }, "test_coverage": { "$ref": "#/definitions/score" },
+        "security": { "$ref": "#/definitions/score" }, "architectural_alignment": { "$ref": "#/definitions/score" }
+      } }
+    } },
+    "architect": { "type": "object", "additionalProperties": false, "properties": {
+      "onLowConfidence": { "enum": ["ask", "proceed"], "description": "After one autonomous investigation pass, a still-low design either pauses with its question (ask, default) or proceeds on stated assumptions (proceed)." }
+    } }
   },
   "definitions": {
     "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
     "positiveInteger": { "type": "integer", "minimum": 1 },
+    "score": { "type": "number", "minimum": 0, "maximum": 100 },
     "agent": { "type": "object", "additionalProperties": false, "required": ["provider"], "properties": {
       "provider": { "$ref": "#/definitions/id" }, "model": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$" },
       "maxTurns": { "$ref": "#/definitions/positiveInteger" }

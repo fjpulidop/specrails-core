@@ -408,6 +408,14 @@ function frozenCriteria(context: PipelineContext): Array<Pick<AcceptanceCriterio
   return context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [spec.description || spec.title])
     .map((requirement, criterionIndex) => ({ specId: String(spec.id), criterionIndex, requirement })))
 }
+/** The frozen requirements an acceptance report must certify, in scope order. */
+export function frozenAcceptanceCriteria(contextInput: unknown): Array<Pick<AcceptanceCriterion, 'specId' | 'criterionIndex' | 'requirement'>> {
+  return frozenCriteria(validatePipelineContext(contextInput))
+}
+/** Validates a report against the frozen scope without recording it; throws the same errors `recordAcceptance` would. */
+export function validateAcceptanceReport(contextInput: unknown, input: unknown): AcceptanceReport {
+  return acceptanceReport(validatePipelineContext(contextInput), input)
+}
 function nonempty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
 function evidence(value: unknown): value is string[] { return Array.isArray(value) && value.length > 0 && value.every(nonempty) }
 function acceptanceReport(context: PipelineContext, input: unknown): AcceptanceReport {

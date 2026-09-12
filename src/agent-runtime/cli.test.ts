@@ -152,6 +152,7 @@ describe('packaged programmatic runtime CLI', () => {
         else message = { role: 'assistant', content: JSON.stringify({
           approved: true, summary: 'Reviewed the exact verified candidate', issues: [], score: 90,
           aspects: { type_correctness: 90, pattern_adherence: 90, test_coverage: 90, security: 90, architectural_alignment: 90 },
+          acceptance: { criteria: [{ specId: 'cli-feature', criterionIndex: 0, status: 'met', evidence: ['code.cjs returns 2'] }], checks: [], findings: [] },
         }) }
         response.writeHead(200, { 'Content-Type': 'application/json' })
         response.end(JSON.stringify({ choices: [{ finish_reason: message.tool_calls ? 'tool_calls' : 'stop', message }], usage: { prompt_tokens: 10, completion_tokens: 5, cost_usd: 0 } }))
@@ -166,7 +167,7 @@ describe('packaged programmatic runtime CLI', () => {
     writeFileSync(configFile, JSON.stringify(config))
     const run = await invoke(['run', '--context', contextFile, '--config', configFile, '--change', 'cli-feature'])
     expect(run.code, JSON.stringify(run.messages.at(-1)) + run.stderr).toBe(2)
-    expect(run.messages.at(-1)).toMatchObject({ type: 'runtime-result', status: 'paused', pendingApproval: { stepId: 'archive' }, invocationUsage: { inputTokens: 40, outputTokens: 20, costUsd: 0 } })
+    expect(run.messages.at(-1), JSON.stringify(run.messages.at(-1))).toMatchObject({ type: 'runtime-result', status: 'paused', pendingApproval: { stepId: 'archive' }, invocationUsage: { inputTokens: 40, outputTokens: 20, costUsd: 0 } })
     expect(requests).toHaveLength(4)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
@@ -181,6 +182,12 @@ describe('packaged programmatic runtime CLI', () => {
     const invalidApproval = await invoke(['resume', '--context', contextFile, '--approve'])
     expect(invalidApproval.code).toBe(1)
     expect(errorText(invalidApproval)).toContain('comma-separated step IDs')
+    const misplacedAnswer = await invoke(['run', '--context', contextFile, '--config', configFile, '--change', 'cli-feature', '--answer', 'later'])
+    expect(misplacedAnswer.code).toBe(1)
+    expect(errorText(misplacedAnswer)).toContain('apply to runtime resume')
+    const emptyAnswer = await invoke(['resume', '--context', contextFile, '--answer', ' '])
+    expect(emptyAnswer.code).toBe(1)
+    expect(errorText(emptyAnswer)).toContain('nonempty value')
     const status = await invoke(['status', '--context', contextFile])
     expect(status.messages[0]).toMatchObject({ type: 'runtime-status', state: { status: 'paused' }, pipeline: { verification: { valid: true } } })
 

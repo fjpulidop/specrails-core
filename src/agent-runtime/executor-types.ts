@@ -6,6 +6,7 @@ export type RuntimeProviderConfig =
   | { id: string; kind: 'cli'; cli: CliProvider }
   | { id: string; kind: 'openai-compatible'; baseUrl: string; apiKeyEnv?: string }
 export interface RuntimeAgentConfig { provider: string; model?: string; maxTurns?: number }
+export type ReviewAspectName = 'type_correctness' | 'pattern_adherence' | 'test_coverage' | 'security' | 'architectural_alignment'
 export interface RuntimeConfig {
   schemaVersion: 1
   enabled: boolean
@@ -14,6 +15,10 @@ export interface RuntimeConfig {
   limits?: { maxAttempts?: number; maxTokens?: number; maxCostUsd?: number; timeoutMs?: number }
   verification: VerificationCommand[]
   approvalBeforeArchive?: boolean
+  /** Review gate thresholds (0–100); unset fields keep Core's defaults. */
+  review?: { minScore?: number; aspects?: Partial<Record<ReviewAspectName, number>> }
+  /** What to do when the architect still reports low confidence after investigating: ask the requester (default) or proceed on stated assumptions. */
+  architect?: { onLowConfidence?: 'ask' | 'proceed' }
 }
 /** Null means unavailable, including when a CLI never reports billing. */
 export interface AgentUsage { inputTokens: number | null; outputTokens: number | null; costUsd: number | null }

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { hostname } from 'node:os'
 import { join, resolve } from 'node:path'
+import type { SerializedGraphStore } from './graph-checkpointer.js'
 import type { JsonValue, WorkflowState } from './workflow-types.js'
 
 export class WorkflowStoreError extends Error {
@@ -10,6 +11,13 @@ export class WorkflowStoreError extends Error {
     this.name = 'WorkflowStoreError'
   }
 }
+
+/** The durable run: the host ledger plus the LangGraph checkpoint history, written together. */
+export interface WorkflowEnvelope {
+  state: WorkflowState
+  graph?: SerializedGraphStore
+}
+export const ENVELOPE_FORMAT = 2
 
 function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined
@@ -42,7 +50,7 @@ function runDirectory(directory: string, runId: string): string {
   return join(resolve(directory), runId)
 }
 
-export async function readWorkflowState(directory: string, runId: string): Promise<WorkflowState | null> {
+export async function readWorkflowEnvelope(directory: string, runId: string): Promise<WorkflowEnvelope | null> {
   let raw: string
   try {
     raw = await readFile(join(runDirectory(directory, runId), 'checkpoint.json'), 'utf8')
@@ -51,25 +59,29 @@ export async function readWorkflowState(directory: string, runId: string): Promi
     throw error
   }
   try {
-    const envelope = JSON.parse(raw) as { format: number; checksum: string; state: WorkflowState }
+    const envelope = JSON.parse(raw) as { format: number; checksum: string; state: WorkflowState; graph?: SerializedGraphStore }
     const state = envelope.state
-    if (envelope.format !== 1 || !state || state.schemaVersion !== 1 || state.runId !== runId ||
+    if (envelope.format !== ENVELOPE_FORMAT || !state || state.schemaVersion !== 2 || state.runId !== runId || typeof state.traceId !== 'string' ||
         !Array.isArray(state.events) || !Array.isArray(state.history) || !state.steps ||
-        envelope.checksum !== fingerprint(state)) throw new Error('Invalid envelope or checksum')
-    return state
+        envelope.checksum !== fingerprint({ state, graph: envelope.graph ?? null })) throw new Error('Invalid envelope or checksum')
+    return { state, ...(envelope.graph ? { graph: envelope.graph } : {}) }
   } catch (error) {
     throw new WorkflowStoreError('CORRUPT_STATE', `Cannot read checkpoint for ${runId}: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
-/** Publish a complete checkpoint, receipt, usage and event ledger in one atomic rename. */
-export async function writeWorkflowState(directory: string, state: WorkflowState): Promise<void> {
-  const root = runDirectory(directory, state.runId)
+/** Read-only view of the host ledger. */
+export async function readWorkflowState(directory: string, runId: string): Promise<WorkflowState | null> {
+  return (await readWorkflowEnvelope(directory, runId))?.state ?? null
+}
+
+/** Publish a complete checkpoint, receipt, usage, event ledger and graph history in one atomic rename. */
+export async function writeWorkflowEnvelope(directory: string, envelope: WorkflowEnvelope): Promise<void> {
+  const root = runDirectory(directory, envelope.state.runId)
   await mkdir(root, { recursive: true, mode: 0o700 })
   // JSON removes absent optional fields; validate the actual stored representation.
-  const serialized = JSON.stringify(state)
-  const normalized: WorkflowState = JSON.parse(serialized) as WorkflowState
-  const payload = JSON.stringify({ format: 1, checksum: fingerprint(normalized), state: normalized })
+  const normalized = JSON.parse(JSON.stringify({ state: envelope.state, graph: envelope.graph ?? null })) as { state: WorkflowState; graph: SerializedGraphStore | null }
+  const payload = JSON.stringify({ format: ENVELOPE_FORMAT, checksum: fingerprint(normalized), state: normalized.state, ...(normalized.graph ? { graph: normalized.graph } : {}) })
   const temporary = join(root, `.checkpoint-${randomUUID()}.tmp`)
   const handle = await open(temporary, 'wx', 0o600)
   try {
@@ -89,6 +101,10 @@ export async function writeWorkflowState(directory: string, state: WorkflowState
   } finally {
     await rm(temporary, { force: true })
   }
+}
+
+export async function writeWorkflowState(directory: string, state: WorkflowState, graph?: SerializedGraphStore): Promise<void> {
+  await writeWorkflowEnvelope(directory, { state, ...(graph ? { graph } : {}) })
 }
 
 interface LeaseOwner { pid: number; hostname: string; token: string }
