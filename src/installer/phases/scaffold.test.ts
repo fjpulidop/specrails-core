@@ -213,7 +213,8 @@ describe('scaffold', () => {
       const gmd = readTextFile(path.join(repoRoot, 'GEMINI.md'))
       expect(gmd).toContain('specrails-managed:start')
       expect(gmd).toContain('.gemini/')
-      expect(gmd).toContain('.specrails/local-tickets.json')
+      expect(gmd).toContain('frozen scope and official OpenSpec workflow')
+      expect(gmd).not.toContain('Prefer the `/specrails:*` commands')
       // No throw, no codex/claude leakage.
       expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(true)
     })

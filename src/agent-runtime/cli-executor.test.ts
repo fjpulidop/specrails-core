@@ -71,6 +71,9 @@ describe('four CLI execution contracts', () => {
     expect(codex.args.slice(0, 2)).toEqual(['exec', 'resume'])
     expect(codex.args).toContain('sandbox_mode="workspace-write"')
     expect(codex.args).not.toContain('--sandbox')
+    const roots = ['/repo/front', '/repo/back with spaces']
+    expect(buildCliInvocation('codex', request({ allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=' + JSON.stringify(roots))
+    expect(buildCliInvocation('codex', request({ role: 'reviewer', allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=[]')
     expect(codex.args.slice(-2)).toEqual(['thread-1', '-'])
     expect(codex.stdin).toBe(codex.stdin)
     expect(buildCliInvocation('codex', request({ role: 'reviewer' }), { codexSchemaFile: '/tmp/schema.json' }).args).toContain('--output-schema')

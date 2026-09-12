@@ -101,7 +101,7 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
       }
       const inspection = inspectPipeline(context)
       if (stepId === 'architect') return inspection.phases.architect.status === 'done' && inspection.resumePhase !== 'architect'
-      if (stepId === 'verify') return inspection.verification.valid
+      if (stepId === 'verify') return (_record.output as { valid?: boolean } | undefined)?.valid !== false && inspection.verification.valid
       if (stepId === 'reviewer') return inspection.phases.reviewer.status === 'done' && inspection.verification.valid && !['architect', 'developer', 'reviewer'].includes(inspection.resumePhase ?? '')
       if (stepId === 'archive') return inspection.phases.archive.status === 'done'
       return true

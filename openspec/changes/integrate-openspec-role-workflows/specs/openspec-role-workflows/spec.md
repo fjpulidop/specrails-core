@@ -51,3 +51,23 @@ The runtime SHALL synchronize deltas using OpenSpec and bind resumable runs to t
 #### Scenario: Delta updates one requirement
 - **WHEN** a verified change is archived
 - **THEN** OpenSpec merges its deltas while preserving unaffected requirements
+
+### Requirement: Continuations preserve repository access and pending work
+The runtime SHALL preserve the admitted role access to all selected repositories on provider session continuation and SHALL resume unfinished corrections before invalidated later phases.
+
+#### Scenario: Resume a blocked multi-repository correction
+- **WHEN** developer work remains blocked and a later verification or review receipt is stale
+- **THEN** continuation resumes the developer with all admitted writable roots
+- **AND** a previous incorrectly selected reviewer does not strand the saved execution
+
+### Requirement: Blockers and repository context are visible
+The runtime SHALL provide bounded repository facts to every provider and report concrete incomplete-task reasons.
+
+#### Scenario: Developer cannot make progress
+- **WHEN** the developer reports incomplete tasks without changed source or tests
+- **THEN** the workflow blocks with those reasons instead of spending automatic correction attempts
+
+#### Scenario: Repository has no instruction file
+- **WHEN** a role starts in a repository without agent instructions
+- **THEN** it receives available manifest commands and project reference paths without fabricated conventions
+- **AND** obsolete Specrails bootstrap advice cannot request nested implementation orchestration

@@ -251,7 +251,11 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
     }
     let forkTarget: string | undefined
     if (invalid.size) {
-      const first = Math.min(...Array.from(invalid, id => ids.indexOf(id)))
+      let first = Math.min(...Array.from(invalid, id => ids.indexOf(id)))
+      // A stale later receipt must never jump over an unfinished correction.
+      // This also repairs checkpoints whose previous resume chose that receipt.
+      const unfinished = ids.findIndex((id, index) => index < first && ['blocked', 'failed'].includes(state.steps[id]!.status))
+      if (unfinished >= 0) first = unfinished
       for (const id of ids.slice(first)) resetRecord(state, id)
       forkTarget = ids[first]!
       state.nextStep = forkTarget

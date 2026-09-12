@@ -353,6 +353,23 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(state.steps.verify?.visits).toBe(2)
   })
 
+  it('surfaces a no-progress blocker once and can continue after it is resolved', async () => {
+    const notes: string[] = []
+    const { registry, calls } = fake(async request => result(request.role === 'architect' ? architecture : {
+      summary: 'Cannot edit Back', files: [], tests: [], verification: 'none',
+      incomplete: [{ task: 'Implement Back', reason: 'Back is read-only in this session' }],
+    }))
+    const state = await runCoreWorkflow(opts(registry, { onAgentEvent: (_role, event) => { if (event.text) notes.push(event.text) } }))
+    expect(state.status).toBe('blocked')
+    expect(state.nextStep).toBe('developer')
+    expect(state.error).toContain('Back is read-only')
+    expect(notes.join('\n')).toContain('Pending task: Implement Back')
+    expect(calls.filter(call => call.role === 'developer')).toHaveLength(1)
+    expect(calls[0]!.prompt).toContain('Repository reference')
+    const resumed = await runCoreWorkflow(opts(fake().registry, { resume: true }))
+    expect(resumed.status, resumed.error).toBe('succeeded')
+  })
+
   it('stops repeated false completion at the configured correction limit', async () => {
     const { registry, calls } = fake(async request => result(request.role === 'architect' ? architecture : 'Done, all tests pass'))
     const state = await runCoreWorkflow(opts(registry))

@@ -1,3 +1,4 @@
+import path from 'node:path'
 import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
   fingerprintCandidate, frozenAcceptanceCriteria, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
@@ -120,7 +121,7 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
       workflow.assertParticipation()
       const applied = await workflow.assertReady()
       const specs = Object.keys((await workflow.status()).artifactPaths).length ? (applied.contextFiles.specs ?? []) : []
-      const names = (Array.isArray(specs) ? specs : [specs]).map(file => file.split('/').at(-2)!)
+      const names = (Array.isArray(specs) ? specs : [specs]).map(file => path.basename(path.dirname(file)))
       const proposed = proposedVerification(context, config.verification, architecture.verification)
       writeDesignConfidence(context, change, architecture, { assumed })
       const plan = [...config.verification, ...proposed]
@@ -169,6 +170,10 @@ function developerNode(deps: CoreNodeDeps): CoreNode {
       note('developer', record.structured
         ? `Developer finished: ${plural(record.files.length, 'file')} changed, ${plural(record.tests.length, 'test file')} touched${record.incomplete.length ? `, ${plural(record.incomplete.length, 'task')} left incomplete` : ''}.`
         : 'Developer finished without the structured summary; the prose summary is recorded instead.')
+      for (const item of record.incomplete) note('developer', `Pending task: ${item.task} — ${item.reason}`)
+      if (record.structured && record.incomplete.length && record.files.length === 0 && record.tests.length === 0) {
+        return { status: 'blocked', error: `Developer could not make progress: ${record.incomplete.map(item => `${item.task}: ${item.reason}`).join('; ')}`, output: record as unknown as JsonValue }
+      }
       return {
         status: 'succeeded', next: 'verify', update: { development: record },
         output: { summary: record.summary, provider, ...(record.sessionId ? { sessionId: record.sessionId } : {}), files: record.files, tests: record.tests, incomplete: record.incomplete as unknown as JsonValue, structured: record.structured },

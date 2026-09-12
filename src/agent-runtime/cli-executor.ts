@@ -51,7 +51,7 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
         ...(options.openspecBridge ? ['-c', 'mcp_servers.specrails_openspec.command=' + JSON.stringify(options.openspecBridge.command), '-c', 'mcp_servers.specrails_openspec.args=' + JSON.stringify(options.openspecBridge.args), '-c', 'mcp_servers.specrails_openspec.default_tools_approval_mode="approve"', '-c', 'mcp_servers.specrails_openspec.required=true'] : []),
       ]
       // `codex exec resume` has no --sandbox flag; the same policy travels as a config override.
-      if (resume) return { command: 'codex', stdin: request.prompt, args: ['exec', 'resume', ...common, '-c', `sandbox_mode="${sandbox}"`, resume, '-'] }
+      if (resume) return { command: 'codex', stdin: request.prompt, args: ['exec', 'resume', ...common, '-c', `sandbox_mode="${sandbox}"`, '-c', 'sandbox_workspace_write.writable_roots=' + JSON.stringify(readOnly ? [] : request.allowedRoots), resume, '-'] }
       return { command: 'codex', stdin: request.prompt, args: [
         'exec', ...common, '--sandbox', sandbox,
         ...(options.codexSchemaFile ? ['--output-schema', options.codexSchemaFile] : []),

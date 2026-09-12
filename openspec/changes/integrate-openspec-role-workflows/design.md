@@ -27,3 +27,11 @@ LangGraph coordinates durable roles, but the architect is read-only and Core man
 ## Local reference patterns
 
 Use `graph/roles.ts` for invocation accounting and recovery, `cli-executor.ts` for provider argv, `workspace-tools.ts` for confined paths, and Desktop `providers/kimi-skill-prompt.ts` for expanded skill activation. Existing `verifyPipeline` receipts and `recordAcceptance` remain independent gates.
+
+## Multi-repository continuation follow-up
+
+Codex continuation reapplies the exact admitted writable roots through its sandbox configuration, including every selected repository for developer calls and none for read-only roles. Invalidating a later receipt cannot bypass an earlier failed or blocked node. A verification node that returned invalid evidence remains invalid even if an older pipeline receipt still passes fingerprint checks.
+
+A structured developer result reporting incomplete work without changed source or tests blocks with the task reasons; it does not spend another automatic attempt. An explicit continuation still grants the existing retry budget.
+
+Every provider receives a bounded reference assembled from current admitted checkout files: project instructions, README/contribution/OpenSpec context, scripts, engines, dependencies and contract/tooling paths. These are current code facts, not replacements for frozen role definitions or permission grants. Reads reject out-of-root symlinks. Desktop refreshes obsolete bootstrap text only for source-authenticated overlay-owned files and preserves user text and commit-exclusion evidence.

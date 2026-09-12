@@ -1,3 +1,4 @@
+import { repositoryContext } from '../repository-context.js'
 import { ROLE_SKILLS, OPENSPEC_VERSION, OpenSpecTools, OpenSpecParticipationError, openSpecRepairPrompt } from '../openspec.js'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -80,7 +81,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     try {
       if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${ROLE_SKILLS[role]} (official skill document through scoped tools).`)
       const result = await registry.execute(selected.provider, {
-        role, prompt, openspec: deps.openspec?.[role], cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
+        role, prompt: prompt + '\n\n' + repositoryContext(context), openspec: deps.openspec?.[role], cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
         model: selected.model, maxTurns: selected.maxTurns, signal: step.signal,
         timeoutMs: config.limits?.timeoutMs,
         maxTokens: budget.maxTokens, maxCostUsd: budget.maxCostUsd,

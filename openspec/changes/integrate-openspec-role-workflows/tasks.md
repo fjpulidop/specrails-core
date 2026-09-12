@@ -13,3 +13,10 @@
 - [x] 4.2 Add conformance tests for scope, rules, activation, invalid artifacts, deltas and recovery; update documentation and packaged runtime.
 - [x] 4.3 Repair omitted role workflows once, expose deferred MCP discovery to Claude reviewers, and preserve valid phases when resuming.
 - [x] 4.4 Return real mandatory planning context with agent-invoked skill loading; regress the reported reviewer sequence and refresh the bundled runtime.
+
+## 5. Multi-repository recovery
+- [x] 5.1 Preserve admitted writable roots on Codex session continuation.
+- [x] 5.2 Resume unfinished corrections before invalidated later receipts, including existing stuck runs.
+- [x] 5.3 Surface incomplete-task reasons and stop no-progress correction loops.
+- [x] 5.4 Supply bounded, provider-independent repository context and refresh obsolete managed bootstrap instructions.
+- [x] 5.5 Validate regressions and refresh the Desktop Core bundle.

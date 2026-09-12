@@ -2216,6 +2216,8 @@ function renderInitialKimiAgentsMd(repoRoot: string): string {
     '`.kimi-code/specrails/run-skill.mjs`. Role skills live at',
     '`.kimi-code/skills/<sr-*|custom-*>/SKILL.md` and are launched by workflows in',
     'separate helper-managed `kimi -p --output-format stream-json` processes.',
+    'Inside a programmatic runtime role, follow the supplied OpenSpec tools and',
+    'frozen scope instead; never start a nested implementation workflow.',
     '',
     '## Conventions',
     '',
@@ -2236,28 +2238,7 @@ function renderInitialKimiAgentsMd(repoRoot: string): string {
 }
 
 function renderInitialGeminiMd(repoRoot: string): string {
-  const projectName = path.basename(repoRoot)
-  return [
-    AGENTS_MD_START,
-    '',
-    `# ${projectName} — agent instructions`,
-    '',
-    'This project uses the **specrails** agent workflow under `.gemini/`.',
-    'See `.gemini/commands/specrails/` for the slash commands and `.gemini/agents/`',
-    'for the `sr-*` subagents available to gemini sessions in this repository.',
-    '',
-    '## Conventions',
-    '',
-    '- Read specs from `.specrails/local-tickets.json` when implementing',
-    '  numbered tickets (`#42`, `#71` etc.).',
-    '- Prefer the `/specrails:*` commands (implement, batch-implement, …) over',
-    '  ad-hoc edits when one covers the task.',
-    '- Agent execution is enabled via `.gemini/settings.json`',
-    '  (`experimental.enableAgents: true`).',
-    '',
-    AGENTS_MD_END,
-    '',
-  ].join('\n')
+  return renderInitialAgentsMd(repoRoot).replace(AGENTS_MD_END, 'Read provider rules from `.gemini/`.\n\n' + AGENTS_MD_END)
 }
 
 function assertPipelineRuntimeSource(scriptDir: string): void {
@@ -2630,19 +2611,18 @@ function renderInitialAgentsMd(repoRoot: string): string {
     '',
     `# ${projectName} — agent instructions`,
     '',
-    'This project uses the **specrails** agent workflow under `.codex/`.',
-    'See `.codex/skills/` for the catalog of agent skills available to codex',
-    'sessions in this repository.',
+    'Implementation is coordinated by the Specrails programmatic agent runtime.',
+    'Use the frozen scope and official OpenSpec workflow supplied for your role.',
+    'Do not start another implement or batch-implement workflow inside a role.',
     '',
-    '## Conventions',
+    '## Repository context',
     '',
-    '- Read specs from `.specrails/local-tickets.json` when implementing',
-    '  numbered tickets (`#42`, `#71` etc.).',
-    '- Prefer the skills in `.codex/skills/sr-*` over ad-hoc edits when a',
-    '  skill covers the task (implement, batch-implement, refactor-recommender,',
-    '  compat-check, why, ...).',
-    '- Honour the sandbox policy declared in `.codex/config.toml`',
-    '  (`sandbox_mode` + `approval_policy` top-level keys).',
+    '- Read project README, CONTRIBUTING and relevant nested instructions.',
+    '- Use package manifests and checked-in build wrappers for actual commands.',
+    '- Read API contracts before changing consumers or generated code.',
+    '- Keep edits within the admitted repositories; report permission blockers',
+    '  with the affected repository and path instead of repeating the attempt.',
+    '- Report incomplete tasks and their concrete reasons in the role result.',
     '',
     AGENTS_MD_END,
     '',
