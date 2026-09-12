@@ -1,5 +1,5 @@
 import { it, expect } from 'vitest'
-import Ajv from 'ajv'
+import { Ajv } from 'ajv'
 import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA } from './prompts.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
