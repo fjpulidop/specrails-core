@@ -319,7 +319,8 @@
     "verificationPolicy": "Configured commands are optional. The architect proposes commands for repositories without one; repositories with no automated check are admitted and recorded in the receipt as unverifiedRepositories. Unchecked tasks return to the developer as feedback instead of failing the run.",
     "sessionReuse": "Developer correction passes resume the previous provider session (claude --resume, codex exec resume, gemini --resume, kimi --session) with a short correction prompt; an unavailable session falls back to a fresh full turn. Structured roles get one repair turn in-session when their JSON is unusable.",
     "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
-    "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget."
+    "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget.",
+    "defaultImplementationEngine": true
   },
   "execution": {
     "schemaVersion": 1,

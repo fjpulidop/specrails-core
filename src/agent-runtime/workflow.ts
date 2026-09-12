@@ -251,7 +251,11 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
     }
     let forkTarget: string | undefined
     if (invalid.size) {
-      const first = Math.min(...Array.from(invalid, id => ids.indexOf(id)))
+      let first = Math.min(...Array.from(invalid, id => ids.indexOf(id)))
+      // A stale later receipt must never jump over an unfinished correction.
+      // This also repairs checkpoints whose previous resume chose that receipt.
+      const unfinished = ids.findIndex((id, index) => index < first && ['blocked', 'failed'].includes(state.steps[id]!.status))
+      if (unfinished >= 0) first = unfinished
       for (const id of ids.slice(first)) resetRecord(state, id)
       forkTarget = ids[first]!
       state.nextStep = forkTarget
@@ -354,6 +358,13 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
             return interrupt(request) as R
           },
           reportUsage: usage => { validateUsage(usage); accountUsage(state, usage); reported = addUsage(reported ?? { costUsd: 0, inputTokens: 0, outputTokens: 0 }, usage) },
+          reportInvocation: async invocation => {
+            validateUsage(invocation.usage)
+            if (!Number.isFinite(invocation.durationMs) || invocation.durationMs < 0 || !Number.isSafeInteger(invocation.toolCalls) || invocation.toolCalls < 0) throw new TypeError('Invalid invocation measurement')
+            ;(history.invocations ??= []).push(clone(invocation))
+            if (reported) history.usage = reported
+            await persist()
+          },
           remainingBudget: () => ({
             ...(state.budget.maxTokens === undefined ? {} : { maxTokens: Math.max(0, state.budget.maxTokens - state.usage.knownTokens) }),
             ...(state.budget.maxCostUsd === undefined ? {} : { maxCostUsd: Math.max(0, state.budget.maxCostUsd - state.usage.knownCostUsd) }),

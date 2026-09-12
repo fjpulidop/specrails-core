@@ -84,6 +84,24 @@ describe('durable LangGraph workflow', () => {
     expect(await readWorkflowState(directory, 'run-1')).toEqual(state)
   })
 
+  it('resumes an unfinished correction before an invalidated later receipt', async () => {
+    let round = 0
+    const trace: string[] = []
+    const defs: Def[] = [
+      { id: 'developer', run: async () => { trace.push('developer'); return ++round === 2 ? { status: 'blocked', error: 'permissions', usage: zero } : success() } },
+      { id: 'verify', run: async () => success() },
+      { id: 'reviewer', ends: ['developer'], run: async () => success(undefined, { next: round === 1 ? 'developer' : null }) },
+    ]
+    const blocked = await runWorkflow(options(defs))
+    expect(blocked.nextStep).toBe('developer')
+    // Reproduce an older runtime having incorrectly moved the cursor to review.
+    await patchState('run-1', state => { state.nextStep = 'reviewer'; state.steps.reviewer!.status = 'failed' })
+    const resumed = await runWorkflow(options(defs, { resume: true, validateCompleted: async id => id !== 'verify' }))
+    expect(resumed.status, resumed.error).toBe('succeeded')
+    expect(trace).toEqual(['developer', 'developer', 'developer'])
+    expect(resumed.events.filter(event => event.type === 'workflow_invalidated').at(-1)?.stepId).toBe('developer')
+  })
+
   it('emits one span per finished attempt after its receipt is durable', async () => {
     const spans: string[] = []
     const state = await runWorkflow(options([

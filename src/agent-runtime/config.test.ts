@@ -7,6 +7,10 @@ function config(): RuntimeConfig {
   return { schemaVersion: 1, enabled: true, providers: [{ id: 'claude', kind: 'cli', cli: 'claude' }], agents: { architect: { provider: 'claude' }, developer: { provider: 'claude' }, reviewer: { provider: 'claude' } }, verification: [] }
 }
 describe('runtime configuration and registration', () => {
+  it('defaults to the agent runtime and ignores the retired opt-in flag', () => {
+    expect(validateRuntimeConfig({ ...config(), enabled: undefined }).enabled).toBe(true)
+    expect(validateRuntimeConfig({ ...config(), enabled: false }).enabled).toBe(true)
+  })
   it('preserves all four CLI identities and opaque custom models', () => {
     const value = config()
     value.providers = ['claude', 'codex', 'gemini', 'kimi'].map(cli => ({ id: cli, kind: 'cli', cli: cli as 'claude' }))
@@ -65,4 +69,12 @@ describe('runtime configuration and registration', () => {
     await expect(registry.execute('bad', request)).rejects.toMatchObject({ code: 'invalid_executor_result' })
     await expect(registry.execute('bad', { ...request, maxTurns: -1 })).rejects.toMatchObject({ code: 'invalid_limit' })
   })
+})
+
+it('validates and clones role prompt overrides without changing older configurations', () => {
+  const value = { ...config(), rolePrompts: { developer: 'Custom developer' } }
+  const validated = validateRuntimeConfig(value)
+  value.rolePrompts.developer = 'Changed later'
+  expect(validated.rolePrompts?.developer).toBe('Custom developer')
+  for (const rolePrompts of [{ developer: '' }, { developer: ' ' }, { alien: 'x' }, { developer: 'x'.repeat(20001) }, { developer: 'x\0y' }]) expect(() => validateRuntimeConfig({ ...config(), rolePrompts })).toThrow()
 })

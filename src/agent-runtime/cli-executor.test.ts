@@ -1,3 +1,4 @@
+import { ARCHITECT_OUTPUT_SCHEMA } from './prompts.js'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -21,6 +22,23 @@ const fixtures: Record<CliProvider, string> = {
   kimi: jsonl({ role: 'assistant', content: 'done' }, { role: 'meta', type: 'session.resume_hint', session_id: 'session-1' }),
 }
 describe('four CLI execution contracts', () => {
+  it('adapts the architect schema before launching Codex and restores optional nulls', async () => {
+    const runProcess: CliProcessRunner = async invocation => {
+      const index = invocation.args.indexOf('--output-schema')
+      const schema = JSON.parse(readFileSync(invocation.args[index + 1], 'utf8'))
+      expect(schema.required).toContain('question')
+      const verification = schema.properties.verification.anyOf[0]
+      expect(verification.items.required).toContain('cwd')
+      return { stdout: jsonl({ type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify({ confidence: 'high', question: null, verification: [{ repositoryId: 'front', command: 'npm', args: ['test'], cwd: null }] }) } }, { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } }), stderr: '', exitCode: 0 }
+    }
+    const result = await new CliExecutor('codex', { runProcess }).execute(request({ role: 'architect', outputSchema: ARCHITECT_OUTPUT_SCHEMA }))
+    expect(result.structured).toEqual({ confidence: 'high', verification: [{ repositoryId: 'front', command: 'npm', args: ['test'] }] })
+  })
+  it('propagates the real Codex schema error instead of suggesting authentication', async () => {
+    const runProcess: CliProcessRunner = async () => ({ stdout: jsonl({ type: 'turn.failed', error: { message: "Invalid schema: Missing 'cwd'." } }), stderr: '', exitCode: 1 })
+    await expect(new CliExecutor('codex', { runProcess }).execute(request())).rejects.toThrow("Invalid schema: Missing 'cwd'.")
+  })
+
   it.each(['claude', 'codex', 'gemini', 'kimi'] as const)('retains %s prompt identity without using platform skills', provider => {
     const input = request(), invocation = buildCliInvocation(provider, input)
     expect(invocation.command).toBe(provider)
@@ -53,6 +71,9 @@ describe('four CLI execution contracts', () => {
     expect(codex.args.slice(0, 2)).toEqual(['exec', 'resume'])
     expect(codex.args).toContain('sandbox_mode="workspace-write"')
     expect(codex.args).not.toContain('--sandbox')
+    const roots = ['/repo/front', '/repo/back with spaces']
+    expect(buildCliInvocation('codex', request({ allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=' + JSON.stringify(roots))
+    expect(buildCliInvocation('codex', request({ role: 'reviewer', allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=[]')
     expect(codex.args.slice(-2)).toEqual(['thread-1', '-'])
     expect(codex.stdin).toBe(codex.stdin)
     expect(buildCliInvocation('codex', request({ role: 'reviewer' }), { codexSchemaFile: '/tmp/schema.json' }).args).toContain('--output-schema')
@@ -60,6 +81,40 @@ describe('four CLI execution contracts', () => {
     expect(buildCliInvocation('kimi', request({ resumeSessionId: 'k-1' })).args).toContain('--session=k-1')
     expect(() => buildCliInvocation('claude', request({ resumeSessionId: '../etc' }))).not.toThrow()
   })
+  it.each(['claude', 'codex', 'gemini'] as const)('wires the confined OpenSpec MCP server for %s without changing native source permissions', async provider => {
+    const input = request({ role: 'architect' })
+    input.openspec = { root: input.cwd, change: 'feature', stateDirectory: input.cwd, cli: '/pinned/openspec.js', skillPath: '/official/SKILL.md', skillHash: 'frozen', role: 'architect' }
+    let inspected = false
+    const runProcess: CliProcessRunner = async (invocation, options) => {
+      if (invocation.args[0] === '--help') return { stdout: '--admin-policy', stderr: '', exitCode: 0 }
+      inspected = true
+      expect(invocation.stdin).toContain('explicit skill-document adaptation')
+      expect(invocation.stdin!.indexOf('Official OpenSpec workflow binding')).toBeLessThan(invocation.stdin!.indexOf(input.prompt))
+      if (provider === 'codex') {
+        expect(invocation.args).toContain('read-only')
+        expect(invocation.args).toContain('mcp_servers.specrails_openspec.default_tools_approval_mode="approve"')
+        expect(invocation.args).toContain('mcp_servers.specrails_openspec.required=true')
+      } else {
+        const file = provider === 'claude' ? invocation.args[invocation.args.indexOf('--mcp-config') + 1]! : options.env!.GEMINI_CLI_SYSTEM_SETTINGS_PATH!
+        const configured = JSON.parse(readFileSync(file, 'utf8')).mcpServers.specrails_openspec
+        expect(configured.command).toBe(process.execPath)
+        expect(JSON.parse(readFileSync(configured.args[1], 'utf8'))).toEqual(input.openspec)
+        if (provider === 'claude') {
+          expect(invocation.args).toContain('Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow')
+          expect(invocation.args).toContain('Read,Grep,Glob,ToolSearch')
+          expect(invocation.args).not.toContain('--dangerously-skip-permissions')
+        } else {
+          const policy = readFileSync(invocation.args[invocation.args.indexOf('--admin-policy') + 1]!, 'utf8')
+          expect(policy).toContain('mcpName = "specrails_openspec"')
+          expect(policy).toContain('decision = "deny"')
+        }
+      }
+      return { stdout: fixtures[provider], stderr: '', exitCode: 0 }
+    }
+    await new CliExecutor(provider, { runProcess }).execute(input)
+    expect(inspected).toBe(true)
+  })
+
   it('returns Claude structured output and streams tool activity with short details', async () => {
     const stdout = jsonl(
       { type: 'assistant', session_id: 's1', message: { id: 'one', content: [{ type: 'text', text: 'Reading.' }, { type: 'tool_use', id: 't', name: 'Read', input: { file_path: '/repo/src/very/long/path/'.padEnd(200, 'x') + '/file.ts' } }] } },
@@ -73,9 +128,10 @@ describe('four CLI execution contracts', () => {
     const tool = onEvent.mock.calls.map(call => call[0]).find(event => event.kind === 'tool-start')
     expect(tool.tool).toBe('Read')
     expect(tool.detail.length).toBeLessThanOrEqual(160)
+    expect(tool.targetPaths).toEqual(['/repo/src/very/long/path/'.padEnd(200, 'x') + '/file.ts'])
     expect(onEvent.mock.calls.filter(call => call[0].kind === 'text' && call[0].text === '{"approved":true}')).toHaveLength(0)
     expect(cliToolEvents('codex', { type: 'item.started', item: { type: 'command_execution', command: 'npm test' } })).toEqual([{ kind: 'tool-start', tool: 'shell', detail: 'npm test' }])
-    expect(cliToolEvents('gemini', { type: 'tool_use', tool_name: 'read_file', parameters: { path: 'a.ts' } })).toEqual([{ kind: 'tool-start', tool: 'read_file', detail: 'a.ts' }])
+    expect(cliToolEvents('gemini', { type: 'tool_use', tool_name: 'read_file', parameters: { path: 'a.ts' } })).toEqual([{ kind: 'tool-start', tool: 'read_file', detail: 'a.ts', targetPaths: ['a.ts'] }])
   })
   it('preserves read-only native permissions and Kimi model aliases', () => {
     const input = request({ role: 'reviewer' })
@@ -100,7 +156,7 @@ describe('four CLI execution contracts', () => {
     const assistant = { type: 'assistant', message: { id: 'one', content: [{ type: 'text', text: 'working' }], usage: { input_tokens: 10, output_tokens: 3, cache_read_input_tokens: 8, cache_creation_input_tokens: 2 } } }
     const partial = parseCliOutput('claude', jsonl(assistant, assistant, { type: 'result', origin: { kind: 'task-notification' }, result: '', usage: { input_tokens: 0, output_tokens: 0 } }))
     expect(partial.terminal).toBe(false)
-    expect(partial.usage).toEqual({ inputTokens: 20, outputTokens: 3, costUsd: null })
+    expect(partial.usage).toEqual({ inputTokens: 20, outputTokens: 3, costUsd: null, uncachedInputTokens: 10, cacheReadInputTokens: 8, cacheWriteInputTokens: 2 })
   })
   it('keeps Gemini progress in events and returns only the chunked final assistant turn after tools', async () => {
     const stdout = readFileSync(new URL('./__fixtures__/gemini-review.jsonl', import.meta.url), 'utf8')
@@ -130,6 +186,14 @@ describe('four CLI execution contracts', () => {
     await expect(new CliExecutor(provider, { runProcess }).execute(request())).rejects.toMatchObject({ code: 'incomplete_response' })
     runProcess.mockResolvedValue({ stdout: fixtures[provider], stderr: 'secret-provider-details', exitCode: 1 })
     await expect(new CliExecutor(provider, { runProcess }).execute(request())).rejects.toMatchObject({ code: 'provider_execution_error' })
+  })
+  it.each([
+    ['error_max_turns', 'max_turns', 'limit of 100 turns'],
+    ['error_max_budget_usd', 'cost_budget', 'cost budget'],
+    ['error_max_structured_output_retries', 'structured_output_retries', 'structured output retries'],
+  ])('preserves Claude termination reason %s and billed usage', async (subtype, code, message) => {
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype, is_error: true, total_cost_usd: 2.422, usage: { input_tokens: 100, output_tokens: 20 } }), stderr: 'secret-provider-details', exitCode: 1 }))
+    await expect(new CliExecutor('claude', { runProcess }).execute(request())).rejects.toMatchObject({ code, message: expect.stringContaining(message), usage: { costUsd: 2.422 } })
   })
   it('probes Kimi capability without billing and uses a disposable enforced read-only agent when available', async () => {
     const runProcess = vi.fn<CliProcessRunner>(async invocation => {

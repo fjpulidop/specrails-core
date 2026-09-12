@@ -1,31 +1,37 @@
-description = "Aggregate batch implementation with one durable journal and final candidate gates."
+description = "Programmatic implementation with durable recovery."
 
 prompt = '''
-Resolve all target IDs or filters and freeze their complete descriptions,
-acceptance criteria and repository IDs. With a host context preserve context.specs
-unchanged. Resolve source/artifact/backlog roots explicitly; cwd can be external.
+# Programmatic implementation
 
-Initialize ONE aggregate OpenSpec change and journal for this runId. Never create
-per-ticket child changes/journals with the same context. Read
-`.gemini/commands/specrails/implement.toml` and apply its capability preflight,
-explicit invoke_agent(agent_name,prompt) handoff, progress-bound continuation and
-gates to the whole batch:
+Implement the requested spec or batch through the installed agent runtime. The runtime owns architecture, development, verification, review and archive; do not delegate these phases yourself or launch a second coordinator.
 
-1. One architect designs all tickets, groups tasks by ticket/repository and
-   dependency order, validates OpenSpec and high/medium design confidence.
-2. One developer implements groups sequentially, persisting progress in tasks.md.
-   Use scoped checks per group and one full helper verification for the aggregate
-   candidate before developer done. Incomplete groups remain retriable.
-3. One reviewer checks every acceptance criterion and cross-ticket interaction;
-   pass all frozen specs, changed paths and the full receipt. Ordinary review
-   never archives. At most one exact-findings developer repair plus re-review.
-4. After clean semantic reviewer done, run archive-check; only success authorizes
-   reviewer archive-only mode. Verify the archive and record archive done. Only
-   then close ALL Core-owned tickets, or report results to the owning host.
+## Freeze the requested scope
 
-Run these roles directly at root, no nested implement coordinator. Retry resumes
-this aggregate journal without repeating valid phases. A --parallel preference
-never overrides host ownership, unknown capacity or overlapping mutation paths;
-use sequential execution and report it honestly. Final output lists each ticket,
-aggregate verification/archive status and unresolved task groups; no partial done.
+Use the supplied absolute `SPECRAILS_EXECUTION_CONTEXT` unchanged. It defines runId, specs and acceptance criteria, artifactRoot, selected repositories and ownership. For standalone use, admit the exact requested tickets once with:
+
+```sh
+node .specrails/runtime/pipeline.mjs init --change <stable-change> --tickets "<requested-ids>"
+```
+
+For a free-form request use `--scope-request <absolute-json>` with the user's specs and criteria. Use the returned absolute context path. Never select a different run by modification time or replace scope from mutable backlog. Multiple tickets share one aggregate context and one runtime invocation.
+
+## Execute
+
+```sh
+node .specrails/runtime/agent-runtime.mjs run --context <absolute-context> --config .specrails/agent-runtime.json --change <stable-change>
+```
+
+Desktop launches this runtime directly and freezes its resolved global connections and project settings. Standalone installations provide a local configuration. If required runtime/configuration files are missing, repair the Core installation; do not fall back to a prompt-orchestrated implementation.
+
+Wait for the foreground process. Report its structured status, acceptance and verification evidence. A process failure or pause preserves progress; it does not authorize a replacement run. Resume only the exact saved execution:
+
+```sh
+node .specrails/runtime/agent-runtime.mjs status --context <absolute-context>
+node .specrails/runtime/agent-runtime.mjs resume --context <absolute-context>
+```
+
+Answers, approvals and recovery flags must correspond to the pending request and user authorization. Resume keeps the saved models, scope and configuration. Never manually rewrite phase receipts, bypass review, or treat provider prose as completion.
+
+Honor the context's ownership throughout: Desktop owns worktrees, commits, PRs and backlog delivery. Runtime success prepares a reviewed candidate; host delivery remains a separate action. Preview requests must not invoke mutating execution.
+
 '''

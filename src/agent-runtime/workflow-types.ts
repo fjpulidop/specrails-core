@@ -1,4 +1,5 @@
 import type { AnnotationRoot } from '@langchain/langgraph'
+import type { ProviderInvocation } from './efficiency-types.js'
 
 /** JSON-only contracts keep checkpoints portable and independent of executors. */
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -58,6 +59,8 @@ export interface WorkflowStepContext {
   interrupt<R extends InterruptResume = InterruptResume>(request: InterruptRequest): R
   /** Account provider spend as soon as it is known; a later pause or failure keeps it. */
   reportUsage(usage: StepUsage): void
+  /** Persist a completed provider call with its already-reported usage. Optional for custom hosts. */
+  reportInvocation?(invocation: ProviderInvocation): Promise<void>
   /** Budget left for the next provider call, after everything reported so far. */
   remainingBudget(): { maxTokens?: number; maxCostUsd?: number }
 }
@@ -113,6 +116,7 @@ export interface StepAttemptRecord {
   output?: JsonValue
   error?: string
   usage?: StepUsage
+  invocations?: ProviderInvocation[]
 }
 
 export interface WorkflowEvent {

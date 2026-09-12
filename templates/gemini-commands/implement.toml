@@ -1,58 +1,37 @@
-description = "Implementation with durable phase checkpoints and explicit Gemini role handoffs."
+description = "Programmatic implementation with durable recovery."
 
 prompt = '''
-You are the implement orchestrator. Delegate role work to `invoke_agent` using
-only its supported fields: `agent_name` and `prompt`. Do not claim session-based
-resume: each invocation may start a fresh executor and conversation.
+# Programmatic implementation
 
-For multiple ticket IDs, read `.gemini/commands/specrails/batch-implement.toml`
-and execute it at this root with the same context; do not ask the user to resend.
-For one ticket or free-form input, use the stages below.
+Implement the requested spec or batch through the installed agent runtime. The runtime owns architecture, development, verification, review and archive; do not delegate these phases yourself or launch a second coordinator.
 
-0. Preflight: require the named sr-architect, sr-developer and sr-reviewer tools,
-   and readable `.gemini/skills/openspec-{ff,apply,archive}-change/SKILL.md` in
-   the execution workspace. Roles must expose `activate_skill`. If a capability
-   is absent, record blocked with the exact missing role/skill and request Core
-   refresh; do not silently switch to a generic agent or implement inline.
-   Resolve `${SPECRAILS_REPO_DIR:-.}` only as a legacy fallback. The shared helper
-   returns the actual repositories, artifactRoot and frozen ticket descriptions.
+## Freeze the requested scope
 
-1. DESIGN: record architect running, invoke sr-architect with an explicit prompt
-   containing runId, phase, current ticket/full frozen acceptance criteria,
-   repository IDs and absolute roots, artifactRoot, change slug and prior artifact
-   paths. Require validated OpenSpec proposal/design/specs/tasks and a non-low
-   design-confidence.json. Missing confidence is blocked, never implicit success.
-   Record architect done only after those checks.
+Use the supplied absolute `SPECRAILS_EXECUTION_CONTEXT` unchanged. It defines runId, specs and acceptance criteria, artifactRoot, selected repositories and ownership. For standalone use, admit the exact requested tickets once with:
 
-2. APPLY: record developer running; invoke sr-developer with the SAME scope plus
-   change slug, plan/tasks paths, unfinished tasks, prior findings and next action.
-   Developer runs verification through the managed helper to produce a candidate-
-   bound full receipt. Unchecked tasks or missing implementation block handoff,
-   even when unrelated baseline tests pass. Record developer done after evidence.
+```sh
+node .specrails/runtime/pipeline.mjs init --change <stable-change> --tickets "<requested-ids>"
+```
 
-3. REVIEW: invoke sr-reviewer with the complete explicit handoff, changed files,
-   verification receipt and acceptance criteria. Ordinary review must NOT archive.
-   Require its semantic verdict and confidence artifact; PASS alone without these
-   artifacts is insufficient. On changes requested, give the exact findings to
-   developer and re-review, with at most one fix round. Record reviewer done only
-   for a clean semantic result. Preserve blockers and incomplete work for retry.
+For a free-form request use `--scope-request <absolute-json>` with the user's specs and criteria. Use the returned absolute context path. Never select a different run by modification time or replace scope from mutable backlog. Multiple tickets share one aggregate context and one runtime invocation.
 
-4. ARCHIVE: run `archive-check`; only success permits a new sr-reviewer invocation
-   with ARCHIVE_ONLY=true and ARCHIVE_AUTHORIZED=true plus the same handoff. Verify
-   that the active change is gone and its archive exists, then record archive done.
-   If the combined gate or archive fails, leave the ticket open and record failure.
-   Only Core-owned backlog may be updated to done; hosted runs report to Desktop.
+## Execute
 
-For EVERY invocation: `MAX_TURNS`, timeout, missing verdict, or early return is
-incomplete work. Read the on-disk checkpoint and compare task/file/evidence
-progress, then re-invoke the SAME role with an updated explicit prompt. At most
-two continuations per phase, and stop earlier when no progress was recorded.
-Never substitute orchestration memory for the handoff. Native turn limits are
-optional capabilities: use only fields accepted by the installed loader; if
-unknown, retain its defaults and use these bounded continuations.
+```sh
+node .specrails/runtime/agent-runtime.mjs run --context <absolute-context> --config .specrails/agent-runtime.json --change <stable-change>
+```
 
-Record all stage outcomes with the shared helper, including blocked/failed.
-Retry reads that journal, not legacy .gemini/pipeline-state prose snapshots.
-Report actual phase outcomes and evidence; never equate tool completion with
-implemented behavior or close after an ambiguous review.
+Desktop launches this runtime directly and freezes its resolved global connections and project settings. Standalone installations provide a local configuration. If required runtime/configuration files are missing, repair the Core installation; do not fall back to a prompt-orchestrated implementation.
+
+Wait for the foreground process. Report its structured status, acceptance and verification evidence. A process failure or pause preserves progress; it does not authorize a replacement run. Resume only the exact saved execution:
+
+```sh
+node .specrails/runtime/agent-runtime.mjs status --context <absolute-context>
+node .specrails/runtime/agent-runtime.mjs resume --context <absolute-context>
+```
+
+Answers, approvals and recovery flags must correspond to the pending request and user authorization. Resume keeps the saved models, scope and configuration. Never manually rewrite phase receipts, bypass review, or treat provider prose as completion.
+
+Honor the context's ownership throughout: Desktop owns worktrees, commits, PRs and backlog delivery. Runtime success prepares a reviewed candidate; host delivery remains a separate action. Preview requests must not invoke mutating execution.
+
 '''

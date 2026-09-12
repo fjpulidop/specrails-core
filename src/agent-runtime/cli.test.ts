@@ -138,17 +138,25 @@ describe('packaged programmatic runtime CLI', () => {
         const system = body.messages[0]!.content
         requests.push({ system, authorization: request.headers.authorization })
         let message: Record<string, unknown>
-        if (system.includes('architect task')) {
-          message = { role: 'assistant', content: JSON.stringify({
-            proposal: '# CLI feature', design: '# Return the frozen value', tasks: [{ title: 'Implement feature' }],
-            specs: [{ name: 'feature', content: '# Feature\n## Requirement: Requested value\n### Scenario: Read value\n- Return 2.\n' }], confidence: 'high',
-          }) }
+        const workflow = (action: string, extra: Record<string, unknown> = {}) => ({ id: 'openspec-' + action + '-' + String(extra.artifact ?? extra.path ?? ''), type: 'function', function: { name: 'openspec_workflow', arguments: JSON.stringify({ action, ...extra }) } })
+        if (system.includes('architect task') && !body.messages.some(item => item.role === 'tool')) {
+          const files = [
+            ['proposal', 'proposal.md', '## Why\nReturn the requested value.\n## What Changes\n- Update value.\n## Capabilities\n### New Capabilities\n- `feature`: requested value.\n### Modified Capabilities\nNone.\n## Impact\ncode.cjs'],
+            ['design', 'design.md', '# Design\nReturn the frozen value in code.cjs'],
+            ['specs', 'specs/feature/spec.md', '## ADDED Requirements\n### Requirement: Requested value\nThe system SHALL return 2.\n#### Scenario: Read value\n- **WHEN** reading the value\n- **THEN** return 2.\n'],
+            ['tasks', 'tasks.md', '- [ ] 1. Implement feature\n'],
+          ]
+          message = { role: 'assistant', content: null, tool_calls: [workflow('load_skill'), workflow('new'), ...files.flatMap(([artifact, file, content]) => [workflow('instructions', { artifact }), workflow('write_artifact', { path: file, content })])] }
+        } else if (system.includes('architect task')) {
+          message = { role: 'assistant', content: JSON.stringify({ confidence: 'high' }) }
         } else if (system.includes('developer task') && !body.messages.some(item => item.role === 'tool')) {
           message = { role: 'assistant', content: null, tool_calls: [
+            workflow('load_skill'), workflow('instructions', { artifact: 'apply' }),
             { id: 'write-code', type: 'function', function: { name: 'write_file', arguments: JSON.stringify({ path: 'code.cjs', content: 'module.exports = 2\n' }) } },
             { id: 'complete-task', type: 'function', function: { name: 'write_file', arguments: JSON.stringify({ path: 'openspec/changes/cli-feature/tasks.md', content: '- [x] 1. Implement feature\n' }) } },
           ] }
         } else if (system.includes('developer task')) message = { role: 'assistant', content: 'Implemented feature and completed the task' }
+        else if (!body.messages.some(item => item.role === 'tool')) message = { role: 'assistant', content: null, tool_calls: [workflow('load_skill'), workflow('instructions', { artifact: 'apply' })] }
         else message = { role: 'assistant', content: JSON.stringify({
           approved: true, summary: 'Reviewed the exact verified candidate', issues: [], score: 90,
           aspects: { type_correctness: 90, pattern_adherence: 90, test_coverage: 90, security: 90, architectural_alignment: 90 },
@@ -167,8 +175,8 @@ describe('packaged programmatic runtime CLI', () => {
     writeFileSync(configFile, JSON.stringify(config))
     const run = await invoke(['run', '--context', contextFile, '--config', configFile, '--change', 'cli-feature'])
     expect(run.code, JSON.stringify(run.messages.at(-1)) + run.stderr).toBe(2)
-    expect(run.messages.at(-1), JSON.stringify(run.messages.at(-1))).toMatchObject({ type: 'runtime-result', status: 'paused', pendingApproval: { stepId: 'archive' }, invocationUsage: { inputTokens: 40, outputTokens: 20, costUsd: 0 } })
-    expect(requests).toHaveLength(4)
+    expect(run.messages.at(-1), JSON.stringify(run.messages.at(-1))).toMatchObject({ type: 'runtime-result', status: 'paused', pendingApproval: { stepId: 'archive' }, invocationUsage: { inputTokens: 60, outputTokens: 30, costUsd: 0 } })
+    expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
     expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toEqual({ change: 'cli-feature', config })
@@ -190,13 +198,17 @@ describe('packaged programmatic runtime CLI', () => {
     expect(errorText(emptyAnswer)).toContain('nonempty value')
     const status = await invoke(['status', '--context', contextFile])
     expect(status.messages[0]).toMatchObject({ type: 'runtime-status', state: { status: 'paused' }, pipeline: { verification: { valid: true } } })
+    expect(status.messages[0]).toMatchObject({ metrics: { schemaVersion: 1, total: { providerCalls: 3, inputTokens: 60, outputTokens: 30, costUsd: 0 } } })
+    const compact = await invoke(['status', '--context', contextFile, '--compact'])
+    expect(compact.messages[0]).toMatchObject({ state: { metrics: { total: { providerCalls: 3, inputTokens: 60 } } } })
 
     // Removing the original config file proves resume reads its frozen request.
     rmSync(configFile)
     const resume = await invoke(['resume', '--context', contextFile, '--approve', 'archive'])
     expect(resume.code, JSON.stringify(resume.messages.at(-1)) + resume.stderr).toBe(0)
     expect(resume.messages.at(-1)).toMatchObject({ status: 'succeeded', invocationUsage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } })
-    expect(requests).toHaveLength(4)
+    expect(resume.messages.at(-1)).toMatchObject({ metrics: { total: { providerCalls: 3, inputTokens: 60, outputTokens: 30, costUsd: 0 } } })
+    expect(requests).toHaveLength(6)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'specs', 'feature', 'spec.md'))).toBe(true)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'changes', 'cli-feature'))).toBe(false)
   })

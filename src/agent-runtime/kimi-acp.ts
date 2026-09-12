@@ -1,3 +1,4 @@
+import { toolEvent } from './tool-event.js'
 import { normalizeKimiCliModel } from '../installer/runtime/kimi.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentRequest, type AgentResult } from './executor-types.js'
 import { runCliProcess, type CliDuplexControl, type CliProcessRunner } from './cli-process.js'
@@ -6,11 +7,13 @@ import { WorkspaceTools } from './workspace-tools.js'
 
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
 /** Native ACP v1 keeps Kimi 0.27 read-only roles usable without a platform skill or a model call during capability negotiation. */
-export async function executeKimiReadonlyAcp(request: AgentRequest, options: { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv } = {}): Promise<AgentResult> {
+export async function executeKimiReadonlyAcp(request: AgentRequest, options: { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv; openspecBridge?: { command: string; args: string[] } } = {}): Promise<AgentResult> {
   validateAgentRequest(request)
-  if (request.role === 'developer') throw new AgentExecutionError('Read-only ACP transport cannot execute developer roles', 'invalid_request')
+  if (request.role === 'developer' && !options.openspecBridge) throw new AgentExecutionError('Read-only ACP transport cannot execute developer roles', 'invalid_request')
   if (request.maxCostUsd !== undefined) throw new AgentExecutionError('Kimi cannot enforce a strict USD cap', 'cost_limit_unsupported')
   if (request.maxTokens !== undefined) throw new AgentExecutionError('Kimi 0.27 ACP does not report authoritative token usage. Remove the token cap or choose another provider for this role.', 'usage_unavailable')
+  const readOnly = request.role !== 'developer'
+  const mode = readOnly ? 'plan' : 'auto'
   const tools = new WorkspaceTools(request.cwd, request.allowedRoots, request.role)
   let transport: CliDuplexControl | undefined, nextId = 0, sessionId: string | undefined, text = '', completed = false, turns = 0, permissionDenied = false
   const calls = new Map<number, { method: string; success: (result: Record<string, unknown>) => void }>()
@@ -28,7 +31,7 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
     })
   }
   const selectMode = (): void => {
-    send('session/set_mode', { sessionId, modeId: 'plan' }, () => {
+    send('session/set_mode', { sessionId, modeId: mode }, () => {
       if (request.model) send('session/set_config_option', { sessionId, configId: 'model', value: normalizeKimiCliModel(request.model) }, prompt)
       else prompt()
     })
@@ -51,13 +54,13 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
           // the assistant turn after the last tool invocation.
           text = ''
           turns++
-          if (turns > (request.maxTurns ?? 24)) throw new AgentExecutionError('Kimi ACP exceeded its tool limit', 'max_turns')
-          request.onEvent?.({ kind: 'tool-start', tool: typeof update.title === 'string' ? update.title : 'kimi-tool' })
+          if (turns > (request.maxTurns ?? 100)) throw new AgentExecutionError('Kimi ACP exceeded its tool limit', 'max_turns')
+          request.onEvent?.(toolEvent(typeof update.title === 'string' ? update.title : 'kimi-tool', { ...record(update.rawInput), paths: Array.isArray(update.locations) ? update.locations.map(location => record(location).path) : [] }))
         }
-        if (update.sessionUpdate === 'current_mode_update' && update.currentModeId !== 'plan') throw new AgentExecutionError('Kimi left its read-only mode', 'tool_policy_violation')
+        if (update.sessionUpdate === 'current_mode_update' && update.currentModeId !== mode) throw new AgentExecutionError('Kimi left its read-only mode', 'tool_policy_violation')
         if (update.sessionUpdate === 'config_option_update' && Array.isArray(update.configOptions)) {
           const mode = update.configOptions.map(record).find(option => option.id === 'mode')
-          if (mode && mode.currentValue !== 'plan') throw new AgentExecutionError('Kimi left its read-only mode', 'tool_policy_violation')
+          if (mode && mode.currentValue !== (readOnly ? 'plan' : 'auto')) throw new AgentExecutionError('Kimi left its read-only mode', 'tool_policy_violation')
         }
         return
       }
@@ -88,6 +91,12 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
         const file = input.path ?? input.file_path
         const choices = Array.isArray(params.options) ? params.options.map(record) : []
         const allow = choices.find(option => option.kind === 'allow_once')
+        if (options.openspecBridge && tool.title === 'mcp__specrails_openspec__workflow' && typeof allow?.optionId === 'string') {
+          respond({ outcome: { outcome: 'selected', optionId: allow.optionId } }); return
+        }
+        if (!readOnly && typeof allow?.optionId === 'string') {
+          respond({ outcome: { outcome: 'selected', optionId: allow.optionId } }); return
+        }
         if (['read', 'search'].includes(String(tool.kind)) && typeof file === 'string' && typeof allow?.optionId === 'string') {
           try {
             tools.execute(tool.kind === 'read' ? 'read_file' : 'list_files', { path: file })
@@ -115,18 +124,18 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
     cwd: tools.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, env: options.env, onLine: onMessage,
     duplex: control => {
       transport = control
-      send('initialize', { protocolVersion: 1, clientInfo: { name: 'specrails-core', version: '1' }, clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true } }, initialized => {
+      send('initialize', { protocolVersion: 1, clientInfo: { name: 'specrails-core', version: '1' }, clientCapabilities: { fs: { readTextFile: readOnly, writeTextFile: readOnly }, terminal: readOnly } }, initialized => {
         if (initialized.protocolVersion !== 1) throw new AgentExecutionError('Kimi ACP protocol version is unsupported', 'provider_capability_unsupported')
         const capabilities = record(record(initialized.agentCapabilities).sessionCapabilities)
         if (tools.roots.length > 1 && capabilities.additionalDirectories === undefined) throw new AgentExecutionError('This Kimi ACP version cannot expose multiple repositories. Upgrade Kimi or use another provider for this read-only role.', 'provider_capability_unsupported')
-        send('session/new', { cwd: tools.cwd, mcpServers: [], ...(tools.roots.length > 1 ? { additionalDirectories: tools.roots.filter(root => root !== tools.cwd) } : {}) }, session => {
+        send('session/new', { cwd: tools.cwd, mcpServers: options.openspecBridge ? [{ name: 'specrails_openspec', ...options.openspecBridge, env: [] }] : [], ...(tools.roots.length > 1 ? { additionalDirectories: tools.roots.filter(root => root !== tools.cwd) } : {}) }, session => {
           if (typeof session.sessionId !== 'string' || !session.sessionId) throw new AgentExecutionError('Kimi ACP returned no session id', 'invalid_response')
           sessionId = session.sessionId
           const modes = record(session.modes)
           const modeOption = Array.isArray(session.configOptions) ? session.configOptions.map(record).find(option => option.id === 'mode') : undefined
           const available = Array.isArray(modes.availableModes) ? modes.availableModes.map(record) : []
           const modeValues = Array.isArray(modeOption?.options) ? modeOption.options.map(record) : []
-          if (!available.some(mode => mode.id === 'plan') && !modeValues.some(mode => mode.value === 'plan')) throw new AgentExecutionError('Kimi ACP does not expose enforced plan mode; upgrade Kimi Code before using a read-only role', 'provider_capability_unsupported')
+          if (!available.some(item => item.id === mode) && !modeValues.some(item => item.value === mode)) throw new AgentExecutionError('Kimi ACP does not expose enforced plan mode; upgrade Kimi Code before using a read-only role', 'provider_capability_unsupported')
           selectMode()
         })
       })

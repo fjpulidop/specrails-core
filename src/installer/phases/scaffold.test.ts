@@ -213,7 +213,8 @@ describe('scaffold', () => {
       const gmd = readTextFile(path.join(repoRoot, 'GEMINI.md'))
       expect(gmd).toContain('specrails-managed:start')
       expect(gmd).toContain('.gemini/')
-      expect(gmd).toContain('.specrails/local-tickets.json')
+      expect(gmd).toContain('frozen scope and official OpenSpec workflow')
+      expect(gmd).not.toContain('Prefer the `/specrails:*` commands')
       // No throw, no codex/claude leakage.
       expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(true)
     })
@@ -831,7 +832,6 @@ describe('Kimi scaffold', () => {
     expect(workflow).toContain('name: specrails-implement')
     expect(workflow).toContain('description:')
     expect(workflow).toContain('Skill(skill="specrails-implement"')
-    expect(workflow).toContain('kimi-code/k3')
     expect(workflow).not.toContain('/specrails:')
     expect(workflow).not.toContain('/skill:')
     expect(workflow).not.toContain('subagent_type')
@@ -1232,10 +1232,10 @@ describe('Kimi scaffold', () => {
       expect(rendered).not.toContain('/skill:')
       expect(rendered).not.toContain('subagent_type')
       expect(rendered).not.toContain('Skill("opsx:')
-      expect(rendered).toContain('## Kimi runtime context contract')
+      if (!['specrails-implement', 'specrails-batch-implement', 'specrails-retry'].includes(path.basename(path.dirname(skillFile)))) expect(rendered).toContain('## Kimi runtime context contract')
       expect(rendered).not.toMatch(/\{\{[A-Z_]+\}\}/)
     }
-    for (const workflow of workflows) {
+    for (const workflow of workflows.filter(name => !['specrails-implement', 'specrails-batch-implement', 'specrails-retry'].includes(name))) {
       const rendered = readTextFile(
         path.join(workflowRoot, workflow, 'SKILL.md'),
       )
@@ -1254,41 +1254,12 @@ describe('Kimi scaffold', () => {
     const implement = readTextFile(
       path.join(workflowRoot, 'specrails-implement', 'SKILL.md'),
     )
-    expect(implement).toContain('.kimi-code/skills/$id/SKILL.md')
-    expect(implement).toContain('parsed `AGENT_MODEL` map')
-    expect(implement).toContain(
-      '"model": "<exact profile model or k3>"',
-    )
-    expect(implement).toContain('.kimi-code/specrails/run-skill.mjs')
-    expect(implement).toContain(
-      '--role-wave-file .specrails/kimi-role-wave.json',
-    )
-    expect(implement).toContain('`workspace:"current"`')
-    expect(implement).toContain('same\naggregate execution context')
-    expect(implement).not.toContain('"kimi_role_wave": {')
-    expect(implement).not.toContain('Kimi role-wave merge algorithm')
-    expect(implement).not.toContain('cp <worktree-path>/<file>')
-    expect(implement).not.toContain('git -C <worktree-path> diff main')
-    expect(implement).not.toContain('ROLE_ARGS=')
-    expect(implement).not.toContain('ROLE_MODEL=')
-    expect(implement).not.toContain('--args "$ROLE_ARGS"')
-    expect(implement).not.toContain('-p "/skill:$ROLE_ID')
-    expect(implement).not.toContain('${AGENT_MODEL[')
-    expect(implement).toContain('--add-dir "${SPECRAILS_REPO_DIR:-.}"')
-    expect(implement).toContain('.specrails/profiles/kimi-default.json')
-    expect(implement).not.toContain('.specrails/profiles/project-default.json')
-    expect(implement).not.toContain('.kimi-code/agents/')
-    expect(implement).not.toContain('Apply per-agent model overrides')
-    expect(implement).toContain('KIMI_PR_CREATE')
-
-    const batch = readTextFile(
-      path.join(workflowRoot, 'specrails-batch-implement', 'SKILL.md'),
-    )
-    expect(batch).toContain('Skill(skill="specrails-implement", args="<all original arguments>")')
-    expect(batch).toContain('one aggregate OpenSpec change and one journal')
-    expect(batch).toContain('Do not launch a role wave of full implementations')
-    expect(batch).not.toContain('deterministic safe run id `<BATCH_RUN>-w<W>`')
-
+    expect(implement).toContain('agent-runtime.mjs run --context')
+    expect(implement).not.toContain('AGENT_MODEL')
+    expect(implement).not.toContain('--role-wave-file')
+    const batch = readTextFile(path.join(workflowRoot, 'specrails-batch-implement', 'SKILL.md'))
+    expect(batch).toContain('Multiple tickets share one aggregate context and one runtime invocation')
+    expect(batch).not.toContain('--role-wave-file')
 
     const telemetry = readTextFile(
       path.join(workflowRoot, 'specrails-telemetry', 'SKILL.md'),
@@ -1301,9 +1272,9 @@ describe('Kimi scaffold', () => {
     const retry = readTextFile(
       path.join(workflowRoot, 'specrails-retry', 'SKILL.md'),
     )
-    expect(retry).toContain('Kimi direct-role continuation')
-    expect(retry).toContain('do not activate a nested specrails-implement')
-    expect(retry).toContain('Follow resumePhase and receipt reasons')
+    expect(retry).toContain('agent-runtime.mjs resume --context')
+    expect(retry).not.toContain('--role-wave-file')
+    expect(retry).toContain('The runtime selects the next phase')
     expect(retry).not.toContain('`KIMI_ROLE_WAVE`')
 
 

@@ -1,3 +1,4 @@
+import { rolePromptDefaults } from './prompts.js'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -7,6 +8,7 @@ import { validateRuntimeConfig } from './config.js'
 import { CORE_PACKAGE_VERSION, RUNTIME_API_VERSION, runCoreWorkflow } from './core-host.js'
 import { readWorkflowState } from './workflow.js'
 import type { WorkflowState } from './workflow-types.js'
+import { runtimeEfficiency } from './efficiency.js'
 
 function read(file: string): unknown { return JSON.parse(readFileSync(file, 'utf8')) }
 async function readStdin(): Promise<unknown> {
@@ -27,6 +29,7 @@ export function compactState(state: WorkflowState | null) {
     runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, updatedAt: state.updatedAt,
     error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage,
     steps: Object.fromEntries(Object.entries(state.steps).map(([id, step]) => [id, { status: step.status, visits: step.visits }])),
+    metrics: runtimeEfficiency(state),
   }
 }
 function compactPipeline(pipeline: ReturnType<typeof inspectPipeline> | null) {
@@ -68,9 +71,11 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
 
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
   const command = positionals[0] ?? 'help'
+  if (command === 'prompts') { emit({ type: 'runtime-role-prompts', defaults: rolePromptDefaults() }); return 0 }
   if (command === 'help') {
     emit({ usage: [
       'specrails-core runtime api',
+      'specrails-core runtime prompts',
       'specrails-core runtime validate --config <json>',
       'specrails-core runtime validate --stdin',
       'specrails-core runtime run --context <json> --config <json> --change <kebab-case>',
@@ -96,7 +101,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
   const previous = await readWorkflowState(directory, context.runId)
   if (command === 'status') {
     const pipeline = previous ? inspectPipeline(context) : null
-    emit({ type: 'runtime-status', state: flags.compact ? compactState(previous) : previous, pipeline: flags.compact ? compactPipeline(pipeline) : pipeline })
+    emit({ type: 'runtime-status', state: flags.compact ? compactState(previous) : previous, pipeline: flags.compact ? compactPipeline(pipeline) : pipeline, ...(previous ? { metrics: runtimeEfficiency(previous) } : {}) })
     return 0
   }
   const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
@@ -129,7 +134,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       onAgentEvent: (role, event) => emit({ type: 'agent-event', role, event }),
       onVerificationOutput: text => emit({ type: 'verification-output', text }),
     })
-    emit({ type: 'runtime-result', runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0) })
+    emit({ type: 'runtime-result', runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0), metrics: runtimeEfficiency(state) })
     return state.status === 'succeeded' ? 0 : state.status === 'paused' ? 2 : 1
   } finally { process.off('SIGINT', abort); process.off('SIGTERM', abort) }
 }

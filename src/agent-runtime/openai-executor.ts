@@ -1,4 +1,7 @@
+import { toolEvent } from './tool-event.js'
+import { OpenSpecTools, OPENSPEC_TOOL_DEFINITION, openSpecPrompt } from './openspec.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type RuntimeProviderConfig } from './executor-types.js'
+import { sumCacheUsage } from './efficiency-types.js'
 import { WorkspaceTools } from './workspace-tools.js'
 
 type ApiProvider = Extract<RuntimeProviderConfig, { kind: 'openai-compatible' }>
@@ -21,8 +24,11 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     validateAgentRequest(request)
     this.validateLimits(request)
     if (!request.model?.trim()) throw new AgentExecutionError('OpenAI-compatible execution requires a model', 'invalid_model')
+    const controller = new AbortController()
     const toolset = new WorkspaceTools(request.cwd, request.allowedRoots, request.role)
-    const maxTurns = request.maxTurns ?? 24
+    const openspec = request.openspec ? new OpenSpecTools(request.openspec, controller.signal) : undefined
+    const definitions = [...toolset.definitions(), ...(openspec ? [OPENSPEC_TOOL_DEFINITION] : [])]
+    const maxTurns = request.maxTurns ?? 100
     if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) throw new AgentExecutionError('maxTurns must be a positive integer', 'invalid_limit')
     const timeoutMs = request.timeoutMs ?? 15 * 60_000
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new AgentExecutionError('timeoutMs must be a positive integer', 'invalid_limit')
@@ -33,7 +39,6 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.hash || endpoint.search) throw new AgentExecutionError('Invalid OpenAI-compatible endpoint', 'invalid_endpoint')
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (key) headers.Authorization = `Bearer ${key}`
-    const controller = new AbortController()
     const abort = (): void => controller.abort(request.signal?.reason)
     request.signal?.addEventListener('abort', abort, { once: true })
     if (request.signal?.aborted) abort()
@@ -41,8 +46,8 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     let usage: AgentUsage = { inputTokens: 0, outputTokens: 0, costUsd: 0 }
     let responses = 0
     const messages: Record<string, unknown>[] = [
-      { role: 'system', content: `You execute one ${request.role} task. Use only the provided workspace tools. Allowed roots: ${JSON.stringify(toolset.roots)}. Working directory: ${toolset.cwd}. Return the complete requested final result. Do not coordinate another workflow or call a platform skill.` },
-      { role: 'user', content: request.prompt },
+      { role: 'system', content: `You execute one ${request.role} task. Use only the provided workspace tools. Allowed roots: ${JSON.stringify(toolset.roots)}. Working directory: ${toolset.cwd}. Return the complete requested final result. Do not coordinate another workflow. Execute only the assigned role and its supplied OpenSpec workflow.` },
+      { role: 'user', content: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt },
     ]
     try {
       for (let turn = 0; turn < maxTurns; turn++) {
@@ -52,7 +57,7 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
         if (request.maxTokens !== undefined && observed >= request.maxTokens) throw new AgentExecutionError('Agent token budget exhausted', 'token_budget', usage)
         const response = await (this.options.fetch ?? globalThis.fetch)(endpoint, {
           method: 'POST', headers, signal: controller.signal, redirect: 'error',
-          body: JSON.stringify({ model: request.model, messages, tools: toolset.definitions(), tool_choice: 'auto', stream: false,
+          body: JSON.stringify({ model: request.model, messages, tools: definitions, tool_choice: 'auto', stream: false,
             ...(request.maxTokens === undefined ? {} : { max_tokens: Math.max(1, Math.floor(request.maxTokens - observed)) }),
           }),
         })
@@ -62,11 +67,18 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
         }
         const body = await readBoundedResponse(response)
         const data = record(body), reported = record(data?.usage)
+        const cached = number(record(reported?.prompt_tokens_details)?.cached_tokens)
+        const inputTokens = number(reported?.prompt_tokens)
+        const cache = record(reported?.prompt_tokens_details)?.cached_tokens === undefined ? {} : {
+          cacheReadInputTokens: cached !== null && inputTokens !== null && cached <= inputTokens ? cached : null,
+          uncachedInputTokens: cached !== null && inputTokens !== null && cached <= inputTokens ? inputTokens - cached : null,
+          cacheWriteInputTokens: null,
+        }
         const current: AgentUsage = {
           inputTokens: number(reported?.prompt_tokens), outputTokens: number(reported?.completion_tokens),
-          costUsd: number(reported?.cost_usd ?? data?.cost_usd),
+          costUsd: number(reported?.cost_usd ?? data?.cost_usd), ...cache,
         }
-        usage = { inputTokens: add(usage.inputTokens, current.inputTokens), outputTokens: add(usage.outputTokens, current.outputTokens), costUsd: add(usage.costUsd, current.costUsd) }
+        usage = { inputTokens: add(usage.inputTokens, current.inputTokens), outputTokens: add(usage.outputTokens, current.outputTokens), costUsd: add(usage.costUsd, current.costUsd), ...(responses === 0 ? cache : sumCacheUsage([usage, current])) }
         responses++
         request.onEvent?.({ kind: 'usage', usage: { ...usage } })
         if (request.maxTokens !== undefined && (usage.inputTokens === null || usage.outputTokens === null)) throw new AgentExecutionError('Provider omitted usage required by the token budget', 'usage_unavailable', usage)
@@ -88,9 +100,9 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
             const call = record(raw), fn = record(call?.function)
             if (call?.type !== 'function' || typeof call.id !== 'string' || !call.id || ids.has(call.id) || typeof fn?.name !== 'string' || typeof fn.arguments !== 'string') throw new AgentExecutionError('Malformed provider tool call', 'invalid_tool_call', usage)
             ids.add(call.id)
-            request.onEvent?.({ kind: 'tool-start', tool: fn.name })
+            request.onEvent?.(toolEvent(fn.name, fn.arguments))
             let result: string
-            try { result = toolset.execute(fn.name, JSON.parse(fn.arguments)) }
+            try { result = fn.name === 'openspec_workflow' && openspec ? JSON.stringify(await openspec.execute(JSON.parse(fn.arguments))) : toolset.execute(fn.name, JSON.parse(fn.arguments)) }
             catch (error) { result = JSON.stringify({ error: error instanceof Error ? error.message : 'Tool execution failed' }) }
             messages.push({ role: 'tool', tool_call_id: call.id, content: result })
             request.onEvent?.({ kind: 'tool-end', tool: fn.name })
@@ -106,7 +118,9 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
       if (error instanceof AgentExecutionError) throw error
       if (controller.signal.aborted) throw new AgentExecutionError(request.signal?.aborted ? 'Agent cancelled' : 'Agent timed out', request.signal?.aborted ? 'aborted' : 'timeout', responses ? usage : unknownUsage())
       // Do not persist provider response bodies, URLs or credentials echoed by errors.
-      throw new AgentExecutionError('OpenAI-compatible request failed', 'provider_request_error', responses ? usage : unknownUsage())
+      const code = (error as { cause?: { code?: unknown } }).cause?.code
+      const diagnostic = typeof code === 'string' && /^(?:E[A-Z_]+|UND_ERR_[A-Z_]+)$/.test(code) ? ` (${code})` : ''
+      throw new AgentExecutionError('OpenAI-compatible request failed' + diagnostic, 'provider_request_error', responses ? usage : unknownUsage())
     } finally { clearTimeout(timer); request.signal?.removeEventListener('abort', abort) }
   }
 }

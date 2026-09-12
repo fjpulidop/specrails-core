@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
   fingerprintCandidate, frozenAcceptanceCriteria, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
   type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type PipelineContext, type VerificationCommand,
@@ -5,7 +7,7 @@ import {
 import type { AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState } from '../workflow-types.js'
-import { archive, child, journal, object, openTasks, parseArchitecture, proposedVerification, write, writeArchitecture, type Architecture } from './artifacts.js'
+import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
 import type { RoleInvoker } from './roles.js'
 import type { ArchitectureRecord, CoreNodeId, CoreStateType, DeveloperRecord, VerificationRecord } from './state.js'
@@ -17,6 +19,7 @@ const DEVELOPER_SUMMARY_LIMIT = 32_000
 export interface CoreNodeDeps {
   context: PipelineContext
   config: RuntimeConfig
+  openspec: Record<AgentRole, OpenSpecRoleContext>
   change: string
   /** Development visits allowed per invocation, including correction cycles. */
   attempts: number
@@ -68,7 +71,7 @@ export function developerRecord(output: Record<string, unknown> | undefined, tex
 
 function architectNode(deps: CoreNodeDeps): CoreNode {
   const { context, config, change, invoke, note } = deps
-  const accept = (output: Record<string, unknown> | undefined): Architecture => {
+  const accept = (output: Record<string, unknown> | undefined): ReturnType<typeof parseArchitecture> => {
     const architecture = parseArchitecture(object(output))
     // Malformed proposals are repaired inside the same session, like any other structural defect.
     proposedVerification(context, config.verification, architecture.verification)
@@ -88,7 +91,7 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         fresh.push(reply.answer)
         note('architect', 'Continuing the architecture with the answer to the blocking question.')
       }
-      const prompt = roleInstructions('architect', context, change, { verification: config.verification, answers })
+      const prompt = roleInstructions('architect', context, change, { definition: config.rolePrompts?.architect, verification: config.verification, answers })
       const first = await invoke('architect', step, { prompt, structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA }, accept)
       if (!first.ok) return failed(first.error)
       let architecture = first.value
@@ -106,7 +109,7 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         if ((config.architect?.onLowConfidence ?? 'ask') === 'ask') {
           // The draft artifacts are written first so the requester can read the
           // proposal while answering; the resumed pass replaces them.
-          writeArchitecture(context, change, architecture)
+          writeDesignConfidence(context, change, architecture)
           transitionPipeline(context, 'architect', 'blocked', 'Design confidence is low')
           note('architect', 'Design confidence is still low; pausing until the blocking question is answered.')
           step.interrupt({ kind: 'question', question })
@@ -114,16 +117,21 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         assumed = true
         note('architect', 'Design confidence is still low; proceeding on the stated assumptions because architect.onLowConfidence is "proceed".')
       }
+      const workflow = new OpenSpecTools(deps.openspec.architect, step.signal)
+      workflow.assertParticipation()
+      const applied = await workflow.assertReady()
+      const specs = Object.keys((await workflow.status()).artifactPaths).length ? (applied.contextFiles.specs ?? []) : []
+      const names = (Array.isArray(specs) ? specs : [specs]).map(file => path.basename(path.dirname(file)))
       const proposed = proposedVerification(context, config.verification, architecture.verification)
-      writeArchitecture(context, change, architecture, { assumed })
+      writeDesignConfidence(context, change, architecture, { assumed })
       const plan = [...config.verification, ...proposed]
       const uncovered = uncoveredRepositories(context, plan)
       transitionPipeline(context, 'architect', 'done')
-      note('architect', `Architecture written: ${plural(architecture.tasks.length, 'task')}, spec${architecture.specs.length === 1 ? '' : 's'} ${architecture.specs.map(spec => spec.name).join(', ')}, confidence ${architecture.confidence}.`
+      note('architect', `Architecture written: ${plural(applied.progress.total, 'task')}, spec${names.length === 1 ? '' : 's'} ${names.join(', ')}, confidence ${architecture.confidence}.`
         + (proposed.length ? ` Verification proposed by the architect: ${proposed.map(command => [command.command, ...command.args].join(' ')).join('; ')}.` : '')
         + (uncovered.length ? ` No verification command for ${uncovered.join(', ')}; the reviewer will inspect that work without automated checks.` : ''))
       const record: ArchitectureRecord = {
-        change, tasks: architecture.tasks.length, specs: architecture.specs.map(spec => spec.name), confidence: architecture.confidence,
+        change, tasks: applied.progress.total, specs: names, confidence: architecture.confidence,
         ...(architecture.question ? { question: architecture.question } : {}), ...(assumed ? { assumed: true } : {}),
       }
       return {
@@ -144,9 +152,10 @@ function developerNode(deps: CoreNodeDeps): CoreNode {
         return { status: 'blocked', error: 'Implementation correction limit reached; inspect the feedback in the log and resume to grant more attempts', usage: NO_SPEND }
       }
       transitionPipeline(context, 'developer', 'running')
+      await new OpenSpecTools(deps.openspec.developer, step.signal).assertReady()
       const feedback = feedbackFor(state)
       const provider = config.agents.developer.provider
-      const full = roleInstructions('developer', context, change, { feedback, verification: state.plan })
+      const full = roleInstructions('developer', context, change, { definition: config.rolePrompts?.developer, feedback, verification: state.plan })
       const previous = state.development
       const resumable = previous?.sessionId !== undefined && previous.provider === provider && developerVisitsSinceResume(step.checkpoint) > 1
       const outcome = await invoke('developer', step, {
@@ -156,10 +165,15 @@ function developerNode(deps: CoreNodeDeps): CoreNode {
         structured: true, lenient: true, outputSchema: DEVELOPER_OUTPUT_SCHEMA,
       }, (output, text, result) => developerRecord(output, text, result, provider))
       if (!outcome.ok) return failed(outcome.error)
+      new OpenSpecTools(deps.openspec.developer, step.signal).assertParticipation()
       const record = outcome.value
       note('developer', record.structured
         ? `Developer finished: ${plural(record.files.length, 'file')} changed, ${plural(record.tests.length, 'test file')} touched${record.incomplete.length ? `, ${plural(record.incomplete.length, 'task')} left incomplete` : ''}.`
         : 'Developer finished without the structured summary; the prose summary is recorded instead.')
+      for (const item of record.incomplete) note('developer', `Pending task: ${item.task} — ${item.reason}`)
+      if (record.structured && record.incomplete.length && record.files.length === 0 && record.tests.length === 0) {
+        return { status: 'blocked', error: `Developer could not make progress: ${record.incomplete.map(item => `${item.task}: ${item.reason}`).join('; ')}`, output: record as unknown as JsonValue }
+      }
       return {
         status: 'succeeded', next: 'verify', update: { development: record },
         output: { summary: record.summary, provider, ...(record.sessionId ? { sessionId: record.sessionId } : {}), files: record.files, tests: record.tests, incomplete: record.incomplete as unknown as JsonValue, structured: record.structured },
@@ -169,13 +183,15 @@ function developerNode(deps: CoreNodeDeps): CoreNode {
 }
 
 function verifyNode(deps: CoreNodeDeps): CoreNode {
-  const { context, change, note } = deps
+  const { context, note } = deps
   return {
     effect: 'write', ends: ['reviewer', 'developer'],
     async run(state, step): Promise<Result> {
       // Unchecked tasks are developer feedback, not a workflow failure: the
       // developer sees exactly which tasks remain and continues its session.
-      const open = openTasks(context, change)
+      const workflow = new OpenSpecTools(deps.openspec.developer, step.signal)
+      const applied = await workflow.assertReady()
+      const open = applied.tasks.filter(task => !task.done).map(task => task.description)
       if (open.length) {
         note('developer', `Verification skipped: ${plural(open.length, 'task')} still unchecked in tasks.md; returning to the developer.`)
         const evidence: VerificationRecord = { valid: false, reason: 'Required implementation tasks remain unchecked in tasks.md', incompleteTasks: open, unverifiedRepositories: [], commands: [] }
@@ -236,13 +252,13 @@ export function buildAcceptanceReport(criteria: FrozenCriterion[], verification:
 }
 
 function reviewerNode(deps: CoreNodeDeps): CoreNode {
-  const { context, change, invoke, note, policy } = deps
+  const { context, change, invoke, note, policy, config } = deps
   const criteria = frozenAcceptanceCriteria(context)
   return {
     effect: 'write', ends: ['archive', 'developer'],
     async run(state, step): Promise<Result> {
       transitionPipeline(context, 'reviewer', 'running')
-      const prompt = roleInstructions('reviewer', context, change, { feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development })
+      const prompt = roleInstructions('reviewer', context, change, { definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development })
       const outcome = await invoke('reviewer', step, { prompt, structured: true, outputSchema: REVIEW_OUTPUT_SCHEMA }, output => {
         const raw = object(output)
         const review = evaluateReview(raw, policy)
@@ -251,6 +267,9 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
         return { ...review, report }
       })
       if (!outcome.ok) return failed(outcome.error)
+      const workflow = new OpenSpecTools(deps.openspec.reviewer, step.signal)
+      workflow.assertParticipation()
+      await workflow.assertReady()
       const { record, approved, report } = outcome.value
       // Acceptance evidence is bound to the exact candidate before the reviewer verdict is recorded.
       recordAcceptance(context, report)
@@ -279,7 +298,7 @@ function archiveNode(deps: CoreNodeDeps): CoreNode {
         step.reportUsage(NO_SPEND)
         step.interrupt<{ approved: true }>({ kind: 'approval', reason: 'Approve archive after inspecting the verified implementation' })
       }
-      archive(context, change)
+      await archive(context, change, step.signal)
       const record = { archivePath: journal(context).archivePath!, deliveryOwner: context.ownership.git }
       return { status: 'succeeded', next: null, update: { archived: record }, output: record, usage: NO_SPEND }
     },

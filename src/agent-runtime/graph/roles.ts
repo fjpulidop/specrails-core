@@ -1,7 +1,11 @@
+import { repositoryContext } from '../repository-context.js'
+import { ROLE_SKILLS, OPENSPEC_VERSION, OpenSpecTools, OpenSpecParticipationError, openSpecRepairPrompt } from '../openspec.js'
 import path from 'node:path'
+import { performance } from 'node:perf_hooks'
 import type { PipelineContext } from '../../installer/runtime/pipeline-state.js'
 import type { ExecutorRegistry } from '../executors.js'
-import { AgentExecutionError, type AgentEvent, type AgentResult, type AgentRole, type AgentUsage, type RuntimeConfig } from '../executor-types.js'
+import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentResult, type AgentRole, type AgentUsage, type RuntimeConfig } from '../executor-types.js'
+import { sumCacheUsage } from '../efficiency-types.js'
 import { repairInstructions } from '../prompts.js'
 import type { WorkflowStepContext } from '../workflow-types.js'
 import { parseAgentObject } from './artifacts.js'
@@ -31,6 +35,7 @@ export interface RoleInvokerDeps {
   context: PipelineContext
   config: RuntimeConfig
   registry: ExecutorRegistry
+  openspec?: Record<AgentRole, import('../openspec.js').OpenSpecRoleContext>
   onAgentEvent?: (role: AgentRole, event: AgentEvent) => void
 }
 
@@ -38,7 +43,7 @@ const REPAIRABLE = /Invalid|Expected|requires|Duplicate|malformed/i
 
 export function sumUsage(a: AgentUsage, b: AgentUsage): AgentUsage {
   const add = (x: number | null, y: number | null): number | null => x === null || y === null ? null : x + y
-  return { inputTokens: add(a.inputTokens, b.inputTokens), outputTokens: add(a.outputTokens, b.outputTokens), costUsd: add(a.costUsd, b.costUsd) }
+  return { inputTokens: add(a.inputTokens, b.inputTokens), outputTokens: add(a.outputTokens, b.outputTokens), costUsd: add(a.costUsd, b.costUsd), ...sumCacheUsage([a, b]) }
 }
 
 /**
@@ -70,24 +75,46 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
   const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: { resumeSessionId?: string; outputSchema?: Record<string, unknown> }): Promise<AgentResult> => {
     const selected = config.agents[role]
     const budget = step.remainingBudget()
+    const started = performance.now()
+    let toolCalls = 0, succeeded = false, usage = unknownUsage()
+    const onEvent = forward(role, structured)
     try {
+      if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${ROLE_SKILLS[role]} (official skill document through scoped tools).`)
       const result = await registry.execute(selected.provider, {
-        role, prompt, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
+        role, prompt: prompt + '\n\n' + repositoryContext(context), openspec: deps.openspec?.[role], cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
         model: selected.model, maxTurns: selected.maxTurns, signal: step.signal,
         timeoutMs: config.limits?.timeoutMs,
         maxTokens: budget.maxTokens, maxCostUsd: budget.maxCostUsd,
-        ...extra, onEvent: forward(role, structured),
+        ...extra, onEvent: event => { if (event.kind === 'tool-start') toolCalls++; onEvent(event) },
       })
+      usage = result.usage
       step.reportUsage(result.usage)
+      succeeded = true
       return result
     } catch (error) {
-      if (error instanceof AgentExecutionError) step.reportUsage(error.usage)
+      usage = error instanceof AgentExecutionError ? error.usage : unknownUsage()
+      step.reportUsage(usage)
       throw error
+    } finally {
+      await step.reportInvocation?.({ provider: selected.provider, ...(selected.model ? { model: selected.model } : {}), status: succeeded ? 'succeeded' : 'failed', durationMs: Math.max(0, performance.now() - started), toolCalls, usage })
     }
   }
 
   return async <T>(role: AgentRole, step: WorkflowStepContext, options: InvokeOptions, accept: Accept<T>): Promise<InvokeOutcome<T>> => {
     const structured = options.structured === true
+    const workflow = deps.openspec?.[role] ? new OpenSpecTools(deps.openspec[role]) : undefined
+    const cursor = workflow?.participationCursor() ?? 0
+    const evaluate = (result: AgentResult): InvokeOutcome<T> => {
+      let output: Record<string, unknown> | undefined, parseError: unknown
+      if (structured) {
+        try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { parseError = error }
+      }
+      // A genuine architect question can precede artifact creation. Completed
+      // role results must prove this invocation used the workflow, not an old visit.
+      if (!(role === 'architect' && output?.confidence === 'low')) workflow?.assertParticipation(cursor)
+      if (structured && !output && !options.lenient) throw new Error('Invalid structured role response: ' + (parseError instanceof Error ? parseError.message : 'missing object'))
+      return { ok: true, value: accept(output, result.text, result), text: result.text, result }
+    }
     try {
       let result: AgentResult
       if (options.resumeSessionId && options.fallbackPrompt) {
@@ -102,24 +129,27 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       } else {
         result = await execute(role, step, options.prompt, structured, { resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema })
       }
-      if (!structured) return { ok: true, value: accept(undefined, result.text, result), text: result.text, result }
-      let output: Record<string, unknown> | undefined, problem: string | undefined
-      try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { problem = error instanceof Error ? error.message : String(error) }
-      if (!output && options.lenient) return { ok: true, value: accept(undefined, result.text, result), text: result.text, result }
-      if (output) {
-        try { return { ok: true, value: accept(output, result.text, result), text: result.text, result } }
-        catch (error) {
-          problem = error instanceof Error ? error.message : String(error)
-          if (!REPAIRABLE.test(problem)) return { ok: false, error: problem }
-        }
+      let problem: string, omittedWorkflow = false
+      try { return evaluate(result) }
+      catch (error) {
+        problem = error instanceof Error ? error.message : String(error)
+        omittedWorkflow = error instanceof OpenSpecParticipationError
+        if (!omittedWorkflow && !REPAIRABLE.test(problem)) return { ok: false, error: problem }
       }
-      // One bounded repair turn inside the same session: the role keeps its work
-      // and only resends the object. Without a session the role starts over once.
-      if (!result.sessionId) return { ok: false, error: problem ?? 'Unusable structured reply' }
-      note(role, `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
-      const repaired = await execute(role, step, repairInstructions(role, problem!), structured, { resumeSessionId: result.sessionId, outputSchema: options.outputSchema })
-      try { return { ok: true, value: accept(repaired.structured ?? parseAgentObject(repaired.text), repaired.text, repaired), text: repaired.text, result: repaired } }
+      // A single repair budget covers protocol omissions and malformed output.
+      // Use the same provider session when possible; sessionless APIs receive the
+      // complete original role prompt and existing artifacts, never another role.
+      if (!omittedWorkflow && !result.sessionId) return { ok: false, error: problem }
+      const repair = omittedWorkflow ? openSpecRepairPrompt(workflow!.context) : repairInstructions(role, problem)
+      note(role, omittedWorkflow
+        ? `The ${role} omitted its required OpenSpec workflow; requesting one correction in the same role before accepting the result.`
+        : `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
+      const repaired = await execute(role, step,
+        result.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,
+        structured, { resumeSessionId: result.sessionId, outputSchema: options.outputSchema })
+      try { return evaluate(repaired) }
       catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
+
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
