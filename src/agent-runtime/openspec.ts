@@ -113,7 +113,7 @@ export function roleOpenSpecContext(prepared: ReturnType<typeof prepareOpenSpec>
  * spelling than realpathSync. Compare existing filesystem identities, not text. */
 export function sameOpenSpecDirectory(candidate: unknown, expected: string): boolean {
   if (typeof candidate !== 'string' || !path.isAbsolute(candidate)) return false
-  try { return path.relative(realpathSync(candidate), realpathSync(expected)) === '' }
+  try { return path.relative(realpathSync.native(candidate), realpathSync.native(expected)) === '' }
   catch { return false }
 }
 

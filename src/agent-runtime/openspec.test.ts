@@ -1,4 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -108,7 +109,15 @@ describe('official OpenSpec CLI and confined role tools', () => {
     writeFileSync(cli, 'console.log(' + JSON.stringify(JSON.stringify({ ...status, changeRoot: equivalent(status.changeRoot), actionContext: { ...status.actionContext, allowedEditRoots: [equivalent(root)] } })) + ')')
     const tools = new OpenSpecTools({ ...architect.context, cli })
     expect((await tools.status()).schemaName).toBe('spec-driven')
-    if (process.platform === 'win32') expect(sameOpenSpecDirectory(root.toUpperCase(), root)).toBe(true)
+    if (process.platform === 'win32') {
+      expect(sameOpenSpecDirectory(root.toUpperCase(), root)).toBe(true)
+      // GitHub's Windows temp directory can contain a DOS 8.3 user alias.
+      const shortPathResult = spawnSync('cmd.exe', ['/d', '/s', '/c', `"for %I in ("${root}") do @echo %~sI"`], { encoding: 'utf8', windowsVerbatimArguments: true })
+      expect(shortPathResult.status, shortPathResult.stderr).toBe(0)
+      const shortRoot = shortPathResult.stdout.trim()
+      expect(sameOpenSpecDirectory(shortRoot, root)).toBe(true)
+      expect(sameOpenSpecDirectory(root, shortRoot)).toBe(true)
+    }
     expect(sameOpenSpecDirectory(equivalent(root), root)).toBe(true)
     expect(sameOpenSpecDirectory('.', root)).toBe(false)
     expect(sameOpenSpecDirectory(path.join(root, 'missing'), root)).toBe(false)
