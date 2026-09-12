@@ -147,14 +147,14 @@
     "file": ".specrails/install-config.yaml",
     "version": 1,
     "fields": {
-      "version": "number \u2014 schema version, currently 1",
-      "provider": "string \u2014 claude | codex | gemini | kimi",
+      "version": "number — schema version, currently 1",
+      "provider": "string — claude | codex | gemini | kimi",
       "tier": "Deprecated legacy string, tolerated and ignored; all installs use deterministic placement.",
-      "agents.selected": "string[] \u2014 unique lowercase kebab-case agent ids to install (1-64 characters)",
-      "agents.excluded": "string[] \u2014 unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
-      "models.preset": "string \u2014 balanced | budget | max; resolved within the selected provider catalog",
-      "models.defaults.model": "string \u2014 exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
-      "models.overrides": "Record<safe-agent-id, string> \u2014 exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
+      "agents.selected": "string[] — unique lowercase kebab-case agent ids to install (1-64 characters)",
+      "agents.excluded": "string[] — unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
+      "models.preset": "string — balanced | budget | max; resolved within the selected provider catalog",
+      "models.defaults.model": "string — exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
+      "models.overrides": "Record<safe-agent-id, string> — exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
     }
   },
   "checkpoints": {
@@ -248,6 +248,78 @@
       "--quick",
       "--lite"
     ]
+  },
+  "agentRuntime": {
+    "apiVersion": 1,
+    "configSchemaVersion": 1,
+    "workflowStateSchemaVersion": 2,
+    "checkpointEnvelopeFormat": 2,
+    "checkpointEnvelope": "checkpoint.json holds {format: 2, checksum, state, graph}: the host ledger (state) and the LangGraph checkpoint history (graph) written atomically together",
+    "moduleExport": "specrails-core/agent-runtime",
+    "modulePath": "dist/agent-runtime/index.js",
+    "typesPath": "dist/agent-runtime/index.d.ts",
+    "cliPath": "dist/agent-runtime/cli.js",
+    "cliCommand": "runtime",
+    "cliOperations": [
+      "api",
+      "validate",
+      "run",
+      "status",
+      "resume"
+    ],
+    "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion}; does not invoke providers",
+    "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
+    "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
+    "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed",
+    "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event, verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
+    "reviewGate": "review.minScore and review.aspects may only tighten Core's own gate (minScore 70, security 75, other aspects 60); the pipeline journal enforces the floor",
+    "acceptance": "The reviewer certifies every frozen acceptance criterion by specId and criterionIndex; Core records the verification commands it ran as required checks and binds the report to the exact candidate before the reviewer verdict",
+    "configSchemaPath": "schemas/agent-runtime.schema.json",
+    "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
+    "projectConfigPath": ".specrails/agent-runtime.json",
+    "minimumNode": "20.19.0",
+    "platforms": [
+      "darwin",
+      "win32"
+    ],
+    "cliProviders": [
+      "claude",
+      "codex",
+      "gemini",
+      "kimi"
+    ],
+    "providerKinds": [
+      "cli",
+      "openai-compatible"
+    ],
+    "programmaticRegistration": "ExecutorRegistry.register(id, executor); custom executors implement AgentExecutor.execute(request)",
+    "phases": [
+      "architect",
+      "developer",
+      "verify",
+      "reviewer",
+      "archive"
+    ],
+    "contextSchema": "execution.context; ownership.git must be host",
+    "statePath": "<backlogRoot>/.specrails/pipeline/<runId>/agent-workflow/<runId>/checkpoint.json",
+    "requestPath": "<backlogRoot>/.specrails/pipeline/<runId>/agent-runtime-request.json",
+    "exitCodes": {
+      "succeeded": 0,
+      "paused": 2,
+      "failedBlockedOrCancelled": 1
+    },
+    "recovery": "Explicit resume uses frozen configuration and revalidates Core evidence; interrupted writes require named recovery; grants persist until evidence invalidation.",
+    "delivery": "Core implements through archive; the host owns worktrees, commits, pushes, PRs and backlog delivery. A standalone continuation does not restart Desktop delivery.",
+    "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
+    "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
+    "documentation": "docs/agent-runtime.md",
+    "instructionsVersion": "3",
+    "workflowVersion": "3",
+    "developerTools": "The developer role runs with each CLI's autonomous edit+shell mode (claude --tools default --dangerously-skip-permissions with Agent/Task/Skill disallowed; codex workspace-write; gemini --yolo; kimi print mode). Architect and reviewer stay read-only. Claude roles load project settings only (--setting-sources project,local).",
+    "verificationPolicy": "Configured commands are optional. The architect proposes commands for repositories without one; repositories with no automated check are admitted and recorded in the receipt as unverifiedRepositories. Unchecked tasks return to the developer as feedback instead of failing the run.",
+    "sessionReuse": "Developer correction passes resume the previous provider session (claude --resume, codex exec resume, gemini --resume, kimi --session) with a short correction prompt; an unavailable session falls back to a fresh full turn. Structured roles get one repair turn in-session when their JSON is unusable.",
+    "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
+    "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget."
   },
   "execution": {
     "schemaVersion": 1,

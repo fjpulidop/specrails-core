@@ -95,6 +95,7 @@ function usageText(): string {
     '  init                Install specrails into a repository',
     '  update              Update an existing specrails installation',
     '  pipeline            Inspect and execute durable implementation phases',
+    '  runtime             Run, inspect and resume programmatic agents',
     '  doctor              Diagnose the health of an existing installation',
     '  install-framework   Materialize the versioned framework (offline)',
     '  swap-current        Point framework/current at a version (offline)',
@@ -148,6 +149,8 @@ async function dispatch(
       return 0
     case 'pipeline':
       return runPipelineCommand(flags, _positionals)
+    case 'runtime':
+      return (await import('../agent-runtime/cli.js')).runRuntimeCommand(flags, _positionals)
     case 'doctor': {
       const result = await runDoctor(flags as DoctorFlags)
       return result.failed === 0 ? 0 : 1

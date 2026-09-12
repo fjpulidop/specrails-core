@@ -8,6 +8,8 @@ Specrails Core installs specification-driven development workflows into a projec
 
 Use Core directly from Claude Code, Codex CLI, Gemini CLI or Kimi Code. For mission conversations, a shared project board, execution loops and delivery controls, use [Specrails Desktop](https://github.com/fjpulidop/specrails-desktop).
 
+The current source also includes an opt-in [programmatic agent runtime](docs/agent-runtime.md): a shared LangGraph workflow with per-role providers, durable recovery and local OpenAI-compatible models. Its TypeScript API and CLI keep phase control in Core while the caller owns delivery.
+
 This README describes the current source tree. `npx specrails-core@latest` installs the published package, not unmerged changes. Check the [release notes](https://github.com/fjpulidop/specrails-core/releases), or [build this checkout](#develop-from-source) when testing unreleased work.
 
 ## Quick start
@@ -158,6 +160,7 @@ Core's configuration, specs and run state are local files. Provider CLIs still s
 
 - [CLI reference](docs/user-docs/cli-reference.md)
 - [Provider pipeline contracts](docs/user-docs/provider-pipelines.md)
+- [Programmatic agent runtime](docs/agent-runtime.md)
 - [Core update consistency](docs/user-docs/core-updates.md)
 - [Local tickets](docs/local-tickets.md)
 - [Documentation index](docs/README.md)

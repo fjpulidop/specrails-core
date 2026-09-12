@@ -18,6 +18,7 @@ Welcome to the SpecRails docs. This guide will take you from zero to a fully aut
 | [Plugin Architecture](plugin-architecture.md) | Plugin vs scaffold, what lives where, how updates work |
 | [Agents](agents.md) | Every agent explained — role, when it runs, why it exists |
 | [Workflows & Commands](workflows.md) | How to use `/specrails:implement`, `/specrails:get-backlog-specs`, and more |
+| [Programmatic Agent Runtime](agent-runtime.md) | LangGraph phases, Claude/Codex/Gemini/Kimi and local providers, CLI/API configuration, recovery and host delivery |
 | [Customization](customization.md) | Adapt agents, rules, personas, and conventions to your project |
 | [Updating](updating.md) | Keep SpecRails up to date without losing your customizations |
 

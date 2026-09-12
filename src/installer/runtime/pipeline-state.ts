@@ -26,7 +26,9 @@ export interface VerificationCommand {
   env?: Record<string, string>
   timeoutMs?: number
 }
-export interface VerificationRequest { kind: 'full' | 'scoped'; commands: VerificationCommand[] }
+/** `unverified` admits a full request whose commands do not cover every repository
+ *  (or cover none): the receipt then records which repositories ran no check. */
+export interface VerificationRequest { kind: 'full' | 'scoped'; commands: VerificationCommand[]; unverified?: boolean }
 export interface CommandReceipt {
   repositoryId: string; command: string; args: string[]; cwd: string
   environmentPolicy?: 'isolated-transport-v1'
@@ -36,6 +38,8 @@ export interface CommandReceipt {
 export interface VerificationReceipt {
   id: string; kind: 'full' | 'scoped'; scopeHash: string; candidateHash: string
   commands: CommandReceipt[]; completedAt: string; valid: boolean; reason?: string
+  /** Repositories in scope that this receipt ran no command for (explicitly admitted by the request). */
+  unverifiedRepositories?: string[]
 }
 export interface AcceptanceCriterion {
   specId: string
@@ -404,6 +408,14 @@ function frozenCriteria(context: PipelineContext): Array<Pick<AcceptanceCriterio
   return context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [spec.description || spec.title])
     .map((requirement, criterionIndex) => ({ specId: String(spec.id), criterionIndex, requirement })))
 }
+/** The frozen requirements an acceptance report must certify, in scope order. */
+export function frozenAcceptanceCriteria(contextInput: unknown): Array<Pick<AcceptanceCriterion, 'specId' | 'criterionIndex' | 'requirement'>> {
+  return frozenCriteria(validatePipelineContext(contextInput))
+}
+/** Validates a report against the frozen scope without recording it; throws the same errors `recordAcceptance` would. */
+export function validateAcceptanceReport(contextInput: unknown, input: unknown): AcceptanceReport {
+  return acceptanceReport(validatePipelineContext(contextInput), input)
+}
 function nonempty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
 function evidence(value: unknown): value is string[] { return Array.isArray(value) && value.length > 0 && value.every(nonempty) }
 function acceptanceReport(context: PipelineContext, input: unknown): AcceptanceReport {
@@ -621,7 +633,7 @@ export function verificationInvocation(command: string, args: string[], cwd: str
   return { command: env.ComSpec ?? env.COMSPEC ?? 'cmd.exe', args: ['/d', '/s', '/c', '"' + [resolved, ...args].map(quote).join(' ') + '"'], windowsVerbatimArguments: true }
 }
 
-async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void): Promise<CommandReceipt> {
+async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void, signal?: AbortSignal): Promise<CommandReceipt> {
   const started = Date.now()
   const overrides = normalizeVerificationEnvironment(command.env ?? {}) as Record<string, string>
   const overrideKeys = Object.keys(overrides).sort()
@@ -635,7 +647,17 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     let child: ReturnType<typeof spawn>
     let timer: ReturnType<typeof setTimeout> | undefined
     let done = false
-    const finish = (code: number): void => { if (done) return; done = true; exitCode = code; if (timer) clearTimeout(timer); resolve() }
+    const finish = (code: number): void => { if (done) return; done = true; exitCode = code; if (timer) clearTimeout(timer); signal?.removeEventListener('abort', abort); resolve() }
+    const stop = (reason: string): void => {
+      output += '\n' + reason
+      if (child?.pid) {
+        if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
+        else { try { process.kill(-child.pid, 'SIGKILL') } catch { /* already exited */ } }
+      }
+      finish(-1)
+    }
+    const abort = (): void => stop('Verification command cancelled')
+    if (signal?.aborted) { abort(); return }
     try {
       const invocation = verificationInvocation(command.command, command.args, command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
@@ -644,25 +666,19 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     child.stdout?.on('data', receive); child.stderr?.on('data', receive)
     child.on('error', (error) => { output += error.message; finish(-1) })
     child.on('close', (code) => finish(code ?? -1))
-    timer = setTimeout(() => {
-      output += '\nVerification command timed out'
-      if (child.pid) {
-        if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true })
-        else { try { process.kill(-child.pid, 'SIGKILL') } catch { /* already exited */ } }
-      }
-      finish(-1)
-    }, command.timeoutMs)
+    signal?.addEventListener('abort', abort, { once: true })
+    timer = setTimeout(() => stop('Verification command timed out'), command.timeoutMs)
   })
   return { repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, environmentPolicy: 'isolated-transport-v1', environmentHash: hash, environmentKeys: keys, environmentOverrideKeys: overrideKeys, environmentOverridesHash: overridesHash, exitCode, durationMs: Date.now() - started, output }
 }
-export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}): Promise<VerificationReceipt> {
+export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal): Promise<VerificationReceipt> {
   const context = validatePipelineContext(contextInput)
-  const { request, commands } = verificationPlan(context, raw)
+  const { request, commands, unverifiedRepositories } = verificationPlan(context, raw)
   const state = readState(context)
   const candidateHash = fingerprintCandidate(state)
   const results: CommandReceipt[] = []
   for (const command of commands) {
-    results.push(await executeCheck(command, log))
+    results.push(await executeCheck(command, log, signal))
     if (results[results.length - 1]!.exitCode !== 0) break
   }
   return locked(context, () => {
@@ -672,6 +688,7 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
       id: randomUUID(), kind: request.kind as 'full' | 'scoped', scopeHash: state.scopeHash, candidateHash, commands: results,
       completedAt: new Date().toISOString(), valid: !changed && results.length === commands.length && results.every((result) => result.exitCode === 0),
       ...(changed ? { reason: 'Candidate changed during verification' } : results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
+      ...(unverifiedRepositories.length ? { unverifiedRepositories } : {}),
     }
     atomicJson(safeChild(pipelineStateDirectory(context), 'receipts/' + receipt.id + '.json'), receipt)
     if (receipt.kind === 'full' || !receipt.valid || !current.verification) current.verification = receipt
@@ -681,10 +698,17 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
 }
 function verificationPlan(context: PipelineContext, raw: unknown) {
   const request = object(raw)
-  if (!['full', 'scoped'].includes(String(request.kind)) || !Array.isArray(request.commands) || request.commands.length === 0 || request.commands.length > 100) fail('Verification requires bounded structured commands')
+  const unverified = request.unverified === true
+  if (request.unverified !== undefined && typeof request.unverified !== 'boolean') fail('Verification unverified flag must be boolean')
+  if (!['full', 'scoped'].includes(String(request.kind)) || !Array.isArray(request.commands) || (request.commands.length === 0 && !unverified) || request.commands.length > 100) fail('Verification requires bounded structured commands')
   const commands = request.commands.map((command) => validateCommand(context, command))
-  if (request.kind === 'full' && context.repositories.some((repo) => !commands.some((command) => command.repositoryId === repo.id))) fail('Full verification must cover every selected repository')
-  return { request, commands }
+  const unverifiedRepositories = context.repositories.filter((repo) => !commands.some((command) => command.repositoryId === repo.id)).map((repo) => repo.id)
+  if (request.kind === 'full' && !unverified && unverifiedRepositories.length) fail('Full verification must cover every selected repository')
+  return { request, commands, unverifiedRepositories: request.kind === 'full' && unverified ? unverifiedRepositories : [] }
+}
+/** Validate a check plan without creating state or executing commands. */
+export function validateVerificationRequest(contextInput: unknown, raw: unknown): void {
+  verificationPlan(validatePipelineContext(contextInput), raw)
 }
 export function preparePreview(contextInput: unknown, raw: unknown): PipelineState {
   const context = validatePipelineContext(contextInput)

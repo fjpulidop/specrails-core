@@ -1,0 +1,8 @@
+{"type":"init","session_id":"gemini-review","model":"gemini-2.5-flash"}
+{"type":"message","role":"assistant","content":"I will inspect ","delta":true}
+{"type":"message","role":"assistant","content":"the source first.","delta":true}
+{"type":"tool_use","tool_name":"read_file","tool_id":"read-source","parameters":{"path":"source.ts"}}
+{"type":"tool_result","tool_id":"read-source","status":"success","output":"export const value = 42"}
+{"type":"message","role":"assistant","content":"{\"approved\":","delta":true}
+{"type":"message","role":"assistant","content":"true,\"summary\":\"Verified source\"}","delta":true}
+{"type":"result","status":"success","stats":{"input_tokens":500,"output_tokens":35,"cached":0,"total_tokens":535,"duration_ms":1200}}
