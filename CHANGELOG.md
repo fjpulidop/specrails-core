@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.3.0](https://github.com/fjpulidop/specrails-core/compare/v5.2.3...v5.3.0) (2026-09-12)
+
+
+### Features
+
+* **runtime:** programmatic agent runtime on a real LangGraph graph ([#356](https://github.com/fjpulidop/specrails-core/issues/356)) ([35a58f9](https://github.com/fjpulidop/specrails-core/commit/35a58f92918fa1aa7b6524408ee5bed8464776a0))
+
 ## [5.2.3](https://github.com/fjpulidop/specrails-core/compare/v5.2.2...v5.2.3) (2026-09-10)
 
 
