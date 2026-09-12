@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { artifactPath, OpenSpecTools, prepareOpenSpec, roleOpenSpecContext } from './openspec.js'
+import { artifactPath, OpenSpecTools, prepareOpenSpec, roleOpenSpecContext, sameOpenSpecDirectory } from './openspec.js'
 
 let root: string
 let architect: OpenSpecTools
@@ -100,6 +100,23 @@ describe('official OpenSpec CLI and confined role tools', () => {
     expect(reviewer.participationCursor()).toBe(0)
     expect(() => reviewer.assertParticipation()).toThrow('missing load_skill, instructions apply')
   })
+  it('compares canonical directory identities without admitting another planning root', async () => {
+    await author()
+    const status = await architect.status()
+    const cli = path.join(root, 'status-fixture.cjs')
+    const equivalent = (value: string) => value + path.sep + '.'
+    writeFileSync(cli, 'console.log(' + JSON.stringify(JSON.stringify({ ...status, changeRoot: equivalent(status.changeRoot), actionContext: { ...status.actionContext, allowedEditRoots: [equivalent(root)] } })) + ')')
+    const tools = new OpenSpecTools({ ...architect.context, cli })
+    expect((await tools.status()).schemaName).toBe('spec-driven')
+    if (process.platform === 'win32') expect(sameOpenSpecDirectory(root.toUpperCase(), root)).toBe(true)
+    expect(sameOpenSpecDirectory(equivalent(root), root)).toBe(true)
+    expect(sameOpenSpecDirectory('.', root)).toBe(false)
+    expect(sameOpenSpecDirectory(path.join(root, 'missing'), root)).toBe(false)
+    writeFileSync(cli, 'console.log(' + JSON.stringify(JSON.stringify({ ...status, changeRoot: root })) + ')')
+    await expect(tools.status()).rejects.toThrow('Unsupported OpenSpec planning root')
+    writeFileSync(cli, 'console.log(' + JSON.stringify(JSON.stringify({ ...status, actionContext: { ...status.actionContext, allowedEditRoots: [path.join(root, '.state')] } })) + ')')
+    await expect(tools.status()).rejects.toThrow('Unsupported OpenSpec planning root')
+  }, 60000)
   it('rejects traversal and dangling symlinks before creating a destination', async () => {
     expect(() => artifactPath(root, '../escape')).toThrow('Invalid artifact path')
     symlinkSync(path.join(root, 'absent'), path.join(root, 'link'))

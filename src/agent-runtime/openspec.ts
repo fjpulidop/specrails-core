@@ -109,6 +109,14 @@ export function roleOpenSpecContext(prepared: ReturnType<typeof prepareOpenSpec>
     skillHash: prepared.identity[`${provider}/${ROLE_SKILLS[role]}`]!,
   }
 }
+/** OpenSpec uses cwd paths; Windows may report a different case or short-name
+ * spelling than realpathSync. Compare existing filesystem identities, not text. */
+export function sameOpenSpecDirectory(candidate: unknown, expected: string): boolean {
+  if (typeof candidate !== 'string' || !path.isAbsolute(candidate)) return false
+  try { return path.relative(realpathSync(candidate), realpathSync(expected)) === '' }
+  catch { return false }
+}
+
 export class OpenSpecTools {
   constructor(readonly context: OpenSpecRoleContext, private readonly signal?: AbortSignal) {}
   private async call(args: string[]): Promise<unknown> { return JSON.parse(await runOpenSpec(this.context.cli, this.context.root, args, this.signal)) }
@@ -117,7 +125,7 @@ export class OpenSpecTools {
     if (!existsSync(metadata)) throw new Error('OpenSpec change metadata is missing; the architect must create the change with OpenSpec')
     const status = await this.call(['status', '--change', this.context.change, '--json']) as OpenSpecStatus
     const expected = artifactPath(this.context.root, `openspec/changes/${this.context.change}`)
-    if (status.changeRoot !== expected || status.schemaName !== 'spec-driven' || status.actionContext?.mode !== 'repo-local' || !status.actionContext?.allowedEditRoots?.includes(realpathSync(this.context.root))) throw new Error('Unsupported OpenSpec planning root or schema; select an admitted repo-local spec-driven change')
+    if (!sameOpenSpecDirectory(status.changeRoot, expected) || status.schemaName !== 'spec-driven' || status.actionContext?.mode !== 'repo-local' || !status.actionContext?.allowedEditRoots?.some(root => sameOpenSpecDirectory(root, this.context.root))) throw new Error('Unsupported OpenSpec planning root or schema; select an admitted repo-local spec-driven change')
     return status
   }
   async apply(): Promise<OpenSpecApply> { await this.status(); return await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) as OpenSpecApply }
