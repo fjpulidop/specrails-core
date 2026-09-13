@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -17,10 +17,13 @@ let contextFile: string
 let configFile: string
 let config: RuntimeConfig
 let server: Server | undefined
+const liveChildren = new Set<ChildProcess>()
 
 function invoke(args: string[], stdin?: string): Promise<{ code: number | null; messages: Record<string, unknown>[]; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [executable, 'runtime', ...args], { cwd: root, env: process.env, stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] })
+    const child = spawn(process.execPath, [executable, 'runtime', ...args], { cwd: root, env: process.env, detached: process.platform !== 'win32', stdio: [stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] })
+    liveChildren.add(child)
+    child.once('close', () => liveChildren.delete(child))
     let stdout = '', stderr = ''
     child.stdout!.on('data', chunk => { stdout += String(chunk) })
     child.stderr!.on('data', chunk => { stderr += String(chunk) })
@@ -67,9 +70,21 @@ beforeEach(() => {
   writeFileSync(configFile, JSON.stringify(config))
 })
 afterEach(async () => {
+  // A timed-out test must close its CLI tree before deleting its working directory.
+  await Promise.all([...liveChildren].map(async child => {
+    const closed = new Promise<void>(resolve => child.once('close', () => resolve()))
+    let timer: ReturnType<typeof setTimeout> | undefined
+    try {
+      if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000 })
+      else if (child.pid) {
+        try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+      }
+      await Promise.race([closed, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('CLI fixture did not close during cleanup')), 10000) })])
+    } finally { clearTimeout(timer) }
+  }))
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); server = undefined }
-  rmSync(root, { recursive: true, force: true })
-})
+  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
+}, 20000)
 
 describe('packaged programmatic runtime CLI', () => {
   it('prints JSON help and validates a config through the packaged dispatcher', async () => {
@@ -212,5 +227,7 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(8)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'specs', 'feature', 'spec.md'))).toBe(true)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'changes', 'cli-feature'))).toBe(false)
-  })
+  // This runs real OpenSpec plus a fresh verification/review on resume. Windows
+  // Node 20 needs a larger test-only budget; production deadlines are unchanged.
+  }, process.platform === 'win32' ? 180000 : 60000)
 })
