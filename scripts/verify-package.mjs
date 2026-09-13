@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { integrity, isMain, npm, run, validatePackFiles } from './release-utils.mjs'
@@ -37,6 +37,9 @@ export function verifyPackage(root, outputDir) {
     const contract = JSON.parse(readFileSync(path.join(installed, 'integration-contract.json'), 'utf8'))
     const runtimeEntry = path.join(installed, 'dist', 'agent-runtime', 'index.js')
     assert.ok(existsSync(runtimeEntry), 'Programmatic runtime must ship in the package')
+    const alias = path.join(temp, 'core-alias')
+    symlinkSync(installed, alias, process.platform === 'win32' ? 'junction' : 'dir')
+    assert.equal(JSON.parse(run(process.execPath, [path.join(alias, 'dist/agent-runtime/cli.js'), 'api'], { cwd: temp, env })).type, 'runtime-api', 'CLI entry must work through a directory alias')
     assert.ok(existsSync(path.join(installed, 'dist', 'agent-runtime', 'index.d.ts')), 'Programmatic types must ship')
     run(process.execPath, ['--input-type=module', '-e',
       'import {pathToFileURL} from "node:url"; const runtime=await import(pathToFileURL(process.argv[1]).href); if(runtime.RUNTIME_API_VERSION!==1)throw Error("Incompatible runtime"); const schema=runtime.Annotation.Root({notes:runtime.Annotation({reducer:(a,b)=>[...a,...b],default:()=>[]})}); const state=await runtime.runWorkflow({directory:process.argv[2],runId:"package-agent-smoke",input:null,workflow:{id:"package-smoke",version:"1",schema,entry:"verify",nodes:{verify:{ends:[],run:async()=>({status:"succeeded",update:{notes:["checked"]},usage:{costUsd:0,inputTokens:0,outputTokens:0}})}}}}); if(state.status!=="succeeded"||state.steps.verify.update.notes[0]!=="checked")throw Error("Workflow failed");',
@@ -68,6 +71,22 @@ export function verifyPackage(root, outputDir) {
       assert.equal(status.phases.architect.status, 'pending')
       assert.equal(status.context.specs[0].title, context.specs[0].title)
       assert.equal(status.verification.valid, false, 'An unimplemented package smoke must never report a passing receipt')
+      // Verify the installed standalone module with a persisted multi-file harness.
+      run(process.execPath, ['--input-type=module', '-e', `
+        import { pathToFileURL } from 'node:url'; import fs from 'node:fs';
+        const pipeline = await import(pathToFileURL(process.argv[1]).href);
+        const plans = await import(pathToFileURL(process.argv[2]).href);
+        const context = JSON.parse(fs.readFileSync(process.argv[3], 'utf8'));
+        plans.initializeVerificationPlan(context, [], []);
+        const plan = plans.addDeveloperChecks(context, [{ kind:'harness', key:'package-check', label:'Installed harness', repositoryId:'primary', command:process.execPath, args:[], entrypoint:'check.cjs', files:[{path:'check.cjs',content:'require("./helper.cjs"); console.log("installed harness passed")'}, {path:'helper.cjs',content:'require("node:assert/strict").equal(2+2,4)'}] }]);
+        plans.bindPlan(context, plan);
+        const receipt = await pipeline.verifyPipeline(context, {kind:'full', planHash:plan.planHash, commands:plans.expandedPlanCommands(context, plan)});
+        if (!receipt.valid) throw Error('Installed harness failed');
+        const list = pipeline.readVerificationEvidence(context);
+        if (!list.available || list.items[0].sources.length !== 2) throw Error('Installed source discovery failed');
+        const source = pipeline.readVerificationEvidence(context,{id:list.items[0].id,section:'source',sourceId:list.items[0].sources[1].id});
+        if (!source.available || !source.text) throw Error('Installed evidence read failed');
+      `, path.join(path.dirname(runtime), 'pipeline-state.mjs'), path.join(installed, 'dist/agent-runtime/verification-plan.js'), contextFile], { cwd: code, env })
     }
     const manifest = { schemaVersion: 1, name: pkg.name, version: pkg.version, sha, filename: pack.filename, integrity: pack.integrity }
     writeFileSync(path.join(outputDir, 'release-manifest.json'), JSON.stringify(manifest, null, 2) + '\n')

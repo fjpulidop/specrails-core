@@ -52,10 +52,22 @@ export function journal(context: PipelineContext): PipelineState {
   return JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'state.json'), 'utf8')) as PipelineState
 }
 
-export function parseArchitecture(raw: Record<string, unknown>): { confidence: DesignConfidence; question?: string; verification: unknown } {
+export function parseArchitecture(raw: Record<string, unknown>): { confidence: DesignConfidence; question?: string; verification: unknown; planningDepth: 'focused' | 'full'; planningReason?: string; referencePatterns: string[]; riskFlags: string[] } {
   if (!['high', 'medium', 'low'].includes(String(raw.confidence))) throw new Error('Invalid design confidence')
   if (raw.question !== undefined && (typeof raw.question !== 'string' || raw.question.length > 4000)) throw new Error('Invalid architect question')
-  return { confidence: raw.confidence as DesignConfidence, ...(typeof raw.question === 'string' && raw.question.trim() ? { question: raw.question.trim() } : {}), verification: raw.verification }
+  if (raw.planningDepth !== undefined && raw.planningDepth !== 'focused' && raw.planningDepth !== 'full') throw new Error('Invalid planning depth')
+  if (raw.planningReason !== undefined && (typeof raw.planningReason !== 'string' || !raw.planningReason.trim() || raw.planningReason.length > 2000)) throw new Error('Invalid planning reason')
+  const references = (key: string): string[] => {
+    const value = raw[key]
+    if (value === undefined) return []
+    if (!Array.isArray(value) || value.length > 20 || value.some(item => typeof item !== 'string' || !item.trim() || item.length > 1000)) throw new Error('Invalid architect ' + key)
+    return value as string[]
+  }
+  const referencePatterns = references('referencePatterns'), riskFlags = references('riskFlags')
+  return { confidence: raw.confidence as DesignConfidence, ...(typeof raw.question === 'string' && raw.question.trim() ? { question: raw.question.trim() } : {}), verification: raw.verification,
+    planningDepth: raw.planningDepth === 'focused' && referencePatterns.length > 0 && riskFlags.length === 0 ? 'focused' : 'full',
+    ...(typeof raw.planningReason === 'string' ? { planningReason: raw.planningReason } : {}), referencePatterns, riskFlags,
+  }
 }
 export function writeDesignConfidence(context: PipelineContext, change: string, architecture: ReturnType<typeof parseArchitecture>, options: { assumed?: boolean } = {}): void {
   // A question may precede change creation. Do not fabricate a change directory in that case.

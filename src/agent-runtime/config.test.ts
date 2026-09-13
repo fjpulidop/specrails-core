@@ -7,6 +7,26 @@ function config(): RuntimeConfig {
   return { schemaVersion: 1, enabled: true, providers: [{ id: 'claude', kind: 'cli', cli: 'claude' }], agents: { architect: { provider: 'claude' }, developer: { provider: 'claude' }, reviewer: { provider: 'claude' } }, verification: [] }
 }
 describe('runtime configuration and registration', () => {
+  it('round-trips optional efficiency and check metadata without injecting new defaults into legacy config', () => {
+    const value = config()
+    value.agents.developer = { provider: 'claude', model: 'base', effort: 'medium', escalation: { model: 'higher', effort: 'high' } }
+    value.efficiency = { schemaVersion: 1, contextMode: 'incremental', reviewMode: 'full', planning: 'proportional', acceptDeveloperChecks: true, verification: { maxConcurrency: 4 } }
+    value.verification = [{ key: 'unit', label: 'Unit tests', repositoryId: 'main', command: 'node', args: ['--test'], cwd: 'src', timeoutMs: 1000, env: { CI: '1' }, policy: { reuse: 'snapshot-local', inputs: ['src'], toolchainInputs: ['/usr/bin/node'], deterministic: true, readOnly: true, independentGroup: 'unit', resources: [] } }]
+    const result = validateRuntimeConfig(value)
+    expect(result).toEqual(value)
+    value.verification[0].policy!.resources!.push('db')
+    expect(result.verification[0].policy?.resources).toEqual([])
+    expect(validateRuntimeConfig(config())).not.toHaveProperty('efficiency')
+  })
+  it.each([
+    { efficiency: { schemaVersion: 1, verification: { maxConcurrency: 5 } } },
+    { efficiency: { schemaVersion: 1, reuse: true } },
+    { efficiency: { schemaVersion: 1, contextMode: 'guess' } },
+    { efficiency: { schemaVersion: 2 } },
+    { agents: { architect: { provider: 'claude', escalation: { model: 'high' } }, developer: { provider: 'claude' }, reviewer: { provider: 'claude' } } },
+    { verification: [{ repositoryId: 'main', command: 'node', args: [], policy: { passed: true } }] },
+    { verification: [{ repositoryId: 'main', command: 'node', args: [], key: 'same' }, { repositoryId: 'main', command: 'node', args: [], key: 'same' }] },
+  ])('rejects invalid efficiency contracts', extra => expect(() => validateRuntimeConfig({ ...config(), ...extra })).toThrow('Invalid runtime config'))
   it('defaults to the agent runtime and ignores the retired opt-in flag', () => {
     expect(validateRuntimeConfig({ ...config(), enabled: undefined }).enabled).toBe(true)
     expect(validateRuntimeConfig({ ...config(), enabled: false }).enabled).toBe(true)

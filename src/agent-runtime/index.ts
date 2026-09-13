@@ -3,6 +3,8 @@ export { Annotation } from '@langchain/langgraph'
 export * from './executor-types.js'
 export * from './efficiency.js'
 export * from './config.js'
+export * from './capabilities.js'
+export * from './runtime-identity.js'
 export * from './executors.js'
 export * from './workflow.js'
 export * from './core-host.js'
@@ -18,3 +20,6 @@ export {
 } from './prompts.js'
 
 export { OPENSPEC_VERSION, ROLE_SKILLS, type OpenSpecRoleContext } from './openspec.js'
+
+export * from './efficiency-summary.js'
+export { readVerificationEvidence, type VerificationEvidenceQuery } from '../installer/runtime/pipeline-state.js'

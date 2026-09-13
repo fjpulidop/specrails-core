@@ -4,7 +4,7 @@ import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './grap
 import type { DeveloperRecord } from './graph/state.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '6'
+export const ROLE_INSTRUCTIONS_VERSION = '7'
 const OUTPUT_TAIL = 6_000
 
 export interface RoleFeedback {
@@ -25,6 +25,7 @@ export interface RoleInstructionOptions {
   criteria?: FrozenCriterion[]
   /** The developer's own account of the change, shown to the reviewer as a claim to verify. */
   developer?: DeveloperRecord | null
+  planning?: 'full' | 'proportional'
 }
 
 const stringArray = { type: 'array', items: { type: 'string' } }
@@ -34,6 +35,10 @@ export const ARCHITECT_OUTPUT_SCHEMA: Record<string, unknown> = {
   required: ['confidence'],
   properties: {
     confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+    planningDepth: { type: 'string', enum: ['focused', 'full'] },
+    planningReason: { type: 'string', minLength: 1, maxLength: 2000 },
+    referencePatterns: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
+    riskFlags: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
     question: { type: 'string', description: 'Only with low confidence: the single question whose answer decides the design.' },
     verification: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['repositoryId', 'command', 'args'], properties: { repositoryId: { type: 'string' }, command: { type: 'string' }, args: stringArray, cwd: { type: 'string' } } } },
   },
@@ -43,6 +48,14 @@ export const DEVELOPER_OUTPUT_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
   required: ['summary', 'files', 'tests', 'verification', 'incomplete'],
   properties: {
+    verificationChecks: { type: 'array', maxItems: 20, description: 'Optional additive checks for Core to execute; omit to retain existing checks. No policy or environment overrides.', items: {
+      type: 'object', additionalProperties: false, required: ['kind', 'key', 'repositoryId', 'label', 'command', 'args'], properties: {
+        kind: { type: 'string', enum: ['command', 'harness'] }, key: { type: 'string', pattern: '^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$' },
+        repositoryId: { type: 'string' }, label: { type: 'string', maxLength: 256 }, command: { type: 'string' }, args: stringArray,
+        cwd: { type: 'string' }, timeoutMs: { type: 'integer', minimum: 1, maximum: 7200000 }, entrypoint: { type: 'string' },
+        files: { type: 'array', minItems: 1, maxItems: 8, items: { type: 'object', additionalProperties: false, required: ['path', 'content'], properties: { path: { type: 'string' }, content: { type: 'string' } } } },
+      },
+    } },
     summary: { type: 'string', description: 'What was implemented and how, in a few sentences.' },
     files: { ...stringArray, description: 'Repository-relative paths created or modified.' },
     tests: { ...stringArray, description: 'Repository-relative test files added or changed.' },
@@ -154,7 +167,7 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     '',
     'You are the Specrails architect. Turn the requested work into an unambiguous, implementable plan that a developer agent will execute without talking to you.',
     '',
-    '1. Orient quickly: locate the code the change touches, the tests that cover it and the conventions that apply. Calibrate depth to the blast radius. A localized change (a few files, one layer) gets a short proposal, a focused design and two to five tasks; a cross-cutting change earns a full impact analysis.',
+    '1. Orient quickly: locate the code the change touches, the tests that cover it and the conventions that apply. Calibrate depth to the blast radius. A localized change gets a short proposal, focused design and only the tasks it needs; a cross-cutting change earns a full impact analysis.',
     'In design.md include a Local reference patterns section: cite actual repository paths and symbols for the closest existing implementation and its tests. Explain async rendering/state updates, error propagation and test setup when relevant. Check installed framework versions. If no equivalent exists, state that explicitly; never invent references.',
     '2. Decide the approach, name the exact files/modules to create or change, and call out risks, edge cases and compatibility concerns.',
     '3. Break the work into ordered, atomic tasks. Each task names concrete files and includes its own tests. Every task must be completable by an agent that can only edit files and run commands: never add tasks such as "run the test suite", "verify", "test manually in a browser", "commit" or "open a PR". Core runs verification and the host owns delivery.',
@@ -173,6 +186,7 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     '- `question`: omit unless confidence is `low`; then one precise question a product owner can answer in a sentence.',
     '- `verification`: optional; commands for repositories that have no configured check, run without a shell (`command` plus an `args` array, optional `cwd` relative to the repository).',
     '- Author the documents using the official workflow before returning metadata. Core does not generate your artifacts.',
+    '- Optional planning metadata: `planningDepth` (focused|full), a bounded `planningReason`, `referencePatterns` (verified paths/symbols), and `riskFlags`. Missing metadata means full. Focused planning never removes official artifacts or acceptance criteria. Multi-repository, migration, public-contract and security changes need full planning.',
     '',
   ]
 }
@@ -288,9 +302,12 @@ function feedbackSection(feedback: RoleFeedback | undefined): string[] {
     const incomplete = Array.isArray(verification.incompleteTasks) ? verification.incompleteTasks.filter(item => typeof item === 'string') : []
     if (incomplete.length) lines.push('', 'Tasks still unchecked in `tasks.md`:', ...incomplete.map(item => `- ${item}`))
     const commands = Array.isArray(verification.commands) ? verification.commands.map(record).filter(Boolean) : []
+    let outputBudget = 24000
     for (const command of commands as Record<string, unknown>[]) {
       lines.push('', `Command (repository \`${String(command.repositoryId)}\`): \`${[command.command, ...(Array.isArray(command.args) ? command.args : [])].map(String).join(' ')}\` exited with code ${String(command.exitCode)}`)
-      const output = tail(command.output)
+      if (typeof command.evidenceId === 'string') lines.push(`Evidence ID: ${command.evidenceId}. Use read_verification_evidence to inspect complete persisted output and discover harness source IDs; page using nextCursor.`)
+      const output = outputBudget ? tail(command.output).slice(-Math.min(6000, outputBudget)) : ''
+      outputBudget = Math.max(0, outputBudget - output.length)
       if (output.trim()) lines.push('```', output.trimEnd(), '```')
     }
     lines.push('')
@@ -323,6 +340,7 @@ export function roleInstructions(role: AgentRole, context: PipelineContext, chan
     ...conventionsSection(),
     ...scopeSection(context, change),
     ...(role === 'architect' ? answersSection(options.answers) : []),
+    ...(role === 'architect' ? [options.planning === 'full' || context.repositories.length > 1 ? 'Planning policy: full impact analysis is required for this run.' : 'Planning policy: proportional; use focused planning only for a clear local change without migration, public-contract or security risks.'] : []),
     ...(role === 'reviewer' ? developerSummarySection(options.developer) : []),
     ...feedback,
   ]

@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { normalizeRuntimeConfig } from './config.js'
 import { runRuntimeCommand } from './cli.js'
 import type { RuntimeConfig } from './executor-types.js'
 import { pipelineStateDirectory, type PipelineContext } from '../installer/runtime/pipeline-state.js'
@@ -91,7 +92,7 @@ describe('packaged programmatic runtime CLI', () => {
   it('negotiates the runtime API without creating a workflow or contacting providers', async () => {
     const api = await invoke(['api'])
     expect(api.code, api.stderr).toBe(0)
-    expect(api.messages).toEqual([{ type: 'runtime-api', apiVersion: 1, coreVersion: expect.stringMatching(/^\d+\.\d+\.\d+/) }])
+    expect(api.messages).toMatchObject([{ type: 'runtime-api', apiVersion: 1, coreVersion: expect.stringMatching(/^\d+\.\d+\.\d+/), runtimeIdentity: { packageIntegrity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) } }])
     expect(existsSync(pipelineStateDirectory(context))).toBe(false)
   })
 
@@ -179,7 +180,7 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
-    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toEqual({ change: 'cli-feature', config })
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '5', instructionsVersion: '7', apiVersion: 1 } })
 
     const forbidden = await invoke(['resume', '--context', contextFile, '--config', configFile])
     expect(forbidden.code).toBe(1)
@@ -206,9 +207,9 @@ describe('packaged programmatic runtime CLI', () => {
     rmSync(configFile)
     const resume = await invoke(['resume', '--context', contextFile, '--approve', 'archive'])
     expect(resume.code, JSON.stringify(resume.messages.at(-1)) + resume.stderr).toBe(0)
-    expect(resume.messages.at(-1)).toMatchObject({ status: 'succeeded', invocationUsage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } })
-    expect(resume.messages.at(-1)).toMatchObject({ metrics: { total: { providerCalls: 3, inputTokens: 60, outputTokens: 30, costUsd: 0 } } })
-    expect(requests).toHaveLength(6)
+    expect(resume.messages.at(-1)).toMatchObject({ status: 'succeeded', invocationUsage: { inputTokens: 20, outputTokens: 10, costUsd: 0 } })
+    expect(resume.messages.at(-1)).toMatchObject({ metrics: { total: { providerCalls: 4, inputTokens: 80, outputTokens: 40, costUsd: 0 } } })
+    expect(requests).toHaveLength(8)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'specs', 'feature', 'spec.md'))).toBe(true)
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'changes', 'cli-feature'))).toBe(false)
   })

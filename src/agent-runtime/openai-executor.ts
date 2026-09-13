@@ -1,4 +1,6 @@
+import { readVerificationEvidence } from '../installer/runtime/pipeline-state.js'
 import { toolEvent } from './tool-event.js'
+import { assertEffortSupported, unknownCapabilities } from './capabilities.js'
 import { OpenSpecTools, OPENSPEC_TOOL_DEFINITION, openSpecPrompt } from './openspec.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type RuntimeProviderConfig } from './executor-types.js'
 import { sumCacheUsage } from './efficiency-types.js'
@@ -17,17 +19,19 @@ export function parseStructuredText(text: string): Record<string, unknown> | und
 /** No SDK, gateway, tracing backend, paid probe, or mandatory key. */
 export class OpenAICompatibleExecutor implements AgentExecutor {
   constructor(private readonly provider: ApiProvider, private readonly options: OpenAICompatibleOptions = {}) {}
+  capabilities() { return { ...unknownCapabilities('openai-compatible'), continuation: 'unsupported' as const, effortSupport: 'unsupported' as const, supportedEfforts: [] } }
   validateLimits(limits: AgentLimits): void {
     if (limits.maxCostUsd !== undefined) throw new AgentExecutionError('A strict USD cap requires an executor with a native spending limit; OpenAI-compatible endpoints do not provide one. Use a token cap or an executor with native cost enforcement.', 'cost_limit_unsupported')
   }
   async execute(request: AgentRequest): Promise<AgentResult> {
     validateAgentRequest(request)
+    assertEffortSupported(request, this.capabilities())
     this.validateLimits(request)
     if (!request.model?.trim()) throw new AgentExecutionError('OpenAI-compatible execution requires a model', 'invalid_model')
     const controller = new AbortController()
     const toolset = new WorkspaceTools(request.cwd, request.allowedRoots, request.role)
     const openspec = request.openspec ? new OpenSpecTools(request.openspec, controller.signal) : undefined
-    const definitions = [...toolset.definitions(), ...(openspec ? [OPENSPEC_TOOL_DEFINITION] : [])]
+    const definitions = [...toolset.definitions(), ...(openspec ? [OPENSPEC_TOOL_DEFINITION] : []), ...(request.openspec?.evidenceScope && request.role !== 'architect' ? [{ type: 'function', function: { name: 'read_verification_evidence', description: 'Read host verification evidence and source files with opaque IDs and bounded cursors. List to discover IDs.', parameters: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, section: { type: 'string', enum: ['summary', 'stdout', 'stderr', 'source'] }, sourceId: { type: 'string' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } } } } }] : [])]
     const maxTurns = request.maxTurns ?? 100
     if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) throw new AgentExecutionError('maxTurns must be a positive integer', 'invalid_limit')
     const timeoutMs = request.timeoutMs ?? 15 * 60_000
@@ -102,7 +106,7 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
             ids.add(call.id)
             request.onEvent?.(toolEvent(fn.name, fn.arguments))
             let result: string
-            try { result = fn.name === 'openspec_workflow' && openspec ? JSON.stringify(await openspec.execute(JSON.parse(fn.arguments))) : toolset.execute(fn.name, JSON.parse(fn.arguments)) }
+            try { result = fn.name === 'read_verification_evidence' && request.openspec?.evidenceScope && request.role !== 'architect' ? JSON.stringify(readVerificationEvidence(request.openspec.evidenceScope, JSON.parse(fn.arguments))) : fn.name === 'openspec_workflow' && openspec ? JSON.stringify(await openspec.execute(JSON.parse(fn.arguments))) : toolset.execute(fn.name, JSON.parse(fn.arguments)) }
             catch (error) { result = JSON.stringify({ error: error instanceof Error ? error.message : 'Tool execution failed' }) }
             messages.push({ role: 'tool', tool_call_id: call.id, content: result })
             request.onEvent?.({ kind: 'tool-end', tool: fn.name })
