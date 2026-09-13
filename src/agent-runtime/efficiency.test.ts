@@ -34,6 +34,12 @@ describe('runtime efficiency projection', () => {
     expect(metrics.phases[0]).toMatchObject({ attempts: 1, measuredAttempts: 0, durationMs: null, agentDurationMs: null, providerCalls: null, toolCalls: null, cacheReadInputTokens: null })
     expect(metrics.total.inputTokens).toBe(200)
   })
+  it('never reports zero billing for a durable call interrupted before its measurement', () => {
+    const pending = attempt({ pendingInvocations: [{ invocationId: 'one:call:2', ordinal: 2, provider: 'local', model: 'test-model' }], status: 'interrupted' })
+    const metrics = runtimeEfficiency(state([pending]))
+    expect(metrics.total).toMatchObject({ costUsd: null, inputTokens: null, outputTokens: null, providerCalls: null, agentDurationMs: null })
+    expect(runtimeEfficiency(state([pending]))).toEqual(metrics)
+  })
   it('distinguishes deterministic zero spend from missing billing or cache data', () => {
     const deterministic = attempt({ stepId: 'verify', invocations: undefined, usage: { costUsd: 0, inputTokens: 0, outputTokens: 0 } })
     const unknown = attempt({ usage: { costUsd: null, inputTokens: 100, outputTokens: 10 } })

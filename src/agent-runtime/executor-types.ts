@@ -6,11 +6,34 @@ export type CliProvider = 'claude' | 'codex' | 'gemini' | 'kimi'
 export type RuntimeProviderConfig =
   | { id: string; kind: 'cli'; cli: CliProvider }
   | { id: string; kind: 'openai-compatible'; baseUrl: string; apiKeyEnv?: string }
-export interface RuntimeAgentConfig { provider: string; model?: string; maxTurns?: number }
+export interface RuntimeAgentConfig {
+  provider: string
+  model?: string
+  maxTurns?: number
+  effort?: string
+  escalation?: { model: string; effort?: string }
+}
+export interface EfficiencyPolicy {
+  schemaVersion: 1
+  contextMode?: 'full' | 'incremental'
+  reviewMode?: 'full' | 'incremental'
+  planning?: 'full' | 'proportional'
+  acceptDeveloperChecks?: boolean
+  verification?: { maxConcurrency?: number }
+}
+export interface ExecutorCapabilities {
+  transport: string
+  continuation: 'supported' | 'unsupported' | 'unknown'
+  effortSupport: 'supported' | 'unsupported' | 'unknown'
+  supportedEfforts: string[] | null
+  observedModel: boolean
+  observedEffort: boolean
+}
 export type ReviewAspectName = 'type_correctness' | 'pattern_adherence' | 'test_coverage' | 'security' | 'architectural_alignment'
 export interface RuntimeConfig {
   schemaVersion: 1
   rolePrompts?: Partial<Record<AgentRole, string>>
+  efficiency?: EfficiencyPolicy
   enabled: boolean
   providers: RuntimeProviderConfig[]
   agents: Record<AgentRole, RuntimeAgentConfig>
@@ -42,11 +65,12 @@ export interface AgentRequest {
   cwd: string
   allowedRoots: string[]
   model?: string
+  effort?: string
   maxTurns?: number
   timeoutMs?: number
   maxTokens?: number
   maxCostUsd?: number
-  /** Continue an earlier provider session when the executor supports it. Executors without sessions ignore it. */
+  /** Only send a partial follow-up when capabilities guarantee restored history before inference. */
   resumeSessionId?: string
   /** JSON Schema for the final structured reply. Executors with native structured output enforce it; the prompt remains authoritative elsewhere. */
   outputSchema?: Record<string, unknown>
@@ -61,6 +85,7 @@ export interface AgentResult {
 }
 export type AgentLimits = Pick<AgentRequest, 'maxTokens' | 'maxCostUsd'>
 export interface AgentExecutor {
+  capabilities?(model?: string): ExecutorCapabilities | Promise<ExecutorCapabilities>
   /** Side-effect-free preflight. Custom executors own their limit capabilities. */
   validateOpenSpec?(context: import('./openspec.js').OpenSpecRoleContext): Promise<void>
   validateLimits?(limits: AgentLimits): void

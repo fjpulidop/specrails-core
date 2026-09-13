@@ -5,6 +5,16 @@ export interface CacheTokenUsage {
   cacheWriteInputTokens?: number | null
 }
 export interface ProviderInvocation {
+  invocationId?: string
+  ordinal?: number
+  kind?: import('./role-routing.js').InvocationKind
+  tier?: 'base' | 'escalation'
+  routeReason?: string
+  contextMode?: 'full' | 'incremental'
+  promptBytes?: number
+  contextBytes?: number
+  handoffBytes?: number
+  requestedEffort?: string | null
   provider: string
   /** Requested model; absent means the provider selected its default. */
   model?: string
@@ -42,3 +52,5 @@ export interface RuntimeEfficiency {
   total: EfficiencyTotals
   phases: Array<EfficiencyTotals & { stepId: string; providers: string[]; models: string[] }>
 }
+
+export type PendingProviderInvocation = Pick<ProviderInvocation, 'provider' | 'model' | 'kind' | 'tier' | 'routeReason' | 'contextMode' | 'promptBytes' | 'contextBytes' | 'handoffBytes' | 'requestedEffort'> & { invocationId: string; ordinal: number }

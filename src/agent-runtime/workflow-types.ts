@@ -60,9 +60,11 @@ export interface WorkflowStepContext {
   /** Account provider spend as soon as it is known; a later pause or failure keeps it. */
   reportUsage(usage: StepUsage): void
   /** Persist a completed provider call with its already-reported usage. Optional for custom hosts. */
+  reportEfficiencyActivity?(kind: string, payload: Record<string, string | number | null>): Promise<void>
+  reportInvocationStarted?(invocation: Omit<import('./efficiency-types.js').PendingProviderInvocation, 'invocationId' | 'ordinal'>): Promise<{ invocationId: string; ordinal: number }>
   reportInvocation?(invocation: ProviderInvocation): Promise<void>
   /** Budget left for the next provider call, after everything reported so far. */
-  remainingBudget(): { maxTokens?: number; maxCostUsd?: number }
+  remainingBudget(): { maxTokens?: number; maxCostUsd?: number; maxDurationMs?: number }
 }
 
 export interface WorkflowNode<S extends Record<string, unknown>> {
@@ -116,6 +118,7 @@ export interface StepAttemptRecord {
   output?: JsonValue
   error?: string
   usage?: StepUsage
+  pendingInvocations?: import('./efficiency-types.js').PendingProviderInvocation[]
   invocations?: ProviderInvocation[]
 }
 
@@ -126,7 +129,9 @@ export interface WorkflowEvent {
   /** Trace correlation: the run's trace and the attempt span this event belongs to. */
   traceId: string
   spanId?: string
-  type: 'workflow_started' | 'workflow_resumed' | 'workflow_invalidated' |
+  efficiencyActivity?: { kind: string; payload: Record<string, string | number | null> }
+  efficiency?: ProviderInvocation
+  type: 'efficiency_updated' | 'workflow_started' | 'workflow_resumed' | 'workflow_invalidated' |
     'workflow_succeeded' | 'workflow_failed' | 'workflow_blocked' |
     'workflow_paused' | 'workflow_cancelled' | 'step_started' |
     'step_succeeded' | 'step_failed' | 'step_blocked' | 'step_paused' | 'step_interrupted'

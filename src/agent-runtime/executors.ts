@@ -3,6 +3,7 @@ import { AgentExecutionError, validateAgentRequest } from './executor-types.js'
 import { validateRuntimeConfig } from './config.js'
 import { CliExecutor, type CliExecutorOptions } from './cli-executor.js'
 import { OpenAICompatibleExecutor, type OpenAICompatibleOptions } from './openai-executor.js'
+import { assertEffortSupported, unknownCapabilities } from './capabilities.js'
 
 export { CliExecutor, buildCliInvocation, parseCliOutput } from './cli-executor.js'
 export { OpenAICompatibleExecutor } from './openai-executor.js'
@@ -21,9 +22,11 @@ export class ExecutorRegistry {
     return executor
   }
   ids(): string[] { return [...this.executors.keys()] }
+  async capabilities(id: string, model?: string) { return await this.get(id).capabilities?.(model) ?? unknownCapabilities('registered:' + id) }
   validateLimits(id: string, limits: AgentLimits): void { this.get(id).validateLimits?.(limits) }
   async execute(id: string, request: AgentRequest): Promise<AgentResult> {
     validateAgentRequest(request)
+    if (request.effort !== undefined) assertEffortSupported(request, await this.capabilities(id, request.model))
     const result = await this.get(id).execute(request)
     if (!result || typeof result.text !== 'string' || !result.text.trim() || !result.usage || ['inputTokens', 'outputTokens', 'costUsd'].some(key => {
       const value = result.usage[key as keyof typeof result.usage]

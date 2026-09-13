@@ -10,6 +10,7 @@ import type { AgentRole, CliProvider } from './executor-types.js'
 export const OPENSPEC_VERSION = '1.4.1'
 export const ROLE_SKILLS = { architect: 'openspec-ff-change', developer: 'openspec-apply-change', reviewer: 'openspec-verify-change' } as const
 export interface OpenSpecRoleContext {
+  evidenceScope?: { backlogRoot: string; runId: string }
   root: string
   change: string
   stateDirectory: string

@@ -1,0 +1,790 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "fixtures": {
+    "success": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "aee408847d35e44e99430f0979c3357b85fe8dbb4535a494301198adbee85f27"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "success",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 1,
+        "complete": true,
+        "promptBytes": 100,
+        "contextBytes": 80,
+        "handoffBytes": 20,
+        "fullContexts": 1,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 0,
+        "available": true,
+        "complete": true,
+        "executed": 1,
+        "reused": 0,
+        "notRun": 0,
+        "durationMs": 5
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": 12,
+          "providerCalls": 1,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": 12,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "correction-success": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "b47d1513dcfde9cdb70a36525d07d27c07d3e6047d08756586ddb06fbf9d9033"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "correction-success",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 1,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 2,
+        "complete": true,
+        "promptBytes": 140,
+        "contextBytes": 100,
+        "handoffBytes": 40,
+        "fullContexts": 1,
+        "incrementalContexts": 1
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 0,
+        "available": true,
+        "complete": true,
+        "executed": 1,
+        "reused": 0,
+        "notRun": 0,
+        "durationMs": 5
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 2,
+          "measuredAttempts": 2,
+          "durationMs": 1000,
+          "agentDurationMs": 24,
+          "providerCalls": 2,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 2,
+            "measuredAttempts": 2,
+            "durationMs": 2000,
+            "agentDurationMs": 24,
+            "providerCalls": 2,
+            "toolCalls": 0,
+            "inputTokens": 200,
+            "outputTokens": 20,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "failure": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "16d34b5e7bcb341ee6cb3d16495d90e93fbe57c46d3827432613210a24ebca30"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "failure",
+      "workflowVersion": "5",
+      "technicalAcceptance": "blocked",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 1,
+        "complete": true,
+        "promptBytes": 100,
+        "contextBytes": 80,
+        "handoffBytes": 20,
+        "fullContexts": 1,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 0,
+        "available": true,
+        "complete": true,
+        "executed": 1,
+        "reused": 0,
+        "notRun": 0,
+        "durationMs": 5
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": 12,
+          "providerCalls": 1,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": 12,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "reuse": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "d9c0d34144c1defc65b0d4f0501b8315aeb60f3c728d00e48898ec9523361f85"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "reuse",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 1,
+        "complete": true,
+        "promptBytes": 100,
+        "contextBytes": 80,
+        "handoffBytes": 20,
+        "fullContexts": 1,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 0,
+        "available": true,
+        "complete": true,
+        "executed": 0,
+        "reused": 1,
+        "notRun": 0,
+        "durationMs": 0
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": 12,
+          "providerCalls": 1,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": 12,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "invalidation": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "67ffbb68835e9ad6daf875866d3283a13455450a8e39370a60076c5fe3ccd5d1"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "invalidation",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 1,
+        "complete": true,
+        "promptBytes": 100,
+        "contextBytes": 80,
+        "handoffBytes": 20,
+        "fullContexts": 1,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 1,
+        "available": true,
+        "complete": true,
+        "executed": 1,
+        "reused": 0,
+        "notRun": 0,
+        "durationMs": 5
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": 12,
+          "providerCalls": 1,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": 12,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "incomplete-metrics": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "cb4761bb25432804d943e2adde4382dffba2710628fd627c25e21919cbaf69b7"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "incomplete-metrics",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 2,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 2,
+        "complete": false,
+        "promptBytes": 200,
+        "contextBytes": 160,
+        "handoffBytes": 40,
+        "fullContexts": 2,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": 0,
+        "available": true,
+        "complete": true,
+        "executed": 1,
+        "reused": 0,
+        "notRun": 0,
+        "durationMs": 5
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": null,
+          "providerCalls": null,
+          "toolCalls": null,
+          "inputTokens": null,
+          "outputTokens": null,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": null,
+            "providerCalls": null,
+            "toolCalls": null,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    },
+    "unavailable-evidence": {
+      "schemaVersion": 1,
+      "currentEvidenceIds": [
+        "68b1b2c408cc053b096f26e9dec655395a4b105ca83b805f8de78d1cac95ef76"
+      ],
+      "planHash": "64879f7d6b960a01909762d911a32d4582c20010c5641ee90278b644a9e3b525",
+      "candidateHash": "dda18a0e21ae47c53b4309434cbc02ae8bf764fa83a6defbb719431242722aa7",
+      "runId": "unavailable-evidence",
+      "workflowVersion": "5",
+      "technicalAcceptance": "validated",
+      "archive": "pending",
+      "delivery": "pending-host",
+      "roles": [
+        {
+          "role": "architect",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "developer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        },
+        {
+          "role": "reviewer",
+          "provider": "fixture",
+          "model": "base",
+          "effort": null,
+          "observedModel": null,
+          "observedEffort": null,
+          "origin": "frozen-runtime-config",
+          "tier": "base"
+        }
+      ],
+      "invocations": {
+        "byKind": {
+          "initial": 1,
+          "correction": 0,
+          "repair": 0,
+          "deepen": 0,
+          "session-fallback": 0
+        },
+        "total": 1,
+        "complete": true,
+        "promptBytes": 100,
+        "contextBytes": 80,
+        "handoffBytes": 20,
+        "fullContexts": 1,
+        "incrementalContexts": 0
+      },
+      "escalations": [],
+      "escalationsTruncated": false,
+      "checks": {
+        "invalidated": null,
+        "available": false,
+        "complete": false,
+        "executed": null,
+        "reused": null,
+        "notRun": null,
+        "durationMs": null
+      },
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 1,
+          "measuredAttempts": 1,
+          "durationMs": 1000,
+          "agentDurationMs": 12,
+          "providerCalls": 1,
+          "toolCalls": 0,
+          "inputTokens": 100,
+          "outputTokens": 10,
+          "costUsd": null,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1000,
+            "agentDurationMs": 12,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 100,
+            "outputTokens": 10,
+            "costUsd": null,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "base"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}
