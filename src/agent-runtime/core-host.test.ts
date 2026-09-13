@@ -44,7 +44,7 @@ function develop(): void {
 function result(value: unknown): AgentResult { return { text: typeof value === 'string' ? value : JSON.stringify(value), usage } }
 function fake(execute?: (request: AgentRequest) => Promise<AgentResult>): { registry: ExecutorRegistry; calls: AgentRequest[] } {
   const calls: AgentRequest[] = []
-  return { calls, registry: new ExecutorRegistry().register('fixture', { execute: async request => {
+  return { calls, registry: new ExecutorRegistry().register('fixture', { capabilities: () => ({ transport: 'fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }), execute: async request => {
     calls.push(request)
     const tools = new OpenSpecTools(request.openspec!)
     await tools.execute({ action: 'load_skill' })
@@ -125,6 +125,25 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('programmatic Core host with real evidence gates', () => {
+  it.each([2, 3])('uses the existing %i candidate budget and escalates only the third candidate', async maxAttempts => {
+    config.limits = { maxAttempts }
+    config.agents.developer = { provider: 'fixture', model: 'base', escalation: { model: 'rescue' } }
+    let candidates = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'reviewer') return result(review)
+      candidates++
+      if (candidates === 3) develop()
+      return result('Candidate implemented; Core checks the behavior')
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    const developers = calls.filter(call => call.role === 'developer')
+    expect(developers).toHaveLength(maxAttempts)
+    expect(developers.map(call => call.model)).toEqual(maxAttempts === 2 ? ['base', 'base'] : ['base', 'base', 'rescue'])
+    expect(state.status).toBe(maxAttempts === 3 ? 'succeeded' : 'blocked')
+    expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(maxAttempts === 3 ? 1 : 0)
+  }, 120000)
+
   it('runs isolated roles, real checks and deterministic archive without committing host worktrees', async () => {
     const { registry, calls } = fake()
     const heads = context.repositories.map(repository => git(repository.path, ['rev-parse', 'HEAD']))
@@ -179,7 +198,7 @@ describe('programmatic Core host with real evidence gates', () => {
   it.each([true, false])('repairs an omitted reviewer workflow once without replaying implementation (session: %s)', async session => {
     const original = fake(), calls: AgentRequest[] = []
     let reviews = 0
-    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+    const registry = new ExecutorRegistry().register('fixture', { capabilities: async () => ({ transport: 'fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }), execute: async request => {
       calls.push(request)
       if (request.role !== 'reviewer') return original.registry.execute('fixture', request)
       if (++reviews === 1) return { ...result(review), ...(session ? { sessionId: 'review-session' } : {}) }
@@ -234,7 +253,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(resumed.status, resumed.error).toBe('succeeded')
     expect(calls.filter(call => call.role === 'architect')).toHaveLength(1)
     expect(calls.filter(call => call.role === 'developer')).toHaveLength(1)
-    expect(resumed.history.filter(item => item.stepId === 'verify')).toHaveLength(1)
+    expect(resumed.history.filter(item => item.stepId === 'verify')).toHaveLength(2)
   })
 
   it('archives deltas with the real framework and preserves unrelated main requirements', async () => {
@@ -261,11 +280,11 @@ describe('programmatic Core host with real evidence gates', () => {
     else writeFileSync(file, first.before)
     const resumed = await runCoreWorkflow(opts(registry, { resume: true, recoverInterrupted: ['archive'] }))
     expect(resumed.status, resumed.error).toBe('succeeded')
-    expect(calls).toHaveLength(3)
+    expect(calls).toHaveLength(4)
     expect(readFileSync(file, 'utf8')).toContain('Requirement: Implement shared behavior')
   })
 
-  it('persists archive approval and resumes without rerunning valid agents', async () => {
+  it('rechecks verification and review once before consuming unchanged archive consent', async () => {
     config.approvalBeforeArchive = true
     const { registry, calls } = fake()
     const paused = await runCoreWorkflow(opts(registry))
@@ -276,7 +295,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(calls).toHaveLength(3)
     const resumed = await runCoreWorkflow(opts(registry, { resume: true, approve: ['archive'] }))
     expect(resumed.status, resumed.error).toBe('succeeded')
-    expect(calls).toHaveLength(3)
+    expect(calls).toHaveLength(4)
   })
 
   it('rechecks a changed candidate before consuming an archive approval', async () => {
@@ -320,7 +339,7 @@ describe('programmatic Core host with real evidence gates', () => {
       if (request.role === 'architect') return result(architecture)
       if (request.role === 'developer') {
         development++
-        if (request.resumeSessionId) throw new AgentExecutionError('session gone', 'provider_execution_error')
+        if (request.resumeSessionId) throw new AgentExecutionError('session gone', 'session_expired')
         if (development >= 2) develop()
         return { ...result('Implementation attempt'), sessionId: 'dev-session' }
       }
@@ -508,16 +527,16 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(paused.status).toBe('paused')
     expect(paused.error).toBe(question)
     expect(paused.pendingQuestion).toMatchObject({ stepId: 'architect', question })
-    // Without a session the investigation pass is impossible, so the question is asked at once.
-    expect(calls).toHaveLength(1)
+    // The single investigation pass also works without a provider session.
+    expect(calls).toHaveLength(2)
     expect(readFileSync(active('proposal.md'), 'utf8')).toContain('# Feature')
     expect(JSON.parse(readFileSync(active('design-confidence.json'), 'utf8'))).toEqual({ confidence: 'low', question })
     expect(inspectPipeline(context).phases.architect.status).toBe('blocked')
     expect((await runCoreWorkflow(opts(registry, { resume: true }))).status).toBe('paused')
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     const state = await runCoreWorkflow(opts(registry, { resume: true, answer: 'Yes, one shared module.' }))
     expect(state.status, state.error).toBe('succeeded')
-    expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'architect', 'developer', 'reviewer'])
     expect(answered[0]).toContain('1. Yes, one shared module.')
     expect(state.steps.architect?.visits).toBe(1)
     expect(state.pendingQuestion).toBeUndefined()

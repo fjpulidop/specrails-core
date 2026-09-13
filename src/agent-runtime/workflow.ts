@@ -358,14 +358,25 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
             return interrupt(request) as R
           },
           reportUsage: usage => { validateUsage(usage); accountUsage(state, usage); reported = addUsage(reported ?? { costUsd: 0, inputTokens: 0, outputTokens: 0 }, usage) },
+          reportEfficiencyActivity: async (kind, payload) => { await commit({ type: 'efficiency_updated', stepId: id, attemptId, efficiencyActivity: { kind, payload } }) },
+          reportInvocationStarted: async invocation => {
+            const ordinal = (history.invocations?.length ?? 0) + (history.pendingInvocations?.length ?? 0) + 1
+            const identity = { invocationId: `${attemptId}:call:${ordinal}`, ordinal }
+            ;(history.pendingInvocations ??= []).push({ ...clone(invocation), ...identity })
+            await persist()
+            return identity
+          },
           reportInvocation: async invocation => {
             validateUsage(invocation.usage)
             if (!Number.isFinite(invocation.durationMs) || invocation.durationMs < 0 || !Number.isSafeInteger(invocation.toolCalls) || invocation.toolCalls < 0) throw new TypeError('Invalid invocation measurement')
+            if (invocation.invocationId && history.invocations?.some(item => item.invocationId === invocation.invocationId)) return
             ;(history.invocations ??= []).push(clone(invocation))
+            if (invocation.invocationId) history.pendingInvocations = history.pendingInvocations?.filter(item => item.invocationId !== invocation.invocationId)
             if (reported) history.usage = reported
-            await persist()
+            await commit({ type: 'efficiency_updated', stepId: id, attemptId, efficiency: clone(invocation) })
           },
           remainingBudget: () => ({
+            ...(state.budget.maxDurationMs === undefined ? {} : { maxDurationMs: Math.max(0, state.budget.maxDurationMs - state.usage.durationMs - (performance.now() - elapsedMark)) }),
             ...(state.budget.maxTokens === undefined ? {} : { maxTokens: Math.max(0, state.budget.maxTokens - state.usage.knownTokens) }),
             ...(state.budget.maxCostUsd === undefined ? {} : { maxCostUsd: Math.max(0, state.budget.maxCostUsd - state.usage.knownCostUsd) }),
           }),

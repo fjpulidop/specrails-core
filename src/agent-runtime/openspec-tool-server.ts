@@ -1,3 +1,4 @@
+import { readVerificationEvidence } from '../installer/runtime/pipeline-state.js'
 import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -14,6 +15,13 @@ server.registerTool('workflow', {
 }, async (args, extra) => {
   const tools = new OpenSpecTools(context, extra.signal)
   try { return { content: [{ type: 'text', text: JSON.stringify(await tools.execute(args)) }] } }
+  catch (error) { return { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }] } }
+})
+if (context.evidenceScope && context.role !== 'architect') server.registerTool('read_verification_evidence', {
+  description: 'Read persisted host verification results and harness sources. List first to discover opaque IDs; use returned cursors to page output. Read-only, bounded and scoped to this run.',
+  inputSchema: { id: z.string().optional(), section: z.enum(['summary', 'stdout', 'stderr', 'source']).optional(), sourceId: z.string().optional(), cursor: z.string().optional(), limit: z.number().int().min(1).max(100).optional() },
+}, async args => {
+  try { return { content: [{ type: 'text', text: JSON.stringify(readVerificationEvidence(context.evidenceScope!, args)) }] } }
   catch (error) { return { isError: true, content: [{ type: 'text', text: error instanceof Error ? error.message : String(error) }] } }
 })
 await server.connect(new StdioServerTransport())

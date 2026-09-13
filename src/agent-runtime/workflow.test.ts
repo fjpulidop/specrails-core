@@ -520,3 +520,19 @@ describe('execution bounds', () => {
     await expect(readWorkflowState(directory, 'run-1')).rejects.toMatchObject({ code: 'CORRUPT_STATE' })
   })
 })
+
+it('persists call identity before execution and deduplicates its completed measurement', async () => {
+  const state = await runWorkflow(options([{ id: 'developer', run: async (_graph, step) => {
+    const identity = await step.reportInvocationStarted!({ provider: 'fixture', kind: 'initial', promptBytes: 10 })
+    const persisted = await readWorkflowState(directory, 'run-1')
+    expect(persisted!.history[0]!.pendingInvocations).toEqual([{ ...identity, provider: 'fixture', kind: 'initial', promptBytes: 10 }])
+    const measurement = { ...identity, provider: 'fixture', kind: 'initial' as const, promptBytes: 10, durationMs: 5, toolCalls: 0, status: 'succeeded' as const, usage: zero }
+    step.reportUsage(zero)
+    await step.reportInvocation!(measurement)
+    await step.reportInvocation!(measurement)
+    return success()
+  } }]))
+  expect(state.history[0]!.invocations).toHaveLength(1)
+  expect(state.history[0]!.pendingInvocations).toEqual([])
+  expect(state.events.filter(event => event.type === 'efficiency_updated')).toHaveLength(1)
+})

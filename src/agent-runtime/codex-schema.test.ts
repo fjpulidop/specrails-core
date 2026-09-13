@@ -17,7 +17,7 @@ it.each([ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA]
   expect(schema).toEqual(original)
 })
 it('accepts the architect response with null optional fields and restores the original contract', () => {
-  const raw = { confidence: 'high', question: null, verification: [{ repositoryId: 'front', command: 'npm', args: ['test'], cwd: null }] }
+  const raw = { confidence: 'high', question: null, planningDepth: null, planningReason: null, referencePatterns: null, riskFlags: null, verification: [{ repositoryId: 'front', command: 'npm', args: ['test'], cwd: null }] }
   expect(new Ajv().compile(codexOutputSchema(ARCHITECT_OUTPUT_SCHEMA))(raw)).toBe(true)
   const restored = restoreOptionalFields(raw, ARCHITECT_OUTPUT_SCHEMA)
   expect(restored).toEqual({ confidence: 'high', verification: [{ repositoryId: 'front', command: 'npm', args: ['test'] }] })
@@ -29,4 +29,14 @@ it('exposes structured failure details while redacting credentials', () => {
   const message = providerDiagnostic(stdout, '', { API_TOKEN: 'token-value' })
   expect(message).toContain("invalid_json_schema: Missing 'cwd'")
   for (const secret of ['token-value', 'example-token', 'abc123', 'u:p', 'hidden']) expect(message).not.toContain(secret)
+})
+
+
+it('restores optional null fields inside the flat developer check schema', () => {
+  const raw = { summary: 'Done', files: [], tests: [], verification: 'Core will run checks', incomplete: [], verificationChecks: [{ kind: 'command', key: 'unit', repositoryId: 'front', label: 'Unit tests', command: 'npm', args: ['test'], cwd: null, timeoutMs: null, entrypoint: null, files: null }] }
+  expect(new Ajv().compile(codexOutputSchema(DEVELOPER_OUTPUT_SCHEMA))(raw)).toBe(true)
+  const restored = restoreOptionalFields(raw, DEVELOPER_OUTPUT_SCHEMA)
+  expect(restored).toMatchObject({ verificationChecks: [{ kind: 'command', key: 'unit', command: 'npm' }] })
+  expect((restored as { verificationChecks: object[] }).verificationChecks[0]).not.toHaveProperty('entrypoint')
+  expect(new Ajv().compile(DEVELOPER_OUTPUT_SCHEMA)(restored)).toBe(true)
 })

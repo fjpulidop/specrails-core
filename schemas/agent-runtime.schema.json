@@ -7,6 +7,11 @@
   "required": ["schemaVersion", "providers", "agents", "verification"],
   "properties": {
     "schemaVersion": { "const": 1 },
+    "efficiency": { "type": "object", "additionalProperties": false, "required": ["schemaVersion"], "properties": {
+      "schemaVersion": { "const": 1 }, "contextMode": { "enum": ["full", "incremental"] }, "reviewMode": { "enum": ["full", "incremental"] },
+      "planning": { "enum": ["full", "proportional"] }, "acceptDeveloperChecks": { "type": "boolean" },
+      "verification": { "type": "object", "additionalProperties": false, "properties": { "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 4 } } }
+    } },
     "rolePrompts": { "type": "object", "additionalProperties": false, "properties": {
       "architect": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
       "developer": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
@@ -31,6 +36,7 @@
       "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 }, "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
     } },
     "verification": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["repositoryId", "command", "args"], "properties": {
+      "key": { "$ref": "#/definitions/id" }, "label": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S" }, "policy": { "$ref": "#/definitions/checkPolicy" },
       "repositoryId": { "$ref": "#/definitions/id" }, "command": { "type": "string", "minLength": 1 },
       "args": { "type": "array", "items": { "type": "string" } }, "cwd": { "type": "string", "minLength": 1 },
       "env": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "additionalProperties": { "type": "string" } },
@@ -49,10 +55,21 @@
     } }
   },
   "definitions": {
+    "effort": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
+    "inputList": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" } },
+    "checkPolicy": { "type": "object", "additionalProperties": false, "properties": {
+      "reuse": { "enum": ["never", "snapshot-local"] }, "inputs": { "$ref": "#/definitions/inputList" },
+      "toolchainInputs": { "$ref": "#/definitions/inputList" }, "resources": { "$ref": "#/definitions/inputList" },
+      "deterministic": { "type": "boolean" }, "readOnly": { "type": "boolean" }, "independentGroup": { "$ref": "#/definitions/id" }
+    } },
     "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
     "positiveInteger": { "type": "integer", "minimum": 1 },
     "score": { "type": "number", "minimum": 0, "maximum": 100 },
-    "agent": { "type": "object", "additionalProperties": false, "required": ["provider"], "properties": {
+    "agent": { "type": "object", "additionalProperties": false, "required": ["provider"], "dependencies": { "escalation": ["model"] }, "properties": {
+      "effort": { "$ref": "#/definitions/effort" },
+      "escalation": { "type": "object", "additionalProperties": false, "required": ["model"], "properties": {
+        "model": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$" }, "effort": { "$ref": "#/definitions/effort" }
+      } },
       "provider": { "$ref": "#/definitions/id" }, "model": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$" },
       "maxTurns": { "$ref": "#/definitions/positiveInteger" }
     } }

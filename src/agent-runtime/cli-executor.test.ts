@@ -100,7 +100,7 @@ describe('four CLI execution contracts', () => {
         expect(configured.command).toBe(process.execPath)
         expect(JSON.parse(readFileSync(configured.args[1], 'utf8'))).toEqual(input.openspec)
         if (provider === 'claude') {
-          expect(invocation.args).toContain('Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow')
+          expect(invocation.args).toContain('Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow,mcp__specrails_openspec__read_verification_evidence')
           expect(invocation.args).toContain('Read,Grep,Glob,ToolSearch')
           expect(invocation.args).not.toContain('--dangerously-skip-permissions')
         } else {

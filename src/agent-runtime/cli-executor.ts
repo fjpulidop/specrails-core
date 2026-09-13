@@ -1,4 +1,5 @@
 import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
+import { assertEffortSupported, cliCapabilities } from './capabilities.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
 import { toolEvent } from './tool-event.js'
 import { openSpecPrompt, writeOpenSpecBridge } from './openspec.js'
@@ -33,11 +34,12 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
   switch (provider) {
     case 'claude': return { command: 'claude', stdin: request.prompt, args: [
       '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 100), ...model,
+      ...(request.effort === undefined ? [] : ['--effort', request.effort]),
       // Project instructions and rules stay visible; the user's global config,
       // memory and plugins never leak into an autonomous role.
       '--setting-sources', 'project,local',
       ...(readOnly
-        ? ['--tools', options.mcpConfigFile ? 'Read,Grep,Glob,ToolSearch' : 'Read,Grep,Glob', '--permission-mode', options.mcpConfigFile ? 'dontAsk' : 'plan', '--strict-mcp-config', ...(options.mcpConfigFile ? ['--allowedTools', 'Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow'] : [])]
+        ? ['--tools', options.mcpConfigFile ? 'Read,Grep,Glob,ToolSearch' : 'Read,Grep,Glob', '--permission-mode', options.mcpConfigFile ? 'dontAsk' : 'plan', '--strict-mcp-config', ...(options.mcpConfigFile ? ['--allowedTools', 'Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow,mcp__specrails_openspec__read_verification_evidence'] : [])]
         : ['--tools', 'default', '--disallowedTools', CLAUDE_DEVELOPER_DISALLOWED, '--dangerously-skip-permissions']),
       ...(options.mcpConfigFile ? ['--mcp-config', options.mcpConfigFile] : []),
       ...(request.outputSchema ? ['--json-schema', JSON.stringify(request.outputSchema)] : []),
@@ -48,6 +50,7 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
     case 'codex': {
       const sandbox = readOnly ? 'read-only' : 'workspace-write'
       const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...model,
+        ...(request.effort === undefined ? [] : ['-c', 'model_reasoning_effort=' + JSON.stringify(request.effort)]),
         ...(options.openspecBridge ? ['-c', 'mcp_servers.specrails_openspec.command=' + JSON.stringify(options.openspecBridge.command), '-c', 'mcp_servers.specrails_openspec.args=' + JSON.stringify(options.openspecBridge.args), '-c', 'mcp_servers.specrails_openspec.default_tools_approval_mode="approve"', '-c', 'mcp_servers.specrails_openspec.required=true'] : []),
       ]
       // `codex exec resume` has no --sandbox flag; the same policy travels as a config override.
@@ -181,6 +184,7 @@ export function cliToolEvents(provider: CliProvider, event: Record<string, unkno
 }
 export class CliExecutor implements AgentExecutor {
   constructor(private readonly provider: CliProvider, private readonly options: CliExecutorOptions = {}) {}
+  capabilities(model?: string) { return cliCapabilities(this.provider, model, this.options) }
   private readonly capabilityChecks = new Map<string, Promise<void>>()
   async validateOpenSpec(context: import('./openspec.js').OpenSpecRoleContext): Promise<void> {
     const key = context.role === 'developer' ? 'write' : 'read'
@@ -202,6 +206,7 @@ export class CliExecutor implements AgentExecutor {
   }
   async execute(request: AgentRequest): Promise<AgentResult> {
     validateAgentRequest(request)
+    if (request.effort !== undefined) assertEffortSupported(request, await this.capabilities(request.model))
     this.validateLimits(request)
     const scope = canonicalWorkspace(request.cwd, request.allowedRoots)
     const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
@@ -221,7 +226,7 @@ export class CliExecutor implements AgentExecutor {
           const systemPath = env.GEMINI_CLI_SYSTEM_SETTINGS_PATH ?? (process.platform === 'darwin' ? '/Library/Application Support/GeminiCli/settings.json' : process.platform === 'win32' ? 'C:\\ProgramData\\gemini-cli\\settings.json' : '/etc/gemini-cli/settings.json')
           const settings = existsSync(systemPath) ? JSON.parse(readFileSync(systemPath, 'utf8')) : {}
           if (settings.mcp?.allowed || settings.mcp?.excluded || settings.admin?.mcp?.enabled === false) throw new AgentExecutionError('Gemini administrator MCP restrictions require explicit OpenSpec server admission', 'provider_capability_unsupported')
-          writeFileSync(mcpConfigFile, JSON.stringify({ ...settings, mcpServers: { ...settings.mcpServers, specrails_openspec: { ...openspecBridge, trust: true, includeTools: ['workflow'] } } }), { mode: 0o600 })
+          writeFileSync(mcpConfigFile, JSON.stringify({ ...settings, mcpServers: { ...settings.mcpServers, specrails_openspec: { ...openspecBridge, trust: true, includeTools: ['workflow', 'read_verification_evidence'] } } }), { mode: 0o600 })
           executionEnv = { ...env, GEMINI_CLI_SYSTEM_SETTINGS_PATH: mcpConfigFile }
         }
         if (this.provider === 'kimi') return await executeKimiReadonlyAcp(normalized, { ...this.options, openspecBridge })
@@ -231,7 +236,7 @@ export class CliExecutor implements AgentExecutor {
         const help = await runner({ command: 'gemini', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })
         if (help.exitCode !== 0 || !help.stdout.includes('--admin-policy')) throw new AgentExecutionError('Gemini architect/reviewer roles require --admin-policy support for an enforced read-only tool allowlist. Upgrade Gemini CLI or select another provider for this role.', 'provider_capability_unsupported')
         geminiPolicyFile = path.join(scratch(), 'readonly.toml')
-        writeFileSync(geminiPolicyFile, (openspecBridge ? '[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "workflow"\ndecision = "allow"\npriority = 1000\n\n' : '') + GEMINI_READONLY_POLICY, { mode: 0o600 })
+        writeFileSync(geminiPolicyFile, (openspecBridge ? '[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "workflow"\ndecision = "allow"\npriority = 1000\n\n[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "read_verification_evidence"\ndecision = "allow"\npriority = 1000\n\n' : '') + GEMINI_READONLY_POLICY, { mode: 0o600 })
       }
       if (this.provider === 'kimi' && request.role !== 'developer') {
         const help = await runner({ command: 'kimi', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })

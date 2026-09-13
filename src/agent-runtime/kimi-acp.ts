@@ -91,7 +91,7 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
         const file = input.path ?? input.file_path
         const choices = Array.isArray(params.options) ? params.options.map(record) : []
         const allow = choices.find(option => option.kind === 'allow_once')
-        if (options.openspecBridge && tool.title === 'mcp__specrails_openspec__workflow' && typeof allow?.optionId === 'string') {
+        if (options.openspecBridge && ['mcp__specrails_openspec__workflow', 'mcp__specrails_openspec__read_verification_evidence'].includes(typeof tool.title === 'string' ? tool.title : '') && typeof allow?.optionId === 'string') {
           respond({ outcome: { outcome: 'selected', optionId: allow.optionId } }); return
         }
         if (!readOnly && typeof allow?.optionId === 'string') {

@@ -3,6 +3,10 @@ import type { VerificationCommand } from '../../installer/runtime/pipeline-state
 
 export type DesignConfidence = 'high' | 'medium' | 'low'
 export interface ArchitectureRecord {
+  planningDepth?: 'focused' | 'full'
+  planningReason?: string
+  referencePatterns?: string[]
+  riskFlags?: string[]
   change: string
   tasks: number
   specs: string[]
@@ -18,6 +22,7 @@ export interface DeveloperRecord {
   sessionId?: string
   files: string[]
   tests: string[]
+  verificationChecks?: import('../verification-plan.js').ProposedCheck[]
   verification?: string
   incomplete: Array<{ task: string; reason: string }>
   /** False when the provider returned prose instead of the structured summary. */
@@ -29,9 +34,11 @@ export interface VerificationRecord {
   receiptId?: string
   incompleteTasks?: string[]
   unverifiedRepositories: string[]
-  commands: Array<{ repositoryId: string; command: string; args: string[]; exitCode: number | null; output: string }>
+  commands: Array<{ evidenceId?: string; repositoryId: string; command: string; args: string[]; exitCode: number | null; output: string }>
 }
 export interface ReviewRecord {
+  sessionId?: string
+  manifest?: import('../review-context.js').ReviewManifest
   approved: boolean
   summary: string
   issues: string[]

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
@@ -5,7 +6,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -252,6 +253,8 @@ describe('pipeline boundary regressions', () => {
     expect(inspectPipeline(context).verification.receipt!.id).not.toBe(full)
     expect(() => checkArchive(context)).toThrow('Archive blocked')
     await verifyPipeline(context, request())
+    expect(() => checkArchive(context)).toThrow('No acceptance evidence')
+    score(); transitionPipeline(context, 'reviewer', 'done')
     expect(checkArchive(context).archiveApproval).toBeDefined()
   })
 
@@ -673,7 +676,7 @@ describe('semantic acceptance and honest completion', () => {
     write(path.join(context.artifactRoot, 'code.js'), 'module.exports = 2')
     expect(inspectPipeline(context).acceptance).toMatchObject({ valid: false, status: 'blocked' })
     await verifyPipeline(context, request())
-    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('stale')
+    expect(() => transitionPipeline(context, 'reviewer', 'done')).toThrow('No acceptance evidence')
   })
   it('keeps notes in stateDir from invalidating a reusable receipt', async () => {
     await developed(); const receipt = inspectPipeline(context).verification.receipt!.id
@@ -703,4 +706,116 @@ it('preserves elapsed reviewer time when the active reviewer records acceptance'
   write(file, JSON.stringify(state))
   score()
   expect(transitionPipeline(context, 'reviewer', 'done').phases.reviewer.durationMs).toBeGreaterThanOrEqual(2000)
+})
+
+
+it('invalidates a green receipt when the plan or its persisted source changes without code edits', async () => {
+  initializePipeline(context, change)
+  const file = path.join(pipelineStateDirectory(context), 'verification/plan.json')
+  write(file, '{"entries":[]}')
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex')
+  const first = hash('semantic one')
+  bindVerificationPlan(context, first, [{ path: 'verification/plan.json', hash: hash('{"entries":[]}') }])
+  expect((await verifyPipeline(context, { ...request(), planHash: first })).valid).toBe(true)
+  write(file, '{"entries":[],"revision":2}')
+  expect(inspectPipeline(context).verification.valid).toBe(false)
+  bindVerificationPlan(context, hash('semantic two'), [{ path: 'verification/plan.json', hash: hash('{"entries":[],"revision":2}') }])
+  expect(inspectPipeline(context).verification.reasons).toContain('Verification plan changed')
+  await expect(verifyPipeline(context, { ...request(), planHash: first })).rejects.toThrow('plan changed')
+})
+
+it('records configured and remaining timeout separately and waits for termination before returning', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, request('setInterval(() => {}, 1000)'), () => {}, undefined, { deadline: Date.now() + 200 })
+  expect(receipt.valid).toBe(false)
+  expect(receipt.commands[0]).toMatchObject({ configuredTimeoutMs: 900000, exitCode: -1, outcome: 'timed-out' })
+  expect(receipt.commands[0]!.appliedTimeoutMs).toBeLessThanOrEqual(200)
+  const expired = await verifyPipeline(context, request('process.exit(0)'), () => {}, undefined, { deadline: Date.now() - 1 })
+  expect(expired.commands[0]).toMatchObject({ exitCode: -1, appliedTimeoutMs: 0 })
+})
+
+
+it('pages redacted evidence after worktree removal and rejects cross-section cursors', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, request('process.stdout.write("🙂".repeat(20000)); process.stderr.write("diagnostic")'))
+  const id = receipt.commands[0]!.evidenceId!
+  expect(receipt.commands[0]).not.toHaveProperty('stdout')
+  const first = readVerificationEvidence(context, { id, section: 'stdout' })
+  expect(first).toMatchObject({ available: true, byteCount: 65536, truncated: true })
+  const nextCursor = (first as { nextCursor: string }).nextCursor
+  expect(readVerificationEvidence(context, { id, section: 'stdout', cursor: nextCursor })).toMatchObject({ byteCount: 14464, truncated: false })
+  expect(() => readVerificationEvidence(context, { id, section: 'stderr', cursor: nextCursor })).toThrow('cursor')
+  expect(() => readVerificationEvidence(context, { id, section: 'stdout', sourceId: 'a'.repeat(64) })).toThrow()
+  for (const repo of context.repositories) rmSync(repo.path, { recursive: true })
+  expect(readVerificationEvidence(context, { id, section: 'stderr' })).toMatchObject({ text: 'diagnostic' })
+  expect(readVerificationEvidence({ ...context, runId: 'other' }, { id })).toMatchObject({ available: false })
+})
+
+
+it('keeps independence, resource, repository and group barriers in baseline order', () => {
+  const command = (repositoryId: string, independentGroup = 'group', resources: string[] | undefined = []) => ({ repositoryId, command: 'test', args: [], policy: { independentGroup, resources } })
+  const a = command('front'), b = command('back'), c = command('third', 'other'), d = { ...command('fourth'), policy: undefined }, e = command('fifth')
+  expect(verificationWaves([a, b, c, d, e], 4)).toEqual([[a, b], [c], [d], [e]])
+  expect(verificationWaves([a, a, b], 4)).toEqual([[a], [a, b]])
+  const shared = command('front', 'group', ['db']), conflict = command('back', 'group', ['db'])
+  expect(verificationWaves([shared, conflict], 4)).toEqual([[shared], [conflict]])
+  expect(verificationWaves([a, { ...b, policy: { independentGroup: 'group' } }], 4)).toEqual([[a], [{ ...b, policy: { independentGroup: 'group' } }]])
+})
+
+it('reuses only current successful host snapshots and detects changed ignored dependencies', async () => {
+  context = validatePipelineContext(context)
+  initializePipeline(context, change)
+  const repo = context.repositories[0]!
+  write(path.join(repo.path, '.gitignore'), 'build/\nnode_modules/\n')
+  write(path.join(repo.path, 'node_modules/fixture/index.js'), 'module.exports = 1')
+  const command = { repositoryId: repo.id, key: 'check', command: realpathSync(process.execPath), args: ['-e', 'process.stdout.write("success")'], policy: { reuse: 'snapshot-local' as const, deterministic: true, readOnly: true, inputs: ['code.js', 'node_modules'], toolchainInputs: [realpathSync(process.execPath)] } }
+  expect(verificationSnapshot(context, command).eligible).toBe(true)
+  const input = { kind: 'full', commands: [command], unverified: true }
+  const first = await verifyPipeline(context, input)
+  expect(first.commands[0]!.disposition).toBe('executed')
+  const second = await verifyPipeline(context, input)
+  expect(second.commands[0]).toMatchObject({ disposition: 'reused', durationMs: 0, reusedFrom: first.commands[0]!.evidenceId })
+  expect(readVerificationEvidence(context, { id: second.commands[0]!.evidenceId, section: 'stdout' })).toMatchObject({ text: 'success' })
+  write(path.join(repo.path, 'node_modules/fixture/index.js'), 'module.exports = 2')
+  expect(inspectPipeline(context).verification.valid).toBe(false)
+  expect((await verifyPipeline(context, input)).commands[0]!.disposition).toBe('executed')
+  const missing = { ...command, policy: { ...command.policy, inputs: ['code.js'] } }
+  expect(verificationSnapshot(context, missing)).toMatchObject({ eligible: false, reason: 'reuse-ineligible-dependencies-not-declared' })
+  const failed = await verifyPipeline(context, { ...input, commands: [{ ...command, args: ['-e', 'process.exit(1)'] }] })
+  expect(failed.valid).toBe(false)
+  expect((await verifyPipeline(context, input)).commands[0]!.disposition).toBe('executed')
+})
+
+it('cancels the entire independent wave and its child process before returning a failed receipt', async () => {
+  initializePipeline(context, change)
+  const marker = path.join(root, 'orphan-marker')
+  const commands = context.repositories.map((repo, index) => ({ repositoryId: repo.id, key: 'wave-' + index, label: 'Wave ' + index, command: process.execPath,
+    args: ['-e', index === 0 ? 'setTimeout(()=>process.exit(7),250)' : `require('node:child_process').spawn(process.execPath,['-e',${JSON.stringify(`setTimeout(()=>require('node:fs').writeFileSync(${JSON.stringify(marker)},'orphan'),1000)`)}],{stdio:'inherit'}); setTimeout(()=>{},5000)`],
+    policy: { independentGroup: 'test-wave', resources: [] },
+  }))
+  const events: string[] = []
+  const receipt = await verifyPipeline(context, { kind: 'full', commands }, line => events.push(line), undefined, { maxConcurrency: 2 })
+  expect(receipt.valid).toBe(false)
+  expect(receipt.commands).toHaveLength(2)
+  expect(receipt.commands.every(command => command.exitCode !== 0)).toBe(true)
+  expect(receipt.commands[1]!.outcome).toBe('cancelled')
+  await new Promise(resolve => setTimeout(resolve, 1100))
+  expect(existsSync(marker)).toBe(false)
+  expect(inspectPipeline(context).verification.valid).toBe(false)
+})
+
+it('reports check activity only after its evidence and receipt are persisted', async () => {
+  context = validatePipelineContext(context)
+  initializePipeline(context, change)
+  const events: string[] = []
+  const receipt = await verifyPipeline(context, request('process.exit(1)'), undefined, undefined, {
+    async onEvidence(kind, payload) {
+      const evidence = readVerificationEvidence(context, { id: String(payload.executionId) })
+      expect(evidence.available).toBe(true)
+      if (kind === 'check-invalidated') expect(inspectPipeline(context).verification.valid).toBe(false)
+      events.push(kind)
+    },
+  })
+  expect(receipt.valid).toBe(false)
+  expect(events).toEqual(['check-started', 'check-finished', 'check-invalidated'])
 })
