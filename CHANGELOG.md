@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.4.0](https://github.com/fjpulidop/specrails-core/compare/v5.3.0...v5.4.0) (2026-09-12)
+
+
+### Features
+
+* **runtime:** make programmatic OpenSpec workflows the default ([#358](https://github.com/fjpulidop/specrails-core/issues/358)) ([2427141](https://github.com/fjpulidop/specrails-core/commit/2427141bf61ea38785b3741cd1f66270743a476b))
+
 ## [5.3.0](https://github.com/fjpulidop/specrails-core/compare/v5.2.3...v5.3.0) (2026-09-12)
 
 
