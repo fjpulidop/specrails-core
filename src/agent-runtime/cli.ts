@@ -1,3 +1,4 @@
+import { GUARDRAIL_CATALOG } from './guardrails.js'
 import { runEvaluation } from './evaluation.js'
 import { efficiencySummary } from './efficiency-summary.js'
 import type { RuntimeConfig } from './executor-types.js'
@@ -107,7 +108,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     return 0
   }
   if (command === 'api') {
-    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1 } })
+    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'validate') {

@@ -12,8 +12,12 @@ export default defineConfig({
     // integration tests and trip the 20s ceiling, leaving subprocesses
     // holding files open which cascades into EBUSY rmdir failures
     // across the rest of the suite. 60s gives generous headroom;
-    // healthy POSIX runs still finish in <5s.
-    testTimeout: 60_000,
+    // healthy POSIX runs still finish in <5s. The programmatic-runtime
+    // host tests (core-host, compact-runtime) drive three or four real
+    // workflows per test — git + OpenSpec + spawned verification — and a
+    // loaded Windows runner has taken >60s on one (run 35369707501), so
+    // win32 gets a wider ceiling; POSIX keeps the tight one.
+    testTimeout: process.platform === 'win32' ? 180_000 : 60_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],

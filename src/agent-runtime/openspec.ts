@@ -1,11 +1,12 @@
 import { promisify } from 'node:util'
 import { execFile, execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
-import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { AgentRole, CliProvider } from './executor-types.js'
+import { z } from 'zod'
 
 export const OPENSPEC_VERSION = '1.4.1'
 export const ROLE_SKILLS = { architect: 'openspec-ff-change', developer: 'openspec-apply-change', reviewer: 'openspec-verify-change' } as const
@@ -33,6 +34,49 @@ export interface OpenSpecApply {
   contextFiles: Record<string, string | string[]>
   tasks: { id: string; description: string; done: boolean }[]
   progress: { total: number; complete: number; remaining: number }
+}
+/** Advisory implementation memory, deliberately separate from verification receipts. */
+export const IMPLEMENTATION_PROGRESS_SCHEMA = z.object({
+  summary: z.string().trim().min(1).max(1600),
+  completedTasks: z.array(z.string().trim().min(1).max(400)).max(20),
+  nextTasks: z.array(z.string().trim().min(1).max(400)).max(20),
+  checks: z.array(z.object({ command: z.string().trim().min(1).max(1000), outcome: z.string().trim().min(1).max(500) }).strict()).max(12),
+  blockers: z.array(z.string().trim().min(1).max(500)).max(12),
+}).strict()
+const MAX_PROGRESS_BYTES = 8 * 1024
+const PROGRESS_FILE = 'implementation-progress.json'
+interface ProgressRecord { schemaVersion: 1; root: string; change: string; updatedAt: string; progress: z.infer<typeof IMPLEMENTATION_PROGRESS_SCHEMA> }
+const PROGRESS_NOTICE = 'Advisory developer handoff only. Reconcile with current files and OpenSpec tasks; recorded checks are historical claims, not host verification receipts or permission to skip required verification.'
+function readProgress(context: OpenSpecRoleContext): { notice: string; record: ProgressRecord | null } {
+  try {
+    const file = artifactPath(context.stateDirectory, PROGRESS_FILE)
+    if (!existsSync(file)) return { notice: PROGRESS_NOTICE, record: null }
+    if (!lstatSync(file).isFile() || lstatSync(file).size > MAX_PROGRESS_BYTES) throw new Error('Invalid progress file')
+    const record = JSON.parse(readFileSync(file, 'utf8')) as ProgressRecord
+    if (record.schemaVersion !== 1 || !sameOpenSpecDirectory(record.root, context.root) || record.change !== context.change || typeof record.updatedAt !== 'string' || !Number.isFinite(Date.parse(record.updatedAt))) throw new Error('Progress scope mismatch')
+    const progress = IMPLEMENTATION_PROGRESS_SCHEMA.parse(record.progress)
+    return { notice: PROGRESS_NOTICE, record: { schemaVersion: 1, root: record.root, change: record.change, updatedAt: record.updatedAt, progress } }
+  } catch {
+    return { notice: PROGRESS_NOTICE + ' Saved progress is unavailable or invalid; inspect the current diff and tasks before continuing.', record: null }
+  }
+}
+export function renderProgressHandoff(context: OpenSpecRoleContext): string {
+  const saved = readProgress(context)
+  return saved.record ? `\n## Saved implementation progress\n${saved.notice}\n${JSON.stringify(saved.record)}\n` : saved.notice.includes('unavailable') ? '\n' + saved.notice + '\n' : ''
+}
+function writeProgress(context: OpenSpecRoleContext, input: unknown): { notice: string; record: ProgressRecord } {
+  if (context.role !== 'developer') throw new Error('Only the developer may write implementation progress')
+  const progress = IMPLEMENTATION_PROGRESS_SCHEMA.parse(input)
+  const record: ProgressRecord = { schemaVersion: 1, root: realpathSync(context.root), change: context.change, updatedAt: new Date().toISOString(), progress }
+  const content = JSON.stringify(record)
+  if (Buffer.byteLength(content) > MAX_PROGRESS_BYTES) throw new Error('Implementation progress exceeds 8 KB; summarize the current state')
+  const target = artifactPath(context.stateDirectory, PROGRESS_FILE)
+  const temporary = artifactPath(context.stateDirectory, `.implementation-progress-${randomUUID()}.tmp`)
+  try {
+    writeFileSync(temporary, content, { mode: 0o600, flag: 'wx' })
+    renameSync(temporary, target)
+  } finally { rmSync(temporary, { force: true }) }
+  return { notice: PROGRESS_NOTICE, record }
 }
 export function hash(text: string): string { return createHash('sha256').update(text).digest('hex') }
 export function resolveOpenSpecCli(): string {
@@ -131,7 +175,7 @@ export class OpenSpecTools {
   }
   async apply(): Promise<OpenSpecApply> { await this.status(); return await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) as OpenSpecApply }
   async validate(): Promise<unknown> { await this.status(); return this.call(['validate', this.context.change, '--strict', '--json']) }
-  async execute(input: { action: string; artifact?: string; path?: string; content?: string }): Promise<unknown> {
+  async execute(input: { action: string; artifact?: string; path?: string; content?: string; progress?: unknown }): Promise<unknown> {
     this.signal?.throwIfAborted()
     const { action } = input
     const log = path.join(this.context.stateDirectory, `openspec-${this.context.role}.jsonl`)
@@ -152,13 +196,16 @@ export class OpenSpecTools {
       if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact: 'apply', via: 'load_skill' })
       result = { name: ROLE_SKILLS[this.context.role], source: this.context.skillPath, version: OPENSPEC_VERSION, content,
         ...(planning ? { planning, next: 'The official status and instructions apply queries have executed for this request. Read every planning.apply.contextFiles path, then perform the remaining role skill steps. This is planning context, not proof that implementation or review is complete.' } : {}),
+        ...(this.context.role !== 'architect' ? { savedProgress: readProgress(this.context) } : {}),
       }
     } else if (action === 'new') {
       if (this.context.role !== 'architect') throw new Error('Only the architect can create a change')
       const target = artifactPath(this.context.root, `openspec/changes/${this.context.change}`)
       result = existsSync(target) ? await this.status() : await this.call(['new', 'change', this.context.change, '--json'])
       await this.status()
-    } else if (action === 'status') result = await this.status()
+    } else if (action === 'read_progress') result = readProgress(this.context)
+    else if (action === 'write_progress') result = writeProgress(this.context, input.progress)
+    else if (action === 'status') result = await this.status()
     else if (action === 'instructions') {
       const status = await this.status()
       if (input.artifact !== 'apply' && !status.artifacts.some(item => item.id === input.artifact)) throw new Error('Unknown OpenSpec artifact')
@@ -219,9 +266,18 @@ export class OpenSpecTools {
 }
 export const OPENSPEC_BRIDGE_ENTRY = fileURLToPath(new URL('./openspec-tool-server.js', import.meta.url))
 
-export const OPENSPEC_TOOL_DEFINITION = { type: 'function', function: { name: 'openspec_workflow', description: 'Run the official OpenSpec role workflow. Load the skill first (developer/reviewer also receive real status and apply context), then use its CLI instructions and write artifacts within the fixed change.', parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: ['load_skill', 'new', 'status', 'instructions', 'validate', 'write_artifact'] }, artifact: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' } } } } }
+export const OPENSPEC_TOOL_ACTIONS = ['load_skill', 'new', 'status', 'instructions', 'validate', 'write_artifact', 'read_progress', 'write_progress'] as const
+export const OPENSPEC_TOOL_DEFINITION = { type: 'function', function: { name: 'openspec_workflow', description: 'Run the official OpenSpec role workflow. Load the skill first (developer/reviewer also receive real status, apply context and saved progress), then use its CLI instructions and write artifacts within the fixed change. Developer may save a bounded advisory handoff with write_progress; read_progress refreshes it. Progress never substitutes for verification.', parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: OPENSPEC_TOOL_ACTIONS }, artifact: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, progress: {
+  type: 'object', additionalProperties: false, required: ['summary', 'completedTasks', 'nextTasks', 'checks', 'blockers'], properties: {
+    summary: { type: 'string', minLength: 1, maxLength: 1600 },
+    completedTasks: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 400 } },
+    nextTasks: { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 400 } },
+    checks: { type: 'array', maxItems: 12, items: { type: 'object', additionalProperties: false, required: ['command', 'outcome'], properties: { command: { type: 'string', minLength: 1, maxLength: 1000 }, outcome: { type: 'string', minLength: 1, maxLength: 500 } } } },
+    blockers: { type: 'array', maxItems: 12, items: { type: 'string', minLength: 1, maxLength: 500 } },
+  },
+} } } } }
 export function openSpecPrompt(context: OpenSpecRoleContext): string {
-  return `\n## Official OpenSpec workflow binding\nExecute ${ROLE_SKILLS[context.role]} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
+  return `\n## Official OpenSpec workflow binding\nExecute ${ROLE_SKILLS[context.role]} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
 }
 export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: string): { command: string; args: string[] } {
   const file = path.join(directory, 'openspec-context.json')

@@ -4,7 +4,7 @@ import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './grap
 import type { DeveloperRecord } from './graph/state.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '7'
+export const ROLE_INSTRUCTIONS_VERSION = '9'
 const OUTPUT_TAIL = 6_000
 
 export interface RoleFeedback {
@@ -13,8 +13,12 @@ export interface RoleFeedback {
 }
 /** One frozen acceptance criterion the reviewer must certify, identified by stable scope coordinates. */
 export interface FrozenCriterion { specId: string; criterionIndex: number; requirement: string }
+/** Roles with an editable definition: the three pipeline agents plus the FIXER stance the developer role takes on a correction round. */
+export type PromptRole = AgentRole | 'fixer'
 export interface RoleInstructionOptions {
   definition?: string
+  /** `fixer`: the developer invocation is a correction round on the fixer stance (own definition, no plan dump). */
+  stance?: 'fixer'
   feedback?: RoleFeedback
   verification?: VerificationCommand[]
   /** Answers the requester gave to earlier architect questions, oldest first. */
@@ -25,6 +29,8 @@ export interface RoleInstructionOptions {
   criteria?: FrozenCriterion[]
   /** The developer's own account of the change, shown to the reviewer as a claim to verify. */
   developer?: DeveloperRecord | null
+  /** A reviewer pass after a correction round: only these files changed since its previous verdict, and these criteria it already certified as met. */
+  reReview?: ReReviewContext
   planning?: 'full' | 'proportional'
 }
 
@@ -142,7 +148,7 @@ function conventionsSection(): string[] {
   return [
     '## Project conventions',
     '',
-    'Before reading source, look for `CLAUDE.md`, `AGENTS.md`, `.claude/rules/` and the existing tests in each repository in scope. Follow the conventions, tooling and patterns they establish; when the repository already solves a similar problem, reuse that pattern instead of introducing a new one.',
+    'Use the supplied repository map first. Inspect the general rules and the applicable sections of `CLAUDE.md`, `AGENTS.md` and `.claude/rules/` with heading searches and bounded line ranges. Read deeper instructions when entering a subdirectory. Do not concatenate entire large instruction files, whole documentation directories, or node_modules. Reuse conventions already present in context unless the versioned map says they changed. Follow existing code and test patterns before investigating framework internals.',
     '',
   ]
 }
@@ -191,6 +197,22 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
   ]
 }
 
+/** The FIXER stance: the developer role on a correction round — repair the exact failure, never re-implement. Shares the developer's verification tail and output contract. */
+function fixerSection(verification: VerificationCommand[] | undefined, definition?: string): string[] {
+  const lines = definition === undefined ? [
+    '## Your task: correction',
+    '',
+    'You are the Specrails FIXER. The verification commands (or the review) failed after the developer\'s pass; your only job is to make them pass with minimal, precise edits.',
+    '',
+    '1. Read the failing output below first: the exact command, its exit code and the reported files and lines. Start from those files, not from the plan.',
+    '2. Patch exactly the files and lines the failure names; touch neighbouring code only when the failure cannot be fixed otherwise. Rewrite a file only when a patch cannot express the change.',
+    '3. Never re-implement a feature, rename or restructure, add dependencies, or widen the change beyond the failure. Never weaken an assertion, delete a test or change acceptance criteria to make a check pass — if a test is wrong, fix the test to the specification and say so.',
+    '4. A test file the host reports as never executed must be wired into the repository\'s test command (the test script or runner configuration) and then made to pass.',
+    '5. Do not read the repository beyond the files the failure names and their direct dependencies. `proposal.md`, `design.md` and the specs are frozen; in `tasks.md` only tick a task you completed.',
+    '6. Finish with the same JSON summary object as the developer, listing under `incomplete` only failures you could not fix and why.',
+  ] : [definition, '']
+  return [...lines, ...developerTail(verification)]
+}
 function developerSection(verification: VerificationCommand[] | undefined, corrections: boolean, definition?: string): string[] {
   const lines = definition === undefined ? [
     '## Your task: implementation',
@@ -201,17 +223,27 @@ function developerSection(verification: VerificationCommand[] | undefined, corre
     '',
     '1. Load and execute openspec-apply-change through the supplied binding. Consult its status and instructions apply, read the context files OpenSpec returns, then the relevant existing code and tests.',
     '2. Work task by task in order. Use test-driven development: write or extend the test first, make it pass with the smallest correct change, then tidy up. Run only focused tests that cover what you touched while iterating. Core owns the complete verification plan and runs it after your turn; do not duplicate that full run. Fix the precise failures Core returns on a correction pass.',
-    '3. Mark each task `- [x]` in `tasks.md` only when its code and tests are complete. Change nothing else in `tasks.md`, and never edit `proposal.md`, `design.md` or the specs: those documents are frozen, and editing them invalidates the run. If a task cannot be completed, leave it `- [ ]` and list it under `incomplete` with the reason.',
+    '3. Immediately after completing each task, mark it `- [x]` in `tasks.md`; do not postpone all progress updates until the end of the phase. Only mark tasks whose code and tests are complete. Change nothing else in `tasks.md`, and never edit `proposal.md`, `design.md` or the specs: those documents are frozen, and editing them invalidates the run. If a task cannot be completed, leave it `- [ ]` and list it under `incomplete` with the reason.',
     '4. Keep the implementation consistent with the repository: naming, error handling, import style, formatting and existing utilities. Do not add dependencies unless the design requires them.',
     'Investigation budget: consult the local reference patterns in design.md and equivalent application tests before framework internals or node_modules. After three unsuccessful experiments on the same failure, stop repeating commands: state the hypothesis, evidence and next discriminating experiment, then change approach. If three further experiments add no evidence, report the specific blocker under incomplete rather than consuming the remaining turn budget. Never weaken assertions or change acceptance criteria to make a test pass.',
     'Verification evidence: run tests without piping their output through grep/head or other filters that mask the original exit status. Capture complete stdout/stderr in a temporary log and preserve the test process exit code; inspect that log separately. Report the command and original exit code. Remove temporary debug tests before finishing. Core independently runs the final verification commands.',
     '5. If the shell is unavailable, still finish every task that only needs code and tests; Core runs the verification commands after your turn and returns the exact failures to you.',
   ] : [definition, '', ...(corrections ? ['Address the correction feedback below while keeping already-correct work.', ''] : [])]
+  return [...lines, ...developerTail(verification)]
+}
+/** Verification commands, durable-progress guidance and the output contract shared by the developer and fixer stances. */
+function developerTail(verification: VerificationCommand[] | undefined): string[] {
+  const lines: string[] = []
   if (verification?.length) {
     lines.push('', 'Core owns these complete verification commands and will run them after your turn. Use focused tests while iterating instead of repeating this plan:')
     for (const command of verification) lines.push(`- repository \`${command.repositoryId}\`${command.cwd ? ' in `' + command.cwd + '`' : ''}: \`${shellWords(command)}\``)
   }
   lines.push(
+    '',
+    '## Durable implementation progress',
+    '',
+    'When loading the official apply skill, read its savedProgress handoff before repeating investigation. Reconcile it with the current diff and tasks; it is advisory history, never accepted verification evidence. Preserve completed work and previously discovered test commands or environment blockers. Recheck a blocker only when its relevant condition changed.',
+    'After each completed task, and whenever the next action or a blocker changes, call the scoped workflow action write_progress with progress: {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Replace the previous handoff with a concise current account (at most 8 KB); include exact focused test commands, original exit outcomes, relevant paths and the next discriminating action. Keep nextTasks concrete enough for a fresh session to continue unfinished work. Do not include full logs, credentials or claims that old checks authorize acceptance. The host persists this record outside the frozen OpenSpec artifacts. Use read_progress to refresh it. If interrupted, the next session receives it from load_skill; do not write runtime files directly.',
     '',
     '## Output contract',
     '',
@@ -244,6 +276,8 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '4. Correctness and conventions: types and signatures fit the codebase, patterns match the repository, imports and error handling are consistent, no unrelated changes.',
     '5. Security: no secrets, injection, path traversal, unsafe deserialization, missing authorization or new attack surface. Scale scrutiny to what the change touches.',
     '6. Performance: no obvious N+1, unbounded loops or blocking work on hot paths introduced by the change.',
+    '',
+    'Judge BEHAVIOUR against the acceptance criteria, never the shape of the code against the wording of the plan: module layout, file lists, class or function names, naming conventions and implementation techniques named in the ticket, the design or a "contract layer" are suggestions the developer may legitimately improve on. A working implementation that satisfies a criterion by other means is correct; asking to rename, move or rewrite it to match the plan\'s wording is NOT an issue. Only a criterion that is not met, a defect, a missing test or a regression is.',
     '',
     'The verification evidence below comes from real subprocesses run by Core after the developer finished; treat it as fact, not as a claim by the developer.',
     '',
@@ -324,9 +358,39 @@ function feedbackSection(feedback: RoleFeedback | undefined): string[] {
 }
 
 /** Actual editable task definitions; dynamic scope and output contracts are assembled separately. */
-export function rolePromptDefaults(): Record<AgentRole, string> {
+export function rolePromptDefaults(): Record<PromptRole, string> {
   const definition = (lines: string[]): string => lines.slice(lines.findIndex(line => line.startsWith('## Your task:')), lines.indexOf('## Output contract')).join('\n').trimEnd()
-  return { architect: definition(architectSection(undefined)), developer: definition(developerSection(undefined, false)), reviewer: definition(reviewerSection(DEFAULT_REVIEW_POLICY, undefined)) }
+  return { architect: definition(architectSection(undefined)), developer: definition(developerSection(undefined, false)), reviewer: definition(reviewerSection(DEFAULT_REVIEW_POLICY, undefined)), fixer: definition(fixerSection(undefined)) }
+}
+
+export interface ReReviewContext {
+  changes: Array<{ repositoryId: string; path: string; status: 'added' | 'changed' | 'deleted' }>
+  previouslyMet: Array<{ specId: string; criterionIndex: number }>
+}
+/** Machine-readable line the compact reviewer parses back out of the prompt (see prompt-inputs.ts). */
+export const RE_REVIEW_MARKER = 'Re-review changes (JSON):'
+/**
+ * After a correction round the reviewer re-reads ONLY what the fixer changed
+ * and settles its own previous issues, instead of re-reviewing the whole
+ * candidate and inventing new objections (observed: three full passes,
+ * 72 → 78 → 95, 35 of 47 minutes, the second pass ADDING an issue to code
+ * verify had just accepted). Criteria are still certified one by one; the
+ * ones certified last time stay met unless a changed file affects them.
+ */
+function reReviewSection(context: ReReviewContext | undefined): string[] {
+  if (!context) return []
+  return [
+    '## Re-review after corrections',
+    '',
+    'This is a follow-up review: a correction round already addressed your previous issues (listed under "Previous review" below). Confine yourself to that:',
+    `- Only ${context.changes.length === 1 ? 'this file' : 'these files'} changed since your previous verdict — read only ${context.changes.length === 1 ? 'it' : 'them'}, and only the changed lines:`,
+    ...context.changes.map(item => `  - \`${item.repositoryId}\`: ${item.path} (${item.status})`),
+    '- For EACH previous issue decide resolved or not; an issue that is resolved does not reappear.',
+    '- Raise a new issue only for a regression inside the changed lines, never for pre-existing code you accepted last time.',
+    `- Criteria you certified as met last time keep that status unless a changed file affects them: ${context.previouslyMet.length ? context.previouslyMet.map(item => `${item.specId}#${item.criterionIndex}`).join(', ') : '(none)'}.`,
+    `${RE_REVIEW_MARKER} ${JSON.stringify(context.changes)}`,
+    '',
+  ]
 }
 
 /** Central role instructions. Roles describe their own work only: traversal,
@@ -335,13 +399,14 @@ export function roleInstructions(role: AgentRole, context: PipelineContext, chan
   const feedback = feedbackSection(options.feedback)
   const corrections = role === 'developer' && feedback.length > 0
   const sections = [
-    ...(role === 'architect' ? architectSection(options.verification, options.definition) : role === 'developer' ? developerSection(options.verification, corrections, options.definition) : reviewerSection(options.policy ?? DEFAULT_REVIEW_POLICY, options.criteria, options.definition)),
+    ...(role === 'architect' ? architectSection(options.verification, options.definition) : role === 'developer' ? (options.stance === 'fixer' ? fixerSection(options.verification, options.definition) : developerSection(options.verification, corrections, options.definition)) : reviewerSection(options.policy ?? DEFAULT_REVIEW_POLICY, options.criteria, options.definition)),
     ...boundarySection(role),
     ...conventionsSection(),
     ...scopeSection(context, change),
     ...(role === 'architect' ? answersSection(options.answers) : []),
     ...(role === 'architect' ? [options.planning === 'full' || context.repositories.length > 1 ? 'Planning policy: full impact analysis is required for this run.' : 'Planning policy: proportional; use focused planning only for a clear local change without migration, public-contract or security risks.'] : []),
     ...(role === 'reviewer' ? developerSummarySection(options.developer) : []),
+    ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
     ...feedback,
   ]
   return sections.join('\n').trimEnd() + '\n'

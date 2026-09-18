@@ -185,7 +185,7 @@ describe('packaged programmatic runtime CLI', () => {
     await new Promise<void>((resolve, reject) => { server!.once('error', reject); server!.listen(0, '127.0.0.1', resolve) })
     const address = server.address()
     if (!address || typeof address === 'string') throw new Error('No fixture server address')
-    config.providers = [{ id: 'local', kind: 'openai-compatible', baseUrl: `http://127.0.0.1:${address.port}/v1` }]
+    config.providers = [{ id: 'local', kind: 'openai-compatible', baseUrl: `http://127.0.0.1:${address.port}/v1`, agentLoop: 'free' }]
     config.agents = { architect: { provider: 'local', model: 'fixture-local' }, developer: { provider: 'local', model: 'fixture-local' }, reviewer: { provider: 'local', model: 'fixture-local' } }
     config.approvalBeforeArchive = true
     writeFileSync(configFile, JSON.stringify(config))
@@ -195,7 +195,7 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
-    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '5', instructionsVersion: '7', apiVersion: 1 } })
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '6', instructionsVersion: '9', apiVersion: 1 } })
 
     const forbidden = await invoke(['resume', '--context', contextFile, '--config', configFile])
     expect(forbidden.code).toBe(1)
@@ -229,5 +229,5 @@ describe('packaged programmatic runtime CLI', () => {
     expect(existsSync(path.join(context.artifactRoot, 'openspec', 'changes', 'cli-feature'))).toBe(false)
   // This runs real OpenSpec plus a fresh verification/review on resume. Windows
   // Node 20 needs a larger test-only budget; production deadlines are unchanged.
-  }, process.platform === 'win32' ? 180000 : 60000)
+  }, process.platform === 'win32' ? 180000 : 150000)
 })

@@ -74,12 +74,13 @@ describe('OpenAI-compatible coding executor', () => {
     expect(fetch).toHaveBeenCalledTimes(1)
   })
   it.each([
-    [response({ content: 'partial' }, undefined, 'length'), 'incomplete_response'],
-    [response({ content: null, tool_calls: [{ id: 'bad', type: 'function', function: {} }] }), 'invalid_tool_call'],
-    [new Response('{"error":{"message":"sensitive-details"}}', { status: 429 }), 'provider_http_error'],
-    [new Response('not json'), 'provider_request_error'],
+    [() => response({ content: 'partial' }, undefined, 'length'), 'incomplete_response'],
+    [() => response({ content: null, tool_calls: [{ id: 'bad', type: 'function', function: {} }] }), 'invalid_tool_call'],
+    [() => new Response('{"error":{"message":"sensitive-details"}}', { status: 429 }), 'provider_http_error'],
+    [() => new Response('not json'), 'provider_request_error'],
   ])('rejects incomplete, malformed and failed responses without echoing bodies', async (output, code) => {
-    const fetch = vi.fn<typeof globalThis.fetch>(async () => output)
+    // A fresh body per call: the loop retries a `length` reply once with a larger budget.
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => output())
     await expect(new OpenAICompatibleExecutor(provider, { fetch }).execute(request())).rejects.toMatchObject({ code })
   })
   it('enforces token budgets and fails closed when required usage is absent', async () => {

@@ -65,7 +65,7 @@ it('advertises and executes the same resolver in the API provider without shell 
     const message = args ? { role: 'assistant', tool_calls: [{ id: 'call-' + turn, type: 'function', function: { name: 'read_verification_evidence', arguments: JSON.stringify(args) } }] } : { role: 'assistant', content: 'Evidence inspected' }
     return new Response(JSON.stringify({ choices: [{ message, finish_reason: args ? 'tool_calls' : 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 1 } }))
   }
-  const result = await new OpenAICompatibleExecutor({ id: 'fixture', kind: 'openai-compatible', baseUrl: 'http://fixture.invalid/v1' }, { fetch }).execute({ role: 'reviewer', prompt: 'Inspect saved evidence', model: 'fixture', cwd: context.artifactRoot, allowedRoots: [context.artifactRoot], maxTurns: 4, openspec: binding })
+  const result = await new OpenAICompatibleExecutor({ id: 'fixture', kind: 'openai-compatible', baseUrl: 'http://fixture.invalid/v1', agentLoop: 'free' }, { fetch }).execute({ role: 'reviewer', prompt: 'Inspect saved evidence', model: 'fixture', cwd: context.artifactRoot, allowedRoots: [context.artifactRoot], maxTurns: 4, openspec: binding })
   expect(result.text).toBe('Evidence inspected')
   expect(turn).toBe(4)
   expect(readVerificationEvidence(context, { id: evidenceId })).toMatchObject({ available: true })

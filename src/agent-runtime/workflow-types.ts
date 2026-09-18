@@ -37,6 +37,8 @@ export interface NodeResult<S extends Record<string, unknown>> {
   /** Usage not already reported through `context.reportUsage`. */
   usage?: StepUsage
   retryable?: boolean
+  /** The executor stopped before a write could settle; only explicit recovery may replay it. */
+  interrupted?: boolean
 }
 
 export interface WorkflowStepContext {

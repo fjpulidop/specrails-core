@@ -420,7 +420,7 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
         if (result.output !== undefined) history.output = result.output
         if (result.error) history.error = result.error
         record.completedAt = now
-        if (controller.signal.aborted) {
+        if (controller.signal.aborted || result.interrupted) {
           if ((node.effect ?? 'read') === 'write') {
             // A write that settled after cancellation is ambiguous evidence; keep it explicit.
             record.status = 'interrupted'

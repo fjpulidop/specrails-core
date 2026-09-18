@@ -79,6 +79,18 @@ describe('pipeline runtime journal and verification receipts', () => {
     expect(() => validatePipelineContext({ ...context, artifactRepositoryId: 'back' })).toThrow('artifactRoot')
   })
 
+  it('ignores untracked dependency trees and coverage output so a test run cannot move the fingerprint', () => {
+    const state = initializePipeline(context, change)
+    const original = fingerprintCandidate(state)
+    const repo = context.repositories[1]!.path
+    write(path.join(repo, 'coverage', 'lcov.info'), 'TN:')
+    write(path.join(repo, 'node_modules', 'jest', 'index.js'), 'module.exports = 1')
+    write(path.join(repo, 'src', '__pycache__', 'x.pyc'), '')
+    expect(fingerprintCandidate(state)).toBe(original)
+    write(path.join(repo, 'src', 'coverage-report.ts'), 'export const x = 1')
+    expect(fingerprintCandidate(state)).not.toBe(original)
+  })
+
   it('hashes untracked additions and tracked deletions while excluding only owned lifecycle artifacts', () => {
     const state = initializePipeline(context, change)
     const original = fingerprintCandidate(state)
@@ -734,6 +746,19 @@ it('records configured and remaining timeout separately and waits for terminatio
   expect(expired.commands[0]).toMatchObject({ exitCode: -1, appliedTimeoutMs: 0 })
 })
 
+
+it('stops a verification command that goes silent (a hanging test) and names the last output', async () => {
+  initializePipeline(context, change)
+  process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
+  try {
+    const receipt = await verifyPipeline(context, request('process.stdout.write("  4) rotation on locked cells\\n"); setInterval(() => {}, 1000)'), () => {})
+    expect(receipt.valid).toBe(false)
+    expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
+    const stdout = JSON.stringify(readVerificationEvidence(context, { id: receipt.commands[0]!.evidenceId!, section: 'stdout' }))
+    expect(receipt.commands[0]!.output ?? stdout).toMatch(/no output for \d+ s/)
+    expect(receipt.commands[0]!.output ?? stdout).toContain('rotation on locked cells')
+  } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
+})
 
 it('pages redacted evidence after worktree removal and rejects cross-section cursors', async () => {
   initializePipeline(context, change)

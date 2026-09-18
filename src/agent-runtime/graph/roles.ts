@@ -7,7 +7,7 @@ import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { frozenAcceptanceCriteria, pipelineStateDirectory, type PipelineContext } from '../../installer/runtime/pipeline-state.js'
 import type { ExecutorRegistry } from '../executors.js'
-import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentResult, type AgentRole, type AgentUsage, type RuntimeConfig } from '../executor-types.js'
+import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentEventRole, type AgentResult, type AgentRole, type AgentUsage, type RuntimeConfig, type RuntimeAgentConfig } from '../executor-types.js'
 import { sumCacheUsage } from '../efficiency-types.js'
 import { ROLE_INSTRUCTIONS_VERSION, repairInstructions } from '../prompts.js'
 import type { WorkflowStepContext } from '../workflow-types.js'
@@ -27,10 +27,13 @@ export interface InvokeOptions {
   resumeSessionId?: string
   /** Full prompt for a fresh session when the resumed session is unavailable. */
   fallbackPrompt?: string
+  /** Run this invocation on another configured engine (the fixer) with the matching stance; sessions never carry across engines. */
+  agentOverride?: RuntimeAgentConfig
+  stance?: 'fixer'
 }
 export type InvokeOutcome<T> =
   | { ok: true; value: T; text: string; result: AgentResult }
-  | { ok: false; error: string }
+  | { ok: false; error: string; code?: string }
 /** Validates and converts a role's reply. Throwing `Invalid|Expected|requires|Duplicate|malformed` requests one repair turn. */
 export type Accept<T> = (output: Record<string, unknown> | undefined, text: string, result: AgentResult) => T
 export type RoleInvoker = <T>(role: AgentRole, step: WorkflowStepContext, options: InvokeOptions, accept: Accept<T>) => Promise<InvokeOutcome<T>>
@@ -40,7 +43,8 @@ export interface RoleInvokerDeps {
   config: RuntimeConfig
   registry: ExecutorRegistry
   openspec?: Record<AgentRole, import('../openspec.js').OpenSpecRoleContext>
-  onAgentEvent?: (role: AgentRole, event: AgentEvent) => void
+  /** `fixer` labels the developer step's events during a correction round on the fixer stance, so a log reader sees who is acting. */
+  onAgentEvent?: (role: AgentEventRole, event: AgentEvent) => void
 }
 
 const REPAIRABLE = /Invalid|Expected|requires|Duplicate|malformed/i
@@ -68,24 +72,24 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     }
     return detail
   }
-  const forward = (role: AgentRole, structured: boolean) => (event: AgentEvent): void => {
+  const forward = (role: AgentEventRole, structured: boolean) => (event: AgentEvent): void => {
     // The final JSON of a structured role is an artifact, not narration; the host
     // reports what it did with it instead of echoing it into the log.
     if (structured && event.kind === 'text' && /^\s*(\{|```)/.test(event.text ?? '')) return
     const shaped = event.kind === 'tool-start' && event.detail ? { ...event, detail: relativize(event.detail) } : event
     try { deps.onAgentEvent?.(role, shaped) } catch { /* Observer cannot replay agent effects. */ }
   }
-  const note = (role: AgentRole, text: string): void => { try { deps.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
-  const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: { kind?: InvocationKind; resumeSessionId?: string; outputSchema?: Record<string, unknown>; fallbackPrompt?: string }): Promise<AgentResult> => {
+  const note = (role: AgentEventRole, text: string): void => { try { deps.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
+  const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: { kind?: InvocationKind; resumeSessionId?: string; outputSchema?: Record<string, unknown>; fallbackPrompt?: string; agentOverride?: RuntimeAgentConfig; stance?: 'fixer' }): Promise<AgentResult> => {
     const directory = deps.openspec?.[role].stateDirectory ?? path.join(pipelineStateDirectory(context), 'agent-workflow')
     const saved = readRoleState(directory)
     const budget = step.remainingBudget()
     if (budget.maxTokens === 0 || budget.maxCostUsd === 0 || step.signal.aborted) throw new AgentExecutionError('No budget remains for another role invocation', step.signal.aborted ? 'aborted' : 'budget_exhausted', { inputTokens: 0, outputTokens: 0, costUsd: 0 })
     const kind = extra.kind ?? (extra.resumeSessionId ? 'correction' : 'initial')
-    const route = selectRoleRoute(role, config.agents[role], kind, step.checkpoint, saved.routes[role])
+    const route = selectRoleRoute(role, extra.agentOverride ?? config.agents[role], kind, step.checkpoint, extra.agentOverride ? undefined : saved.routes[role])
     const selected = route.selection
     const capabilities = await registry.capabilities(selected.provider, selected.model)
-    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: config.rolePrompts?.[role] ?? null, openspec: deps.openspec?.[role] ?? null, context })
+    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: (extra.agentOverride ? config.rolePrompts?.fixer : config.rolePrompts?.[role]) ?? null, openspec: deps.openspec?.[role] ?? null, context })
     const previous = saved.sessions[role]
     const resumeSessionId = capabilities.continuation === 'supported' && previous?.identity === identity && previous.sessionId === extra.resumeSessionId ? extra.resumeSessionId : undefined
     const snapshot = repositoryContextSnapshot(context)
@@ -94,23 +98,27 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     const rolePrompt = !resumeSessionId && extra.fallbackPrompt ? extra.fallbackPrompt : prompt
     const obligations = '\nCurrent frozen acceptance obligations (all remain required):\n' + JSON.stringify(frozenAcceptanceCriteria(context))
     const fullPrompt = rolePrompt + obligations + '\n\n' + packet
-    if (saved.routes[role]?.tier !== route.tier) note(role, `Role route: ${selected.provider}/${selected.model ?? 'provider default'} — ${route.reason}`)
-    saved.routes[role] = { tier: route.tier, reason: route.reason, attemptId: step.attemptId }
-    writeRoleState(directory, saved)
+    if (extra.agentOverride) note(role, `Fixer route: ${selected.provider}/${selected.model ?? 'provider default'} — correction round on the fixer engine`)
+    else if (saved.routes[role]?.tier !== route.tier) note(role, `Role route: ${selected.provider}/${selected.model ?? 'provider default'} — ${route.reason}`)
+    if (!extra.agentOverride) { saved.routes[role] = { tier: route.tier, reason: route.reason, attemptId: step.attemptId }; writeRoleState(directory, saved) }
     const measurement = { provider: selected.provider, ...(selected.model ? { model: selected.model } : {}),
       contextMode: incremental ? 'incremental' as const : 'full' as const, promptBytes: Buffer.byteLength(fullPrompt), contextBytes: Buffer.byteLength(packet), handoffBytes: Buffer.byteLength(rolePrompt), requestedEffort: selected.effort ?? null,
       kind, tier: route.tier, routeReason: route.reason }
     const invocationIdentity = await step.reportInvocationStarted?.(measurement)
     const started = performance.now()
     let toolCalls = 0, succeeded = false, usageReported = false, usage = unknownUsage()
-    const onEvent = forward(role, structured)
+    // Tool calls and notes of a correction round are attributed to the FIXER so
+    // the log reads `[fixer] read_file …`, not as another developer pass.
+    const onEvent = forward(extra.stance === 'fixer' ? 'fixer' : role, structured)
     try {
       if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${ROLE_SKILLS[role]} (official skill document through scoped tools).`)
       const result = await registry.execute(selected.provider, {
         role, prompt: fullPrompt, openspec: deps.openspec?.[role] ? { ...deps.openspec[role], ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
-        model: selected.model, effort: selected.effort, maxTurns: selected.maxTurns, signal: step.signal,
+        model: selected.model, effort: selected.effort, ...(selected.thinking ? { thinking: selected.thinking } : {}), maxTurns: selected.maxTurns, signal: step.signal,
         timeoutMs: config.limits?.timeoutMs,
         maxTokens: budget.maxTokens, maxCostUsd: budget.maxCostUsd,
+        ...(config.guardrails ? { guardrails: config.guardrails } : {}),
+        ...(extra.stance ? { stance: extra.stance } : {}),
         resumeSessionId, outputSchema: extra.outputSchema, onEvent: event => { if (event.kind === 'tool-start') toolCalls++; onEvent(event) },
       })
       usage = result.usage
@@ -152,14 +160,14 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       if (options.resumeSessionId && options.fallbackPrompt) {
         // A correction pass continues the role's own session: the work it did and
         // the reasons behind it are already in context.
-        try { result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt }) }
+        try { result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance }) }
         catch (error) {
           if (!(error instanceof AgentExecutionError) || !SESSION_FALLBACK_CODES.has(error.code)) throw error
           note(role, `Previous ${role} session is unavailable; starting a fresh ${role} turn with the same instructions.`)
-          result = await execute(role, step, options.fallbackPrompt, structured, { kind: 'session-fallback', outputSchema: options.outputSchema })
+          result = await execute(role, step, options.fallbackPrompt, structured, { kind: 'session-fallback', outputSchema: options.outputSchema, agentOverride: options.agentOverride, stance: options.stance })
         }
       } else {
-        result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt })
+        result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance })
       }
       let problem: string, omittedWorkflow = false
       try { return evaluate(result) }
@@ -184,7 +192,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
 
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+      return { ok: false, error: error instanceof Error ? error.message : String(error), ...(error instanceof AgentExecutionError ? { code: error.code } : {}) }
     }
   }
 }

@@ -7,7 +7,7 @@ import { AgentExecutionError } from './executor-types.js'
 
 export interface CliInvocation { command: string; args: string[]; stdin?: string }
 export interface CliDuplexControl { send(line: string): void; complete(): void }
-export interface CliProcessOptions { cwd: string; signal?: AbortSignal; timeoutMs: number; env?: NodeJS.ProcessEnv; onLine?: (line: string) => void; duplex?: (control: CliDuplexControl) => void }
+export interface CliProcessOptions { cwd: string; signal?: AbortSignal; timeoutMs: number; idleTimeoutMs?: number; env?: NodeJS.ProcessEnv; onLine?: (line: string) => void; duplex?: (control: CliDuplexControl) => void }
 export interface CliProcessResult { stdout: string; stderr: string; exitCode: number }
 export type CliProcessRunner = (invocation: CliInvocation, options: CliProcessOptions) => Promise<CliProcessResult>
 const PROMPT_MARKER = '__SPECRAILS_KIMI_STDIN__'
@@ -80,11 +80,18 @@ export const runCliProcess: CliProcessRunner = async (raw, options) => {
     }
     const fail = (error: Error): void => { failure ??= error; terminate() }
     const abort = (): void => fail(new AgentExecutionError('Agent cancelled', 'aborted'))
-    const timer = setTimeout(() => fail(new AgentExecutionError('Agent timed out', 'timeout')), options.timeoutMs)
+    const timer = setTimeout(() => fail(new AgentExecutionError(`Agent reached the total execution limit (${options.timeoutMs} ms)`, 'timeout')), options.timeoutMs)
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    const activity = (): void => {
+      if (idleTimer) clearTimeout(idleTimer)
+      if (options.idleTimeoutMs !== undefined && !failure) idleTimer = setTimeout(() => fail(new AgentExecutionError(`Agent produced no output for ${options.idleTimeoutMs} ms (idle timeout)`, 'idle_timeout')), options.idleTimeoutMs)
+    }
+    activity()
     options.signal?.addEventListener('abort', abort, { once: true })
     if (options.signal?.aborted) abort()
     child.stdout?.on('data', (chunk: Buffer) => {
       if (failure) return
+      activity()
       const text = decoder.write(chunk)
       stdout += text; pending += text
       if (Buffer.byteLength(stdout) > 8 * 1024 * 1024) { fail(new AgentExecutionError('CLI output exceeded 8 MiB', 'output_limit')); return }
@@ -95,11 +102,12 @@ export const runCliProcess: CliProcessRunner = async (raw, options) => {
         try { options.onLine?.(line) } catch (error) { fail(error instanceof Error ? error : new Error('CLI stream observer failed')) }
       }
     })
-    child.stderr?.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString('utf8')).slice(-32_768) })
+    child.stderr?.on('data', (chunk: Buffer) => { activity(); stderr = (stderr + chunk.toString('utf8')).slice(-32_768) })
     child.stdin?.on('error', () => { /* EPIPE is resolved by the process close result. */ })
     child.once('error', error => { failure ??= new AgentExecutionError(`Cannot launch ${raw.command}: ${error.message}`, 'provider_spawn_error') })
     child.once('close', (code) => {
       clearTimeout(timer); options.signal?.removeEventListener('abort', abort)
+      if (idleTimer) clearTimeout(idleTimer)
       void (termination ?? Promise.resolve()).then(() => {
         if (failure) { reject(failure); return }
         try { if (pending) options.onLine?.(pending) } catch (error) { reject(error); return }
