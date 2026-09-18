@@ -7,9 +7,15 @@
 // feedback makes a small model "correct" healthy code until the attempt budget
 // is gone. The host owns the environment: it recognises these signatures,
 // installs once per ecosystem, and only then hands a real failure to the model.
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
+import type { spawnSync, SpawnSyncReturns } from 'node:child_process'
+import crossSpawn from 'cross-spawn'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
+
+// npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
+// ENOENT there, which read as an environment failure of its own and sent the
+// install/check round in circles. cross-spawn resolves the shim on every OS.
+const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
 
 export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[] }
 export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string }
@@ -100,7 +106,7 @@ export function relaxManifestPin(root: string, name: string, version: string): b
 
 /** Runs each planned install once, bounded; never throws. */
 export function installEnvironment(roots: readonly string[], io: { spawn?: typeof spawnSync; timeoutMs?: number; failureOutput?: string; lockfileRepair?: boolean; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void } = {}): InstallOutcome[] {
-  const spawn = io.spawn ?? spawnSync
+  const spawn = io.spawn ?? defaultSpawn
   const outcomes: InstallOutcome[] = []
   for (const root of roots) {
     for (const plan of plannedInstalls(root, io.failureOutput ?? '')) {
@@ -165,7 +171,7 @@ export interface GroupCheckOutcome { ran: boolean; ok: boolean; command?: string
  * still fresh instead of surfacing as five failed suites at the end.
  */
 export function runGroupCheck(roots: readonly string[], io: { spawn?: typeof spawnSync; timeoutMs?: number; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void } = {}): GroupCheckOutcome {
-  const spawn = io.spawn ?? spawnSync
+  const spawn = io.spawn ?? defaultSpawn
   for (const root of roots) {
     const check = detectCheckCommand(root)
     if (!check) continue
