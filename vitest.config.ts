@@ -18,6 +18,11 @@ export default defineConfig({
     // loaded Windows runner has taken >60s on one (run 35369707501), so
     // win32 gets a wider ceiling; POSIX keeps the tight one.
     testTimeout: process.platform === 'win32' ? 180_000 : 60_000,
+    // The same fixtures are built in beforeEach (two `git init` + commits
+    // per test) and torn down in afterEach (rmSync over trees a spawned
+    // process may still hold open); the default 10 s hook ceiling tripped
+    // on a loaded Windows runner (run 35379769459).
+    hookTimeout: process.platform === 'win32' ? 60_000 : 10_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
