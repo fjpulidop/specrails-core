@@ -249,8 +249,8 @@ export function feedbackExcerpts(feedback: string, roots: readonly string[], opt
     const set = refs.get(file) ?? new Set<number>()
     set.add(line); refs.set(file, set)
   }
-  // Windows paths (`C:\...\file.js`) are accepted and folded to `/` so the node_modules/openspec guards and the root lookup see one shape.
-  for (const match of feedback.matchAll(/((?:[A-Za-z]:)?(?:[\/\\]|[\w.-]+[\/\\])?[\w.\/\\-]+\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|swift|cs|rb|php|c|cc|cpp|h|hpp|vue|svelte))(?::(\d+)(?::\d+)?|\((\d+),\d+\)|:[^\n]{0,160}?\((\d+):\d+\))/g)) {
+  // Windows paths (`C:\...\RUNNER~1\file.js`, 8.3 short names included) are accepted and folded to `/` so the node_modules/openspec guards and the root lookup see one shape.
+  for (const match of feedback.matchAll(/((?:[A-Za-z]:)?(?:[\/\\]|[\w.~-]+[\/\\])?[\w.~\/\\-]+\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|swift|cs|rb|php|c|cc|cpp|h|hpp|vue|svelte))(?::(\d+)(?::\d+)?|\((\d+),\d+\)|:[^\n]{0,160}?\((\d+):\d+\))/g)) {
     const line = Number(match[2] ?? match[3] ?? match[4])
     if (Number.isFinite(line) && line > 0) add(match[1]!.replace(/\\/g, '/'), line)
   }
