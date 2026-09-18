@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.0](https://github.com/fjpulidop/specrails-core/compare/v5.4.0...v5.5.0) (2026-09-18)
+
+
+### Features
+
+* **runtime:** fixer node, small-model guardrails and role continuity ([#364](https://github.com/fjpulidop/specrails-core/issues/364)) ([600b30d](https://github.com/fjpulidop/specrails-core/commit/600b30dd1a927850cf1571c6abb43f8b84151ab0))
+
 ## [5.4.0](https://github.com/fjpulidop/specrails-core/compare/v5.3.0...v5.4.0) (2026-09-12)
 
 
