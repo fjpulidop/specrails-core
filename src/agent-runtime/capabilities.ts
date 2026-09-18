@@ -9,8 +9,8 @@ export function unknownCapabilities(transport: string): ExecutorCapabilities {
   return { transport, continuation: 'unknown', effortSupport: 'unknown', supportedEfforts: null, observedModel: false, observedEffort: false }
 }
 
-/** Introspection never calls an inference endpoint. A flag is not proof that
- * a transport restores history, so built-in continuation stays conservative. */
+/** Introspection never calls an inference endpoint. Only the explicit Codex
+ * exec-resume contract is recognized; its possible cold fallback needs full context. */
 export async function cliCapabilities(provider: CliProvider, model: string | undefined, options: { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv } = {}): Promise<ExecutorCapabilities> {
   const result = unknownCapabilities(provider === 'kimi' ? 'kimi-acp' : `${provider}-cli`)
   if (provider === 'kimi') return { ...result, continuation: 'unsupported', effortSupport: 'unsupported', supportedEfforts: [] }
@@ -20,6 +20,14 @@ export async function cliCapabilities(provider: CliProvider, model: string | und
     const runner = options.runProcess ?? runCliProcess
     const help = await runner({ command: provider, args: ['--help'] }, { cwd: tmpdir(), env, timeoutMs: 10_000 })
     if (help.exitCode !== 0) return result
+    if (provider === 'codex' && help.stdout.includes('--config')) {
+      const resume = await runner({ command: provider, args: ['exec', 'resume', '--help'] }, { cwd: tmpdir(), env, timeoutMs: 10_000 })
+      if (resume.exitCode === 0 && /Usage:\s+codex exec resume\b/.test(resume.stdout)
+        && ['[SESSION_ID]', '[PROMPT]', '--json', '--config', '--model', '--skip-git-repo-check'].every(flag => resume.stdout.includes(flag))) {
+        result.continuation = 'supported'
+        result.resumeRequiresFullContext = true
+      }
+    }
     if (provider === 'claude') {
       const section = /--effort\s+<[^>]+>([\s\S]*?)(?=\n\s+--|$)/.exec(help.stdout)?.[1]
       const levels = section?.match(/\(([^)]+)\)/)?.[1].split(',').map(value => value.trim())

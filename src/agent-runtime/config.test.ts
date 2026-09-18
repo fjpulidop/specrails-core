@@ -96,5 +96,6 @@ it('validates and clones role prompt overrides without changing older configurat
   const validated = validateRuntimeConfig(value)
   value.rolePrompts.developer = 'Changed later'
   expect(validated.rolePrompts?.developer).toBe('Custom developer')
+  expect(validateRuntimeConfig({ ...config(), rolePrompts: { fixer: 'Custom fixer' } }).rolePrompts?.fixer).toBe('Custom fixer')
   for (const rolePrompts of [{ developer: '' }, { developer: ' ' }, { alien: 'x' }, { developer: 'x'.repeat(20001) }, { developer: 'x\0y' }]) expect(() => validateRuntimeConfig({ ...config(), rolePrompts })).toThrow()
 })

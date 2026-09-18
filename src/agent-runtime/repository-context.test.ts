@@ -30,7 +30,8 @@ it('shares the facts budget across every repository and revokes removed instruct
   try {
     const repositories = Array.from({ length: 20 }, (_, i) => {
       const directory = path.join(root, String(i)); mkdirSync(directory)
-      writeFileSync(path.join(directory, 'AGENTS.md'), 'Important rule '.repeat(300))
+      // 20 large instruction files: indexed (heading-less), never inlined, so the shared budget holds without truncation.
+      writeFileSync(path.join(directory, 'AGENTS.md'), '# Rules\n' + 'Important rule '.repeat(600))
       return { id: 'repo-' + i, name: 'Backend ' + i, path: directory }
     })
     const context = { repositories } as PipelineContext
@@ -38,7 +39,8 @@ it('shares the facts budget across every repository and revokes removed instruct
     expect(before.repositories.reduce((sum, repo) => sum + repo.body.length, 0)).toBeLessThanOrEqual(20_000)
     const rendered = renderRepositoryContext(before)
     for (const repo of repositories) expect(rendered).toContain(`${repo.name} (${repo.id})`)
-    expect(rendered).toContain('Context truncated')
+    expect(rendered).toContain('indexed, not included')
+    expect(rendered).not.toContain('Important rule Important rule')
     expect(renderRepositoryContext(before, before)).toContain('unchanged')
     rmSync(path.join(repositories[19].path, 'AGENTS.md'))
     const delta = renderRepositoryContext(repositoryContextSnapshot(context), before)

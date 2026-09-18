@@ -8,7 +8,7 @@ import {
 } from '../installer/runtime/pipeline-state.js'
 import { normalizeRuntimeConfig } from './config.js'
 import { createExecutorRegistry, type ExecutorRegistry } from './executors.js'
-import type { AgentEvent, AgentRole, RuntimeConfig } from './executor-types.js'
+import type { AgentEvent, AgentRole, RuntimeConfig, AgentEventRole } from './executor-types.js'
 import { archive, child, journal, parseAgentObject, SLUG } from './graph/artifacts.js'
 import { coreNodes } from './graph/nodes.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
@@ -21,7 +21,7 @@ import { readWorkflowState, runWorkflow } from './workflow.js'
 import type { JsonValue, WorkflowEvent, WorkflowSpan, WorkflowState } from './workflow-types.js'
 
 export const RUNTIME_API_VERSION = 1
-export const CORE_WORKFLOW_VERSION = '5'
+export const CORE_WORKFLOW_VERSION = '6'
 export const CORE_PACKAGE_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 export function coreRuntimeIdentity(): RuntimeIdentity {
   return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: 1 }
@@ -42,7 +42,7 @@ export interface CoreWorkflowOptions {
   invalidate?: string[]
   onEvent?: (event: WorkflowEvent) => void | Promise<void>
   onSpan?: (span: WorkflowSpan) => void | Promise<void>
-  onAgentEvent?: (role: AgentRole, event: AgentEvent) => void
+  onAgentEvent?: (role: AgentEventRole, event: AgentEvent) => void
   onVerificationOutput?: (text: string) => void
 }
 
@@ -67,7 +67,7 @@ export async function preflightCoreWorkflow(options: Pick<CoreWorkflowOptions, '
 }
 
 /**
- * Runs the Core implementation graph: architect → developer → verify → reviewer → archive,
+ * Runs the Core implementation graph: architect → developer → verify → review (→ fixer → verify → review on corrections)er → archive,
  * with bounded corrections routed back to the developer, an autonomous investigation pass
  * before a low-confidence design asks the requester, real verification receipts, acceptance
  * evidence bound to the exact candidate, and an optional approval before archive.
@@ -94,7 +94,9 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
   })) as Record<AgentRole, ReturnType<typeof roleOpenSpecContext>>
   for (const role of ['architect', 'developer', 'reviewer'] as const) await registry.get(config.agents[role].provider).validateOpenSpec?.(openspec[role])
   const attempts = config.limits?.maxAttempts ?? 3
-  const note = (role: AgentRole, text: string): void => { try { options.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
+  const developerProvider = config.providers.find(item => item.id === config.agents.developer.provider)
+  const compactDeveloper = developerProvider?.kind === 'openai-compatible' && (developerProvider.agentLoop ?? 'compact') === 'compact'
+  const note = (role: AgentEventRole, text: string): void => { try { options.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
   const invoke = createRoleInvoker({ context, config, registry, openspec, onAgentEvent: options.onAgentEvent })
   let grantedArchiveScope: string | undefined
   const archiveConsent = (): string => {
@@ -134,7 +136,10 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
     },
     workflow: {
       id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, schema: CoreState, entry: 'architect',
-      maxTransitions: attempts * 3 + 3,
+      // The compact (small-model) developer finishes its task groups over
+      // several developer→verify passes that do not count as corrections, so
+      // the transition budget must cover them too (bounded: +2 passes each).
+      maxTransitions: attempts * 3 + 3 + (compactDeveloper ? attempts * 2 * 2 : 0),
       nodes: Object.fromEntries(CORE_NODE_ORDER.map(id => [id, nodes[id]])),
     },
   })

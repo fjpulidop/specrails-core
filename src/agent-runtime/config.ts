@@ -1,5 +1,6 @@
+import { validateGuardrailSettings } from './guardrails.js'
 import { readFileSync } from 'node:fs'
-import type { AgentRole, RuntimeConfig, RuntimeProviderConfig } from './executor-types.js'
+import type { RuntimeAgentConfig, AgentRole, RuntimeConfig, RuntimeProviderConfig } from './executor-types.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewAspect } from './graph/review-policy.js'
 
 const ROLES: AgentRole[] = ['architect', 'developer', 'reviewer']
@@ -49,7 +50,7 @@ function score(value: unknown, field: string, floor: number): number {
 }
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'fixer', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
   if (config.enabled !== undefined && typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
@@ -62,21 +63,29 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
       return { id, kind: 'cli', cli: provider.cli as 'claude' | 'codex' | 'gemini' | 'kimi' }
     }
     if (provider.kind !== 'openai-compatible') fail(`${field}.kind`, 'unsupported executor kind')
-    keys(provider, ['id', 'kind', 'baseUrl', 'apiKeyEnv'], field)
+    keys(provider, ['id', 'kind', 'baseUrl', 'apiKeyEnv', 'agentLoop', 'contextWindowTokens', 'maxOutputTokens', 'supportsReasoningEffort'], field)
     const baseUrl = string(provider.baseUrl, `${field}.baseUrl`)
     let url: URL
     try { url = new URL(baseUrl) } catch { fail(`${field}.baseUrl`, 'expected an absolute HTTP(S) URL') }
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) fail(`${field}.baseUrl`, 'use HTTP(S) without credentials, query or fragment')
     if (provider.apiKeyEnv !== undefined && (typeof provider.apiKeyEnv !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(provider.apiKeyEnv))) fail(`${field}.apiKeyEnv`, 'expected an environment variable name, never a credential value')
-    return { id, kind: 'openai-compatible', baseUrl, ...(provider.apiKeyEnv === undefined ? {} : { apiKeyEnv: provider.apiKeyEnv as string }) }
+    if (provider.agentLoop !== undefined) choices(provider.agentLoop, ['compact', 'free'], `${field}.agentLoop`)
+    if (provider.contextWindowTokens !== undefined && positive(provider.contextWindowTokens, `${field}.contextWindowTokens`) < 4096) fail(`${field}.contextWindowTokens`, 'expected an integer of at least 4096')
+    if (provider.maxOutputTokens !== undefined && positive(provider.maxOutputTokens, `${field}.maxOutputTokens`) < 1024) fail(`${field}.maxOutputTokens`, 'expected an integer of at least 1024')
+    if (provider.supportsReasoningEffort !== undefined && typeof provider.supportsReasoningEffort !== 'boolean') fail(`${field}.supportsReasoningEffort`, 'expected a boolean')
+    return { id, kind: 'openai-compatible', baseUrl, ...(provider.apiKeyEnv === undefined ? {} : { apiKeyEnv: provider.apiKeyEnv as string }),
+      ...(provider.agentLoop === undefined ? {} : { agentLoop: provider.agentLoop as 'compact' | 'free' }),
+      ...(provider.contextWindowTokens === undefined ? {} : { contextWindowTokens: provider.contextWindowTokens as number }),
+      ...(provider.maxOutputTokens === undefined ? {} : { maxOutputTokens: provider.maxOutputTokens as number }),
+      ...(provider.supportsReasoningEffort === undefined ? {} : { supportsReasoningEffort: provider.supportsReasoningEffort as boolean }) }
   })
   if (new Set(providers.map(p => p.id)).size !== providers.length) fail('providers', 'duplicate provider id')
   const known = new Set([...providers.map(p => p.id), ...options.registeredProviderIds ?? []])
   const rawAgents = object(config.agents, 'agents')
   keys(rawAgents, ROLES, 'agents')
-  const agents = Object.fromEntries(ROLES.map(role => {
-    const field = `agents.${role}`, agent = object(rawAgents[role], field)
-    keys(agent, ['provider', 'model', 'maxTurns', 'effort', 'escalation'], field)
+  const validateAgent = (raw: unknown, field: string): RuntimeAgentConfig => {
+    const agent = object(raw, field)
+    keys(agent, ['provider', 'model', 'maxTurns', 'effort', 'thinking', 'escalation'], field)
     const provider = identifier(agent.provider, `${field}.provider`)
     if (!known.has(provider)) fail(`${field}.provider`, `provider '${provider}' is not configured or registered`)
     if (agent.model !== undefined) {
@@ -85,6 +94,7 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     if (providers.find(p => p.id === provider)?.kind === 'openai-compatible' && agent.model === undefined) fail(`${field}.model`, 'required for an OpenAI-compatible provider')
     if (agent.maxTurns !== undefined) positive(agent.maxTurns, `${field}.maxTurns`)
     if (agent.effort !== undefined) effort(agent.effort, `${field}.effort`)
+    if (agent.thinking !== undefined) choices(agent.thinking, ['on', 'off'], `${field}.thinking`)
     if (agent.escalation !== undefined) {
       const escalation = object(agent.escalation, `${field}.escalation`)
       keys(escalation, ['model', 'effort'], `${field}.escalation`)
@@ -93,8 +103,12 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
       if (escalation.effort !== undefined) effort(escalation.effort, `${field}.escalation.effort`)
       if (escalation.model === agent.model && escalation.effort === agent.effort) fail(`${field}.escalation`, 'must select a different model or effort')
     }
-    return [role, structuredClone(agent) as unknown as RuntimeConfig['agents'][AgentRole]]
-  })) as RuntimeConfig['agents']
+    return structuredClone(agent) as unknown as RuntimeAgentConfig
+  }
+  const agents = Object.fromEntries(ROLES.map(role => [role, validateAgent(rawAgents[role], `agents.${role}`)])) as RuntimeConfig['agents']
+  // The optional fixer: the engine correction rounds run on (verify failure or
+  // review rejection); absent ⇒ the developer corrects its own work.
+  const fixer = config.fixer === undefined ? undefined : validateAgent(config.fixer, 'fixer')
   if (config.limits !== undefined) {
     const limits = object(config.limits, 'limits')
     keys(limits, ['maxAttempts', 'maxTokens', 'maxCostUsd', 'timeoutMs'], 'limits')
@@ -148,6 +162,11 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
       if (verification.maxConcurrency !== undefined && positive(verification.maxConcurrency, 'efficiency.verification.maxConcurrency') > 4) fail('efficiency.verification.maxConcurrency', 'maximum 4')
     }
   }
+  let guardrails: RuntimeConfig['guardrails']
+  if (config.guardrails !== undefined) {
+    try { guardrails = validateGuardrailSettings(config.guardrails) }
+    catch (error) { fail('guardrails', error instanceof Error ? error.message.replace(/^guardrails\.?/, '').trim() || 'invalid' : 'invalid') }
+  }
   if (config.approvalBeforeArchive !== undefined && typeof config.approvalBeforeArchive !== 'boolean') fail('approvalBeforeArchive', 'expected boolean')
   let review: RuntimeConfig['review']
   if (config.review !== undefined) {
@@ -174,12 +193,12 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
   let rolePrompts: RuntimeConfig['rolePrompts']
   if (config.rolePrompts !== undefined) {
     const raw = object(config.rolePrompts, 'rolePrompts')
-    keys(raw, ROLES, 'rolePrompts')
+    keys(raw, [...ROLES, 'fixer'], 'rolePrompts')
     rolePrompts = {}
     for (const [role, value] of Object.entries(raw)) {
       const text = string(value, `rolePrompts.${role}`)
       if (text.length > 20000) fail(`rolePrompts.${role}`, 'maximum 20000 characters')
-      rolePrompts[role as AgentRole] = text
+      rolePrompts[role as AgentRole | 'fixer'] = text
     }
   }
   return { schemaVersion: 1, enabled: true, providers, agents, verification,
@@ -189,6 +208,8 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     ...(config.approvalBeforeArchive === undefined ? {} : { approvalBeforeArchive: config.approvalBeforeArchive }),
     ...(review === undefined ? {} : { review }),
     ...(architect === undefined ? {} : { architect }),
+    ...(guardrails === undefined ? {} : { guardrails }),
+    ...(fixer === undefined ? {} : { fixer }),
   }
 }
 export function loadRuntimeConfig(file: string, options?: { registeredProviderIds?: string[] }): RuntimeConfig {

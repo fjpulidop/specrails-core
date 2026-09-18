@@ -24,6 +24,7 @@ export function selectRoleRoute(role: AgentRole, selected: RuntimeAgentConfig, k
   return { tier: 'escalation', reason, selection: {
     provider: selected.provider, model: selected.escalation.model,
     ...(selected.maxTurns === undefined ? {} : { maxTurns: selected.maxTurns }),
+    ...(selected.thinking === undefined ? {} : { thinking: selected.thinking }),
     ...(selected.escalation.effort === undefined ? {} : { effort: selected.escalation.effort }),
   } }
 }

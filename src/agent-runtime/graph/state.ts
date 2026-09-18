@@ -71,5 +71,6 @@ export const CoreState = Annotation.Root({
 })
 export type CoreStateType = typeof CoreState.State
 export type CoreStateUpdate = typeof CoreState.Update
-export type CoreNodeId = 'architect' | 'developer' | 'verify' | 'reviewer' | 'archive'
-export const CORE_NODE_ORDER: readonly CoreNodeId[] = ['architect', 'developer', 'verify', 'reviewer', 'archive']
+export type CoreNodeId = 'architect' | 'developer' | 'fixer' | 'verify' | 'reviewer' | 'archive'
+/** Graph order. `fixer` is the correction node: verify (failed, tasks ticked) and reviewer (rejected) route there; it hands back to verify. */
+export const CORE_NODE_ORDER: readonly CoreNodeId[] = ['architect', 'developer', 'fixer', 'verify', 'reviewer', 'archive']

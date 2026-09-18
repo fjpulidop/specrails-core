@@ -322,6 +322,15 @@ function untrackedAgentMemory(relative: string): boolean {
   return ['.claude', '.codex', '.gemini', '.kimi-code', '.specrails'].some(provider =>
     relative === provider + '/agent-memory' || relative.startsWith(provider + '/agent-memory/'))
 }
+const GENERATED_OUTPUT_ROOTS = ['node_modules', 'coverage', '.nyc_output', '.jest-cache', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.venv', 'venv', '.tox', '.gradle', '.cache']
+function untrackedGeneratedOutput(relative: string): boolean {
+  // Dependency trees and test/coverage caches are never candidate content, yet
+  // a repository without a .gitignore (a greenfield scaffold) lists them as
+  // untracked: `npm test` then writes coverage/ mid-run, the fingerprint moves
+  // and every receipt reads "Candidate changed during verification" — green
+  // or not. Tracked files under these roots still count.
+  return relative.split('/').some(segment => GENERATED_OUTPUT_ROOTS.includes(segment))
+}
 export interface CandidateManifest {
   schemaVersion: 1
   scopeHash: string
@@ -331,7 +340,7 @@ export function candidateManifest(state: PipelineState): CandidateManifest {
   const entries = state.context.repositories.map((repo) => ({
     id: repo.id, path: repo.path,
     files: trackedFiles(repo)
-      .filter(({ file, tracked }) => !excluded(state, repo, relativeUnix(file)) && (tracked || !untrackedAgentMemory(relativeUnix(file))))
+      .filter(({ file, tracked }) => !excluded(state, repo, relativeUnix(file)) && (tracked || (!untrackedAgentMemory(relativeUnix(file)) && !untrackedGeneratedOutput(relativeUnix(file)))))
       .map(({ file }): [string, string] => [relativeUnix(file), fileFingerprint(path.join(repo.path, file))]),
   }))
   return { schemaVersion: 1, scopeHash: state.scopeHash, repositories: entries }
@@ -712,7 +721,9 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
     .replace(/https?:\/\/[^\s"'<>]+/gi, value => { try { const url = new URL(value); return url.origin + url.pathname } catch { return '[url]' } })
 }
 
-async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void, signal?: AbortSignal, deadline?: number, evidenceId = digest(randomUUID())): Promise<CommandReceipt> {
+/** Silence a verification command may keep before it counts as hung (env `SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, default 5 min). */
+function verificationIdleTimeoutMs(): number { const raw = Number(process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS); return Number.isFinite(raw) && raw >= 100 ? raw : 5 * 60_000 }
+async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void, signal?: AbortSignal, deadline?: number, evidenceId = digest(randomUUID()), idleTimeoutOverrideMs?: number): Promise<CommandReceipt> {
   const started = Date.now()
   const overrides = normalizeVerificationEnvironment(command.env ?? {}) as Record<string, string>
   const overrideKeys = Object.keys(overrides).sort()
@@ -722,6 +733,13 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const env = verificationEnvironment(process.env, overrides)
   const configuredTimeoutMs = command.timeoutMs ?? 15 * 60_000
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
+  // A test that never returns (a `while` that cannot exit) keeps a runner at
+  // 100 % CPU and silent until the wall-clock timeout; the silence is the
+  // signal. Bounded per command, never longer than the total timeout.
+  // 0 (a project that switched the `verify-idle-timeout` guardrail off) disables the silence bound; the wall-clock timeout still applies.
+  const idleTimeoutMs = idleTimeoutOverrideMs === 0 ? 0 : Math.min(idleTimeoutOverrideMs ?? verificationIdleTimeoutMs(), appliedTimeoutMs)
+  let lastOutputAt = Date.now()
+  let lastOutputLine = ''
   let outcome: CommandReceipt['outcome']
   let output = ''
   const streams = { stdout: '', stderr: '' }
@@ -731,10 +749,11 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   await new Promise<void>((resolve) => {
     let child: ReturnType<typeof spawn>
     let timer: ReturnType<typeof setTimeout> | undefined
+    let idleTimer: ReturnType<typeof setInterval> | undefined
     let done = false
     let stopping = false
     let termination: ReturnType<typeof setTimeout> | undefined
-    const finish = (code: number): void => { if (done) return; done = true; exitCode = stopping ? -1 : code; outcome ??= code === 0 ? 'passed' : 'failed'; if (termination) clearTimeout(termination); if (timer) clearTimeout(timer); signal?.removeEventListener('abort', abort); resolve() }
+    const finish = (code: number): void => { if (done) return; done = true; exitCode = stopping ? -1 : code; outcome ??= code === 0 ? 'passed' : 'failed'; if (termination) clearTimeout(termination); if (timer) clearTimeout(timer); if (idleTimer) clearInterval(idleTimer); signal?.removeEventListener('abort', abort); resolve() }
     const stop = (reason: string): void => {
       if (done || stopping) return
       stopping = true
@@ -766,6 +785,9 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
           streams[stream] += kept
         }
         output = (output + text).slice(-32_000)
+        lastOutputAt = Date.now()
+        const lastLine = text.trim().split('\n').pop()?.trim()
+        if (lastLine) lastOutputLine = lastLine.slice(0, 200)
         // Redact whole bounded lines, so chunk boundaries cannot split credentials.
         for (const part of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
           if (!droppingLine) liveLine += part
@@ -783,6 +805,11 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     child.on('close', (code) => finish(code ?? -1))
     signal?.addEventListener('abort', abort, { once: true })
     timer = setTimeout(() => { outcome = 'timed-out'; stop('Verification command timed out') }, appliedTimeoutMs)
+    if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
+      if (Date.now() - lastOutputAt < idleTimeoutMs) return
+      outcome = 'timed-out'
+      stop(`Verification command produced no output for ${idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`} and was stopped: a test is probably hanging (infinite loop or an open handle).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`)
+    }, Math.max(50, Math.min(5_000, Math.floor(idleTimeoutMs / 4))))
     if (signal?.aborted) abort()
   })
   const persisted = (text: string): string => {
@@ -857,7 +884,7 @@ export function verificationWaves<T extends VerificationCommand>(commands: T[], 
   if (current.length) waves.push(current)
   return waves
 }
-export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; maxConcurrency?: number; onEvidence?: (kind: 'check-started' | 'check-finished' | 'check-reused' | 'check-invalidated', payload: Record<string, string | number | null>) => Promise<void> } = {}): Promise<VerificationReceipt> {
+export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; maxConcurrency?: number; idleTimeoutMs?: number; onEvidence?: (kind: 'check-started' | 'check-finished' | 'check-reused' | 'check-invalidated', payload: Record<string, string | number | null>) => Promise<void> } = {}): Promise<VerificationReceipt> {
   const context = validatePipelineContext(contextInput)
   const { request, commands, unverifiedRepositories } = verificationPlan(context, raw)
   let previous: VerificationReceipt | undefined
@@ -895,7 +922,7 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
           persistCheckEvidence(context, pending, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
           await options.onEvidence?.('check-started', { executionId: evidenceId, repositoryId: command.repositoryId, checkId: command.key ?? '', label: command.label ?? command.command })
         }
-        const result: CommandReceipt = reuse ? { ...old, evidenceId, disposition: 'reused', reusedFrom: old.evidenceId, durationMs: 0, snapshot, reuseReason: 'snapshot-local-identities-match' } : { ...await executeCheck(command, text => log(prefix + text), controller.signal, options.deadline, evidenceId), disposition: 'executed', snapshot, reuseReason: snapshot.eligible ? 'snapshot-local-no-current-match' : snapshot.reason }
+        const result: CommandReceipt = reuse ? { ...old, evidenceId, disposition: 'reused', reusedFrom: old.evidenceId, durationMs: 0, snapshot, reuseReason: 'snapshot-local-identities-match' } : { ...await executeCheck(command, text => log(prefix + text), controller.signal, options.deadline, evidenceId, options.idleTimeoutMs), disposition: 'executed', snapshot, reuseReason: snapshot.eligible ? 'snapshot-local-no-current-match' : snapshot.reason }
         const { env: _env, ...definition } = command
         result.checkDefinition = definition
         result.checkDefinitionHash = digest(canonical(command))

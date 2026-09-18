@@ -211,7 +211,7 @@ export class CliExecutor implements AgentExecutor {
     const scope = canonicalWorkspace(request.cwd, request.allowedRoots)
     const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
-    let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0
+    let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0, observedSession: string | undefined
     const assistantIds = new Set<string>()
     const scratch = (): string => temporary ??= mkdtempSync(path.join(tmpdir(), 'specrails-' + this.provider + '-role-'))
     try {
@@ -250,11 +250,16 @@ export class CliExecutor implements AgentExecutor {
         writeFileSync(codexSchemaFile, JSON.stringify(codexOutputSchema(request.outputSchema)), { mode: 0o600 })
       }
       const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
-        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, env: executionEnv,
+        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 60 * 60_000, idleTimeoutMs: request.idleTimeoutMs ?? 15 * 60_000, env: executionEnv,
         onLine: line => {
           stream += line + '\n'
           let event: Record<string, unknown>
           try { event = object(JSON.parse(line)) } catch { return }
+          const sessionId = typeof event.thread_id === 'string' ? event.thread_id : event.session_id
+          if (typeof sessionId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(sessionId) && sessionId !== observedSession) {
+            observedSession = sessionId
+            request.onEvent?.({ kind: 'session', sessionId })
+          }
           let delta = ''
           if (this.provider === 'claude' && event.type === 'assistant') {
             const message = object(event.message)
@@ -300,8 +305,9 @@ export class CliExecutor implements AgentExecutor {
       return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured }
     } catch (error) {
       if (error instanceof AgentExecutionError) {
-        const usage = parseCliOutput(this.provider, stream).usage
-        if (error.usage.inputTokens === null && usage.inputTokens !== null) throw new AgentExecutionError(error.message, error.code, usage)
+        const partial = parseCliOutput(this.provider, stream)
+        const usage = { ...partial.usage, ...Object.fromEntries(Object.entries(error.usage).filter(([, value]) => value !== null)) }
+        throw new AgentExecutionError(error.message, error.code, usage, error.sessionId ?? observedSession ?? partial.sessionId)
       }
       throw error
     } finally { if (temporary) rmSync(temporary, { recursive: true, force: true }) }
