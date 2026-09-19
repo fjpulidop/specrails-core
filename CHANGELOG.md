@@ -1,5 +1,12 @@
 # Changelog
 
+## [5.5.1](https://github.com/fjpulidop/specrails-core/compare/v5.5.0...v5.5.1) (2026-09-19)
+
+
+### Miscellaneous
+
+* **deps:** keep @fission-ai/openspec out of dependabot bumps ([#368](https://github.com/fjpulidop/specrails-core/issues/368)) ([dbaf72f](https://github.com/fjpulidop/specrails-core/commit/dbaf72f6cd74337bc1d4848caa4ba753bfbf215f))
+
 ## [5.5.0](https://github.com/fjpulidop/specrails-core/compare/v5.4.0...v5.5.0) (2026-09-18)
 
 
