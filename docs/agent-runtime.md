@@ -118,6 +118,14 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `a
 
 `runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion:"..."}` without invoking providers. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
 
+## Verification output and correction limits
+
+The `exit-code-honesty` guardrail catches test harnesses that print failures but exit with code 0. It recognizes complete count summaries (including TAP `# fail N`, Jest/Vitest test totals and Mocha-style counts) and explicit failure markers. Passing test names such as `rethrows non-404 failures` are descriptions, not failure counts. ANSI colors and Windows line endings are normalized; a partial line at the diagnostic tail boundary is discarded. TAP TODO/SKIP results are not treated as ordinary failed tests. A green suite does not erase another suite's explicit failure.
+
+This is a conservative text diagnostic over the last 16,000 characters of captured output, not a universal parser for every test framework. Test commands must still propagate real failures through their exit status. When the guardrail rejects output, the log includes the matching line so the reported failure can be checked against the runner's results.
+
+Verification failures return to the fixer. `limits.maxAttempts` bounds fixer invocations (default: 3), after which Core blocks with `Implementation correction limit reached`. An explicit resume grants a fresh budget. If the fixer repeatedly reports no defect, inspect the quoted verification evidence before resuming; rerunning an unchanged command cannot correct a diagnostic false positive.
+
 ## Questions and approvals
 
 The graph pauses through LangGraph interrupts; the host resumes it with the matching answer.
