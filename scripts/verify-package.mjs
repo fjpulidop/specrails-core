@@ -28,7 +28,11 @@ export function verifyPackage(root, outputDir) {
     // This is the npm consumer path. Scripts are disabled and HOME/registry are
     // isolated; no init/update command, provider CLI, OpenSpec fetch or model runs.
     const prefix = path.join(temp, 'consumer')
-    npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', tarball], { cwd: temp, env })
+    // A cold consumer install on hosted Windows runners can exceed the shared
+    // three-minute command budget (observed after the full suite passed).
+    // Keep other smoke commands bounded by the default; only installation gets
+    // additional time for registry access and filesystem extraction on Windows.
+    npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', tarball], { cwd: temp, env, timeout: process.platform === 'win32' ? 600_000 : 180_000 })
     const installed = path.join(prefix, 'node_modules', 'specrails-core')
     const cli = path.join(installed, 'dist', 'installer', 'cli.js')
     for (const entry of [cli, path.join(installed, 'bin', 'specrails-core.mjs')]) {
