@@ -72,7 +72,7 @@ jobs:
             echo '::warning::RELEASE_PAT is not configured. Release Please will use GITHUB_TOKEN; its generated PR workflows require a maintainer to select Approve workflows to run. Configure a repository-scoped RELEASE_PAT for automatic CI, or approve the pending runs after bot updates. Do not bypass branch protection.'
           fi
       - if: steps.head.outputs.current == 'true'
-        uses: googleapis/release-please-action@7987652d64b4581673a76e33ad5e98e3dd56832f # v4.1.3
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
           token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
