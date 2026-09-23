@@ -72,7 +72,7 @@
     "test:coverage": "npm run build && vitest run --coverage",
     "dogfood": "npm run build && node bin/specrails-core.mjs init --yes",
     "prepack": "npm run build",
-    "test:scripts": "node --test scripts/release-utils.test.mjs",
+    "test:scripts": "node --test scripts/release-utils.test.mjs scripts/ci-tests.test.mjs",
     "check:package": "npm run build && node scripts/verify-package.mjs",
     "ci": "npm run typecheck && npm run test:scripts && npm run test:coverage && npm run check:package"
   },

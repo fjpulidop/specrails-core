@@ -4,10 +4,11 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 
 ## Quality gates
 
-`CI` runs for branch pushes, pull requests to `main`, and manual dispatches. It has read-only repository permissions, cancels superseded runs on the same branch/PR, and has bounded job timeouts.
+`CI` runs for pushes to `main`, pull requests to `main`, and manual dispatches. Feature branches are checked through their PR, avoiding two complete matrix runs for every update. The post-merge main push still runs the entire release gate. It has read-only repository permissions, cancels superseded runs on the same branch/PR, and has bounded job timeouts.
 
 - Typecheck/build on the exact supported Node minimum, **20.19.0**.
 - Full Vitest and release-guard tests on **Linux, macOS and Windows**, with **Node 20.19.0, 22 and 24**.
+- Windows distributes the two slow runtime integration suites across three jobs by collected test locations; a fourth job runs every other test file. Parameterized cases stay together. The partition runner checks its selected inventory against Vitest before running, failing if any assigned test is missing or extra. Linux/macOS and coverage run the complete suite without partitioning.
 - Coverage on Node 24 with the existing configured thresholds (not lowered).
 - A checksum-verified actionlint binary validates workflow syntax, expressions and action inputs (shellcheck is not included).
 - A checksum-verified Gitleaks binary scans Git history with redacted output.
@@ -19,13 +20,15 @@ Local checks, after installing dependencies:
 
 ```sh
 npm run ci                 # typecheck, guard regressions, coverage, packaged-consumer smoke
-npm run test:scripts       # hermetic release regressions only
+npm run test:scripts       # hermetic release and CI partition regressions
 npm run check:package      # build and consumer smoke; prints its temporary artifact directory
 # To choose where the verified tarball is kept:
 node scripts/verify-package.mjs /absolute/path/to/temporary-package-output
 ```
 
-The package check may download the tarball's production dependencies from npm. Its generated output directory should be outside the checkout. Release-guard unit tests are hermetic and do not access npm or GitHub.
+To reproduce a Windows test partition locally, run `node scripts/ci-tests.mjs runtime-1` (or `runtime-2`, `runtime-3`, `general`). Add `--list-only` to a runtime partition to verify its inventory without executing tests.
+
+The package check reuses the npm dependency cache (including the cache populated by `npm ci` and setup-node) with `--prefer-offline`; it may download missing production dependencies from npm. The temporary consumer, user configuration and credential isolation remain in place. Its generated output directory should be outside the checkout. Release-guard unit tests are hermetic and do not access npm or GitHub.
 
 ## Automatic release
 

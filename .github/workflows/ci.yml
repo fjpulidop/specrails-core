@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -70,12 +70,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
         node: ['20.19.0', '22', '24']
+        partition: [full]
+        include:
+          - { os: windows-latest, node: '20.19.0', partition: general }
+          - { os: windows-latest, node: '20.19.0', partition: runtime-1 }
+          - { os: windows-latest, node: '20.19.0', partition: runtime-2 }
+          - { os: windows-latest, node: '20.19.0', partition: runtime-3 }
+          - { os: windows-latest, node: '22', partition: general }
+          - { os: windows-latest, node: '22', partition: runtime-1 }
+          - { os: windows-latest, node: '22', partition: runtime-2 }
+          - { os: windows-latest, node: '22', partition: runtime-3 }
+          - { os: windows-latest, node: '24', partition: general }
+          - { os: windows-latest, node: '24', partition: runtime-1 }
+          - { os: windows-latest, node: '24', partition: runtime-2 }
+          - { os: windows-latest, node: '24', partition: runtime-3 }
     runs-on: ${{ matrix.os }}
-    # Windows main runs already approach 28 minutes before the new workflow
-    # regressions; leave room for those and the isolated npm consumer install.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -87,10 +99,10 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Release guard regressions (portable Node test invocation)
-        run: node --test scripts/release-utils.test.mjs
-      - run: npx vitest run
+        run: node --test scripts/release-utils.test.mjs scripts/ci-tests.test.mjs
+      - run: node scripts/ci-tests.mjs "${{ matrix.partition }}"
       - name: Install and exercise the actual npm package on this OS
-        if: matrix.node == '24'
+        if: matrix.node == '24' && (matrix.partition == 'full' || matrix.partition == 'general')
         run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
       - name: Preserve the exact package approved for release
         if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
