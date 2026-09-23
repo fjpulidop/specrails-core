@@ -12,10 +12,10 @@ export interface ExitHonestyFinding { command: string; failures: number | null; 
 
 // Counts belong to runner summaries, never arbitrary prose or test names.
 // In particular, TAP's "# Subtest: ... non-404 failures" is not a count.
-const FAILURE_LINE = /^\s*(?:FAIL(?:ED)?\b[:\s]|✗|✖|×\s|not ok\b)/
+const FAILURE_LINE = /^\s*(?:FAIL(?:ED)?\b(?:[:\s]|$)|✗|✖|×\s|not ok\b)/
 const ERROR_LINE = /^\s*(?:AssertionError\b|(?:Type|Reference|Syntax|Range)Error:)/
 const FAILED_COUNT = /^(\d+)\s+(?:failed|failures?|failing)$/i
-const SUMMARY_LABEL = /^(?:[\w -]*tests?|test files|test suites|suites)(?:\s*:\s*|\s+)(?=\d)/i
+const SUMMARY_LABEL = /^(?:(?:[\w -]*tests?|test files|test suites|suites)\s*:\s*|(?:tests?|test files|test suites|suites)\s+)(?=\d)/i
 const SUMMARY_ITEM = /\d+\s+(?:passed|passing|failed|failures?|failing|skipped|pending|todo|cancelled|total|tests?)/gi
 const TAP_FAIL = /^# fail (\d+)\s*$/
 const TAP_EXPECTED_FAILURE = /^not ok\b.*\s#\s*(?:TODO|SKIP)\b/i

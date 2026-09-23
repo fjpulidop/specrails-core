@@ -12,6 +12,7 @@ describe('exit-code honesty', () => {
     '✓ handles 500 failures',
     '# Subtest: 3 failed',
     'Tests: handles 404 failures',
+    'this test 404 failures',
     '0 failed (handles 404 failures)',
     '3 failed requests',
     '-404 failures',
@@ -54,6 +55,9 @@ describe('exit-code honesty', () => {
   })
   it('keeps real failures even when their names contain unrelated numbers', () => {
     expect(exitCodeContradiction(0, 'not ok 1 - handles 404 failures\n# fail 1\n')).toMatchObject({ failures: 1 })
+  })
+  it.each(['FAIL', 'FAILED', 'FAIL: broken', 'not ok 1 - broken', '✗ broken'])('preserves explicit failure markers despite a green suite: %s', marker => {
+    expect(exitCodeContradiction(0, marker + '\n0 failed\n')).not.toBeNull()
   })
   it('suppresses expected exception diagnostics only with a zero-failure summary', () => {
     expect(exitCodeContradiction(0, 'AssertionError: expected diagnostic\n# fail 0\n')).toBeNull()
