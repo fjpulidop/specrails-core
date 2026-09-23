@@ -125,6 +125,33 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('programmatic Core host with real evidence gates', () => {
+  it('accepts real node:test TAP output whose passing test names describe failures', async () => {
+    config.verification = context.repositories.map(repository => ({
+      repositoryId: repository.id, command: process.execPath,
+      args: ['-e', 'const test = require("node:test"); const assert = require("node:assert/strict"); test("getResourceTranslationJobs rethrows non-404 failures", () => assert.equal(require("./code.cjs"), 2))'],
+    }))
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(state.history.map(attempt => attempt.stepId)).toEqual(['architect', 'developer', 'verify', 'reviewer', 'archive'])
+    expect(calls.filter(call => call.role === 'developer')).toHaveLength(1)
+  })
+
+  it('blocks a persistent exit-zero failure after the configured fixer budget', async () => {
+    config.verification = context.repositories.map(repository => ({
+      repositoryId: repository.id, command: process.execPath,
+      args: ['-e', 'process.stdout.write("not ok 1 - broken\\n# fail 1\\n")'],
+    }))
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('blocked')
+    expect(state.error).toContain('correction limit')
+    expect(calls.filter(call => call.stance === 'fixer')).toHaveLength(config.limits!.maxAttempts!)
+    expect(state.history.filter(attempt => attempt.stepId === 'verify')).toHaveLength(3)
+    expect(calls.some(call => call.role === 'reviewer')).toBe(false)
+    expect(inspectPipeline(context).phases.archive.status).toBe('pending')
+  })
+
   it.each([2, 3])('uses the existing %i candidate budget and escalates only the third candidate', async maxAttempts => {
     config.limits = { maxAttempts }
     config.agents.developer = { provider: 'fixture', model: 'base', escalation: { model: 'rescue' } }

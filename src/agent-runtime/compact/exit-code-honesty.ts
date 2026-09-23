@@ -1,3 +1,5 @@
+import { stripVTControlCharacters } from 'node:util'
+
 // Exit-code honesty: a test command that PRINTS failures but exits 0.
 //
 // Observed: a hand-rolled `tests/ui.test.js` harness logged three `FAIL:`
@@ -8,22 +10,67 @@
 // broken, the honest verdict is FAILED, with the harness named as the defect.
 export interface ExitHonestyFinding { command: string; failures: number | null; sample: string }
 
-/** Lines that only a test runner prints when something failed. Kept narrow: a green run mentions "0 failed", never `FAIL:` / `✗` / `AssertionError` / `Error:` stack heads. */
-const FAILURE_LINE = /^\s*(?:FAIL(?:ED)?\b[:\s]|✗|✖|×\s|not ok\b|AssertionError\b|(?:Type|Reference|Syntax|Range)Error:)/m
-const FAILED_COUNT = /\b(\d+)\s+(?:failed|failures?|failing)\b/gi
-const PASS_ONLY = /\b0\s+(?:failed|failures?|failing)\b/i
+// Counts belong to runner summaries, never arbitrary prose or test names.
+// In particular, TAP's "# Subtest: ... non-404 failures" is not a count.
+const FAILURE_LINE = /^\s*(?:FAIL(?:ED)?\b(?:[:\s]|$)|✗|✖|×\s|not ok\b)/
+const ERROR_LINE = /^\s*(?:AssertionError\b|(?:Type|Reference|Syntax|Range)Error:)/
+const FAILED_COUNT = /^(\d+)\s+(?:failed|failures?|failing)$/i
+const SUMMARY_LABEL = /^(?:(?:[\w -]*tests?|test files|test suites|suites)\s*:\s*|(?:tests?|test files|test suites|suites)\s+)(?=\d)/i
+const SUMMARY_ITEM = /\d+\s+(?:passed|passing|failed|failures?|failing|skipped|pending|todo|cancelled|total|tests?)/gi
+const TAP_FAIL = /^# fail (\d+)\s*$/
+const TAP_EXPECTED_FAILURE = /^not ok\b.*\s#\s*(?:TODO|SKIP)\b/i
 
-/** A failure count > 0 in a summary line, or a failure-marker line, in the output of a command that exited 0. */
+/** Parse the entire summary grammar before interpreting any number as a count. */
+function failureCounts(line: string): number[] {
+  const tap = TAP_FAIL.exec(line)
+  if (tap) return [Number(tap[1])]
+  // Common runner suffixes: Vitest's "(5)" and Mocha's "(12ms)".
+  const body = line.replace(SUMMARY_LABEL, '').replace(/\s+\(\d+(?:\.\d+)?(?:ms|s)?\)$/, '')
+  const items = [...body.matchAll(SUMMARY_ITEM)]
+  if (!items.length || items[0]!.index !== 0) return []
+  let end = 0
+  const counts: number[] = []
+  for (const item of items) {
+    if (end && !/^(?:\s*[,|]\s*|\s+)$/.test(body.slice(end, item.index))) return []
+    const failed = FAILED_COUNT.exec(item[0])
+    if (failed) counts.push(Number(failed[1]))
+    end = item.index + item[0].length
+  }
+  return end === body.length ? counts : []
+}
+
+function completeTail(output: string): string {
+  const start = Math.max(0, output.length - 16_000)
+  if (start === 0 || output[start - 1] === '\n') return output.slice(start)
+  const newline = output.indexOf('\n', start)
+  return newline === -1 ? '' : output.slice(newline + 1)
+}
+
+/** A failure count in a runner summary, or a failure-marker line, despite exit 0. */
 export function exitCodeContradiction(exitCode: number | null, output: string): ExitHonestyFinding | null {
   if (exitCode !== 0) return null
-  const tail = output.slice(-16_000)
+  const clean = stripVTControlCharacters(output)
+  // Do not turn the middle of a truncated test name into a summary or marker.
+  const tail = completeTail(clean)
   let failures: number | null = null
-  for (const match of tail.matchAll(FAILED_COUNT)) { const n = Number(match[1]); if (Number.isFinite(n) && n > 0) failures = Math.max(failures ?? 0, n) }
-  const marker = FAILURE_LINE.exec(tail)
-  if (failures === null && !marker) return null
-  if (failures === null && marker && PASS_ONLY.test(tail) && !/^\s*FAIL(?:ED)?\b[:\s]/m.test(tail)) return null
-  const sample = (marker ? tail.slice(marker.index, marker.index + 160).split('\n')[0] : tail.match(/^.*\b\d+\s+(?:failed|failures?|failing)\b.*$/im)?.[0]) ?? ''
-  return { command: '', failures, sample: sample.trim() }
+  let countSample = ''
+  let marker = ''
+  let error = ''
+  let zeroSummary = false
+  for (const raw of tail.split('\n')) {
+    const line = raw.trim()
+    if (!marker && FAILURE_LINE.test(line) && !TAP_EXPECTED_FAILURE.test(line)) marker = line
+    if (!error && ERROR_LINE.test(line)) error = line
+    for (const n of failureCounts(line)) {
+      if (n === 0) zeroSummary = true
+      if (Number.isFinite(n) && n > 0 && n > (failures ?? 0)) { failures = n; countSample = line }
+    }
+  }
+  // A green summary may accompany expected exception diagnostics, but cannot
+  // erase an explicit failed test or another suite's positive failure count.
+  const sample = marker || countSample || (!zeroSummary ? error : '')
+  if (!sample) return null
+  return { command: '', failures, sample: sample.slice(0, 160) }
 }
 
 export function exitHonestyReason(findings: ReadonlyArray<ExitHonestyFinding>): string {

@@ -813,6 +813,17 @@ describe('compact role pipelines through the Core graph', () => {
     }, 180_000)
   })
 
+  it('passing TAP tests with failure counts in their names reach review without a fixer loop', async () => {
+    const output = '# Subtest: getResourceTranslationJobs rethrows non-404 failures\nok 522 - getResourceTranslationJobs rethrows non-404 failures\n# tests 598\n# pass 598\n# fail 0\n'
+    config.verification = context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['-e', `if(require("./code.cjs")!==2)process.exit(9);process.stdout.write(${JSON.stringify(output)})`] }))
+    const { fetch } = smallModel()
+    const registry = createExecutorRegistry(config, { openai: { fetch } })
+    const state = await runCoreWorkflow({ context, config, change, registry })
+    expect(state.status, state.error).toBe('succeeded')
+    expect(state.history.map(attempt => attempt.stepId)).toContain('reviewer')
+    expect(state.history.map(attempt => attempt.stepId)).not.toContain('fixer')
+  }, 180_000)
+
   it('a verification command that prints failures but exits 0 is a FAILURE routed to the fixer, naming the harness', async () => {
     const front = context.repositories[0]!.path
     // check.cjs: green when code.cjs is 2 AND a "fixed" marker exists; before that it prints failures and exits 0 (a dishonest harness).

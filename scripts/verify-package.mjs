@@ -16,6 +16,10 @@ export function verifyPackage(root, outputDir) {
     mkdirSync(home, { recursive: true })
     writeFileSync(path.join(home, '.npmrc'), '')
     const env = isolatedEnvironment(home)
+    // Reuse the dependency cache populated by npm ci/setup-node. Moving HOME
+    // and APPDATA for isolation otherwise forces a cold download on Windows.
+    // Consumer files, user configuration and credentials remain isolated.
+    env.npm_config_cache = npm(['config', 'get', 'cache'], { cwd: root })
     const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'))
     const sha = run('git', ['-C', root, 'rev-parse', 'HEAD'])
     const [pack] = JSON.parse(npm(['pack', '--json', '--ignore-scripts', '--pack-destination', outputDir], { cwd: root, env }))
@@ -28,7 +32,11 @@ export function verifyPackage(root, outputDir) {
     // This is the npm consumer path. Scripts are disabled and HOME/registry are
     // isolated; no init/update command, provider CLI, OpenSpec fetch or model runs.
     const prefix = path.join(temp, 'consumer')
-    npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', '--package-lock=false', tarball], { cwd: temp, env })
+    // A cold consumer install on hosted Windows runners can exceed the shared
+    // three-minute command budget (observed after the full suite passed).
+    // Keep other smoke commands bounded by the default; only installation gets
+    // additional time for registry access and filesystem extraction on Windows.
+    npm(['install', '--prefix', prefix, '--ignore-scripts', '--no-audit', '--no-fund', '--prefer-offline', '--package-lock=false', tarball], { cwd: temp, env, timeout: process.platform === 'win32' ? 600_000 : 180_000 })
     const installed = path.join(prefix, 'node_modules', 'specrails-core')
     const cli = path.join(installed, 'dist', 'installer', 'cli.js')
     for (const entry of [cli, path.join(installed, 'bin', 'specrails-core.mjs')]) {
