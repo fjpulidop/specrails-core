@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { main, parseArgs } from './cli.js'
+import { parseArgs } from '../shared/args.js'
+import { main } from './cli.js'
 
 describe('cli.parseArgs', () => {
   it('captures the first positional as the subcommand', () => {
@@ -29,9 +30,9 @@ describe('cli.parseArgs', () => {
   })
 
   it('collects further bare tokens as positionals', () => {
-    const { subcommand, positionals } = parseArgs(['profile', 'validate', './foo.json'])
-    expect(subcommand).toBe('profile')
-    expect(positionals).toEqual(['validate', './foo.json'])
+    const { subcommand, positionals } = parseArgs(['runtime', 'status', './ctx.json'])
+    expect(subcommand).toBe('runtime')
+    expect(positionals).toEqual(['status', './ctx.json'])
   })
 
   it('returns an empty ParsedArgs for no input', () => {

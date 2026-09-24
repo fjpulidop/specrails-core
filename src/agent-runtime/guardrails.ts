@@ -32,8 +32,8 @@ export const GUARDRAIL_IDS = [
   'verify-idle-timeout',
 ] as const
 export type GuardrailId = (typeof GUARDRAIL_IDS)[number]
-export type GuardrailPhase = 'architect' | 'developer' | 'host'
-export interface GuardrailDescriptor { id: GuardrailId; phase: GuardrailPhase }
+type GuardrailPhase = 'architect' | 'developer' | 'host'
+interface GuardrailDescriptor { id: GuardrailId; phase: GuardrailPhase }
 export type GuardrailSettings = Partial<Record<GuardrailId, boolean>>
 
 /** Stable catalog (phase order = pipeline order); labels/descriptions live in the host UI so they can be localized. */
@@ -58,7 +58,7 @@ export const GUARDRAIL_CATALOG: readonly GuardrailDescriptor[] = [
   { id: 'verify-idle-timeout', phase: 'host' },
 ]
 
-export function isGuardrailId(value: unknown): value is GuardrailId {
+function isGuardrailId(value: unknown): value is GuardrailId {
   return typeof value === 'string' && (GUARDRAIL_IDS as readonly string[]).includes(value)
 }
 

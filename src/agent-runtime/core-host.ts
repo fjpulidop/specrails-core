@@ -5,7 +5,7 @@ import path from 'node:path'
 import {
   fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, validatePipelineContext, validateVerificationRequest,
   type PipelineContext,
-} from '../installer/runtime/pipeline-state.js'
+} from '../pipeline/pipeline-state.js'
 import { normalizeRuntimeConfig } from './config.js'
 import { createExecutorRegistry, type ExecutorRegistry } from './executors.js'
 import type { AgentEvent, AgentRole, RuntimeConfig, AgentEventRole } from './executor-types.js'

@@ -28,26 +28,26 @@ const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const NON_SOURCE = new Set(['openspec', 'README.md', 'README', 'LICENSE', 'LICENSE.md', '.gitignore', '.gitattributes', '.editorconfig', 'CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.DS_Store'])
 const HIDDEN = /^\./
 
-export interface Inventory { greenfield: boolean; languages: string[]; frameworks: string[]; keyFiles: string[]; tests: string[]; notes: string }
-export interface Proposal { why: string; whatChanges: string[]; capabilities: { new: string[]; modified: string[] }; impact: string[] }
-export interface Design { context: string; goals: string[]; nonGoals: string[]; decisions: { title: string; choice: string; why: string }[]; risks: { risk: string; mitigation: string }[] }
-export interface Spec { name: string; requirements: { name: string; text: string; scenarios: { name: string; when: string; then: string }[] }[] }
-export interface Tasks { groups: { title: string; tasks: string[] }[]; verification: { repositoryId: string; command: string; args: string[] }[]; blockingQuestion?: string }
+interface Inventory { greenfield: boolean; languages: string[]; frameworks: string[]; keyFiles: string[]; tests: string[]; notes: string }
+interface Proposal { why: string; whatChanges: string[]; capabilities: { new: string[]; modified: string[] }; impact: string[] }
+interface Design { context: string; goals: string[]; nonGoals: string[]; decisions: { title: string; choice: string; why: string }[]; risks: { risk: string; mitigation: string }[] }
+interface Spec { name: string; requirements: { name: string; text: string; scenarios: { name: string; when: string; then: string }[] }[] }
+interface Tasks { groups: { title: string; tasks: string[] }[]; verification: { repositoryId: string; command: string; args: string[] }[]; blockingQuestion?: string }
 
 const stringList = { type: 'array', items: { type: 'string' } }
-export const INVENTORY_SCHEMA = { type: 'object', additionalProperties: false, required: ['greenfield', 'languages', 'frameworks', 'keyFiles', 'tests', 'notes'], properties: { greenfield: { type: 'boolean' }, languages: stringList, frameworks: stringList, keyFiles: stringList, tests: stringList, notes: { type: 'string' } } }
-export const PROPOSAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['why', 'whatChanges', 'capabilities', 'impact'], properties: { why: { type: 'string' }, whatChanges: stringList, capabilities: { type: 'object', additionalProperties: false, required: ['new', 'modified'], properties: { new: stringList, modified: stringList } }, impact: stringList } }
-export const DESIGN_SCHEMA = { type: 'object', additionalProperties: false, required: ['context', 'goals', 'nonGoals', 'decisions', 'risks'], properties: { context: { type: 'string' }, goals: stringList, nonGoals: stringList, decisions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'choice', 'why'], properties: { title: { type: 'string' }, choice: { type: 'string' }, why: { type: 'string' } } } }, risks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['risk', 'mitigation'], properties: { risk: { type: 'string' }, mitigation: { type: 'string' } } } } } }
-export const SPEC_SCHEMA = { type: 'object', additionalProperties: false, required: ['name', 'requirements'], properties: { name: { type: 'string' }, requirements: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'text', 'scenarios'], properties: { name: { type: 'string' }, text: { type: 'string' }, scenarios: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'when', 'then'], properties: { name: { type: 'string' }, when: { type: 'string' }, then: { type: 'string' } } } } } } } } }
+const INVENTORY_SCHEMA = { type: 'object', additionalProperties: false, required: ['greenfield', 'languages', 'frameworks', 'keyFiles', 'tests', 'notes'], properties: { greenfield: { type: 'boolean' }, languages: stringList, frameworks: stringList, keyFiles: stringList, tests: stringList, notes: { type: 'string' } } }
+const PROPOSAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['why', 'whatChanges', 'capabilities', 'impact'], properties: { why: { type: 'string' }, whatChanges: stringList, capabilities: { type: 'object', additionalProperties: false, required: ['new', 'modified'], properties: { new: stringList, modified: stringList } }, impact: stringList } }
+const DESIGN_SCHEMA = { type: 'object', additionalProperties: false, required: ['context', 'goals', 'nonGoals', 'decisions', 'risks'], properties: { context: { type: 'string' }, goals: stringList, nonGoals: stringList, decisions: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'choice', 'why'], properties: { title: { type: 'string' }, choice: { type: 'string' }, why: { type: 'string' } } } }, risks: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['risk', 'mitigation'], properties: { risk: { type: 'string' }, mitigation: { type: 'string' } } } } } }
+const SPEC_SCHEMA = { type: 'object', additionalProperties: false, required: ['name', 'requirements'], properties: { name: { type: 'string' }, requirements: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'text', 'scenarios'], properties: { name: { type: 'string' }, text: { type: 'string' }, scenarios: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'when', 'then'], properties: { name: { type: 'string' }, when: { type: 'string' }, then: { type: 'string' } } } } } } } } }
 /** Names the repository's primary language for the plan, so task file names use its extension (a greenfield repository has none yet). */
 function languageLine(roots: readonly string[]): string {
   const profile = languageProfile(roots)
   return profile ? `\nPrimary language of the repository: ${profile.primary}${profile.others.length ? ` (also present: ${profile.others.join(', ')})` : ''} — name new source files with its extension.` : ''
 }
-export const TASKS_SCHEMA = { type: 'object', additionalProperties: false, required: ['groups'], properties: { groups: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'tasks'], properties: { title: { type: 'string' }, tasks: stringList } } }, verification: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['repositoryId', 'command', 'args'], properties: { repositoryId: { type: 'string' }, command: { type: 'string' }, args: stringList } } }, blockingQuestion: { type: 'string' } } }
+const TASKS_SCHEMA = { type: 'object', additionalProperties: false, required: ['groups'], properties: { groups: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['title', 'tasks'], properties: { title: { type: 'string' }, tasks: stringList } } }, verification: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['repositoryId', 'command', 'args'], properties: { repositoryId: { type: 'string' }, command: { type: 'string' }, args: stringList } } }, blockingQuestion: { type: 'string' } } }
 
 /** True when no repository holds anything but OpenSpec artifacts and repository boilerplate. */
-export function hostGreenfield(roots: string[]): boolean {
+function hostGreenfield(roots: string[]): boolean {
   return roots.every(root => {
     if (!existsSync(root)) return true
     return readdirSync(root).every(name => NON_SOURCE.has(name) || HIDDEN.test(name))
@@ -56,12 +56,12 @@ export function hostGreenfield(roots: string[]): boolean {
 function slug(value: string): string { return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) }
 function bullets(items: string[], fallback: string): string { return items.length ? items.map(item => `- ${item}`).join('\n') : `- ${fallback}` }
 /** Rendered with the exact headings `openspec instructions proposal` returns. */
-export function renderProposal(proposal: Proposal, capabilityNames: { new: string[]; modified: string[] }): string {
+function renderProposal(proposal: Proposal, capabilityNames: { new: string[]; modified: string[] }): string {
   return ['## Why', '', proposal.why, '', '## What Changes', '', bullets(proposal.whatChanges, 'See the requirements in the specs of this change.'), '', '## Capabilities', '', '### New Capabilities',
     ...(capabilityNames.new.length ? capabilityNames.new.map(name => `- \`${name}\`: ${name.replace(/-/g, ' ')}`) : ['- (none)']), '', '### Modified Capabilities',
     ...(capabilityNames.modified.length ? capabilityNames.modified.map(name => `- \`${name}\`: requirements extended by this change`) : ['- (none)']), '', '## Impact', '', bullets(proposal.impact, 'Limited to the repositories in scope.'), ''].join('\n')
 }
-export function renderDesign(design: Design, greenfield: boolean): string {
+function renderDesign(design: Design, greenfield: boolean): string {
   return ['## Context', '', ...(greenfield ? ['The repository has no application code; the spec means building it from scratch.', ''] : []), design.context, '', '## Goals / Non-Goals', '', '**Goals:**', bullets(design.goals, 'Deliver the requested work.'), '', '**Non-Goals:**', bullets(design.nonGoals, 'Anything outside the frozen scope.'), '', '## Decisions', '',
     ...(design.decisions.length ? design.decisions.map(item => `- **${item.title}**: ${item.choice} — ${item.why}`) : ['- Follow the existing conventions of the repository.']), '', '## Risks / Trade-offs', '', ...(design.risks.length ? design.risks.map(item => `- [${item.risk}] → ${item.mitigation}`) : ['- [Scope creep] → implement only the listed tasks.']), '', '## Local reference patterns', '', greenfield ? 'No existing implementation to reference: the repository is empty.' : 'See the key files listed in the inventory of this change; no equivalent implementation was verified beyond them.', ''].join('\n')
 }

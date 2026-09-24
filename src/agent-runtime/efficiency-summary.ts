@@ -1,4 +1,4 @@
-import { readVerificationEvidence, type PipelineContext, type PipelineCompletion } from '../installer/runtime/pipeline-state.js'
+import { readVerificationEvidence, type PipelineContext, type PipelineCompletion } from '../pipeline/pipeline-state.js'
 import type { RuntimeConfig } from './executor-types.js'
 import type { WorkflowState } from './workflow-types.js'
 import { runtimeEfficiency } from './efficiency.js'

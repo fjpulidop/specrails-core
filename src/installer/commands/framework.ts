@@ -60,7 +60,7 @@ export interface AssembleFlags {
   'selected-agents'?: string | boolean
 }
 
-export interface InstallFrameworkOutcome {
+interface InstallFrameworkOutcome {
   frameworkDir: string
   provider: Provider
   version: string
@@ -69,14 +69,14 @@ export interface InstallFrameworkOutcome {
   swapped: boolean
 }
 
-export interface SwapCurrentOutcome {
+interface SwapCurrentOutcome {
   frameworkDir: string
   version: string
   /** Complete provider set validated before the pointer was moved. */
   providers: Provider[]
 }
 
-export interface AssembleOutcome {
+interface AssembleOutcome {
   workspace: string
   frameworkDir: string
   provider: Provider

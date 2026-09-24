@@ -70,7 +70,7 @@ export interface InitFlags {
   'hub-json'?: boolean
 }
 
-export interface InitResult {
+interface InitResult {
   repoRoot: string
   provider: Provider
 }
@@ -82,7 +82,7 @@ const WORKSPACE_PROVIDER_ORDER: readonly Provider[] = [
   'kimi',
 ]
 
-export type WorkspaceProviderSelections = Partial<
+type WorkspaceProviderSelections = Partial<
   Record<Provider, string[]>
 >
 
@@ -199,7 +199,7 @@ interface ReassembleWorkspaceProvidersInput {
  * indirection, so rebuilding all live links is required for true
  * multi-provider version parity.
  */
-export function reassembleWorkspaceProviders(
+function reassembleWorkspaceProviders(
   input: ReassembleWorkspaceProvidersInput,
 ): Provider[] {
   const providers = WORKSPACE_PROVIDER_ORDER.filter(
@@ -242,9 +242,8 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   const autoYes = flags.yes === true || flags.y === true
   const skipPrereqs = process.env.SPECRAILS_SKIP_PREREQS === '1'
 
-  // Validate an explicit provider before consulting --from-config. The TUI
-  // intentionally re-enters init with BOTH flags; accepting that flow is safe
-  // only when the generated config agrees with the original explicit choice.
+  // Validate an explicit provider before consulting --from-config; when both
+  // are given, the config must agree with the explicit choice.
   let explicitProvider: Provider | undefined
   if (flags.provider !== undefined) {
     if (
@@ -419,7 +418,7 @@ export function warnUnknownSelectedAgents(selected: string[] | undefined): void 
   }
 }
 
-export interface EnsureFrameworkInput {
+interface EnsureFrameworkInput {
   scriptDir: string
   frameworkDir: string
   provider: Provider
@@ -881,7 +880,7 @@ function removeDirectoryIfEmpty(dir: string): void {
   if (isDir(dir) && listDir(dir).length === 0) removePath(dir)
 }
 
-export async function installOpenSpecProject(
+async function installOpenSpecProject(
   repoRoot: string,
   provider: Provider,
   artifactRoot: string = repoRoot,

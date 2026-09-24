@@ -5,19 +5,19 @@ import type { ChatMessage } from './chat-client.js'
 import path from 'node:path'
 import { AgentExecutionError, type AgentResult } from '../executor-types.js'
 import { artifactPath, type OpenSpecApply, type OpenSpecStatus } from '../openspec.js'
-import { readVerificationEvidence } from '../../installer/runtime/pipeline-state.js'
+import { readVerificationEvidence } from '../../pipeline/pipeline-state.js'
 import { bounded } from './prompt-inputs.js'
 import { finalJson, on, openspecCall, strings, text, toolStep, type CompactEnv } from './step.js'
 
 /** Tool calls one task group may spend before it must report. */
-export const DEFAULT_TASK_TOOL_BUDGET = 25
+const DEFAULT_TASK_TOOL_BUDGET = 25
 /** Frozen planning artifacts: the developer edits application code, never the plan. */
 const FROZEN_PATH = /(?:^|[\\/])openspec[\\/]/i
 const DEVELOPER_TOOLS = ['list_files', 'read_file', 'read_lines', 'search_text', 'get_diff', 'write_file', 'apply_patch']
 const stringList = { type: 'array', items: { type: 'string' } }
-export const TASK_RESULT_SCHEMA = { type: 'object', additionalProperties: false, required: ['summary', 'files', 'tests', 'verification', 'incomplete'], properties: { summary: { type: 'string' }, files: stringList, tests: stringList, verification: { type: 'string' }, incomplete: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['task', 'reason'], properties: { task: { type: 'string' }, reason: { type: 'string' } } } } } }
+const TASK_RESULT_SCHEMA = { type: 'object', additionalProperties: false, required: ['summary', 'files', 'tests', 'verification', 'incomplete'], properties: { summary: { type: 'string' }, files: stringList, tests: stringList, verification: { type: 'string' }, incomplete: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['task', 'reason'], properties: { task: { type: 'string' }, reason: { type: 'string' } } } } } }
 
-export interface TaskGroup { index: number; title: string; tasks: { id: string; text: string; done: boolean }[] }
+interface TaskGroup { index: number; title: string; tasks: { id: string; text: string; done: boolean }[] }
 /** Parses the `## N. Title` / `- [ ] N.M text` layout the OpenSpec tasks template prescribes. */
 export function parseTaskGroups(markdown: string): TaskGroup[] {
   const groups: TaskGroup[] = []
@@ -102,7 +102,7 @@ function findFiles(root: string, base: string, depth = 0): string[] {
   return out
 }
 /** Application source/test files under the roots (bounded), excluding plans, deps and dot dirs. */
-export function repositoryInventory(roots: readonly string[], limit = 60): string[] {
+function repositoryInventory(roots: readonly string[], limit = 60): string[] {
   const out: string[] = []
   const walk = (dir: string, rel: string, depth: number): void => {
     if (depth > 6 || out.length >= limit) return
@@ -122,7 +122,7 @@ export function repositoryInventory(roots: readonly string[], limit = 60): strin
   return out
 }
 const LANGUAGE_BY_EXT: Record<string, string> = { ts: 'TypeScript', tsx: 'TypeScript', mts: 'TypeScript', cts: 'TypeScript', js: 'JavaScript', jsx: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', py: 'Python', go: 'Go', rs: 'Rust', java: 'Java', kt: 'Kotlin', swift: 'Swift', cs: 'C#', rb: 'Ruby', php: 'PHP', c: 'C', cc: 'C++', cpp: 'C++', h: 'C', hpp: 'C++', vue: 'Vue', svelte: 'Svelte' }
-export interface LanguageProfile { primary: string; others: string[] }
+interface LanguageProfile { primary: string; others: string[] }
 /**
  * The repository's primary language (most source files; a tsconfig.json or a
  * TypeScript `main` breaks a JS/TS tie towards TypeScript) plus every other
@@ -184,7 +184,7 @@ export function foreignLanguageFile(roots: readonly string[], file: string, lang
   return `"${file}" is ${language}, but this repository is ${languages.primary}-only. Write the same behaviour in ${languages.primary} inside the existing modules; do not add a second language.`
 }
 /** Existing test directories (relative, POSIX) among the conventional names, e.g. `tests`, `test`, `__tests__`, `spec`. */
-export function existingTestDirs(roots: readonly string[]): string[] {
+function existingTestDirs(roots: readonly string[]): string[] {
   const names = ['tests', 'test', '__tests__', 'spec', 'specs']
   return [...new Set(roots.flatMap(root => names.filter(name => { try { return statSync(path.join(root, name)).isDirectory() } catch { return false } })))]
 }
@@ -233,7 +233,7 @@ export function locateNamedFile(roots: readonly string[], file: string): string 
   return undefined
 }
 /** Extra tool calls a correction group gets on top of the task budget: it must read AND patch, and the feedback is long. */
-export const CORRECTION_BUDGET_BONUS = 10
+const CORRECTION_BUDGET_BONUS = 10
 /**
  * Source excerpts around every `file:line` the feedback names (Jest/Babel
  * `path/file.js: … (30:56)`, TS `file.ts(12,3)` / `file.ts:12:3`, mocha
@@ -274,9 +274,9 @@ export function feedbackExcerpts(feedback: string, roots: readonly string[], opt
   return chunks.join('\n\n')
 }
 /** An existing file this long is edited with apply_patch, never regenerated whole (observed: a 1.4k-line test rewritten twice in one group, ~25 minutes of generation). */
-export const REWRITE_MAX_LINES = 150
+const REWRITE_MAX_LINES = 150
 /** Above this many lines, `read_file` answers with an outline (head + index of definitions) instead of the whole file. */
-export const OUTLINE_MIN_LINES = 400
+const OUTLINE_MIN_LINES = 400
 const OUTLINE_HEAD_LINES = 120
 const DEFINITION_LINE = /^\s*(?:(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*\w+|(?:export\s+)?class\s+\w+|(?:export\s+)?(?:const|let|var)\s+\w+\s*=\s*(?:async\s*)?(?:function\b|\([^)]*\)\s*=>|\w+\s*=>)|(?:static\s+|async\s+|get\s+|set\s+)?[A-Za-z_$][\w$]*\s*\([^)]*\)\s*\{|(?:describe|it|test|suite|context)\s*\(|def\s+\w+|func\s+(?:\([^)]*\)\s*)?\w+|(?:pub\s+)?fn\s+\w+)/
 /**
@@ -285,7 +285,7 @@ const DEFINITION_LINE = /^\s*(?:(?:export\s+)?(?:default\s+)?(?:async\s+)?functi
  * range it needs with read_lines instead of putting 15k tokens of test file
  * into the transcript on every read (observed: 4-minute prefills).
  */
-export function outlineLargeFile(file: string, content: string): string | undefined {
+function outlineLargeFile(file: string, content: string): string | undefined {
   const lines = content.split('\n')
   if (lines.length <= OUTLINE_MIN_LINES) return undefined
   const index: string[] = []
@@ -293,13 +293,13 @@ export function outlineLargeFile(file: string, content: string): string | undefi
   return JSON.stringify({ outline: true, path: file, totalLines: lines.length, head: lines.slice(0, OUTLINE_HEAD_LINES).join('\n'), definitions: index, note: `${file} has ${lines.length} lines; this is its first ${OUTLINE_HEAD_LINES} lines plus an index of definitions. Read only the range you need with read_lines(path, startLine, endLine); do not read the whole file.` })
 }
 /** Files a model writes to narrate its own work; never part of a task, always noise for the reviewer (observed: fix_summary.json, task-summary.json in the repository root). */
-export const NARRATION_FILE = /(?:^|\/)(?:[\w.-]*(?:summary|progress|scratch|handoff)[\w.-]*)\.(?:json|md|txt)$/i
+const NARRATION_FILE = /(?:^|\/)(?:[\w.-]*(?:summary|progress|scratch|handoff)[\w.-]*)\.(?:json|md|txt)$/i
 /** Media/binary extensions a text-only tool can never produce correctly. */
 export const BINARY_ASSET = /\.(?:wav|mp3|ogg|flac|m4a|aac|png|jpe?g|gif|webp|bmp|ico|woff2?|ttf|otf|eot|mp4|webm|mov|zip|gz|tar|pdf|wasm)$/i
 /** Extra write-only calls a task group gets when it spent its whole budget reading. */
-export const WRITE_EXTENSION_CALLS = 6
+const WRITE_EXTENSION_CALLS = 6
 /** Tool calls the in-place fix round after a failed group check may spend. */
-export const GROUP_FIX_BUDGET = 20
+const GROUP_FIX_BUDGET = 20
 /**
  * One bounded correction round for a group whose check just failed: the exact
  * output plus host-read excerpts around every reported file:line, the group's
@@ -337,7 +337,7 @@ async function fixGroupInPlace(env: CompactEnv, group: TaskGroup, output: string
   return [...new Set(written)]
 }
 /** Test files among `reported` that the repository's own test command (per root) does not execute; empty when no command is detected. */
-export function unreachedGroupTests(roots: readonly string[], reported: readonly string[]): string[] {
+function unreachedGroupTests(roots: readonly string[], reported: readonly string[]): string[] {
   return roots.flatMap(root => { const check = detectCheckCommand(root); return check ? unreachedTestFiles(root, [check], reported) : [] })
 }
 /** A source file that exists but carries no implementation: a handful of lines, a placeholder import, or only TODOs. */

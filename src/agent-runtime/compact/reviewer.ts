@@ -10,15 +10,15 @@ import { bounded } from './prompt-inputs.js'
 import { finalJson, openspecCall, strings, text, toolStep, type CompactEnv } from './step.js'
 
 /** Tool calls the reviewer may spend inspecting beyond the supplied diff. */
-export const DEFAULT_REVIEW_TOOL_BUDGET = 15
+const DEFAULT_REVIEW_TOOL_BUDGET = 15
 /** A re-review only opens the changed files. */
-export const RE_REVIEW_TOOL_BUDGET = 6
+const RE_REVIEW_TOOL_BUDGET = 6
 const DIFF_LIMIT = 40 * 1024
 const UNTRACKED_LIMIT = 8 * 1024
 const MAX_UNTRACKED = 12
 
 /** Working-tree changes of every allowed root against HEAD, plus the content of new files, bounded. `only` restricts the diff and the new-file listing to those repository-relative paths (a re-review reads just what the fixer touched). */
-export function collectDiff(roots: string[], only?: readonly string[]): string {
+function collectDiff(roots: string[], only?: readonly string[]): string {
   // Pathspec magic stays enabled so openspec/ artifacts are excluded from the reviewed diff.
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.toUpperCase().startsWith('GIT_'))), GIT_OPTIONAL_LOCKS: '0' }
   const options = { encoding: 'utf8' as const, env, windowsHide: true, timeout: 10_000, maxBuffer: 4 * 1024 * 1024 }
@@ -49,14 +49,14 @@ export function collectDiff(roots: string[], only?: readonly string[]): string {
   return sections.join('\n\n')
 }
 /** The gate thresholds the host rendered into the reviewer prompt (`score is at least N`, `aspect ≥ N`). */
-export function reviewGateThresholds(gate: string): { minScore: number; aspects: Record<string, number> } {
+function reviewGateThresholds(gate: string): { minScore: number; aspects: Record<string, number> } {
   const minScore = Number(/score\` is at least (\d+)/.exec(gate)?.[1] ?? 0)
   const aspects: Record<string, number> = {}
   for (const match of gate.matchAll(/`([a-z_]+)` ≥ (\d+)/g)) aspects[match[1]!] = Number(match[2])
   return { minScore, aspects }
 }
 /** Files named by the previous review's issues (`path: what must change` lines under `## Previous review`). */
-export function previousIssueFiles(feedback: string): string[] {
+function previousIssueFiles(feedback: string): string[] {
   const section = feedback.split('## Previous review')[1] ?? ''
   return [...new Set([...section.matchAll(/(?:^|[\s-])((?:[\w.-]+\/)*[\w.-]+\.(?:[cm]?[jt]sx?|py|go|rs|java|kt|swift|cs|rb|php|c|cc|cpp|h|hpp|vue|svelte|html|css|scss|json|ya?ml|md))(?=[\s:,;)]|$)/g)].map(match => match[1]!.replace(/\\/g, '/')))]
 }

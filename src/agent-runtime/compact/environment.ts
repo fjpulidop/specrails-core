@@ -17,8 +17,8 @@ import path from 'node:path'
 // install/check round in circles. cross-spawn resolves the shim on every OS.
 const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
 
-export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[] }
-export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string }
+interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[] }
+interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string }
 
 const ENVIRONMENT_SIGNATURES: RegExp[] = [
   /command not found/i,
@@ -88,7 +88,7 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
 }
 
 /** Rewrites an exact, unpublished version in package.json to `^<major>.0.0`; true when something changed. */
-export function relaxManifestPin(root: string, name: string, version: string): boolean {
+function relaxManifestPin(root: string, name: string, version: string): boolean {
   const file = path.join(root, 'package.json')
   let manifest: Record<string, unknown>
   try { manifest = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown> } catch { return false }
@@ -163,7 +163,7 @@ export function detectCheckCommand(root: string): { command: string; args: strin
   return undefined
 }
 
-export interface GroupCheckOutcome { ran: boolean; ok: boolean; command?: string; output: string; timedOut?: boolean }
+interface GroupCheckOutcome { ran: boolean; ok: boolean; command?: string; output: string; timedOut?: boolean }
 /**
  * Runs the repository's test command once, bounded (default 3 min, killed on
  * timeout), returning the bounded output tail. Used between developer task

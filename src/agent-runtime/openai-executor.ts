@@ -1,4 +1,4 @@
-import { readVerificationEvidence } from '../installer/runtime/pipeline-state.js'
+import { readVerificationEvidence } from '../pipeline/pipeline-state.js'
 import { assertEffortSupported, unknownCapabilities } from './capabilities.js'
 import { OpenSpecTools, OPENSPEC_TOOL_DEFINITION, openSpecPrompt } from './openspec.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentEvent, type AgentResult, type RuntimeProviderConfig } from './executor-types.js'
@@ -18,13 +18,13 @@ export function parseStructuredText(text: string): Record<string, unknown> | und
 }
 /** The agent loop an openai-compatible provider runs: compact host-driven pipelines by default. */
 /** The OpenAI `reasoning_effort` tiers a compatible endpoint accepts. */
-export const OPENAI_EFFORTS = ['low', 'medium', 'high'] as const
-export function resolveAgentLoop(provider: ApiProvider): 'compact' | 'free' { return provider.agentLoop ?? 'compact' }
+const OPENAI_EFFORTS = ['low', 'medium', 'high'] as const
+function resolveAgentLoop(provider: ApiProvider): 'compact' | 'free' { return provider.agentLoop ?? 'compact' }
 /** Compact runs: abort when NOTHING happens for this long (no tool call, reply or usage) — the real hang detector now that the wall clock is per task group. A non-streaming 16k reply at 20 tok/s is ~13 min, hence the margin. */
-export const IDLE_TIMEOUT_MS = 20 * 60_000
-export function resolveContextWindow(provider: ApiProvider): number { return provider.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS }
+const IDLE_TIMEOUT_MS = 20 * 60_000
+function resolveContextWindow(provider: ApiProvider): number { return provider.contextWindowTokens ?? DEFAULT_CONTEXT_WINDOW_TOKENS }
 /** The per-turn output budget the connection declares; undefined keeps the loop's default. */
-export function resolveOutputBudget(provider: ApiProvider): number | undefined { return provider.maxOutputTokens }
+function resolveOutputBudget(provider: ApiProvider): number | undefined { return provider.maxOutputTokens }
 
 /** No SDK, gateway, tracing backend, paid probe, or mandatory key. */
 export class OpenAICompatibleExecutor implements AgentExecutor {

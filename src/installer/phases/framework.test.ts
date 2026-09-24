@@ -176,7 +176,7 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       const scriptDir = path.join(tmpDir, 'core-runtime')
       const fwDir = path.join(tmpDir, 'framework-runtime')
       setupFakeScriptDir(scriptDir)
-      const runtime = path.join(scriptDir, 'dist', 'installer', 'runtime', 'pipeline-state.js')
+      const runtime = path.join(scriptDir, 'dist', 'pipeline', 'pipeline-state.js')
       writeFileLf(runtime, '// first runtime')
       const input = { scriptDir, frameworkDir: fwDir, provider: 'claude' as const, providerDir: '.claude', version: '5.0.0' }
       installFramework(input)

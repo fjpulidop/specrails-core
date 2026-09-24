@@ -1,7 +1,7 @@
 import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import path from 'node:path'
-import type { PipelineContext } from '../installer/runtime/pipeline-state.js'
+import type { PipelineContext } from '../pipeline/pipeline-state.js'
 
 /** Small, provider-independent map of facts from the admitted checkout. Never
  * follows a documentation link out of scope or invents verification commands. */

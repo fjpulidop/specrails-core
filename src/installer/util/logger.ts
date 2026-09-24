@@ -1,9 +1,7 @@
 import pc from 'picocolors'
 
 /**
- * Coloured output helpers for the installer. The emoji prefixes match
- * what the retired bash scripts printed (`✓ ⚠ ✗ →`) so existing user
- * bug reports and screenshots still read the same.
+ * Coloured output helpers for the installer (`✓ ⚠ ✗ →` prefixes).
  *
  * The logger writes to stdout by default; callers may override via
  * {@link setLoggerStreams} (useful in tests that capture output).

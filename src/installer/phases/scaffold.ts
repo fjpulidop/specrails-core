@@ -196,7 +196,7 @@ const SKILL_FROM_COMMAND: Record<string, { command: string; description: string 
 }
 
 /**
- * Phase 2 + Phase 3 of the retired install.sh:
+ * Phase 2 + Phase 3 of init:
  *   - Detect prior installation state (.claude/.codex/openspec already present).
  *   - Create the directory skeleton.
  *   - Copy templates into `.specrails/setup-templates/` (the internal
@@ -208,7 +208,7 @@ const SKILL_FROM_COMMAND: Record<string, { command: string; description: string 
  * the installer finishes in one pass — no follow-up wizard required.
  */
 
-export interface ScaffoldInput {
+interface ScaffoldInput {
   /** Absolute path to the specrails-core package (installed via npx). */
   scriptDir: string
   /**
@@ -248,7 +248,7 @@ export interface ScaffoldInput {
   materializeAllAgents?: boolean
 }
 
-export interface ScaffoldResult {
+interface ScaffoldResult {
   existingSetup: boolean
   createdDirs: string[]
   copiedFiles: number
@@ -284,9 +284,7 @@ const KIMI_RUNNER_RELATIVE_FILES = [
 
 /**
  * Returns true iff any of the provider directories already contains
- * content. The desktop-app-driven path skips the "merge existing?" prompt and
- * assumes `--yes`; the CLI dispatcher (bin/specrails-core.cjs) should
- * have prompted before entering this phase.
+ * content.
  */
 export function detectExistingSetup(input: Pick<ScaffoldInput, 'artifactRoot' | 'codeRoot' | 'providerDir'>): boolean {
   const roots = [
@@ -445,7 +443,7 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
 // settings/instructions files) is seeded as real writable files.
 // ───────────────────────────────────────────────────────────────────────────
 
-export interface InstallFrameworkInput {
+interface InstallFrameworkInput {
   /** Absolute path to the specrails-core package (templates/ + commands/). */
   scriptDir: string
   /** Root of the versioned framework store, e.g. `<home>/.specrails/framework`. */
@@ -460,7 +458,7 @@ export interface InstallFrameworkInput {
   selectedAgents?: string[]
 }
 
-export interface InstallFrameworkResult {
+interface InstallFrameworkResult {
   /** `<frameworkDir>/<version>/<providerDir>` — root of the static subtree. */
   providerFrameworkDir: string
   /** `<frameworkDir>/<version>` — the version root (also holds setup-templates/). */
@@ -538,8 +536,7 @@ function frameworkSourceHash(scriptDir: string, provider: Provider): string {
   const treeHash = hashFrameworkTrees(
     [
       { label: 'templates', dir: path.join(scriptDir, 'templates') },
-      { label: 'commands', dir: path.join(scriptDir, 'commands') },
-      { label: 'pipeline-runtime', dir: path.join(scriptDir, 'dist', 'installer', 'runtime') },
+      { label: 'pipeline-runtime', dir: path.join(scriptDir, 'dist', 'pipeline') },
       { label: 'installer-renderers', dir: path.join(scriptDir, 'dist', 'installer', 'phases') },
     ],
     { ignorePackageNoise: true },
@@ -733,7 +730,7 @@ export function ensureCurrentSymlink(frameworkDir: string, version: string): voi
   atomicSymlinkSwap(versionDir, currentPath)
 }
 
-export interface AssembleProjectWorkspaceInput {
+interface AssembleProjectWorkspaceInput {
   /** The per-project workspace artifact root (= resolveArtifacts artifactRoot). */
   workspace: string
   /** Root of the versioned framework store (the parent of `current/`). */
@@ -769,7 +766,7 @@ export interface AssembleProjectWorkspaceInput {
   copyStatics?: boolean
 }
 
-export interface AssembleProjectWorkspaceResult {
+interface AssembleProjectWorkspaceResult {
   /** Per-linked-subtree mechanism, for diagnostics (copy-fallback loses O(1) swap). */
   links: Record<string, 'symlink' | 'junction' | 'copy'>
   /** Agent ids whose memory dirs were seeded as real writable dirs. */
@@ -1640,13 +1637,13 @@ function assertPipelineRuntimeSource(scriptDir: string): void {
   const contractFile = path.join(scriptDir, 'integration-contract.json')
   if (!pathExists(contractFile)) return
   const contract = JSON.parse(readTextFile(contractFile)) as { execution?: { runtime?: string } }
-  if (contract.execution?.runtime && !pathExists(path.join(scriptDir, 'dist', 'installer', 'runtime', 'pipeline-state.js'))) {
+  if (contract.execution?.runtime && !pathExists(path.join(scriptDir, 'dist', 'pipeline', 'pipeline-state.js'))) {
     throw new Error('Core declares a pipeline runtime but its compiled module is missing; rebuild or reinstall this Core package before refreshing providers')
   }
 }
 
 function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifactRoot' | 'provider'>): number {
-  const source = path.join(input.scriptDir, 'dist', 'installer', 'runtime', 'pipeline-state.js')
+  const source = path.join(input.scriptDir, 'dist', 'pipeline', 'pipeline-state.js')
   // Source-only fixture installations may not include a compiled runtime.
   if (!pathExists(source)) return 0
   const dest = path.join(input.artifactRoot, '.specrails', 'runtime')
@@ -1658,7 +1655,7 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
   if (pathExists(runtime)) {
     writeFileLf(path.join(dest, 'agent-runtime.mjs'),
       `import { runRuntimeCommand } from ${JSON.stringify(pathToFileURL(runtime).href)}\n` +
-      `import { parseArgs } from ${JSON.stringify(pathToFileURL(path.join(input.scriptDir, 'dist', 'installer', 'cli.js')).href)}\n` +
+      `import { parseArgs } from ${JSON.stringify(pathToFileURL(path.join(input.scriptDir, 'dist', 'shared', 'args.js')).href)}\n` +
       "const { subcommand, flags, positionals } = parseArgs(process.argv.slice(2))\n" +
       "try { process.exitCode = await runRuntimeCommand(flags, [subcommand, ...positionals].filter(Boolean)) } catch (error) { console.error(error.message); process.exitCode = 1 }\n")
     const configPath = path.join(input.artifactRoot, '.specrails', 'agent-runtime.json')
@@ -2006,8 +2003,7 @@ function placeSkills(input: ScaffoldInput): SkillsPlacement {
 /**
  * Substitutes `{{KEY}}` tokens in the input text with the provided
  * values, then strips any remaining `{{UNKNOWN}}` tokens (replacing
- * them with the empty string). Matches the retired bash installer's
- * `sed` pipeline byte-for-byte for the documented token set.
+ * them with the empty string).
  */
 function renderPlaceholders(text: string, values: Record<string, string>): string {
   let out = text

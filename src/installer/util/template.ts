@@ -14,7 +14,7 @@
  * fits inside these three forms.
  */
 
-export type TemplateContext = Record<string, string | boolean | number | null | undefined>
+type TemplateContext = Record<string, string | boolean | number | null | undefined>
 
 /**
  * Renders `template` by evaluating its directives against `context`.

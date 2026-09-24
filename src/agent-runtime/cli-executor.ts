@@ -16,7 +16,7 @@ import { executeKimiReadonlyAcp } from './kimi-acp.js'
 import { assertGeminiAdminPolicyAvailable, GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
 export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
-export interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
+interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
 const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
 

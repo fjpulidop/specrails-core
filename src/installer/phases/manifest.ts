@@ -7,10 +7,9 @@ import { pathExists, readBytes, readTextFile, writeFileLf } from '../util/fs.js'
 
 /**
  * Shape of the `.specrails/specrails-manifest.json` file the installer
- * writes at install time. Consumers (specrails-desktop's compat check,
- * the `doctor` command, update.sh) parse it to detect template drift.
+ * writes at install time. specrails-desktop reads it to detect template drift.
  */
-export interface SpecrailsManifest {
+interface SpecrailsManifest {
   version: string
   installed_at: string
   /** Provider inventory is emitted only by provider-aware lifecycle callers. */
@@ -28,7 +27,7 @@ export function sha256Of(filePath: string): string {
   return `sha256:${hash}`
 }
 
-export interface BuildManifestInput {
+interface BuildManifestInput {
   /** Absolute path to the specrails-core source package directory. */
   scriptDir: string
   /** Absolute path to the user's repo root where the manifest is written. */
@@ -113,8 +112,7 @@ export function writeManifestFiles(
 
 /**
  * Enumerates files under `templates/` excluding `node_modules/` and
- * package-lock files, matching the bash helper's find clause:
- *   find ... -not -path "(star)/node_modules/(star)" -not -name 'package-lock.json'
+ * package-lock files.
  */
 function walkManifestSources(root: string): string[] {
   const collected: string[] = []

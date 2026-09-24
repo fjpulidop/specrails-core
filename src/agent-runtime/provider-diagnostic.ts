@@ -1,4 +1,4 @@
-import { redactRuntimeText } from '../installer/runtime/pipeline-state.js'
+import { redactRuntimeText } from '../pipeline/pipeline-state.js'
 import { stripVTControlCharacters } from 'node:util'
 /** Keep provider errors visible without dumping full output, prompts or credentials. */
 export function providerDiagnostic(stdout: string, stderr: string, env: NodeJS.ProcessEnv = process.env): string {

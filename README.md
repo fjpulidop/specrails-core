@@ -28,7 +28,8 @@ Desktop calls `init` and the offline framework lifecycle, then launches `dist/ag
 
 ```text
 bin/specrails-core.mjs     npm bin shim → dist/installer/cli.js
-src/installer/             CLI, framework lifecycle, provider rendering, pipeline journal
+src/installer/             CLI, framework lifecycle, provider rendering
+src/pipeline/              pipeline journal, gates and verification receipts
 src/agent-runtime/         programmatic runtime: graph, executors, compact loop, recovery
 templates/                 role definitions, workflow commands, provider settings, Kimi runner
 schemas/                   runtime configuration schema and fixtures

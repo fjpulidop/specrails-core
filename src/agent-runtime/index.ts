@@ -22,5 +22,5 @@ export {
 export { OPENSPEC_VERSION, ROLE_SKILLS, type OpenSpecRoleContext } from './openspec.js'
 
 export * from './efficiency-summary.js'
-export { readVerificationEvidence, type VerificationEvidenceQuery } from '../installer/runtime/pipeline-state.js'
+export { readVerificationEvidence, type VerificationEvidenceQuery } from '../pipeline/pipeline-state.js'
 export { runRecovery, recoveryRequestSchema, type RecoveryRequest } from './recovery.js'

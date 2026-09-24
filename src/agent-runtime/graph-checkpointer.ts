@@ -5,7 +5,7 @@ import {
 import type { RunnableConfig } from '@langchain/core/runnables'
 
 /** One serialized LangGraph value: the serializer's type tag plus base64 bytes. */
-export interface SerializedBlob { type: string; data: string }
+interface SerializedBlob { type: string; data: string }
 export interface SerializedCheckpointEntry {
   threadId: string
   ns: string

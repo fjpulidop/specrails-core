@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest'
 import { boundedReviewManifest, reviewChanges } from './review-context.js'
-import type { CandidateManifest } from '../installer/runtime/pipeline-state.js'
+import type { CandidateManifest } from '../pipeline/pipeline-state.js'
 
 function manifest(files: Array<[string, string]>): CandidateManifest { return { schemaVersion: 1, scopeHash: 'scope', repositories: [{ id: 'front', path: '/front', files }] } }
 it('compares against the actual previous reviewed candidate including deletions and modes', () => {

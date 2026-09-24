@@ -19,9 +19,10 @@ src/installer/
   cli.ts                      single dispatcher: init, install-framework, swap-current, assemble, pipeline, runtime
   commands/                   init + offline framework lifecycle
   phases/                     prereqs, provider detection, scaffold (provider rendering), manifest, install-config
-  runtime/pipeline-state.ts   pipeline journal, gates and verification receipts (copied into projects as .specrails/runtime/pipeline-state.mjs)
   util/                       fs, exec, git, registry, install transaction, logger
+src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
+src/shared/                   helpers shared by the CLIs (argument parsing)
 templates/                    sr-* roles, implement/batch-implement/retry, provider settings, Kimi runner
 integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.0)
 ```
@@ -37,6 +38,7 @@ npm run ci             # typecheck, script tests, coverage, package check
 
 ## Conventions
 
+- Dependency direction is `shared ← pipeline ← agent-runtime ← installer`, enforced by `src/architecture.test.ts`. The installer loads the runtime lazily for the `runtime` command only.
 - Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`); kebab-case files; tests next to their subject as `*.test.ts`.
 - Spawn processes through `src/installer/util/exec.ts` or `src/agent-runtime/cli-process.ts` (Windows quoting and tree-kill); never assume POSIX paths.
 - `templates/commands/specrails/*.md` are the single source for every provider's workflow entry points.

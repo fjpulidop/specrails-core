@@ -1,4 +1,4 @@
-import type { VerificationCommand } from '../installer/runtime/pipeline-state.js'
+import type { VerificationCommand } from '../pipeline/pipeline-state.js'
 import type { CacheTokenUsage } from './efficiency-types.js'
 import type { GuardrailSettings } from './guardrails.js'
 
