@@ -28,7 +28,9 @@ const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
  */
 export function buildCliInvocation(provider: CliProvider, request: AgentRequest, options: CliInvocationOptions = {}): CliInvocation {
   const readOnly = request.role !== 'developer'
-  const model = request.model ? ['--model', request.model] : []
+  // Pin the product alias; explicit IDs remain reproducible across releases.
+  const modelId = provider === 'claude' && request.model === 'opus' ? 'claude-opus-5-5' : request.model
+  const model = modelId ? ['--model', modelId] : []
   const extraRoots = request.allowedRoots.filter(root => root !== request.cwd)
   const resume = request.resumeSessionId
   switch (provider) {
