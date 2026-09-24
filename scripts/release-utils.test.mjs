@@ -14,7 +14,7 @@ const sha = 'a'.repeat(40)
 const bytes = Buffer.from('real package bytes')
 const manifest = { schemaVersion: 1, name: 'specrails-core', version: '5.0.0', sha, filename: 'specrails-core-5.0.0.tgz', integrity: integrity(bytes) }
 const versions = () => [{ name: 'specrails-core', version: '5.0.0' }, { version: '5.0.0', packages: { '': { version: '5.0.0' } } }, { '.': '5.0.0' }]
-const packFiles = ['package.json', 'bin/specrails-core.mjs', 'dist/installer/cli.js', 'dist/installer/runtime/pipeline-state.js', 'integration-contract.json', 'pinned-versions.json', 'schemas/profile.v1.json', 'templates/codex-skills/implement/SKILL.md'].map((path) => ({ path }))
+const packFiles = ['package.json', 'bin/specrails-core.mjs', 'dist/installer/cli.js', 'dist/installer/runtime/pipeline-state.js', 'integration-contract.json', 'pinned-versions.json', 'schemas/agent-runtime.schema.json', 'templates/commands/specrails/implement.md'].map((path) => ({ path }))
 const response = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body })
 const ciRun = (changes = {}) => ({ id: 10, head_sha: sha, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', ...changes })
 

@@ -45,8 +45,7 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 /**
  * `npx specrails-core init` entry point.
  *
- * Flags consumed (must remain in sync with ALLOWED_FLAGS in
- * bin/specrails-core.cjs until Phase 5):
+ * Flags consumed:
  *   --root-dir <path>     Target repo (default: cwd)
  *   --yes / -y            Non-interactive; auto-init git + accept defaults
  *   --provider <name>     Force provider (claude, codex, gemini, or kimi)
@@ -388,7 +387,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
 
   step('Installation complete')
   info('Agents, commands, and rules were placed directly — no follow-up step required.')
-  info('Extend the core trio (sr-architect, sr-developer, sr-reviewer) via profiles + custom-*.md agents.')
   // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
   // checkpoint). The sentinel line below is FROZEN — the downstream setup
@@ -415,7 +413,7 @@ export function warnUnknownSelectedAgents(selected: string[] | undefined): void 
     if (!CORE_AGENTS.has(id)) {
       warn(
         `install-config.yaml selects agent '${id}', which specrails-core no longer ships — ` +
-          `skipping (removed in v5; use a .claude/agents/custom-*.md agent declared in a profile).`,
+          `skipping (removed in v5).`,
       )
     }
   }

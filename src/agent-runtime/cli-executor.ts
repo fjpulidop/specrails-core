@@ -7,7 +7,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { sumCacheUsage, type CacheTokenUsage } from './efficiency-types.js'
-import { normalizeKimiCliModel } from '../installer/runtime/kimi.js'
+import { normalizeKimiCliModel } from './kimi-model.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentEvent, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type CliProvider } from './executor-types.js'
 import { runCliProcess, type CliInvocation, type CliProcessRunner } from './cli-process.js'
 import { canonicalWorkspace } from './workspace-tools.js'

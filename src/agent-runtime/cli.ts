@@ -84,7 +84,7 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
 }
 
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
-  const command = positionals[0] ?? 'help'
+  const command = flags.help === true ? 'help' : positionals[0] ?? 'help'
   if (command === 'prompts') { emit({ type: 'runtime-role-prompts', defaults: rolePromptDefaults() }); return 0 }
   if (command === 'capabilities') {
     if (flags.stdin !== undefined && flags.stdin !== true) throw new Error('--stdin is a boolean flag')

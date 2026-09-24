@@ -35,17 +35,14 @@ const DIR_LINK = IS_WIN ? 'junction' : 'symlink'
 
 function setupFakeScriptDir(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '5.0.0' })}\n`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), '# arch\nmemory: {{MEMORY_PATH}}\n')
+  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), '# arch\n')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), '# dev\n')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), '# reviewer\n')
   // Optional specialists — NOT in the CORE trio, so they are only linked into a
   // workspace whose selection includes them (exercises the superset+filter split).
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-backend-developer.md'), '# backend\n')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-frontend-developer.md'), '# frontend\n')
-  writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), '# rules\n')
   writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'), '/specrails:implement\n')
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
-  writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
 }
 
 describe('bundled framework — installFramework / ensureCurrentSymlink / assembleProjectWorkspace', () => {
@@ -109,7 +106,7 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       expect(isDir(path.join(fwClaude, 'agents'))).toBe(true)
       expect(pathExists(path.join(fwClaude, 'agents', 'sr-architect.md'))).toBe(true)
       expect(isDir(path.join(fwClaude, 'commands', 'specrails'))).toBe(true)
-      expect(isDir(path.join(fwClaude, 'rules'))).toBe(true)
+      expect(pathExists(path.join(fwClaude, 'rules'))).toBe(false)
       // setup-templates is materialized at the version root (shared enrich cache).
       expect(isDir(path.join(fwDir, '5.0.0', '.specrails', 'setup-templates', 'agents'))).toBe(true)
       // The framework copy carries NO per-workspace state: no agent-memory dir,
@@ -314,13 +311,14 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
         version: '5.0.0', codeRoot: repo, scriptDir,
       })
 
-      // commands/ + rules/ are whole-dir links into framework/current (symlink on
+      // commands/ is a whole-dir link into framework/current (symlink on
       // POSIX, junction on Windows). Assert they RESOLVE to the framework — the
       // realpath check holds for both link kinds.
       expect(realpathSync(path.join(ws, '.claude', 'commands'))).toBe(
         realpathSync(path.join(fwDir, 'current', '.claude', 'commands')),
       )
-      expect(res.links['rules']).toBe(DIR_LINK)
+      expect(res.links['commands']).toBe(DIR_LINK)
+      expect(res.links['rules']).toBeUndefined()
       // agents/ is a REAL dir of per-file links (custom-*.md can coexist).
       expect(isDir(path.join(ws, '.claude', 'agents'))).toBe(true)
       expect(isSymlink(path.join(ws, '.claude', 'agents'))).toBe(false)
@@ -339,8 +337,7 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       expect(isDir(path.join(ws, '.claude', 'agent-memory', 'sr-architect'))).toBe(true)
       expect(isSymlink(path.join(ws, '.claude', 'agent-memory'))).toBe(false)
       expect(res.seededMemoryAgents.sort()).toEqual(['sr-architect', 'sr-developer', 'sr-reviewer'])
-      // explanations/ created (arch + reviewer are explanation authors).
-      expect(isDir(path.join(ws, '.claude', 'agent-memory', 'explanations'))).toBe(true)
+      expect(pathExists(path.join(ws, '.claude', 'agent-memory', 'explanations'))).toBe(false)
       // manifest records the framework version.
       expect(readFileSync(path.join(ws, '.specrails', 'specrails-version'), 'utf8').trim()).toBe('5.0.0')
     })

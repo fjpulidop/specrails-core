@@ -1,16 +1,14 @@
 ---
 paths:
-  - ".claude/agents/**"
   - "templates/agents/**"
+  - "templates/codex-skills/rails/**"
 ---
 
-# Agent Prompt Conventions
+# Role template conventions
 
-- Agent files use YAML frontmatter with: `name`, `description`, `model`, `color`, `memory`
-- The `description` field must include examples showing when to launch the agent
-- Models: `opus` for deep reasoning (product-manager), `sonnet` for implementation, `haiku` for read-only analysis
-- Each agent has a persistent memory directory at `.claude/agent-memory/{agent-name}/`
-- Agent prompts should be self-contained — include all context the agent needs without relying on conversation history
-- Define clear boundaries: what the agent does AND what it does NOT do
-- Include output format specifications so agents produce consistent, parseable output
-- Reference persona files by path when product evaluation is needed
+- Core ships exactly three roles: `sr-architect`, `sr-developer`, `sr-reviewer`. Adding a role is a product decision, not a template edit.
+- Frontmatter: `name`, `description`, `model`, `color`. Codex rails use `name`, `description`, `license`, `compatibility`.
+- Keep each role short and aligned with the runtime role definitions in `src/agent-runtime/prompts.ts`.
+- Invoke OpenSpec only through `Skill("opsx:<id>", "<args>")`; the installer translates it per provider.
+- Never commit, push or open pull requests from a role: the host owns delivery.
+- Codex rails mirror the agent bodies; edit both together.

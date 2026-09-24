@@ -1,9 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { spawn, spawnSync } from 'node:child_process'
-import { PassThrough, Writable } from 'node:stream'
+import { Writable } from 'node:stream'
 import {
   chmodSync,
-  cpSync,
   existsSync,
   mkdtempSync,
   mkdirSync,
@@ -20,23 +19,6 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { writeFileLf } from '../util/fs.js'
 
-function canonicalPathIdentity(value: string): string {
-  const canonical =
-    typeof realpathSync.native === 'function'
-      ? realpathSync.native(value)
-      : realpathSync(value)
-  const resolved = path.resolve(canonical)
-  return process.platform === 'win32'
-    ? resolved.toLowerCase()
-    : resolved
-}
-
-function expectSamePath(actual: string, expected: string): void {
-  expect(canonicalPathIdentity(actual)).toBe(
-    canonicalPathIdentity(expected),
-  )
-}
-
 function toKimiPath(value: string): string {
   const normalized = value.replaceAll('\\', '/')
   return /^[a-z]:\//.test(normalized)
@@ -52,11 +34,6 @@ interface ParsedRunnerArgs {
   additionalDirs: string[]
   attachmentPaths: string[]
   extraPrompt?: string
-  requestFile?: string
-  roleWaveFile?: string
-  roleWaveStatus?: string
-  roleWaveCleanup?: string
-  roleMergeFile?: string
   plainPromptStdin: boolean
 }
 
@@ -77,108 +54,6 @@ interface RunnerModule {
     child: { kill?: (signal: string) => void },
     source: EventEmitter,
   ) => () => void
-  loadRoleRequest: (
-    parsed: ParsedRunnerArgs,
-    cwd: string,
-  ) => ParsedRunnerArgs
-  loadRoleWave: (
-    parsed: ParsedRunnerArgs,
-    cwd: string,
-  ) => {
-    run: string
-    roles: Array<{
-      key: string
-      skill: string
-      model: string
-      profile: string
-      rawArgs: string
-      workspace: string
-    }>
-    additionalDirs: string[]
-  } | undefined
-  loadRoleMerge: (
-    parsed: ParsedRunnerArgs,
-    cwd: string,
-  ) => {
-    run: string
-    actions: Array<{
-      worktree: string
-      path: string
-      operation: 'copy' | 'delete'
-    }>
-  } | undefined
-  inspectRoleWaveStatus: (
-    run: string,
-    options: Record<string, unknown>,
-  ) => {
-    run: string
-    baseRepo: string
-    baseCommit: string
-    manifestPath: string
-    worktrees: Record<
-      string,
-      {
-        repoDir: string
-        changes: Array<{ status: 'A' | 'M' | 'D'; path: string }>
-      }
-    >
-  }
-  applyRoleMerge: (
-    merge: {
-      run: string
-      actions: Array<{
-        worktree: string
-        path: string
-        operation: 'copy' | 'delete'
-      }>
-    },
-    options: Record<string, unknown>,
-  ) => { run: string; baseRepo: string; applied: number }
-  cleanupRoleWave: (
-    run: string,
-    options: Record<string, unknown>,
-  ) => {
-    run: string
-    baseRepo: string
-    removedWorktrees: number
-    manifestPath: string
-  }
-  materializeRoleWaveWorkspaces: (
-    wave: {
-      run: string
-      roles: Array<{
-        key: string
-        skill: string
-        model: string
-        profile: string
-        rawArgs: string
-        workspace: string
-      }>
-      additionalDirs: string[]
-    },
-    options: Record<string, unknown>,
-  ) => {
-    run: string
-    baseRepo: string
-    baseCommit: string
-    manifestPath: string
-    roles: Array<{
-      key: string
-      skill: string
-      model: string
-      profile: string
-      rawArgs: string
-      workspace: string
-      cwd: string
-      repoDir: string
-    }>
-  }
-  ensureProviderOverlay: (
-    providerRoot: string,
-    workspace: string,
-    platform: string,
-    dependencies?: Record<string, unknown>,
-  ) => void
   parseNpmCmdShimEntry: (shimPath: string, contents: string) => string | null
   parseRunnerArgs: (argv: string[]) => ParsedRunnerArgs
   parseSkillDocument: (
@@ -238,9 +113,6 @@ interface RunnerModule {
       fileExists?: (file: string) => boolean
       env?: Record<string, string>
       signalSource?: EventEmitter
-      spawnSync?: typeof spawnSync
-      tempRoot?: string
-      writeOutput?: (line: string) => void
       readStdin?: () => string
       spawnChild: (
         command: string,
@@ -312,95 +184,6 @@ function writeSkill(
     ].join('\n'),
   )
   return providerRoot
-}
-
-function createWaveRepo(name: string): string {
-  const repo = path.join(tmpDir, name)
-  mkdirSync(repo, { recursive: true })
-  for (const args of [
-    ['init', '-q'],
-    ['config', 'user.email', 'tests@specrails.dev'],
-    ['config', 'user.name', 'SpecRails Tests'],
-  ]) {
-    const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' })
-    if (result.status !== 0) throw new Error(result.stderr)
-  }
-  writeFileLf(path.join(repo, 'tracked.txt'), 'base\n')
-  const commit = spawnSync(
-    'git',
-    ['add', 'tracked.txt'],
-    { cwd: repo, encoding: 'utf8' },
-  )
-  if (commit.status !== 0) throw new Error(commit.stderr)
-  const committed = spawnSync(
-    'git',
-    ['commit', '-qm', 'base'],
-    { cwd: repo, encoding: 'utf8' },
-  )
-  if (committed.status !== 0) throw new Error(committed.stderr)
-  return repo
-}
-
-function writeRoleWave(
-  repo: string,
-  value: {
-    run: string
-    roles: Array<{
-      key: string
-      skill: string
-      model: string
-      profile?: string
-      args: string
-      workspace: string
-    }>
-  },
-): void {
-  writeFileLf(
-    path.join(repo, '.specrails', 'kimi-role-wave.json'),
-    `${JSON.stringify(
-      {
-        ...value,
-        roles: value.roles.map((role) => ({
-          ...role,
-          profile: role.profile ?? 'inherit',
-        })),
-      },
-      null,
-      2,
-    )}\n`,
-  )
-}
-
-function createRoleChild(
-  exitCode: number,
-  output: unknown,
-): EventEmitter & {
-  stdout: PassThrough
-  stderr: PassThrough
-  stdin: Writable
-  kill: ReturnType<typeof vi.fn>
-} {
-  const child = new EventEmitter() as EventEmitter & {
-    stdout: PassThrough
-    stderr: PassThrough
-    stdin: Writable
-    kill: ReturnType<typeof vi.fn>
-  }
-  child.stdout = new PassThrough()
-  child.stderr = new PassThrough()
-  child.stdin = new PassThrough()
-  child.kill = vi.fn((signal: string) => {
-    child.stdout.end()
-    child.stderr.end()
-    queueMicrotask(() => child.emit('exit', null, signal))
-    return true
-  })
-  queueMicrotask(() => {
-    child.stdout.end(`${JSON.stringify(output)}\n`)
-    child.stderr.end()
-    child.emit('exit', exitCode, null)
-  })
-  return child
 }
 
 describe('managed Kimi skill runner — upstream-compatible rendering', () => {
@@ -947,7 +730,6 @@ describe('managed Kimi skill runner — secure invocation', () => {
         {
           scriptPath,
           cwd: tmpDir,
-          tempRoot: tmpDir,
           platform: 'linux',
           signalSource: new EventEmitter(),
           readStdin: () => prompt,
@@ -978,7 +760,6 @@ describe('managed Kimi skill runner — secure invocation', () => {
             'run-skill.mjs',
           ),
           cwd: tmpDir,
-          tempRoot: tmpDir,
           platform: 'linux',
           readStdin: () => 'sensitive prompt',
           spawnChild: () => {
@@ -1022,9 +803,9 @@ describe('managed Kimi skill runner — secure invocation', () => {
   })
 
   it.skipIf(process.platform === 'win32')(
-    'loads a one-shot fixed role request without evaluating hostile context',
+    'passes hostile skill args to a real Kimi process without shell evaluation',
     async () => {
-      const cwd = path.join(tmpDir, 'role-request-e2e')
+      const cwd = path.join(tmpDir, 'hostile-args-e2e')
       const providerRoot = path.join(cwd, '.kimi-code')
       writeFileLf(
         path.join(
@@ -1036,7 +817,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
         [
           '---',
           'name: custom-auditor',
-          'description: Request-file security test',
+          'description: Hostile argument security test',
           'type: prompt',
           '---',
           'Audit exactly: $ARGUMENTS',
@@ -1045,19 +826,6 @@ describe('managed Kimi skill runner — secure invocation', () => {
       const marker = path.join(cwd, 'shell-injection-marker')
       const hostileArgs =
         `"quoted"; $(touch ${marker}) \`touch ${marker}\` <unsafe>`
-      const requestPath = path.join(
-        cwd,
-        '.specrails',
-        'kimi-role-request.json',
-      )
-      writeFileLf(
-        requestPath,
-        JSON.stringify({
-          skill: 'custom-auditor',
-          model: 'k3',
-          args: hostileArgs,
-        }),
-      )
 
       const fakeBin = path.join(cwd, 'bin')
       const capturePath = path.join(cwd, 'captured-argv.json')
@@ -1076,8 +844,12 @@ describe('managed Kimi skill runner — secure invocation', () => {
       await expect(
         runner.runSkillCli(
           [
-            '--request-file',
-            '.specrails/kimi-role-request.json',
+            '--skill',
+            'custom-auditor',
+            '--model',
+            'k3',
+            '--args',
+            hostileArgs,
             '--add-dir',
             cwd,
           ],
@@ -1106,7 +878,6 @@ describe('managed Kimi skill runner — secure invocation', () => {
       ).resolves.toBe(0)
 
       expect(existsSync(marker)).toBe(false)
-      expect(existsSync(requestPath)).toBe(false)
       const captured = JSON.parse(
         readFileSync(capturePath, 'utf8'),
       ) as string[]
@@ -1117,879 +888,6 @@ describe('managed Kimi skill runner — secure invocation', () => {
       )
     },
   )
-
-  it('bounds and cleans fixed role request files and rejects alternate paths', () => {
-    const cwd = path.join(tmpDir, 'role-request-validation')
-    const parsed = runner.parseRunnerArgs([
-      '--request-file',
-      '.specrails/kimi-role-request.json',
-    ])
-    expect(() =>
-      runner.parseRunnerArgs([
-        '--request-file',
-        '.specrails/kimi-role-request.json',
-        '--skill',
-        'sr-reviewer',
-      ]),
-    ).toThrow(/cannot be combined/)
-    expect(() =>
-      runner.loadRoleRequest(
-        {
-          ...parsed,
-          requestFile: 'elsewhere/request.json',
-        },
-        cwd,
-      ),
-    ).toThrow(/must use/)
-
-    const requestPath = path.join(
-      cwd,
-      '.specrails',
-      'kimi-role-request.json',
-    )
-    writeFileLf(requestPath, 'x'.repeat(1_048_577))
-    expect(() => runner.loadRoleRequest(parsed, cwd)).toThrow(/exceeds/)
-    expect(existsSync(requestPath)).toBe(false)
-
-    writeFileLf(requestPath, '{invalid json')
-    expect(() => runner.loadRoleRequest(parsed, cwd)).toThrow(/Invalid role request JSON/)
-    expect(existsSync(requestPath)).toBe(false)
-  })
-
-  it('rejects fixed request state through a symlinked .specrails parent', () => {
-    const cwd = path.join(tmpDir, 'role-request-symlink')
-    const outside = path.join(tmpDir, 'role-request-outside')
-    mkdirSync(cwd, { recursive: true })
-    mkdirSync(outside, { recursive: true })
-    symlinkSync(outside, path.join(cwd, '.specrails'), 'dir')
-    writeFileLf(
-      path.join(outside, 'kimi-role-wave.json'),
-      '{"run":"safe-run","roles":[]}\n',
-    )
-    const parsed = runner.parseRunnerArgs([
-      '--role-wave-file',
-      '.specrails/kimi-role-wave.json',
-    ])
-    expect(() => runner.loadRoleWave(parsed, cwd)).toThrow(
-      /parent must be a real directory/,
-    )
-  })
-
-  it('executes one attributed wave for parallel current-repo roles', async () => {
-    const repo = createWaveRepo('role-wave-current')
-    const providerRoot = writeSkill('wave-a', 'A: $ARGUMENTS')
-    writeSkill('wave-b', 'B: $ARGUMENTS')
-    writeFileLf(
-      path.join(repo, '.specrails', 'profiles', 'rail-fast.json'),
-      '{}\n',
-    )
-    const hostileArgs = '"quoted" $(touch never) `whoami` <unsafe>'
-    writeRoleWave(repo, {
-      run: 'run-current-01',
-      roles: [
-        {
-          key: 'architect-a',
-          skill: 'wave-a',
-          model: 'k3',
-          args: hostileArgs,
-          workspace: 'current',
-        },
-        {
-          key: 'architect-b',
-          skill: 'wave-b',
-          model: 'company/kimi-v2',
-          profile: 'rail-fast',
-          args: 'second role',
-          workspace: 'current',
-        },
-      ],
-    })
-    const calls: Array<{
-      args: string[]
-      options: Record<string, unknown>
-    }> = []
-    const output: string[] = []
-    const currentTempRoot = path.join(tmpDir, 'role-wave-current-temp')
-
-    const code = await runner.runSkillCli(
-      [
-        '--role-wave-file',
-        '.specrails/kimi-role-wave.json',
-        '--add-dir',
-        repo,
-      ],
-      {
-        scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-        cwd: repo,
-        platform: 'linux',
-        env: { PATH: '/safe/bin' },
-        signalSource: new EventEmitter(),
-        tempRoot: currentTempRoot,
-        writeOutput: (line) => output.push(line),
-        spawnChild: (_command, args, options) => {
-          calls.push({ args, options })
-          return createRoleChild(0, {
-            role: calls.length,
-            content: 'ok',
-          })
-        },
-      },
-    )
-
-    expect(code).toBe(0)
-    expect(calls).toHaveLength(2)
-    const executionCwds = calls.map((call) => String(call.options.cwd))
-    expect(new Set(executionCwds).size).toBe(2)
-    for (const call of calls) {
-      expect(call.options).toMatchObject({ shell: false })
-      expectSamePath(
-        (call.options.env as Record<string, string>).SPECRAILS_REPO_DIR!,
-        repo,
-      )
-    }
-    expect(calls[0]?.args.join('\n')).toContain(
-      hostileArgs.replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
-    )
-    expectSamePath(
-      (calls[1]?.options.env as Record<string, string>)
-        .SPECRAILS_PROFILE_PATH!,
-      path.join(repo, '.specrails', 'profiles', 'rail-fast.json'),
-    )
-    expect(
-      existsSync(path.join(repo, '.specrails', 'kimi-role-wave.json')),
-    ).toBe(false)
-    const frames = output
-      .join('')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, unknown>)
-    expect(
-      frames.filter((frame) => frame.type === 'specrails.role.workspace'),
-    ).toHaveLength(2)
-    expect(
-      frames.filter((frame) => frame.type === 'specrails.role.event'),
-    ).toHaveLength(2)
-    expect(
-      frames.filter((frame) => frame.type === 'specrails.role.completed'),
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ roleKey: 'architect-a', status: 'succeeded' }),
-        expect.objectContaining({ roleKey: 'architect-b', status: 'succeeded' }),
-      ]),
-    )
-    const cleaned = runner.cleanupRoleWave('run-current-01', {
-      cwd: repo,
-      tempRoot: currentTempRoot,
-    })
-    expect(cleaned.removedWorktrees).toBe(0)
-    expect(existsSync(cleaned.manifestPath)).toBe(false)
-    for (const executionCwd of executionCwds) {
-      expect(existsSync(executionCwd)).toBe(false)
-    }
-  })
-
-  it.each(['host', 'standalone'] as const)('preserves %s frozen scope and shared backlog in a private current-role cwd', async (mode) => {
-    const repo = createWaveRepo('shared-backlog-role-' + mode)
-    const providerRoot = writeSkill('backlog-role', 'Use frozen specs and SPECRAILS_BACKLOG_PATH')
-    const workspace = path.join(tmpDir, 'external-backlog-workspace-' + mode)
-    const backlog = path.join(workspace, '.specrails', 'local-tickets.json')
-    writeFileLf(backlog, JSON.stringify({ tickets: { '17': { title: 'API and UI' } } }))
-    const contextPath = path.join(workspace, mode === 'standalone' ? '.specrails/pipeline-context.json' : 'context.json')
-    const frozen = JSON.stringify({ schemaVersion: 1, runId: 'shared-backlog-role',
-      backlogRoot: workspace, artifactRoot: repo, artifactRepositoryId: 'api',
-      repositories: [{ id: 'api', name: 'API', path: repo }, { id: 'ui', name: 'UI', path: workspace }],
-      ownership: { git: 'host', backlog: 'host', worktrees: 'host' },
-      specs: [{ id: 17, title: 'API and UI', description: 'Complete frozen criteria', repositoryIds: ['api', 'ui'] }] })
-    writeFileLf(contextPath, frozen)
-    writeRoleWave(workspace, { run: 'shared-backlog-role', roles: [{ key: 'developer', skill: 'backlog-role', model: 'k3', args: 'ticket 17', workspace: 'current' }] })
-    let childCwd = ''
-    const code = await runner.runSkillCli(['--role-wave-file', '.specrails/kimi-role-wave.json'], {
-      scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'), cwd: workspace,
-      platform: 'linux', env: mode === 'host' ? { SPECRAILS_EXECUTION_CONTEXT: contextPath } : {},
-      signalSource: new EventEmitter(), tempRoot: path.join(tmpDir, 'shared-backlog-temp'), writeOutput: () => {},
-      spawnChild: (_command: string, _args: string[], rawOptions: Record<string, unknown>) => {
-        const options = rawOptions as { cwd: string; env: Record<string, string> }
-        childCwd = options.cwd
-        const addDirs = _args.flatMap((arg, index) => arg === '--add-dir' ? [_args[index + 1]!] : [])
-        expect(addDirs.map(canonicalPathIdentity)).toContain(canonicalPathIdentity(workspace))
-        expect(addDirs.map(canonicalPathIdentity)).toContain(canonicalPathIdentity(repo))
-        expect(childCwd).not.toBe(workspace)
-        expect(JSON.parse(readFileSync(options.env.SPECRAILS_BACKLOG_PATH!, 'utf8')).tickets['17'].title).toBe('API and UI')
-        expect(readFileSync(options.env.SPECRAILS_EXECUTION_CONTEXT!, 'utf8')).toBe(frozen)
-        expect(options.env.SPECRAILS_PIPELINE_RUNTIME).toBe(path.join(workspace, '.specrails', 'runtime', 'pipeline.mjs'))
-        return createRoleChild(0, { content: 'done' })
-      },
-    })
-    expect(code).toBe(0)
-    expect(childCwd).not.toBe('')
-    expect(readFileSync(contextPath, 'utf8')).toBe(frozen)
-  })
-
-  it('rejects sibling worktrees for host-owned context before spawning', async () => {
-    const repo = createWaveRepo('host-context-worktree')
-    const providerRoot = writeSkill('host-role', 'Do not create worktrees')
-    const contextPath = path.join(repo, 'context.json')
-    writeFileLf(contextPath, JSON.stringify({ schemaVersion: 1, backlogRoot: repo, ownership: { worktrees: 'host' } }))
-    writeRoleWave(repo, { run: 'host-context-worktree', roles: [{ key: 'developer', skill: 'host-role', model: 'k3', args: '', workspace: 'worktree:unauthorized' }] })
-    const spawnChild = vi.fn()
-    await expect(runner.runSkillCli(['--role-wave-file', '.specrails/kimi-role-wave.json'], {
-      scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'), cwd: repo,
-      env: { SPECRAILS_EXECUTION_CONTEXT: contextPath }, spawnChild,
-    })).rejects.toThrow('Host-owned execution')
-    expect(spawnChild).not.toHaveBeenCalled()
-    expect(existsSync(path.join(repo, '.specrails', 'kimi-role-worktrees', 'host-context-worktree.json'))).toBe(false)
-  })
-
-  it('creates, snapshots, records, and reuses isolated role worktrees', async () => {
-    const repo = createWaveRepo('role-wave-worktrees')
-    const providerRoot = writeSkill('developer-wave', 'Develop $ARGUMENTS')
-    writeSkill('test-wave', 'Test $ARGUMENTS')
-    writeFileLf(path.join(repo, 'tracked.txt'), 'dirty tracked\n')
-    writeFileLf(path.join(repo, 'openspec', 'change.md'), 'untracked spec\n')
-    const tempRoot = path.join(tmpDir, 'role-wave-worktree-temp')
-    const runWave = async (
-      roles: Array<{
-        key: string
-        skill: string
-        model: string
-        args: string
-        workspace: string
-      }>,
-    ) => {
-      writeRoleWave(repo, { run: 'run-isolated-01', roles })
-      const calls: Array<Record<string, unknown>> = []
-      const output: string[] = []
-      const code = await runner.runSkillCli(
-        ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-        {
-          scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-          cwd: repo,
-          platform: 'linux',
-          env: { PATH: '/safe/bin' },
-          signalSource: new EventEmitter(),
-          tempRoot,
-          writeOutput: (line) => output.push(line),
-          spawnChild: (_command, _args, options) => {
-            calls.push(options)
-            return createRoleChild(0, { content: 'done' })
-          },
-        },
-      )
-      return {
-        code,
-        calls,
-        frames: output
-          .join('')
-          .trim()
-          .split('\n')
-          .map((line) => JSON.parse(line) as Record<string, unknown>),
-      }
-    }
-
-    const first = await runWave([
-      {
-        key: 'developer-a',
-        skill: 'developer-wave',
-        model: 'k3',
-        args: 'feature a',
-        workspace: 'worktree:feature-a',
-      },
-      {
-        key: 'developer-b',
-        skill: 'developer-wave',
-        model: 'k3',
-        args: 'feature b',
-        workspace: 'worktree:feature-b',
-      },
-    ])
-    expect(first.code).toBe(0)
-    const workspaceFrames = first.frames.filter(
-      (frame) => frame.type === 'specrails.role.workspace',
-    )
-    const featureA = workspaceFrames.find(
-      (frame) => frame.roleKey === 'developer-a',
-    )!
-    const featureB = workspaceFrames.find(
-      (frame) => frame.roleKey === 'developer-b',
-    )!
-    expect(featureA.repoDir).not.toBe(featureB.repoDir)
-    for (const frame of [featureA, featureB]) {
-      const repoDir = String(frame.repoDir)
-      expect(readFileSync(path.join(repoDir, 'tracked.txt'), 'utf8')).toBe(
-        'dirty tracked\n',
-      )
-      expect(readFileSync(path.join(repoDir, 'openspec', 'change.md'), 'utf8'))
-        .toBe('untracked spec\n')
-      expectSamePath(path.join(repoDir, '.kimi-code'), providerRoot)
-    }
-    writeFileLf(path.join(String(featureA.repoDir), 'role-change.txt'), 'kept\n')
-
-    const second = await runWave([
-      {
-        key: 'test-a',
-        skill: 'test-wave',
-        model: 'k3',
-        args: 'feature a',
-        workspace: 'worktree:feature-a',
-      },
-    ])
-    expect(second.code).toBe(0)
-    const reused = second.frames.find(
-      (frame) => frame.type === 'specrails.role.workspace',
-    )!
-    expect(reused.repoDir).toBe(featureA.repoDir)
-    expect(
-      readFileSync(path.join(String(reused.repoDir), 'role-change.txt'), 'utf8'),
-    ).toBe('kept\n')
-
-    const manifest = JSON.parse(
-      readFileSync(String(reused.manifestPath), 'utf8'),
-    ) as {
-      baseCommit: string
-      worktrees: Record<string, string>
-      roles: Record<string, { repoDir: string }>
-    }
-    expect(manifest.baseCommit).toMatch(/^[0-9a-f]{40}$/)
-    expect(manifest.worktrees).toMatchObject({
-      'feature-a': featureA.repoDir,
-      'feature-b': featureB.repoDir,
-    })
-    expect(manifest.roles['developer-a']?.repoDir).toBe(featureA.repoDir)
-    expect(manifest.roles['test-a']?.repoDir).toBe(featureA.repoDir)
-  })
-
-  it('merges A/M/D role deltas without attributing the dirty baseline or provider overlay', async () => {
-    const repo = createWaveRepo('role-wave-merge')
-    const providerRoot = writeSkill('merge-developer', 'Develop $ARGUMENTS')
-    writeFileLf(path.join(repo, 'tracked.txt'), 'dirty baseline\n')
-    writeFileLf(
-      path.join(repo, 'baseline untracked 🚀.txt'),
-      'baseline only\n',
-    )
-    writeRoleWave(repo, {
-      run: 'run-merge-01',
-      roles: [
-        {
-          key: 'developer-feature',
-          skill: 'merge-developer',
-          model: 'k3',
-          args: 'implement safely',
-          workspace: 'worktree:feature-safe',
-        },
-      ],
-    })
-    let spawnedOptions: Record<string, unknown> | undefined
-    const mergeTempRoot = path.join(tmpDir, 'role-wave-merge-temp')
-    await expect(
-      runner.runSkillCli(
-        ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-        {
-          scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-          cwd: repo,
-          platform: 'linux',
-          env: { PATH: '/safe/bin' },
-          signalSource: new EventEmitter(),
-          tempRoot: mergeTempRoot,
-          writeOutput: () => {},
-          spawnChild: (_command, _args, options) => {
-            spawnedOptions = options
-            return createRoleChild(0, { content: 'done' })
-          },
-        },
-      ),
-    ).resolves.toBe(0)
-    const initial = runner.inspectRoleWaveStatus('run-merge-01', {
-      cwd: repo,
-      tempRoot: mergeTempRoot,
-    })
-    expect(initial.worktrees['feature-safe']?.changes).toEqual([])
-
-    const worktree = initial.worktrees['feature-safe']!.repoDir
-    const hostileName = 'src/new $(touch never-created) 🚀.txt'
-    writeFileLf(path.join(worktree, hostileName), 'new role output\n')
-    rmSync(path.join(worktree, 'tracked.txt'))
-    const roleEnv = spawnedOptions!.env as Record<string, string>
-    const gitEnv = { ...roleEnv, PATH: process.env.PATH ?? '' }
-    const staged = spawnSync('git', ['add', '-A'], {
-      cwd: worktree,
-      env: gitEnv,
-      encoding: 'utf8',
-    })
-    expect(staged.status).toBe(0)
-    const providerStatus = spawnSync(
-      'git',
-      ['status', '--porcelain=v1', '--', '.kimi-code'],
-      { cwd: worktree, env: gitEnv, encoding: 'utf8' },
-    )
-    expect(providerStatus.stdout).toBe('')
-    const committed = spawnSync(
-      'git',
-      ['commit', '-qm', 'role delta'],
-      { cwd: worktree, env: gitEnv, encoding: 'utf8' },
-    )
-    expect(committed.status).toBe(0)
-
-    const inventory = runner.inspectRoleWaveStatus('run-merge-01', {
-      cwd: repo,
-      tempRoot: mergeTempRoot,
-    })
-    expect(inventory.worktrees['feature-safe']?.changes).toEqual([
-      { status: 'A', path: hostileName },
-      { status: 'D', path: 'tracked.txt' },
-    ])
-    expect(
-      inventory.worktrees['feature-safe']?.changes.some(
-        (change) => change.path.includes('baseline untracked'),
-      ),
-    ).toBe(false)
-
-    const marker = path.join(repo, 'never-created')
-    writeFileLf(
-      path.join(repo, '.specrails', 'kimi-role-merge.json'),
-      `${JSON.stringify({
-        run: 'run-merge-01',
-        actions: [
-          {
-            worktree: 'feature-safe',
-            path: hostileName,
-            operation: 'copy',
-          },
-          {
-            worktree: 'feature-safe',
-            path: 'tracked.txt',
-            operation: 'delete',
-          },
-        ],
-      })}\n`,
-    )
-    const parsed = runner.parseRunnerArgs([
-      '--role-merge-file',
-      '.specrails/kimi-role-merge.json',
-    ])
-    const merge = runner.loadRoleMerge(parsed, repo)!
-    expect(
-      runner.applyRoleMerge(merge, {
-        cwd: repo,
-        tempRoot: mergeTempRoot,
-      }),
-    ).toMatchObject({
-      run: 'run-merge-01',
-      applied: 2,
-    })
-    expect(readFileSync(path.join(repo, hostileName), 'utf8')).toBe(
-      'new role output\n',
-    )
-    expect(existsSync(path.join(repo, 'tracked.txt'))).toBe(false)
-    expect(existsSync(marker)).toBe(false)
-
-    const cleaned = runner.cleanupRoleWave('run-merge-01', {
-      cwd: repo,
-      tempRoot: mergeTempRoot,
-    })
-    expect(cleaned.removedWorktrees).toBe(1)
-    expect(existsSync(cleaned.manifestPath)).toBe(false)
-    expect(existsSync(worktree)).toBe(false)
-    const privateRefs = spawnSync(
-      'git',
-      ['for-each-ref', '--format=%(refname)', 'refs/specrails/kimi/'],
-      { cwd: repo, encoding: 'utf8' },
-    )
-    expect(privateRefs.status).toBe(0)
-    expect(privateRefs.stdout).toBe('')
-  })
-
-  it('rejects a tampered manifest git oid before invoking a ref-like git argument', async () => {
-    const repo = createWaveRepo('role-wave-tampered-manifest')
-    const providerRoot = writeSkill('tamper-role', 'body')
-    writeRoleWave(repo, {
-      run: 'run-tampered-01',
-      roles: [
-        {
-          key: 'tamper-role',
-          skill: 'tamper-role',
-          model: 'k3',
-          args: '',
-          workspace: 'worktree:feature-tamper',
-        },
-      ],
-    })
-    const tamperedTempRoot = path.join(
-      tmpDir,
-      'role-wave-tampered-temp',
-    )
-    await runner.runSkillCli(
-      ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-      {
-        scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-        cwd: repo,
-        platform: 'linux',
-        env: { PATH: '/safe/bin' },
-        signalSource: new EventEmitter(),
-        tempRoot: tamperedTempRoot,
-        writeOutput: () => {},
-        spawnChild: () => createRoleChild(0, { content: 'done' }),
-      },
-    )
-    const manifestPath = path.join(
-      repo,
-      '.specrails',
-      'kimi-role-worktrees',
-      'run-tampered-01.json',
-    )
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as Record<
-      string,
-      unknown
-    >
-    manifest.baseCommit = '--help'
-    writeFileLf(manifestPath, `${JSON.stringify(manifest)}\n`)
-    expect(() =>
-      runner.inspectRoleWaveStatus('run-tampered-01', {
-        cwd: repo,
-        tempRoot: tamperedTempRoot,
-      }),
-    ).toThrow(/Invalid role wave manifest/)
-  })
-
-  it('rejects registered foreign worktree paths and a retargeted private baseline ref', async () => {
-    const repo = createWaveRepo('role-wave-manifest-integrity')
-    const providerRoot = writeSkill('integrity-role', 'body')
-    const tempRoot = path.join(tmpDir, 'role-wave-integrity-temp')
-    writeRoleWave(repo, {
-      run: 'run-integrity-01',
-      roles: [
-        {
-          key: 'integrity-role',
-          skill: 'integrity-role',
-          model: 'k3',
-          args: '',
-          workspace: 'worktree:feature-integrity',
-        },
-      ],
-    })
-    await runner.runSkillCli(
-      ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-      {
-        scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-        cwd: repo,
-        platform: 'linux',
-        env: { PATH: '/safe/bin' },
-        signalSource: new EventEmitter(),
-        tempRoot,
-        writeOutput: () => {},
-        spawnChild: () => createRoleChild(0, { content: 'done' }),
-      },
-    )
-    const manifestPath = path.join(
-      repo,
-      '.specrails',
-      'kimi-role-worktrees',
-      'run-integrity-01.json',
-    )
-    const original = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
-      baseCommit: string
-      worktrees: Record<string, string>
-      roles: Record<
-        string,
-        {
-          executionCwd: string
-          repoDir: string
-          workspace: string
-          gitExcludeFile: string
-        }
-      >
-    }
-    const foreign = path.join(tmpDir, 'foreign-registered-worktree')
-    const added = spawnSync(
-      'git',
-      ['worktree', 'add', '--detach', foreign, 'HEAD'],
-      { cwd: repo, encoding: 'utf8' },
-    )
-    expect(added.status).toBe(0)
-    const tampered = structuredClone(original)
-    tampered.worktrees['feature-integrity'] = realpathSync(foreign)
-    tampered.roles['integrity-role']!.executionCwd = realpathSync(foreign)
-    tampered.roles['integrity-role']!.repoDir = realpathSync(foreign)
-    writeFileLf(manifestPath, `${JSON.stringify(tampered)}\n`)
-
-    expect(() =>
-      runner.inspectRoleWaveStatus('run-integrity-01', {
-        cwd: repo,
-        tempRoot,
-      }),
-    ).toThrow(/worktree path mismatch/)
-    expect(() =>
-      runner.cleanupRoleWave('run-integrity-01', {
-        cwd: repo,
-        tempRoot,
-      }),
-    ).toThrow(/worktree path mismatch/)
-    expect(existsSync(foreign)).toBe(true)
-    const removed = spawnSync(
-      'git',
-      ['worktree', 'remove', '--force', foreign],
-      { cwd: repo, encoding: 'utf8' },
-    )
-    expect(removed.status).toBe(0)
-
-    writeFileLf(manifestPath, `${JSON.stringify(original)}\n`)
-    const privateRef = spawnSync(
-      'git',
-      [
-        'for-each-ref',
-        '--format=%(refname)',
-        'refs/specrails/kimi/',
-      ],
-      { cwd: repo, encoding: 'utf8' },
-    ).stdout.trim()
-    expect(privateRef).toMatch(/^refs\/specrails\/kimi\//)
-    const retargeted = spawnSync(
-      'git',
-      ['update-ref', privateRef, 'HEAD'],
-      { cwd: repo, encoding: 'utf8' },
-    )
-    expect(retargeted.status).toBe(0)
-    expect(() =>
-      runner.inspectRoleWaveStatus('run-integrity-01', {
-        cwd: repo,
-        tempRoot,
-      }),
-    ).toThrow(/private ref does not match/)
-
-    const restored = spawnSync(
-      'git',
-      ['update-ref', privateRef, original.baseCommit],
-      { cwd: repo, encoding: 'utf8' },
-    )
-    expect(restored.status).toBe(0)
-    expect(
-      runner.cleanupRoleWave('run-integrity-01', {
-        cwd: repo,
-        tempRoot,
-      }).removedWorktrees,
-    ).toBe(1)
-  })
-
-  it('waits for the whole wave and reports partial failure', async () => {
-    const repo = createWaveRepo('role-wave-partial')
-    const providerRoot = writeSkill('partial-a', 'A')
-    writeSkill('partial-b', 'B')
-    writeRoleWave(repo, {
-      run: 'run-partial-01',
-      roles: [
-        {
-          key: 'required-a',
-          skill: 'partial-a',
-          model: 'k3',
-          args: '',
-          workspace: 'current',
-        },
-        {
-          key: 'required-b',
-          skill: 'partial-b',
-          model: 'k3',
-          args: '',
-          workspace: 'current',
-        },
-      ],
-    })
-    const output: string[] = []
-    let index = 0
-    const code = await runner.runSkillCli(
-      ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-      {
-        scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-        cwd: repo,
-        platform: 'linux',
-        env: { PATH: '/safe/bin' },
-        signalSource: new EventEmitter(),
-        tempRoot: path.join(tmpDir, 'role-wave-partial-temp'),
-        writeOutput: (line) => output.push(line),
-        spawnChild: () =>
-          createRoleChild(index++ === 0 ? 0 : 7, { content: 'finished' }),
-      },
-    )
-    expect(code).toBe(7)
-    const completed = output
-      .join('')
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line) as Record<string, unknown>)
-      .filter((frame) => frame.type === 'specrails.role.completed')
-    expect(completed).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ roleKey: 'required-a', status: 'succeeded' }),
-        expect.objectContaining({
-          roleKey: 'required-b',
-          status: 'failed',
-          exitCode: 7,
-        }),
-      ]),
-    )
-  })
-
-  it('forwards one cancellation signal to every live role child', async () => {
-    const repo = createWaveRepo('role-wave-cancel')
-    const providerRoot = writeSkill('cancel-a', 'A')
-    writeSkill('cancel-b', 'B')
-    writeRoleWave(repo, {
-      run: 'run-cancel-01',
-      roles: [
-        {
-          key: 'cancel-a',
-          skill: 'cancel-a',
-          model: 'k3',
-          args: '',
-          workspace: 'current',
-        },
-        {
-          key: 'cancel-b',
-          skill: 'cancel-b',
-          model: 'k3',
-          args: '',
-          workspace: 'current',
-        },
-      ],
-    })
-    const signalSource = new EventEmitter()
-    const children: Array<ReturnType<typeof createRoleChild>> = []
-    const codePromise = runner.runSkillCli(
-      ['--role-wave-file', '.specrails/kimi-role-wave.json'],
-      {
-        scriptPath: path.join(providerRoot, 'specrails', 'run-skill.mjs'),
-        cwd: repo,
-        platform: 'linux',
-        env: { PATH: '/safe/bin' },
-        signalSource,
-        tempRoot: path.join(tmpDir, 'role-wave-cancel-temp'),
-        writeOutput: () => {},
-        spawnChild: () => {
-          const child = createRoleChild(0, { content: 'unused' })
-          // Suppress the helper's scheduled normal completion for this test by
-          // returning a fresh child that exits only when killed.
-          const pending = new EventEmitter() as ReturnType<typeof createRoleChild>
-          pending.stdout = new PassThrough()
-          pending.stderr = new PassThrough()
-          pending.stdin = new PassThrough()
-          pending.kill = vi.fn((signal: string) => {
-            pending.stdout.end()
-            pending.stderr.end()
-            queueMicrotask(() => pending.emit('exit', null, signal))
-            return true
-          })
-          child.removeAllListeners()
-          children.push(pending)
-          if (children.length === 2) {
-            queueMicrotask(() => signalSource.emit('SIGTERM'))
-          }
-          return pending
-        },
-      },
-    )
-    await expect(codePromise).resolves.toBe(143)
-    expect(children).toHaveLength(2)
-    for (const child of children) {
-      expect(child.kill).toHaveBeenCalledWith('SIGTERM')
-    }
-  })
-
-  it('falls back to a copied Windows provider overlay without replacing one', () => {
-    const providerRoot = writeSkill('overlay-role', 'body')
-    const workspace = path.join(tmpDir, 'windows-overlay')
-    mkdirSync(workspace, { recursive: true })
-    const createLink = vi.fn(
-      (_source: string, _destination: string, _type: string) => {
-        throw new Error('junction privilege unavailable')
-      },
-    )
-    const copyTree = vi.fn((source: string, destination: string) => {
-      cpSync(source, destination, {
-        recursive: true,
-        dereference: true,
-        errorOnExist: true,
-      })
-    })
-    runner.ensureProviderOverlay(providerRoot, workspace, 'win32', {
-      symlink: createLink,
-      copyTree,
-    })
-    expect(createLink).toHaveBeenCalledTimes(1)
-    const [linkSource, linkDestination, linkType] =
-      createLink.mock.calls[0]!
-    expectSamePath(String(linkSource), providerRoot)
-    expect(linkDestination).toBe(path.join(workspace, '.kimi-code'))
-    expect(linkType).toBe('junction')
-    expect(copyTree).toHaveBeenCalled()
-    expect(
-      readFileSync(
-        path.join(
-          workspace,
-          '.kimi-code',
-          'skills',
-          'overlay-role',
-          'SKILL.md',
-        ),
-        'utf8',
-      ),
-    ).toContain('overlay-role test skill')
-
-    writeFileLf(
-      path.join(
-        workspace,
-        '.kimi-code',
-        'skills',
-        'overlay-role',
-        'SKILL.md',
-      ),
-      'tampered\n',
-    )
-    runner.ensureProviderOverlay(providerRoot, workspace, 'win32', {
-      symlink: createLink,
-      copyTree,
-    })
-    expect(copyTree).toHaveBeenCalledTimes(2)
-    expect(
-      readFileSync(
-        path.join(
-          workspace,
-          '.kimi-code',
-          'skills',
-          'overlay-role',
-          'SKILL.md',
-        ),
-        'utf8',
-      ),
-    ).toContain('overlay-role test skill')
-
-    const owned = path.join(tmpDir, 'windows-overlay-owned')
-    writeFileLf(path.join(owned, '.kimi-code', 'user.txt'), 'preserve\n')
-    const shouldNotLink = vi.fn()
-    expect(() =>
-      runner.ensureProviderOverlay(providerRoot, owned, 'win32', {
-        symlink: shouldNotLink,
-      }),
-    ).toThrow(/unverified worktree provider directory/)
-    expect(shouldNotLink).not.toHaveBeenCalled()
-    expect(
-      readFileSync(path.join(owned, '.kimi-code', 'user.txt'), 'utf8'),
-    ).toBe('preserve\n')
-
-    const wrongLinkWorkspace = path.join(tmpDir, 'windows-overlay-wrong-link')
-    const wrongTarget = path.join(tmpDir, 'wrong-kimi-provider')
-    mkdirSync(wrongTarget, { recursive: true })
-    mkdirSync(wrongLinkWorkspace, { recursive: true })
-    symlinkSync(
-      wrongTarget,
-      path.join(wrongLinkWorkspace, '.kimi-code'),
-      'dir',
-    )
-    expect(() =>
-      runner.ensureProviderOverlay(
-        providerRoot,
-        wrongLinkWorkspace,
-        'win32',
-      ),
-    ).toThrow(/does not target the managed provider/)
-  })
 
   it('forwards helper termination signals to the Kimi child', () => {
     const source = new EventEmitter()
@@ -2002,6 +900,18 @@ describe('managed Kimi skill runner — secure invocation', () => {
     cleanup()
     source.emit('SIGHUP')
     expect(child.kill).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ['--role-wave-file', '.specrails/kimi-role-wave.json'],
+    ['--role-wave-status', 'run-1'],
+    ['--role-wave-cleanup', 'run-1'],
+    ['--role-merge-file', '.specrails/kimi-role-merge.json'],
+    ['--request-file', '.specrails/kimi-role-request.json'],
+  ])('rejects the removed role-wave option %s as unknown', (flag, value) => {
+    expect(() => runner.parseRunnerArgs([flag, value])).toThrow(
+      new RegExp(`Unknown option: ${flag}$`),
+    )
   })
 
   it('rejects experimental runner flags instead of forwarding them to Kimi', () => {

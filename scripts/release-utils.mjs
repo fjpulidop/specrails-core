@@ -54,7 +54,7 @@ export function validateArtifact(manifest, bytes, expected) {
 }
 export function validatePackFiles(files) {
   const names = new Set(files.map((file) => file.path))
-  for (const required of ['package.json', 'bin/specrails-core.mjs', 'dist/installer/cli.js', 'dist/installer/runtime/pipeline-state.js', 'integration-contract.json', 'pinned-versions.json', 'schemas/profile.v1.json', 'templates/codex-skills/implement/SKILL.md']) {
+  for (const required of ['package.json', 'bin/specrails-core.mjs', 'dist/installer/cli.js', 'dist/installer/runtime/pipeline-state.js', 'integration-contract.json', 'pinned-versions.json', 'schemas/agent-runtime.schema.json', 'templates/commands/specrails/implement.md']) {
     if (!names.has(required)) throw new Error(`Published package is missing ${required}`)
   }
   for (const name of names) {

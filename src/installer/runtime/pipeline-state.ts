@@ -267,7 +267,6 @@ function relativeUnix(value: string): string { return value.split(path.sep).join
 function excluded(state: PipelineState, repo: PipelineRepository, relative: string): boolean {
   const absolute = path.join(repo.path, relative)
   if (within(pipelineStateDirectory(state.context), absolute)) return true
-  if (['.specrails/kimi-role-wave.json', '.specrails/kimi-role-request.json', '.specrails/kimi-role-merge.json', '.specrails/kimi-role-worktrees/' + state.runId + '.json'].includes(relative)) return true
   if (relative === '.specrails/runtime' || relative.startsWith('.specrails/runtime/')) return true
   if (repo.id !== state.context.artifactRepositoryId) return false
   return state.artifactExclusions.some((item) => relative === item || relative.startsWith(item + '/'))

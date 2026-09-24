@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { frameworkLifecycleLockPath, withFrameworkLifecycleLock, withInstallRollback } from '../util/install-transaction.js'
 import { runAssemble, runInstallFramework, runSwapCurrent } from './framework.js'
 import { runInit, snapshotWorkspaceProviderSelections } from './init.js'
-import { runUpdate } from './update.js'
 
 vi.mock('../phases/prereqs.js', () => ({
   checkPrerequisites: vi.fn(async (options: { explicitProvider?: string }) => ({ provider: options.explicitProvider ?? 'claude' })),
@@ -140,11 +139,10 @@ describe('framework lifecycle admission', () => {
     expect(readFileSync(lock, 'utf8')).toBe('replacement-owner')
   })
 
-  it('shares admission across init, update and every Desktop low-level mutation', async () => {
+  it('shares admission across init and every Desktop low-level mutation', async () => {
     await withFrameworkLifecycleLock(framework, async () => {
       const mutations = [
         () => runInit({ 'root-dir': repo, provider: 'claude', yes: true }),
-        () => runUpdate({ 'root-dir': repo, provider: 'claude' }),
         () => runInstallFramework({ 'framework-dir': framework, provider: 'claude', version: '5.0.0', 'no-swap': true }),
         () => runSwapCurrent({ 'framework-dir': framework, version: '5.0.0' }),
         () => runAssemble({ 'framework-dir': framework, workspace: repo, 'code-root': repo, provider: 'claude', version: '5.0.0' }),

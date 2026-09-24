@@ -5,28 +5,23 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { runInit } from '../commands/init.js'
-import { runUpdate } from '../commands/update.js'
 import { mkdirp, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
 import { resolveArtifacts } from '../util/registry.js'
 
 /**
- * End-to-end audit: the installer (init AND update) must NEVER mutate
+ * End-to-end audit: the installer (every init, including a re-run) must NEVER mutate
  * the two reserved regions:
  *   - .specrails/profiles/**        (desktop app / team profile JSON)
  *   - .claude/agents/custom-*.md    (user-authored custom agents)
  *
- * Ports the intent of the retired tests/test-profiles.sh into vitest
- * so it runs in the cross-platform CI matrix and gates every PR.
  */
 
 async function setupFakeScriptDir(scriptDir: string, version: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'VERSION'), `${version}\n`)
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'bundled-arch')
   writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'bundled-dev')
-  writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'bundled-rules')
-  writeFileLf(path.join(scriptDir, 'commands', 'enrich.md'), 'enrich')
-  writeFileLf(path.join(scriptDir, 'commands', 'doctor.md'), 'doctor')
+  writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'), 'implement')
 }
 
 interface ReservedFixtures {
@@ -129,31 +124,7 @@ describe('reserved paths audit', () => {
     assertReservedUntouched(fx)
   })
 
-  it('update preserves profile JSON and custom-* agents on re-run', async () => {
-    const scriptDir = path.join(tmpDir, 'core')
-    const repoRoot = path.join(tmpDir, 'repo')
-    await setupFakeScriptDir(scriptDir, '5.0.0')
-    mkdirp(repoRoot)
-    await initRepo(repoRoot)
-    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
-
-    // Simulate a prior relocate-always install: marker + manifest in the workspace.
-    const ws = workspaceFor(repoRoot)
-    writeFileLf(path.join(ws, '.specrails', 'specrails-version'), '4.0.0\n')
-    writeFileLf(
-      path.join(ws, '.specrails', 'specrails-manifest.json'),
-      JSON.stringify({ version: '4.0.0', installed_at: '2026-01-01T00:00:00Z', artifacts: {} }),
-    )
-    mkdirp(path.join(ws, '.claude', 'commands', 'specrails'))
-
-    const fx = sprinkleReservedFixtures(ws)
-
-    await runUpdate({ 'root-dir': repoRoot })
-
-    assertReservedUntouched(fx)
-  })
-
-  it('init + update in sequence both respect the reserved contract', async () => {
+  it('a repeated init respects the reserved contract', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     await setupFakeScriptDir(scriptDir, '5.0.0')
@@ -166,7 +137,7 @@ describe('reserved paths audit', () => {
     await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     assertReservedUntouched(fx)
 
-    await runUpdate({ 'root-dir': repoRoot })
+    await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     assertReservedUntouched(fx)
   })
 })

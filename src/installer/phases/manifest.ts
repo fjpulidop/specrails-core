@@ -33,7 +33,7 @@ export interface BuildManifestInput {
   scriptDir: string
   /** Absolute path to the user's repo root where the manifest is written. */
   repoRoot: string
-  /** Version string from the specrails-core VERSION file. */
+  /** specrails-core package version. */
   version: string
   /** Override "installed_at" — exposed for deterministic testing. */
   installedAt?: string
@@ -43,8 +43,7 @@ export interface BuildManifestInput {
 }
 
 /**
- * Walks `templates/**` plus the bundled doctor command file and
- * produces a stable-sorted manifest.
+ * Walks `templates/**` and produces a stable-sorted manifest.
  *
  * Stable-sort rule: artifact keys are sorted ascending by POSIX path.
  */
@@ -58,9 +57,6 @@ export function buildManifest(input: BuildManifestInput): SpecrailsManifest {
     const rel = path.relative(input.scriptDir, absFile).split(path.sep).join('/')
     artifacts[rel] = sha256Of(absFile)
   })
-
-  const doctorPath = path.join(input.scriptDir, 'commands', 'doctor.md')
-  artifacts['commands/specrails/doctor.md'] = sha256Of(doctorPath)
 
   const manifest: SpecrailsManifest = {
     version: input.version,

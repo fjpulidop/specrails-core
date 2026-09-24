@@ -1,5 +1,5 @@
 import { toolEvent } from './tool-event.js'
-import { normalizeKimiCliModel } from '../installer/runtime/kimi.js'
+import { normalizeKimiCliModel } from './kimi-model.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentRequest, type AgentResult } from './executor-types.js'
 import { runCliProcess, type CliDuplexControl, type CliProcessRunner } from './cli-process.js'
 import { parseStructuredText } from './openai-executor.js'

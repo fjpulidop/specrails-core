@@ -1,17 +1,11 @@
 {
-  "schemaVersion": "4.0",
+  "schemaVersion": "5.0",
   "providers": {
     "claude": {
-      "updateCommand": "update",
       "cli": {
         "initArgs": [
           "init",
           "--yes",
-          "--provider",
-          "claude"
-        ],
-        "updateArgs": [
-          "update",
           "--provider",
           "claude"
         ]
@@ -24,16 +18,10 @@
       }
     },
     "codex": {
-      "updateCommand": "update",
       "cli": {
         "initArgs": [
           "init",
           "--yes",
-          "--provider",
-          "codex"
-        ],
-        "updateArgs": [
-          "update",
           "--provider",
           "codex"
         ]
@@ -46,16 +34,10 @@
       }
     },
     "gemini": {
-      "updateCommand": "update",
       "cli": {
         "initArgs": [
           "init",
           "--yes",
-          "--provider",
-          "gemini"
-        ],
-        "updateArgs": [
-          "update",
           "--provider",
           "gemini"
         ]
@@ -68,7 +50,6 @@
       }
     },
     "kimi": {
-      "updateCommand": "update",
       "cli": {
         "binary": "node",
         "providerBinary": "kimi",
@@ -77,19 +58,6 @@
         "nestedSkillInvocation": "Kimi built-in Skill tool with { skill, args }; never literal /skill text",
         "modelIdPattern": "^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$",
         "sessionIdPattern": "^(?!\\.{1,2}$)[A-Za-z0-9._-]{1,128}$",
-        "roleWave": {
-          "path": ".specrails/kimi-role-wave.json",
-          "schema": "{ run: safe-id, roles: Array<{ key: safe-id, skill: direct-child-id, model: safe-model-id, profile: \"inherit\" | safe-id, args: string, workspace: \"current\" | \"worktree:<safe-id>\" }> } with no extra keys",
-          "maxBytes": 1048576,
-          "maxRoles": 32,
-          "transport": "structured WriteFile followed by one static foreground --role-wave-file command; the one-shot file is deleted before setup and every role is awaited. Inspection, merge, and cleanup use the separate static --role-wave-status, --role-merge-file, and --role-wave-cleanup modes",
-          "workspaces": "current roles receive unique execution directories with SPECRAILS_REPO_DIR set to the target repository; isolated roles create/reuse detached git worktrees from a synthetic baseline that includes the starting tracked/untracked overlay but excludes provider/runtime control files, with SPECRAILS_REPO_DIR set to that worktree",
-          "manifest": ".specrails/kimi-role-worktrees/<run>.json records the immutable synthetic base commit, source head, worktree ids, and role key to execution/repository paths",
-          "status": "--role-wave-status <run> validates the persisted manifest/ref/worktrees and emits one specrails.merge.inventory frame before any downstream merge",
-          "merge": ".specrails/kimi-role-merge.json is the only accepted merge request path; { run, actions: Array<{ worktree: safe-id, path: safe-relative-path, operation: \"copy\" | \"delete\" }> } applies an explicit A/M/D inventory through --role-merge-file without attributing the starting overlay or provider control files",
-          "cleanup": "--role-wave-cleanup <run> removes owned worktrees, temporary execution roots, persisted manifest, and synthetic baseline ref, then emits specrails.role.cleanup",
-          "output": "newline-delimited attributed specrails.role.workspace, specrails.role.event/output, specrails.role.completed, specrails.merge.inventory, specrails.merge.applied, and specrails.role.cleanup frames; aggregate role-wave exit is nonzero when any role fails"
-        },
         "stableEngineEnv": {
           "KIMI_CODE_EXPERIMENTAL_FLAG": null,
           "KIMI_DISABLE_CRON": "1",
@@ -98,7 +66,7 @@
         },
         "windowsPromptTransport": "For the standard npm kimi.cmd/bat shim, prompt bytes travel over stdin to a fixed Node bootstrap which restores process.argv before importing Kimi; native executables fail above a 30000 UTF-16 command-line budget.",
         "initialActivationTelemetry": "Visible prompt parity only; the external materializer cannot emit Kimi-private skill.activated/origin telemetry.",
-        "cancellation": "Single-skill mode forwards SIGINT/SIGTERM/SIGHUP to its direct Kimi child. Role-wave mode forwards each termination signal to every live Kimi child and waits for aggregate completion; the embedding host remains responsible for platform process-tree teardown.",
+        "cancellation": "The runner forwards SIGINT/SIGTERM/SIGHUP to its direct Kimi child; the embedding host remains responsible for platform process-tree teardown.",
         "initArgs": [
           "init",
           "--yes",
@@ -108,12 +76,7 @@
         "resumeArgs": [
           "--session=<session-id>"
         ],
-        "notes": "CLI-only provider execution. Installation/update uses the deterministic Core CLI above. Headless workflows use the managed Node skill runner, never literal /skill text in kimi -p. Role waves await every child and preserve frozen Core execution context. Authenticate once with kimi login.",
-        "updateArgs": [
-          "update",
-          "--provider",
-          "kimi"
-        ],
+        "notes": "CLI-only provider execution. Installation uses the deterministic Core CLI above. Headless workflows use the managed Node skill runner, never literal /skill text in kimi -p. Authenticate once with kimi login.",
         "workflowArgs": [
           ".kimi-code/specrails/run-skill.mjs",
           "--skill",
@@ -186,8 +149,7 @@
         "model": "sonnet"
       },
       "overrides": {
-        "sr-architect": "opus",
-        "sr-product-manager": "opus"
+        "sr-architect": "opus"
       }
     }
   },
@@ -227,22 +189,24 @@
           "max"
         ]
       },
-      "note": "Install config and profiles retain exact ids or safe custom aliases. Preset names do not imply Claude aliases for Kimi. Process launch prefixes only the three documented official short ids with kimi-code/; every custom alias that matches the published model grammar passes through unchanged."
+      "note": "Install config retains exact ids or safe custom aliases. Preset names do not imply Claude aliases for Kimi. Process launch prefixes only the three documented official short ids with kimi-code/; every custom alias that matches the published model grammar passes through unchanged."
     }
   },
   "legacyCompat": {
     "setupCommandAlias": false,
     "enrichCommand": false,
-    "note": "Core 5 installs directly. Legacy config tier is tolerated; enrich, --quick and --lite are removed. Hosts must negotiate schema 4 deterministic lifecycle."
+    "note": "Core installs directly and is driven by Desktop through init and the offline framework lifecycle (install-framework, swap-current, assemble). enrich, update, doctor, profile, --quick and --lite are removed."
   },
   "lifecycle": {
     "mode": "deterministic",
     "requiresEnrich": false,
     "initCommand": "init",
-    "updateCommand": "update",
     "minimumCoreMajor": 5,
     "removedCommands": [
-      "enrich"
+      "enrich",
+      "update",
+      "doctor",
+      "profile"
     ],
     "removedFlags": [
       "--quick",

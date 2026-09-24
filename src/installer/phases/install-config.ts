@@ -79,10 +79,7 @@ export function resolveProviderModelConfig(
       return {
         preset,
         defaults: { model: 'sonnet' },
-        overrides: {
-          'sr-architect': 'opus',
-          'sr-product-manager': 'opus',
-        },
+        overrides: { 'sr-architect': 'opus' },
       }
     }
   }
