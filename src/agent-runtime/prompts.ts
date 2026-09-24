@@ -1,5 +1,5 @@
 import type { AgentRole } from './executor-types.js'
-import type { PipelineContext, VerificationCommand } from '../installer/runtime/pipeline-state.js'
+import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-state.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
 
@@ -14,7 +14,7 @@ export interface RoleFeedback {
 /** One frozen acceptance criterion the reviewer must certify, identified by stable scope coordinates. */
 export interface FrozenCriterion { specId: string; criterionIndex: number; requirement: string }
 /** Roles with an editable definition: the three pipeline agents plus the FIXER stance the developer role takes on a correction round. */
-export type PromptRole = AgentRole | 'fixer'
+type PromptRole = AgentRole | 'fixer'
 export interface RoleInstructionOptions {
   definition?: string
   /** `fixer`: the developer invocation is a correction round on the fixer stance (own definition, no plan dump). */
@@ -363,7 +363,7 @@ export function rolePromptDefaults(): Record<PromptRole, string> {
   return { architect: definition(architectSection(undefined)), developer: definition(developerSection(undefined, false)), reviewer: definition(reviewerSection(DEFAULT_REVIEW_POLICY, undefined)), fixer: definition(fixerSection(undefined)) }
 }
 
-export interface ReReviewContext {
+interface ReReviewContext {
   changes: Array<{ repositoryId: string; path: string; status: 'added' | 'changed' | 'deleted' }>
   previouslyMet: Array<{ specId: string; criterionIndex: number }>
 }

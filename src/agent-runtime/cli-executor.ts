@@ -7,7 +7,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { sumCacheUsage, type CacheTokenUsage } from './efficiency-types.js'
-import { normalizeKimiCliModel } from '../installer/runtime/kimi.js'
+import { normalizeKimiCliModel } from './kimi-model.js'
 import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentEvent, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type CliProvider } from './executor-types.js'
 import { runCliProcess, type CliInvocation, type CliProcessRunner } from './cli-process.js'
 import { canonicalWorkspace } from './workspace-tools.js'
@@ -16,7 +16,7 @@ import { executeKimiReadonlyAcp } from './kimi-acp.js'
 import { assertGeminiAdminPolicyAvailable, GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
 export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
-export interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
+interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
 const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
 

@@ -5,15 +5,15 @@ import { record, type ChatClient, type ChatMessage } from './chat-client.js'
 
 export const DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768
 /** Consecutive identical calls answered with an error instead of executing. */
-export const REPEAT_WARN_AT = 3
+const REPEAT_WARN_AT = 3
 /** Total identical calls that abort the step. */
-export const REPEAT_ABORT_AT = 5
+const REPEAT_ABORT_AT = 5
 const COMPACTION_RATIO = 0.7
 const PROTECTED_TAIL = 4
 const PLACEHOLDER_QUERIES = new Set(['.', '*', '**', '.*', '..', '?', 'query', '<query>'])
 const NUDGE = 'Your reply was empty. Reply with the final result now, as requested; do not call tools.'
 
-export interface ToolLoopOptions {
+interface ToolLoopOptions {
   client: ChatClient
   /** Mutated in place: assistant, tool and nudge messages are appended. */
   messages: ChatMessage[]
@@ -40,7 +40,7 @@ export interface ToolLoopOptions {
   writeExtension?: { tools: readonly string[]; extraCalls: number }
 }
 /** Default output budget of one tool turn. A tool turn should emit a tool call or a short reply, so this is a runaway guard, not a ceiling for real work; a connection whose model thinks privately (that counts against `max_tokens`) raises it with `maxOutputTokens`. */
-export const TOOL_TURN_MAX_OUTPUT = 8192
+const TOOL_TURN_MAX_OUTPUT = 8192
 /** Headroom kept between the transcript and the context window when bounding an output budget. */
 const OUTPUT_HEADROOM_TOKENS = 512
 /**
@@ -49,7 +49,7 @@ const OUTPUT_HEADROOM_TOKENS = 512
  * ("exceeds the available context size") instead of helping. Bound every
  * request to the room actually left; never below a minimal useful reply.
  */
-export function boundedOutputBudget(requested: number, contextWindowTokens: number, messages: readonly ChatMessage[]): number {
+function boundedOutputBudget(requested: number, contextWindowTokens: number, messages: readonly ChatMessage[]): number {
   const remaining = contextWindowTokens - estimateTokens(messages as ChatMessage[]) - OUTPUT_HEADROOM_TOKENS
   return Math.max(256, Math.min(requested, remaining))
 }
@@ -57,7 +57,7 @@ const EFFORT_STEP_DOWN: Record<string, string | undefined> = { high: 'medium', m
 /** Tools whose result is a pure function of the workspace: safe to answer a repeated call with a pointer to the earlier identical result. */
 const READ_TOOLS = new Set(['read_file', 'read_lines', 'search_text', 'get_diff', 'list_files'])
 /** Consecutive rewrites of one path (no other tool call between them) before the loop refuses the next one. */
-export const REWRITE_WARN_AT = 3
+const REWRITE_WARN_AT = 3
 /** Whole-file rewrites only: iterating a file with apply_patch between reads is the normal edit flow. */
 const WRITE_TOOLS = new Set(['write_file'])
 /** The rewrite streak keys on the file NAME: a model alternating `tests/x.test.js` with an invented `repo/tests/x.test.js` (observed, 7 rewrites) is still rewriting one file. */
@@ -76,7 +76,7 @@ export function estimateTokens(messages: ChatMessage[]): number {
   return Math.ceil(messages.reduce((total, message) => total + JSON.stringify(message).length, 0) / 4)
 }
 /** One correct example the model can copy when its arguments were rejected. */
-export function toolExample(name: string): string {
+function toolExample(name: string): string {
   switch (name) {
     case 'search_text': return '{"path":".","query":"functionName"}'
     case 'read_lines': return '{"path":"src/index.ts","startLine":1,"endLine":120}'
@@ -224,7 +224,7 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<ToolLoopRes
         options.onToolCall?.()
         calls.set(item.id, { name: item.name, args: item.arguments })
         options.onEvent?.(toolEvent(item.name, item.arguments))
-        const key = item.name + ' ' + item.arguments.replace(/\s+/g, '')
+        const key = item.name + '\0' + item.arguments.replace(/\s+/g, '')
         consecutive = key === previous ? consecutive + 1 : 1
         previous = key
         const total = (totals.get(key) ?? 0) + 1

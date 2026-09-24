@@ -5,16 +5,15 @@ import { selectRoleRoute, type InvocationKind } from '../role-routing.js'
 import { ROLE_SKILLS, OPENSPEC_VERSION, OpenSpecTools, OpenSpecParticipationError, openSpecRepairPrompt } from '../openspec.js'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { frozenAcceptanceCriteria, pipelineStateDirectory, type PipelineContext } from '../../installer/runtime/pipeline-state.js'
+import { frozenAcceptanceCriteria, pipelineStateDirectory, type PipelineContext } from '../../pipeline/pipeline-state.js'
 import type { ExecutorRegistry } from '../executors.js'
-import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentEventRole, type AgentResult, type AgentRole, type AgentUsage, type RuntimeConfig, type RuntimeAgentConfig } from '../executor-types.js'
-import { sumCacheUsage } from '../efficiency-types.js'
+import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentEventRole, type AgentResult, type AgentRole, type RuntimeConfig, type RuntimeAgentConfig } from '../executor-types.js'
 import { ROLE_INSTRUCTIONS_VERSION, repairInstructions } from '../prompts.js'
 import type { WorkflowStepContext } from '../workflow-types.js'
 import { parseAgentObject } from './artifacts.js'
 
 /** Executor failures that mean "this session cannot be continued", not "the role failed". */
-export const SESSION_FALLBACK_CODES = new Set(['session_not_found', 'session_expired', 'session_unsupported'])
+const SESSION_FALLBACK_CODES = new Set(['session_not_found', 'session_expired', 'session_unsupported'])
 
 export interface InvokeOptions {
   kind?: InvocationKind
@@ -48,11 +47,6 @@ export interface RoleInvokerDeps {
 }
 
 const REPAIRABLE = /Invalid|Expected|requires|Duplicate|malformed/i
-
-export function sumUsage(a: AgentUsage, b: AgentUsage): AgentUsage {
-  const add = (x: number | null, y: number | null): number | null => x === null || y === null ? null : x + y
-  return { inputTokens: add(a.inputTokens, b.inputTokens), outputTokens: add(a.outputTokens, b.outputTokens), costUsd: add(a.costUsd, b.costUsd), ...sumCacheUsage([a, b]) }
-}
 
 /**
  * One role turn against the configured executor: budget-aware request, live

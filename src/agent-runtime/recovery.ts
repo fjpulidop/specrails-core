@@ -6,7 +6,7 @@ import { WorkspaceTools } from './workspace-tools.js'
 import { artifactPath, hash, resolveOpenSpecCli, runOpenSpec } from './openspec.js'
 import { write } from './graph/artifacts.js'
 import { expandedPlanCommands, readVerificationPlan } from './verification-plan.js'
-import { inspectPipeline, pipelineStateDirectory, validatePipelineContext, verifyPipeline } from '../installer/runtime/pipeline-state.js'
+import { inspectPipeline, pipelineStateDirectory, validatePipelineContext, verifyPipeline } from '../pipeline/pipeline-state.js'
 
 const file = { repositoryId: z.string().min(1).max(128), path: z.string().min(1).max(1024) }
 const operation = { operationId: z.string().uuid(), reason: z.string().trim().min(1).max(2000), acknowledgeInterrupted: z.boolean().optional(), changedPrecondition: z.string().trim().min(1).max(2000).optional() }

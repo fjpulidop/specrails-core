@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { it, expect } from 'vitest'
 import { repositoryContext, repositoryContextSnapshot, renderRepositoryContext } from './repository-context.js'
-import type { PipelineContext } from '../installer/runtime/pipeline-state.js'
+import type { PipelineContext } from '../pipeline/pipeline-state.js'
 
 it('supplies real per-repository tooling and instructions without following out-of-scope files', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'repository-context-'))

@@ -8,7 +8,7 @@ import { stripVTControlCharacters } from 'node:util'
 // candidate with three red tests dressed as green. Verify must trust the exit
 // code as the contract — but when the output itself says the contract was
 // broken, the honest verdict is FAILED, with the harness named as the defect.
-export interface ExitHonestyFinding { command: string; failures: number | null; sample: string }
+interface ExitHonestyFinding { command: string; failures: number | null; sample: string }
 
 // Counts belong to runner summaries, never arbitrary prose or test names.
 // In particular, TAP's "# Subtest: ... non-404 failures" is not a count.

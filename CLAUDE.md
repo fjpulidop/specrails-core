@@ -1,133 +1,51 @@
 # specrails-core
 
-Agent Workflow System installer for Claude Code. Installs a spec-driven development workflow into any repository: three OpenSpec-integrated AI agents (architect, developer, reviewer), orchestration commands, and per-layer coding conventions — all adapted to the target codebase automatically. Extend the core trio with user-owned `custom-*` agents via profiles.
+Agent workflow engine for specrails-desktop: a deterministic installer that renders the specrails workflow for Claude Code, Codex, Gemini CLI and Kimi Code, plus the programmatic agent runtime that executes implementations. Desktop is the only host; there is no standalone product surface.
 
 ## Stack
 
 | Layer | Tech |
 |-------|------|
-| Installer | TypeScript / Node ≥ 20.19.0 (cross-platform: macOS, Linux, Windows) |
-| Templates | Markdown with `{{PLACEHOLDER}}` substitution |
-| Commands | Claude Code slash commands (Markdown) |
-| Prompts | Markdown guide prompts |
-| Spec system | OpenSpec (YAML + Markdown) |
-| Tests | vitest (cross-platform CI matrix) |
+| CLI + installer | TypeScript (ESM, strict), Node ≥ 20.19.0, macOS/Linux/Windows |
+| Runtime | @langchain/langgraph state graph, provider CLI executors, OpenAI-compatible chat loop |
+| Specs | OpenSpec (pinned in `pinned-versions.json`) |
+| Tests | vitest (OS × Node CI matrix) |
 
-## Repo layout
+## Layout
 
 ```
-specrails-core/
-├── bin/
-│   ├── specrails-core.mjs    # CLI entry point (ESM dispatcher)
-│   └── tui-installer.mjs      # interactive TUI writer for install-config.yaml
-├── src/
-│   └── installer/             # TypeScript installer (compiled → dist/)
-│       ├── cli.ts             # main() + arg parser
-│       ├── commands/          # init / update / doctor
-│       ├── phases/            # prereqs, provider-detect, scaffold, manifest, install-config
-│       └── util/              # logger, exec, fs, git, prompts, template, errors, paths
-├── dist/                       # tsc output (npm-published, gitignored)
-├── README.md                  # User-facing documentation
-├── templates/                 # Source templates for agents, commands, rules
-│   ├── agents/                # Agent prompt templates (sr-architect/developer/reviewer only)
-│   ├── commands/              # Workflow command templates
-│   ├── rules/                 # Per-layer convention template
-│   ├── profiles/              # Default profile (baseline trio)
-│   ├── claude-md/             # Root CLAUDE.md template
-│   └── settings/              # Settings template
-├── commands/                  # Bundled slash-command bodies (doctor.md)
-├── schemas/                   # JSON Schema for profile validation
-├── openspec/                  # OpenSpec config, specs, and changes
-└── .specrails/                # Runtime config (gitignored)
+bin/specrails-core.mjs        npm bin shim → dist/installer/cli.js
+src/installer/
+  cli.ts                      single dispatcher: init, install-framework, swap-current, assemble, pipeline, runtime
+  commands/                   init + offline framework lifecycle
+  phases/                     prereqs, provider detection, scaffold (provider rendering), manifest, install-config
+  util/                       fs, exec, git, registry, install transaction, logger
+src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
+src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
+src/shared/                   helpers shared by the CLIs (argument parsing)
+templates/                    sr-* roles, implement/batch-implement/retry, provider settings, Kimi runner
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.0)
 ```
 
-## Dev commands
+## Commands
 
 ```bash
-npm install                              # Install deps
-npm run build                            # Compile src/ → dist/
-npm run build:watch                      # tsc --watch (use while iterating)
-npm test                                 # typecheck + build + vitest run
-npm run test:watch                       # vitest in watch mode
-npm run test:coverage                    # vitest with v8 coverage
-node bin/specrails-core.mjs <subcommand> # Run the CLI from a source checkout
-npm run dogfood                          # Materialize specrails on THIS repo (relocates to $HOME — see below)
-```
-
-The repo's `.claude/` is **not committed** (gitignored, like `.specrails/`). Under
-relocate-artifacts, `init` writes a project's agents/commands/etc. to
-`$HOME/.specrails/projects/<slug>/workspace`, never the repo — so an in-repo
-`.claude/` would only drift from `templates/` (the source of truth). To dogfood
-locally run `npm run dogfood`; the only tracked `.claude/` files are the bespoke
-dev-convention rules under `.claude/rules/` (`agents.md`, `shell.md`,
-`templates.md`) that have no template source. Sanity-check generated files for
-unsubstituted placeholders after a dogfood with
-`grep -r '{{[A-Z_]*}}' "$HOME/.specrails/projects/specrails-core/workspace/.claude/agents/"`.
-
-## Environment
-
-- Distributed as an npm package: `npx specrails-core@latest init`
-- Cross-platform from v4.2.0: macOS, Linux, Windows (Node ≥ 20.19.0). No bash / python required.
-- Test framework: vitest with a cross-OS / cross-Node matrix in `.github/workflows/ci.yml`
-- CI/CD: GitHub Actions (release-please + npm publish)
-- GitHub Issues used for backlog (label: `product-driven-backlog`)
-
-## Architecture
-
-```
-Architecture    →  Implementation    →  Review        →  Ship
-(sr-architect)     (sr-developer)       (sr-reviewer)    (PR)
+npm ci
+npm run build          # src/ → dist/
+npm test               # build + typecheck + vitest
+npm run ci             # typecheck, script tests, coverage, package check
 ```
 
 ## Conventions
 
-Layer-specific conventions live in `.claude/rules/` (loaded conditionally per layer).
+- Dependency direction is `shared ← pipeline ← agent-runtime ← installer`, enforced by `src/architecture.test.ts`. The installer loads the runtime lazily for the `runtime` command only.
+- Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`); kebab-case files; tests next to their subject as `*.test.ts`.
+- Spawn processes through `src/installer/util/exec.ts` or `src/agent-runtime/cli-process.ts` (Windows quoting and tree-kill); never assume POSIX paths.
+- `templates/commands/specrails/*.md` are the single source for every provider's workflow entry points.
+- Any change to the files Desktop reads (`integration-contract.json`, CLI flags, `.specrails/runtime/*`, runtime status JSON) needs a paired Desktop change.
 
-- **File naming**: kebab-case for modules; PascalCase for TS classes; `*.test.ts` next to subject.
-- **TypeScript**: ESM, strict mode, `tsconfig.json` targets ES2022 + NodeNext.
-- **Cross-platform code**: spawn via `util/exec.runCommand` (handles `shell:true` on Windows + arg quoting + tree-kill); never assume POSIX paths or POSIX-only utilities.
-- **Templates**: `{{UPPER_SNAKE_CASE}}` placeholders, every placeholder documented; unknown tokens are stripped at render time.
-- **Markdown**: consistent heading levels, no trailing whitespace, LF line endings (`.gitattributes` enforces this).
-- **Commits**: conventional commits (`feat:`, `fix:`, `docs:`, `chore:`).
-- **Branches**: `feat/<name>`, `fix/<name>`, `docs/<name>`.
+## Contracts with Desktop
 
-## Warnings
-
-- **Meta-tool**: Changes to templates affect ALL target repos. Test template generation carefully.
-- **Self-referential**: specrails-core uses its own agent workflow to develop itself. Avoid infinite recursion.
-- **Meta-changes**: Template edits affect ALL repos that have already run `/specrails:setup`. Changes are not retroactive.
-
-## OpenSpec
-
-- **Specs**: `openspec/specs/` is the source of truth. Read relevant specs before implementing.
-- **Changes**: `openspec/changes/<name>/`. Use `/opsx:ff` → `/opsx:apply` → `/opsx:archive`.
-
-## Profiles (v5+)
-
-`implement.md` resolves its agent roster through a single path: `AVAILABLE_AGENTS = profile ?? baseline`. There are no modes — the baseline trio is the implicit default the resolution falls back to when no profile is present.
-
-Profile resolution at Phase -1 (highest wins):
-1. `$SPECRAILS_PROFILE_PATH` env var (snapshot path)
-2. `<cwd>/.specrails/profiles/project-default.json`
-3. Baseline default — `{sr-architect, sr-developer, sr-reviewer}`, expressed in-command (NO profile file is ever written; `.specrails/profiles/**` is reserved)
-
-Profiles are the ONLY extension mechanism: a profile adds user-owned `custom-*` agents with routing. When a profile lists a non-baseline agent whose `.md` file is missing (e.g. a removed v4 agent), the pipeline warns and skips it; a missing baseline agent is a hard error.
-
-Schema: `schemas/profile.v1.json` (shipped in the npm package). Validator error messages MUST name the offending field. Baseline agents (`sr-architect`, `sr-developer`, `sr-reviewer`) are required in every valid profile.
-
-The schema's `$id` (`https://raw.githubusercontent.com/fjpulidop/specrails-core/main/schemas/profile.v1.json`) is the **canonical** identity of the v1 profile schema — specrails-core owns it. Downstream tools that vendor a copy (e.g. specrails-desktop) MUST give any diverging copy a distinct `$id`; two schemas sharing this `$id` are asserted to be byte-equivalent.
-
-### Reserved paths (contract with downstream tools)
-
-The following paths are **reserved** — the installer (`init` / `update`) MUST NEVER create, modify, or delete files inside them:
-
-- `.specrails/profiles/**` — owned by projects (checked into git) and by tools like specrails-desktop. Holds profile JSON files.
-- `.claude/agents/custom-*.md` — owned by user-authored or desktop-generated custom agents. The `custom-` prefix is reserved for this purpose.
-
-Audited by `src/installer/__tests__/reserved-paths.test.ts` on every CI run.
-
-Other paths under `.specrails/` (e.g. `.specrails/install-config.yaml`, `.specrails/specrails-version`, `.specrails/specrails-manifest.json`, `.specrails/setup-templates/`) ARE managed by the installer and remain so.
-
-## Scoped context
-
-- Layer rules: `.claude/rules/*.md`
+- Reserved paths the installer never creates, modifies or deletes: `.specrails/profiles/**` and `<provider>/agents/custom-*.md` (Desktop-owned). Audited by `src/installer/__tests__/reserved-paths.test.ts`.
+- `init complete` is a frozen sentinel line matched by Desktop's setup wizard.
+- The runtime requires host-owned delivery (`ownership.git: "host"`).

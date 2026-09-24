@@ -11,10 +11,10 @@ import { pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 export type Provider = 'claude' | 'codex' | 'gemini' | 'kimi'
 
 /** Cost / capability preset for the model picker. */
-export type ModelPreset = 'balanced' | 'budget' | 'max'
+type ModelPreset = 'balanced' | 'budget' | 'max'
 
 /** Provider-native model selection retained verbatim in install-config.yaml. */
-export interface InstallModelConfig {
+interface InstallModelConfig {
   preset: ModelPreset
   defaults: {
     model: string
@@ -23,11 +23,10 @@ export interface InstallModelConfig {
 }
 
 /**
- * Shape of the `.specrails/install-config.yaml` file — the single
- * source of truth the TUI writes and the installer reads. Fields map
- * 1:1 onto the grep-based parser in the retired install.sh.
+ * Shape of the `.specrails/install-config.yaml` file that
+ * specrails-desktop writes and `init --from-config` reads.
  */
-export interface InstallConfig {
+interface InstallConfig {
   version: 1
   provider: Provider
   agents: {
@@ -79,10 +78,7 @@ export function resolveProviderModelConfig(
       return {
         preset,
         defaults: { model: 'sonnet' },
-        overrides: {
-          'sr-architect': 'opus',
-          'sr-product-manager': 'opus',
-        },
+        overrides: { 'sr-architect': 'opus' },
       }
     }
   }
@@ -133,8 +129,7 @@ export function loadInstallConfig(configPath: string): InstallConfig | null {
 
 /**
  * Validates an already-parsed YAML document. Collects every error
- * before throwing so the user sees them all at once (matches the
- * bash installer's `_config_errors` accumulator behaviour).
+ * before throwing so the user sees them all at once.
  */
 export function validateInstallConfig(raw: unknown): InstallConfig {
   const errors: string[] = []

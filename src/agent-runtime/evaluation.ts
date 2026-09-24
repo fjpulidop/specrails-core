@@ -8,11 +8,11 @@ import { fingerprint } from './durable-store.js'
 import { runCoreWorkflow, coreRuntimeIdentity } from './core-host.js'
 import { ExecutorRegistry } from './executors.js'
 import { OpenSpecTools } from './openspec.js'
-import { validatePipelineContext, type PipelineContext } from '../installer/runtime/pipeline-state.js'
+import { validatePipelineContext, type PipelineContext } from '../pipeline/pipeline-state.js'
 import type { AgentRequest, RuntimeConfig } from './executor-types.js'
 import { runtimeEfficiency } from './efficiency.js'
 
-export interface EvaluationOptions { output: string; config?: RuntimeConfig; maxCostUsd?: number; real?: boolean; repetitions?: number }
+interface EvaluationOptions { output: string; config?: RuntimeConfig; maxCostUsd?: number; real?: boolean; repetitions?: number }
 function oracle(test: EvaluationCase, file: string): boolean {
   return spawnSync(process.execPath, ['-e', 'const assert = require("node:assert/strict"); const api = require(process.argv[1]);' + test.oracle, file], { encoding: 'utf8', timeout: 10000 }).status === 0
 }

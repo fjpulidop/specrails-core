@@ -6,7 +6,7 @@ import { createRoleInvoker } from './graph/roles.js'
 import { ExecutorRegistry } from './executors.js'
 import { AgentExecutionError, type AgentRequest, type RuntimeConfig } from './executor-types.js'
 import type { WorkflowStepContext } from './workflow-types.js'
-import type { PipelineContext } from '../installer/runtime/pipeline-state.js'
+import type { PipelineContext } from '../pipeline/pipeline-state.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })

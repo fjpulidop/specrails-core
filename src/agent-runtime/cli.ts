@@ -6,8 +6,8 @@ import { rolePromptDefaults } from './prompts.js'
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { parseArgs } from '../installer/cli.js'
-import { readVerificationEvidence, type PipelineContext, type VerificationEvidenceQuery, inspectPipeline, pipelineStateDirectory, validatePipelineContext } from '../installer/runtime/pipeline-state.js'
+import { parseArgs } from '../shared/args.js'
+import { readVerificationEvidence, type PipelineContext, type VerificationEvidenceQuery, inspectPipeline, pipelineStateDirectory, validatePipelineContext } from '../pipeline/pipeline-state.js'
 import { normalizeRuntimeConfig, validateRuntimeConfig } from './config.js'
 import { CORE_PACKAGE_VERSION, CORE_WORKFLOW_VERSION, RUNTIME_API_VERSION, coreRuntimeIdentity, preflightCoreWorkflow, runCoreWorkflow } from './core-host.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from './runtime-identity.js'
@@ -84,7 +84,7 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
 }
 
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
-  const command = positionals[0] ?? 'help'
+  const command = flags.help === true ? 'help' : positionals[0] ?? 'help'
   if (command === 'prompts') { emit({ type: 'runtime-role-prompts', defaults: rolePromptDefaults() }); return 0 }
   if (command === 'capabilities') {
     if (flags.stdin !== undefined && flags.stdin !== true) throw new Error('--stdin is a boolean flag')

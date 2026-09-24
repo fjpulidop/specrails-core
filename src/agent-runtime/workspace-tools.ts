@@ -9,7 +9,7 @@ const MAX_WRITE = 256 * 1024
 const MAX_OUTPUT = 48 * 1024
 const OMITTED_DIRECTORIES = new Set(['node_modules', 'dist', 'build', 'coverage', '.next'])
 const HIDDEN_STATE = new Set(['.git', '.specrails', '.claude', '.codex', '.gemini', '.kimi-code', '.agents'])
-export interface WorkspaceToolDefinition {
+interface WorkspaceToolDefinition {
   type: 'function'
   function: { name: string; description: string; parameters: Record<string, unknown> }
 }
@@ -22,7 +22,7 @@ function integer(value: unknown, fallback: number, max: number): number {
   return value
 }
 function digest(text: string): string { return createHash('sha256').update(text).digest('hex') }
-export function isWithinRoot(root: string, file: string): boolean {
+function isWithinRoot(root: string, file: string): boolean {
   const relative = path.relative(root, file)
   return relative === '' || (!path.isAbsolute(relative) && relative !== '..' && !relative.startsWith('..' + path.sep))
 }

@@ -1,19 +1,13 @@
 /**
- * specrails-core CLI entry point (Node / TypeScript).
- *
- * Replaces the legacy bash-dispatch path in `bin/specrails-core.js`.
- * During the port, `bin/specrails-core.js` keeps shelling out to the
- * shell scripts while this module carries the in-progress Node
- * implementation. Once Phases 2–4 ship the command handlers and
- * Phase 5 deletes the shell scripts, the `bin/` dispatcher collapses
- * to a single `import { main } from './dist/installer/cli.js'` call.
+ * specrails-core CLI: the installer and runtime entry points Desktop drives.
+ * `bin/specrails-core.mjs` and a direct `node dist/installer/cli.js` run both
+ * land in {@link main}.
  */
 
 import { readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
-import { runDoctor, type DoctorFlags } from './commands/doctor.js'
 import {
   runAssemble,
   runInstallFramework,
@@ -23,89 +17,28 @@ import {
   type SwapCurrentFlags,
 } from './commands/framework.js'
 import { runInit, type InitFlags } from './commands/init.js'
-import { runUpdate, type UpdateFlags } from './commands/update.js'
-import { runPipelineCommand } from './runtime/pipeline-state.js'
+import { runPipelineCommand } from '../pipeline/pipeline-state.js'
+import { parseArgs } from '../shared/args.js'
 import { isInstallerError } from './util/errors.js'
 import { fatal } from './util/logger.js'
-
-export interface ParsedArgs {
-  subcommand: string | null
-  flags: Record<string, string | boolean>
-  positionals: string[]
-}
-
-/**
- * Minimal arg parser, no external dep. Handles:
- *   subcommand                (first bare positional)
- *   --flag                    (boolean true)
- *   --flag=value              (string)
- *   --flag value              (string, consumes next token)
- *   -h / --help               (help alias)
- *   -v / --version            (version alias)
- *   positionals               (everything else)
- */
-export function parseArgs(argv: string[]): ParsedArgs {
-  const flags: Record<string, string | boolean> = {}
-  const positionals: string[] = []
-  let subcommand: string | null = null
-
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i]!
-    if (token.startsWith('--')) {
-      const rest = token.slice(2)
-      const eq = rest.indexOf('=')
-      if (eq >= 0) {
-        flags[rest.slice(0, eq)] = rest.slice(eq + 1)
-      } else {
-        const peek = argv[i + 1]
-        if (peek !== undefined && !peek.startsWith('-')) {
-          flags[rest] = peek
-          i++
-        } else {
-          flags[rest] = true
-        }
-      }
-    } else if (token === '-h') {
-      flags.help = true
-    } else if (token === '-v') {
-      flags.version = true
-    } else if (token.startsWith('-') && token.length > 1) {
-      flags[token.slice(1)] = true
-    } else {
-      if (subcommand === null) {
-        subcommand = token
-      } else {
-        positionals.push(token)
-      }
-    }
-  }
-
-  return { subcommand, flags, positionals }
-}
 
 function usageText(): string {
   return [
     '',
-    'specrails-core — Provider-independent AI agent workflow system',
+    'specrails-core — agent workflow engine for specrails-desktop',
     '',
     'Usage:',
     '  specrails-core <command> [options]',
     '',
     'Commands:',
-    '  init                Install specrails into a repository',
-    '  update              Update an existing specrails installation',
-    '  pipeline            Inspect and execute durable implementation phases',
-    '  runtime             Run, inspect and resume programmatic agents',
-    '  doctor              Diagnose the health of an existing installation',
+    '  init                Install specrails into a repository (claude, codex, gemini, or kimi)',
     '  install-framework   Materialize the versioned framework (offline)',
     '  swap-current        Point framework/current at a version (offline)',
-    '  assemble            Symlink the framework into a workspace (offline)',
+    '  assemble            Link the framework into a project workspace (offline)',
+    '  pipeline            Inspect and verify durable implementation phases',
+    '  runtime             Run, inspect and resume programmatic agents',
     '  help                Show this help message',
     '  version             Print the installed version',
-    '',
-    'Global options:',
-    '  -h, --help     Show this help',
-    '  -v, --version  Print version',
     '',
   ].join('\n')
 }
@@ -126,35 +59,19 @@ function readVersion(): string {
   }
 }
 
-/**
- * Sentinel exit code used during the port: when a Node command is not
- * yet implemented, the CLI exits with this code and the outer bash
- * dispatcher (bin/specrails-core.js) may choose to fall through to
- * the shell path. Removed entirely in Phase 5 when no shell scripts
- * remain.
- */
-export const NOT_IMPLEMENTED = 2
-
 async function dispatch(
   subcommand: string,
   flags: Record<string, string | boolean>,
-  _positionals: string[],
+  positionals: string[],
 ): Promise<number> {
   switch (subcommand) {
     case 'init':
       await runInit(flags as InitFlags)
       return 0
-    case 'update':
-      await runUpdate(flags as UpdateFlags)
-      return 0
     case 'pipeline':
-      return runPipelineCommand(flags, _positionals)
+      return runPipelineCommand(flags, positionals)
     case 'runtime':
-      return (await import('../agent-runtime/cli.js')).runRuntimeCommand(flags, _positionals)
-    case 'doctor': {
-      const result = await runDoctor(flags as DoctorFlags)
-      return result.failed === 0 ? 0 : 1
-    }
+      return (await import('../agent-runtime/cli.js')).runRuntimeCommand(flags, positionals)
     case 'install-framework':
       await runInstallFramework(flags as InstallFrameworkFlags)
       return 0
@@ -165,7 +82,6 @@ async function dispatch(
       await runAssemble(flags as AssembleFlags)
       return 0
     case 'help':
-    case '':
       process.stdout.write(usageText())
       return 0
     case 'version':
@@ -181,17 +97,25 @@ async function dispatch(
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
   const { subcommand, flags, positionals } = parseArgs(argv)
 
-  if (flags.help === true) {
+  // `--version` is global only before a command: `swap-current --version <v>`
+  // names a framework version.
+  if (subcommand === null) {
+    if (flags.version === true || flags.V === true) {
+      process.stdout.write(`${readVersion()}\n`)
+      return 0
+    }
     process.stdout.write(usageText())
     return 0
   }
-  if (flags.version === true) {
-    process.stdout.write(`${readVersion()}\n`)
+
+  // `init --help` must print help, never install.
+  if (flags.help === true && subcommand !== 'runtime') {
+    process.stdout.write(usageText())
     return 0
   }
 
   try {
-    return await dispatch(subcommand ?? '', flags, positionals)
+    return await dispatch(subcommand, flags, positionals)
   } catch (err) {
     if (isInstallerError(err)) {
       fatal(err.message)
@@ -208,8 +132,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
  * (`node dist/installer/cli.js <subcommand>`), run `main()` and propagate its
  * exit code. specrails-desktop's bundled-core path (server/framework-manager.ts)
  * spawns `node <core>/dist/installer/cli.js install-framework|assemble …` and
- * relies on this — the legacy bin dispatcher (bin/specrails-core.mjs) imports
- * `main` and is unaffected (it never executes this file as argv[1]).
+ * relies on this — `bin/specrails-core.mjs` imports `main` and is unaffected
+ * (it never executes this file as argv[1]).
  *
  * Comparing `import.meta.url` against `process.argv[1]` keeps the guard inert on
  * import (so unit tests that `import { main }` never trigger a process.exit).

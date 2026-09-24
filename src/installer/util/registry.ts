@@ -81,7 +81,7 @@ export interface ProjectEntry {
 }
 
 /** On-disk shape of `registry.json`. */
-export interface RegistryFile {
+interface RegistryFile {
   schemaVersion: number
   generator?: string
   updatedAt?: string
@@ -90,7 +90,7 @@ export interface RegistryFile {
 }
 
 /** The flattened result both tools consume. */
-export interface Resolution {
+interface Resolution {
   /** Normalized map key. */
   key: string
   repoPath: string
@@ -111,7 +111,7 @@ export interface Resolution {
   isLegacy: boolean
 }
 
-export interface ResolveOptions {
+interface ResolveOptions {
   /** When true, allocate + persist an entry if none exists. Readers pass false. */
   allocate?: boolean
   /** Who is allocating (only consulted when allocate=true). Default 'core-standalone'. */
@@ -326,7 +326,7 @@ export function slugify(name: string): string {
 }
 
 /** `$HOME` for the registry, overridable for tests. */
-export function resolveHome(home?: string): string {
+function resolveHome(home?: string): string {
   return home ?? process.env.SPECRAILS_REGISTRY_HOME ?? os.homedir()
 }
 
@@ -354,7 +354,7 @@ export function lockPath(home?: string): string {
 
 /** `fs.realpathSync` that falls back to the resolved-but-unreal path on error
  *  (the path may not exist yet, or be on a volume that rejects realpath). */
-export function realpathSafe(abs: string): string {
+function realpathSafe(abs: string): string {
   try {
     return realpathSync(abs)
   } catch {

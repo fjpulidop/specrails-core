@@ -111,7 +111,7 @@ function removeForRollback(target: string, relative: string): void {
  * one exactly as it stands — copying it bought no safety and cost a full copy of
  * the framework store on every install.
  */
-export type ProtectedSurface = string | { path: string; snapshotContents: boolean }
+type ProtectedSurface = string | { path: string; snapshotContents: boolean }
 
 interface SurfaceSnapshot {
   target: string
@@ -180,7 +180,7 @@ export async function withInstallRollback<T>(paths: ProtectedSurface[], apply: (
   }
 }
 
-export function compareCoreVersions(left: string, right: string): number | null {
+function compareCoreVersions(left: string, right: string): number | null {
   const parse = (value: string): { core: number[]; pre: string[] } | null => {
     const match = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(value)
     return match ? { core: match.slice(1, 4).map(Number), pre: match[4]?.split('.') ?? [] } : null

@@ -17,7 +17,7 @@ export interface WorkflowEnvelope {
   state: WorkflowState
   graph?: SerializedGraphStore
 }
-export const ENVELOPE_FORMAT = 2
+const ENVELOPE_FORMAT = 2
 
 function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error ? String(error.code) : undefined

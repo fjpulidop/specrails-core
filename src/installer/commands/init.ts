@@ -45,8 +45,7 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 /**
  * `npx specrails-core init` entry point.
  *
- * Flags consumed (must remain in sync with ALLOWED_FLAGS in
- * bin/specrails-core.cjs until Phase 5):
+ * Flags consumed:
  *   --root-dir <path>     Target repo (default: cwd)
  *   --yes / -y            Non-interactive; auto-init git + accept defaults
  *   --provider <name>     Force provider (claude, codex, gemini, or kimi)
@@ -71,7 +70,7 @@ export interface InitFlags {
   'hub-json'?: boolean
 }
 
-export interface InitResult {
+interface InitResult {
   repoRoot: string
   provider: Provider
 }
@@ -83,7 +82,7 @@ const WORKSPACE_PROVIDER_ORDER: readonly Provider[] = [
   'kimi',
 ]
 
-export type WorkspaceProviderSelections = Partial<
+type WorkspaceProviderSelections = Partial<
   Record<Provider, string[]>
 >
 
@@ -200,7 +199,7 @@ interface ReassembleWorkspaceProvidersInput {
  * indirection, so rebuilding all live links is required for true
  * multi-provider version parity.
  */
-export function reassembleWorkspaceProviders(
+function reassembleWorkspaceProviders(
   input: ReassembleWorkspaceProvidersInput,
 ): Provider[] {
   const providers = WORKSPACE_PROVIDER_ORDER.filter(
@@ -243,9 +242,8 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   const autoYes = flags.yes === true || flags.y === true
   const skipPrereqs = process.env.SPECRAILS_SKIP_PREREQS === '1'
 
-  // Validate an explicit provider before consulting --from-config. The TUI
-  // intentionally re-enters init with BOTH flags; accepting that flow is safe
-  // only when the generated config agrees with the original explicit choice.
+  // Validate an explicit provider before consulting --from-config; when both
+  // are given, the config must agree with the explicit choice.
   let explicitProvider: Provider | undefined
   if (flags.provider !== undefined) {
     if (
@@ -388,7 +386,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
 
   step('Installation complete')
   info('Agents, commands, and rules were placed directly — no follow-up step required.')
-  info('Extend the core trio (sr-architect, sr-developer, sr-reviewer) via profiles + custom-*.md agents.')
   // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
   // checkpoint). The sentinel line below is FROZEN — the downstream setup
@@ -415,13 +412,13 @@ export function warnUnknownSelectedAgents(selected: string[] | undefined): void 
     if (!CORE_AGENTS.has(id)) {
       warn(
         `install-config.yaml selects agent '${id}', which specrails-core no longer ships — ` +
-          `skipping (removed in v5; use a .claude/agents/custom-*.md agent declared in a profile).`,
+          `skipping (removed in v5).`,
       )
     }
   }
 }
 
-export interface EnsureFrameworkInput {
+interface EnsureFrameworkInput {
   scriptDir: string
   frameworkDir: string
   provider: Provider
@@ -883,7 +880,7 @@ function removeDirectoryIfEmpty(dir: string): void {
   if (isDir(dir) && listDir(dir).length === 0) removePath(dir)
 }
 
-export async function installOpenSpecProject(
+async function installOpenSpecProject(
   repoRoot: string,
   provider: Provider,
   artifactRoot: string = repoRoot,

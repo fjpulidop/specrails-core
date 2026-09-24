@@ -5,7 +5,7 @@ import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
   candidateManifest, fingerprintCandidate, frozenAcceptanceCriteria, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
   type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type PipelineContext, type VerificationCommand,
-} from '../../installer/runtime/pipeline-state.js'
+} from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'

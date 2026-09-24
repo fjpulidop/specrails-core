@@ -1,4 +1,4 @@
-import { readVerificationEvidence } from '../installer/runtime/pipeline-state.js'
+import { readVerificationEvidence } from '../pipeline/pipeline-state.js'
 import { readFileSync } from 'node:fs'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'

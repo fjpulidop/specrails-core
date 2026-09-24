@@ -15,7 +15,7 @@ import { compactMessages, estimateTokens, validateToolArguments } from './compac
 import { extractPromptInputs } from './compact/prompt-inputs.js'
 import { parseTaskGroups, tickTasks, writtenFiles } from './compact/developer.js'
 import { coverCriteria, criterionTokens, dedupeSpecRequirements, hasBinaryAssets, renderSpec, renderTasks, validateTaskPlan } from './compact/architect.js'
-import { inspectPipeline, type PipelineContext } from '../installer/runtime/pipeline-state.js'
+import { inspectPipeline, type PipelineContext } from '../pipeline/pipeline-state.js'
 
 type Body = { model?: string; messages: Record<string, unknown>[]; tools?: unknown[]; response_format?: Record<string, unknown> }
 const provider = { id: 'local', kind: 'openai-compatible' as const, baseUrl: 'http://127.0.0.1:9/v1' }

@@ -33,7 +33,7 @@ export interface PromptInputs {
 const STOP = /^(## |Planning policy:|Current frozen acceptance obligations)/
 
 /** Text of one `## Heading` section up to the next heading (or terminator), without the heading line. */
-export function section(prompt: string, heading: string): string {
+function section(prompt: string, heading: string): string {
   const lines = prompt.split('\n')
   const start = lines.findIndex(line => line.trim() === heading)
   if (start < 0) return ''

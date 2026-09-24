@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph'
-import type { VerificationCommand } from '../../installer/runtime/pipeline-state.js'
+import type { VerificationCommand } from '../../pipeline/pipeline-state.js'
 
 export type DesignConfidence = 'high' | 'medium' | 'low'
 export interface ArchitectureRecord {

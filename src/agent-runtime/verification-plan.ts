@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { bindVerificationPlan, pipelineStateDirectory, validateVerificationRequest, type PipelineContext, type VerificationCommand, type HostCheckPolicy } from '../installer/runtime/pipeline-state.js'
+import { bindVerificationPlan, pipelineStateDirectory, validateVerificationRequest, type PipelineContext, type VerificationCommand, type HostCheckPolicy } from '../pipeline/pipeline-state.js'
 import { fingerprint } from './durable-store.js'
 import { child, write } from './graph/artifacts.js'
 
@@ -17,8 +17,8 @@ export interface ProposedCheck {
   entrypoint?: string
   files?: Array<{ path: string; content: string }>
 }
-export interface HarnessSource { path: string; hash: string; byteCount: number }
-export interface PlanEntry {
+interface HarnessSource { path: string; hash: string; byteCount: number }
+interface PlanEntry {
   id: string
   key: string
   label: string
@@ -26,7 +26,7 @@ export interface PlanEntry {
   command: VerificationCommand
   harness?: { hash: string; entrypoint: string; sources: HarnessSource[] }
 }
-export interface VerificationPlan {
+interface VerificationPlan {
   schemaVersion: 1
   runId: string
   revision: number

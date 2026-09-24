@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { beforeEach, afterEach, expect, it } from 'vitest'
 import { addDeveloperChecks, expandedPlanCommands, initializeVerificationPlan, readVerificationPlan, validateProposedChecks } from './verification-plan.js'
-import { pipelineStateDirectory, type PipelineContext } from '../installer/runtime/pipeline-state.js'
+import { pipelineStateDirectory, type PipelineContext } from '../pipeline/pipeline-state.js'
 
 let root: string, context: PipelineContext
 beforeEach(() => {

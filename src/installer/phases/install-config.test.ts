@@ -356,10 +356,7 @@ describe('install-config', () => {
       expect(cfg!.models).toEqual({
         preset: 'max',
         defaults: { model: 'sonnet' },
-        overrides: {
-          'sr-architect': 'opus',
-          'sr-product-manager': 'opus',
-        },
+        overrides: { 'sr-architect': 'opus' },
       })
     })
   })
@@ -380,7 +377,7 @@ describe('install-config', () => {
         >
       }
 
-      expect(contract.schemaVersion).toBe('4.0')
+      expect(contract.schemaVersion).toBe('5.0')
       expect(contract.configSchema.fields.provider).toBe(
         'string — claude | codex | gemini | kimi',
       )

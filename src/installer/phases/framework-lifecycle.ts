@@ -21,14 +21,14 @@ import {
  * shared by every relocated workspace, so a version transition must carry
  * forward every provider that can still have live links through that pointer.
  */
-export const FRAMEWORK_PROVIDERS: readonly Provider[] = [
+const FRAMEWORK_PROVIDERS: readonly Provider[] = [
   'claude',
   'codex',
   'gemini',
   'kimi',
 ]
 
-export interface ResolveRequiredFrameworkProvidersInput {
+interface ResolveRequiredFrameworkProvidersInput {
   frameworkDir: string
   /** Providers requested by the lifecycle operation that is about to swap. */
   requested?: readonly Provider[]
@@ -36,7 +36,7 @@ export interface ResolveRequiredFrameworkProvidersInput {
   registryHome?: string
 }
 
-export interface MaterializeFrameworkVersionInput
+interface MaterializeFrameworkVersionInput
   extends ResolveRequiredFrameworkProvidersInput {
   scriptDir: string
   version: string
@@ -64,7 +64,7 @@ function stableProviders(values: Iterable<Provider>): Provider[] {
  * materialization without a stamp may still have live workspace symlinks, so
  * the next version must carry that provider forward rather than dropping it.
  */
-export function discoverFrameworkProviders(
+function discoverFrameworkProviders(
   frameworkDir: string,
   version: string,
 ): Provider[] {

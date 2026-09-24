@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeRuntimeConfig } from './config.js'
 import { runRuntimeCommand } from './cli.js'
 import type { RuntimeConfig } from './executor-types.js'
-import { pipelineStateDirectory, type PipelineContext } from '../installer/runtime/pipeline-state.js'
+import { pipelineStateDirectory, type PipelineContext } from '../pipeline/pipeline-state.js'
 
 const executable = fileURLToPath(new URL('../../bin/specrails-core.mjs', import.meta.url))
 let root: string

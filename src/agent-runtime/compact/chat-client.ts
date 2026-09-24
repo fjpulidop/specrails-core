@@ -43,8 +43,8 @@ const RETRY_DELAY_MS = 3000
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason) }, { once: true }) })
 }
-export interface ChatCompletion { message: Record<string, unknown>; finishReason: unknown }
-export interface ChatClientOptions {
+interface ChatCompletion { message: Record<string, unknown>; finishReason: unknown }
+interface ChatClientOptions {
   endpoint: URL
   headers: Record<string, string>
   fetch: typeof globalThis.fetch
@@ -241,7 +241,7 @@ export async function readCompletionResponse(response: Response): Promise<unknow
   if (toolCalls.length) message.tool_calls = toolCalls
   return { choices: [{ message, finish_reason: finishReason ?? (toolCalls.length ? 'tool_calls' : 'stop') }], ...(usage ? { usage } : {}) }
 }
-export async function readBoundedResponse(response: Response): Promise<unknown> {
+async function readBoundedResponse(response: Response): Promise<unknown> {
   if (!response.body) throw new Error('Missing response body')
   const reader = response.body.getReader(), chunks: Uint8Array[] = []
   let length = 0

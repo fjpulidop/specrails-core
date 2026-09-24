@@ -1,7 +1,7 @@
 {
   "name": "specrails-core",
   "version": "5.6.0",
-  "description": "Provider-independent AI agent workflow system for Claude Code, Codex, Gemini CLI, and Kimi Code",
+  "description": "Agent workflow engine for specrails-desktop: provider-independent installer and programmatic agent runtime for Claude Code, Codex, Gemini CLI and Kimi Code",
   "type": "module",
   "exports": {
     "./agent-runtime": {
@@ -20,8 +20,6 @@
     "bin/",
     "dist/",
     "templates/",
-    "commands/",
-    "docs/",
     "schemas/",
     "integration-contract.json",
     "pinned-versions.json"
@@ -47,12 +45,8 @@
     "llm",
     "ai",
     "automation",
-    "productivity",
     "specrails",
     "openspec",
-    "code-generation",
-    "product-management",
-    "vibe-coding",
     "agents",
     "multi-agent",
     "software-engineering",
@@ -78,12 +72,10 @@
   },
   "dependencies": {
     "@fission-ai/openspec": "1.4.1",
-    "@inquirer/prompts": "^7.0.0",
     "@langchain/core": "1.2.10",
     "@langchain/langgraph": "1.4.14",
     "@langchain/langgraph-checkpoint": "1.1.5",
     "@modelcontextprotocol/sdk": "1.29.0",
-    "ajv": "^8.18.0",
     "cross-spawn": "7.0.6",
     "js-yaml": "^4.1.0",
     "picocolors": "^1.1.1",
@@ -94,6 +86,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^4.1.5",
+    "ajv": "^8.20.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.5"
   },

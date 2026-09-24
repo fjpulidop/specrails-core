@@ -471,7 +471,7 @@ export function restoreTree(
  * verbatim where the platform allows a dangling link rather than failing the
  * whole rollback.
  */
-export function restoreLink(target: string, linkPath: string): void {
+function restoreLink(target: string, linkPath: string): void {
   if (pathExists(target)) {
     symlinkOrCopy(target, linkPath)
     return

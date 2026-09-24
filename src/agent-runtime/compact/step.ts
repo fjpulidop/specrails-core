@@ -29,7 +29,7 @@ export interface CompactEnv {
 }
 /** Shorthand for the guards: `on(env, 'empty-write')`. */
 export function on(env: Pick<CompactEnv, 'guardrails'>, id: GuardrailId): boolean { return guardrailEnabled(env.guardrails, id) }
-export const COMPACT_STANCE = 'You are one step of a Specrails pipeline driven by a host program. Keep replies short and concrete. Never invent files, paths or commands: everything you state must come from the inputs or from tool results. When asked for JSON, reply with exactly one JSON object and nothing else.'
+const COMPACT_STANCE = 'You are one step of a Specrails pipeline driven by a host program. Keep replies short and concrete. Never invent files, paths or commands: everything you state must come from the inputs or from tool results. When asked for JSON, reply with exactly one JSON object and nothing else.'
 
 /** One host-driven `openspec_workflow` call, visible in the host log like a model tool call. */
 export async function openspecCall(env: CompactEnv, input: Parameters<OpenSpecTools['execute']>[0]): Promise<unknown> {

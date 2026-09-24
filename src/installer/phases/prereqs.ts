@@ -41,14 +41,13 @@ export function isSupportedNodeVersion(version: string): boolean {
 }
 
 /**
- * Phase 1 prerequisite bundle. Mirrors install.sh's Phase 1 flow but
- * with explicit options rather than a grab-bag of globals.
+ * Phase 1 prerequisite bundle.
  *
  * Returns the resolved inputs later phases need — primarily the
  * selected provider and the detected CLI availability.
  */
 
-export interface PrereqOptions {
+interface PrereqOptions {
   /** Absolute path to the target repository root. */
   repoRoot: string
   /** --yes / -y equivalent — auto-init git, skip interactive prompts. */
@@ -59,7 +58,7 @@ export interface PrereqOptions {
   skipPrereqs: boolean
 }
 
-export interface PrereqResult {
+interface PrereqResult {
   availability: ProviderAvailability
   provider: Provider
   /**
@@ -72,7 +71,7 @@ export interface PrereqResult {
   ossSignals: OssSignals
 }
 
-export interface OssSignals {
+interface OssSignals {
   hasGh: boolean
   publicRepo: boolean
   hasCi: boolean
@@ -82,8 +81,7 @@ export interface OssSignals {
 
 /**
  * Orchestrates every prerequisite check that must pass before the
- * installer proceeds to Phase 3 (scaffolding). Emits ok/warn/info
- * lines matching the retired bash output.
+ * installer proceeds to Phase 3 (scaffolding).
  */
 export async function checkPrerequisites(options: PrereqOptions): Promise<PrereqResult> {
   const nodeVersion = process.versions.node
@@ -102,8 +100,8 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
     )
   }
 
-  // 1.1 Git repository — auto-init when --yes, otherwise assume caller
-  //     resolved the prompt upstream (bin/specrails-core.cjs / desktop app TUI).
+  // 1.1 Git repository — auto-init when --yes; otherwise the caller must
+  //     provide a repository.
   if (!(await isGitRepo(options.repoRoot))) {
     if (!options.autoYes) {
       throw new PrerequisiteError(
@@ -169,7 +167,7 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
     }
   }
 
-  // 1.4 npm — required for running the TUI and for the `update` command.
+  // 1.4 npm — required to run the pinned OpenSpec CLI through npx.
   if (!(await commandExists('npm'))) {
     if (options.skipPrereqs) {
       warn('npm not found (skipped — SPECRAILS_SKIP_PREREQS=1)')

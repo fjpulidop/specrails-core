@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.7.x (latest) | ✅ |
-| < 0.7.0 | ❌ |
+| Latest 5.x release | ✅ |
+| Older releases | ❌ |
 
 We only provide security fixes for the latest release. Please upgrade to the latest version before reporting a vulnerability.
 
@@ -45,10 +45,10 @@ In return, we commit to:
 
 ## Security Updates
 
-Security patches are released as patch versions (e.g., 0.7.x) as soon as practicable. We recommend always running the latest version of specrails-core.
+Security patches are released as patch versions as soon as practicable. We recommend always running the latest version of specrails-core.
 
 Subscribe to [GitHub security advisories](https://github.com/fjpulidop/specrails-core/security/advisories) for this repository to receive notifications.
 
 ## Scope
 
-This policy covers the `specrails-core` installer and the agent/command templates it installs into user repositories. It does not cover vulnerabilities in third-party tools invoked by the installed agents (e.g., Claude Code, GitHub CLI).
+This policy covers the `specrails-core` installer, the programmatic agent runtime and the templates it installs into user repositories. It does not cover vulnerabilities in third-party tools the runtime invokes (e.g., Claude Code, Codex, Gemini CLI, Kimi Code).

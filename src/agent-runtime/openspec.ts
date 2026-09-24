@@ -60,10 +60,6 @@ function readProgress(context: OpenSpecRoleContext): { notice: string; record: P
     return { notice: PROGRESS_NOTICE + ' Saved progress is unavailable or invalid; inspect the current diff and tasks before continuing.', record: null }
   }
 }
-export function renderProgressHandoff(context: OpenSpecRoleContext): string {
-  const saved = readProgress(context)
-  return saved.record ? `\n## Saved implementation progress\n${saved.notice}\n${JSON.stringify(saved.record)}\n` : saved.notice.includes('unavailable') ? '\n' + saved.notice + '\n' : ''
-}
 function writeProgress(context: OpenSpecRoleContext, input: unknown): { notice: string; record: ProgressRecord } {
   if (context.role !== 'developer') throw new Error('Only the developer may write implementation progress')
   const progress = IMPLEMENTATION_PROGRESS_SCHEMA.parse(input)
@@ -265,7 +261,7 @@ export class OpenSpecTools {
     return apply
   }
 }
-export const OPENSPEC_BRIDGE_ENTRY = fileURLToPath(new URL('./openspec-tool-server.js', import.meta.url))
+const OPENSPEC_BRIDGE_ENTRY = fileURLToPath(new URL('./openspec-tool-server.js', import.meta.url))
 
 export const OPENSPEC_TOOL_ACTIONS = ['load_skill', 'new', 'status', 'instructions', 'validate', 'write_artifact', 'read_progress', 'write_progress'] as const
 export const OPENSPEC_TOOL_DEFINITION = { type: 'function', function: { name: 'openspec_workflow', description: 'Run the official OpenSpec role workflow. Load the skill first (developer/reviewer also receive real status, apply context and saved progress), then use its CLI instructions and write artifacts within the fixed change. Developer may save a bounded advisory handoff with write_progress; read_progress refreshes it. Progress never substitutes for verification.', parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: { action: { type: 'string', enum: OPENSPEC_TOOL_ACTIONS }, artifact: { type: 'string' }, path: { type: 'string' }, content: { type: 'string' }, progress: {

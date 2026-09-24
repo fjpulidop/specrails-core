@@ -1,4 +1,4 @@
-import type { CandidateManifest } from '../installer/runtime/pipeline-state.js'
+import type { CandidateManifest } from '../pipeline/pipeline-state.js'
 
 export interface ReviewManifest extends CandidateManifest { truncated: boolean }
 export function boundedReviewManifest(manifest: CandidateManifest): ReviewManifest {

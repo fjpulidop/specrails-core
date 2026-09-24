@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { roleInstructions, rolePromptDefaults } from './prompts.js'
 import type { AgentRole } from './executor-types.js'
-import type { PipelineContext } from '../installer/runtime/pipeline-state.js'
+import type { PipelineContext } from '../pipeline/pipeline-state.js'
 const context = { artifactRoot: '/repo', repositories: [{ id: 'app', name: 'App', path: '/repo' }], specs: [{ title: 'A feature', description: 'Implement the requested feature', acceptanceCriteria: ['Works'], repositoryIds: ['app'] }] } as PipelineContext
 
 describe('editable role definitions', () => {

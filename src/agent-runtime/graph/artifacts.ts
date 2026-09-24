@@ -5,7 +5,7 @@ import path from 'node:path'
 import {
   checkArchive, pipelineStateDirectory, transitionPipeline, validateVerificationRequest,
   type PipelineContext, type PipelineState, type VerificationCommand,
-} from '../../installer/runtime/pipeline-state.js'
+} from '../../pipeline/pipeline-state.js'
 import type { DesignConfidence } from './state.js'
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/

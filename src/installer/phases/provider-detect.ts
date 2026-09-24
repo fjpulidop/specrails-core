@@ -6,8 +6,7 @@ import { commandExists, runCommand } from '../util/exec.js'
 import { pathExists, readTextFile } from '../util/fs.js'
 
 /**
- * Provider detection + authentication checks. These mirror the Phase
- * 1.2 / 1.3 branches of the retired install.sh.
+ * Provider detection + authentication checks (init Phase 1.2 / 1.3).
  */
 
 export type Provider = 'claude' | 'codex' | 'gemini' | 'kimi'
@@ -24,7 +23,7 @@ export interface ProviderAvailability {
   kimi?: boolean
 }
 
-export interface ProviderDerivedPaths {
+interface ProviderDerivedPaths {
   /** Root directory inside the user's repo: `.claude` / `.codex` / `.gemini` / `.kimi-code`. */
   providerDir: string
   /** Instructions file relative to the artifact root. */
@@ -142,9 +141,8 @@ export function derivedPaths(provider: Provider): ProviderDerivedPaths {
 }
 
 /**
- * Asserts that Claude Code is authenticated. Matches the three-path
- * check from install.sh: `claude config list` → ANTHROPIC_API_KEY env →
- * ~/.claude.json OAuth.
+ * Asserts that Claude Code is authenticated: `claude config list` →
+ * ANTHROPIC_API_KEY env → ~/.claude.json OAuth.
  */
 export async function assertClaudeAuthenticated(
   options: { skipPrereqs?: boolean } = {},
@@ -165,7 +163,7 @@ export async function assertClaudeAuthenticated(
   )
 }
 
-export type KimiAuthenticationStatus = 'authenticated' | 'unauthenticated' | 'unknown'
+type KimiAuthenticationStatus = 'authenticated' | 'unauthenticated' | 'unknown'
 
 /**
  * Bounded, non-billing Kimi authentication probe.

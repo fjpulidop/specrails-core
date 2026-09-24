@@ -5,206 +5,58 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Lifecycle invariant tests for the three sr-* agent templates.
- *
- * These tests assert that the templates contain the structural patterns
- * required by the fix-agent-openspec-lifecycle change:
- *
- *   - sr-architect: scaffolds via opsx:ff only (no opsx:new — ff creates the
- *                   change itself); specName guard; hand-authoring prohibition
- *   - sr-developer: opsx:apply present; checkbox gate `- [ ]` checked;
- *                   specName guard present; Phase 4 prerequisite note present
- *   - sr-reviewer:  task gate present; opsx:archive present;
- *                   specName guard present
- *
- * Each invariant is tested against the canonical Claude subagent template
- * (templates/agents/) — the source of truth. The generated `.claude/agents/`
- * dogfood copy is no longer committed (under relocate-artifacts it materializes
- * under $HOME on install), so there is no in-repo installed copy to lockstep
- * against here.
- *
- * Codex enforces the equivalent OpenSpec-CLI lifecycle through its own
- * codex-native skills. Because codex reviewers run in PARALLEL and only the
- * orchestrator holds the aggregated verdict, the archive obligation lives in
- * the implement ORCHESTRATOR (not the reviewer rail). The codex archive
- * contract is asserted at the bottom of this file.
+ * Role and entry-point invariants. The programmatic runtime owns the
+ * lifecycle (architect → developer → verify → reviewer → archive); the
+ * installed role definitions only bind each role to its official OpenSpec
+ * workflow and keep delivery with the host.
  */
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const repoRoot = path.resolve(__dirname, '..', '..', '..')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+const read = (...parts: string[]): string => readFileSync(path.join(repoRoot, 'templates', ...parts), 'utf8')
 
-function readTemplate(name: string): string {
-  return readFileSync(path.join(repoRoot, 'templates', 'agents', `${name}.md`), 'utf8')
-}
+const ROLES = [
+  { id: 'sr-architect', skill: 'opsx:ff' },
+  { id: 'sr-developer', skill: 'opsx:apply' },
+  { id: 'sr-reviewer', skill: 'opsx:verify' },
+] as const
 
-describe('sr-architect lifecycle invariants', () => {
-  const files = {
-    template: readTemplate('sr-architect'),
-  }
+describe.each(ROLES)('$id role definition', ({ id, skill }) => {
+  const agent = read('agents', `${id}.md`)
+  const rail = read('codex-skills', 'rails', id, 'SKILL.md')
 
-  for (const [label, content] of Object.entries(files)) {
-    describe(`[${label}]`, () => {
-      it('does not mention /opsx:ff as a self-trigger in the frontmatter description', () => {
-        // Extract just the frontmatter block (between first two ---)
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
-        expect(frontmatterMatch).not.toBeNull()
-        const frontmatter = frontmatterMatch![0]
-        // The description must not say the agent triggers autonomously on /opsx:ff
-        expect(frontmatter).not.toMatch(/invokes OpenSpec commands related to fast-forward/)
-        expect(frontmatter).not.toMatch(/user invokes.*\/opsx:ff/)
-      })
+  it('declares its identity in frontmatter', () => {
+    expect(agent).toMatch(new RegExp(`^---\\nname: ${id}\\n`))
+    expect(rail).toMatch(new RegExp(`^---\\nname: ${id}\\n`))
+  })
 
-      it('states the agent is launched by orchestrator with specName argument', () => {
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/)
-        expect(frontmatterMatch).not.toBeNull()
-        const frontmatter = frontmatterMatch![0]
-        expect(frontmatter).toMatch(/orchestrator/)
-        expect(frontmatter).toMatch(/specName/)
-      })
+  it(`runs the official ${skill} workflow through the Skill tool`, () => {
+    expect(agent).toContain(`Skill("${skill}"`)
+    expect(rail).toContain(`Skill("${skill}"`)
+  })
 
-      it('contains specName required-argument guard', () => {
-        expect(content).toMatch(/specName is required/)
-        expect(content).toMatch(/\[error\] specName is required/)
-      })
+  it('reads scope from the frozen execution context and leaves delivery to the host', () => {
+    for (const text of [agent, rail]) {
+      expect(text).toContain('SPECRAILS_EXECUTION_CONTEXT')
+      expect(text).toMatch(/host owns/)
+    }
+  })
 
-      it('scaffolds via opsx:ff only and does NOT pre-call opsx:new (which would make ff fail)', () => {
-        // Strip the frontmatter block before checking — the frontmatter
-        // legitimately mentions opsx:ff (to say the agent does NOT auto-trigger
-        // on it). opsx:ff already runs `openspec new change` internally, so a
-        // separate opsx:new Skill call makes ff abort with "Change already exists".
-        const bodyStart = content.indexOf('\n---\n') + 5
-        const body = content.slice(bodyStart)
-        expect(body).toMatch(/Skill\("opsx:ff"/)
-        expect(body).not.toMatch(/Skill\("opsx:new"/)
-      })
+  it('keeps the Codex rail body identical to the agent body', () => {
+    const body = (text: string): string => text.slice(text.indexOf('\n---\n') + 5).replaceAll('{{PROJECT_NAME}}', 'this repository')
+    expect(body(rail)).toBe(body(agent))
+  })
 
-      it('prohibits hand-authoring of proposal.md, design.md, tasks.md', () => {
-        expect(content).toMatch(/MUST NOT hand-author/)
-        expect(content).toMatch(/proposal\.md/)
-        expect(content).toMatch(/design\.md/)
-        expect(content).toMatch(/tasks\.md/)
-      })
-    })
-  }
+  it('carries no retired placeholders or agent-memory contract', () => {
+    expect(agent.match(/\{\{[A-Z_]+\}\}/g) ?? []).toEqual(['{{PROJECT_NAME}}'])
+    expect(agent).not.toContain('agent-memory')
+  })
 })
-
-describe('sr-developer lifecycle invariants', () => {
-  const files = {
-    template: readTemplate('sr-developer'),
-  }
-
-  for (const [label, content] of Object.entries(files)) {
-    describe(`[${label}]`, () => {
-      it('contains specName required-argument guard', () => {
-        expect(content).toMatch(/specName is required/)
-        expect(content).toMatch(/\[error\] specName is required/)
-      })
-
-      it('invokes opsx:apply via Skill tool before writing files', () => {
-        expect(content).toMatch(/opsx:apply/)
-        // Must instruct to use Skill tool, not shell command
-        expect(content).toMatch(/Skill\("opsx:apply"/)
-      })
-
-      it('contains checkbox verification gate checking for - [ ] pattern', () => {
-        // Must mention the exact markdown checkbox pattern
-        expect(content).toMatch(/- \[ \]/)
-      })
-
-      it('halts and reports incomplete tasks when unchecked boxes found', () => {
-        expect(content).toMatch(/HALT/)
-        expect(content).toMatch(/incomplete/)
-      })
-
-      it('states Phase 4 is unreachable unless checkbox gate passes', () => {
-        expect(content).toMatch(/Phase 4 is (only reachable|unreachable)/)
-      })
-    })
-  }
-})
-
-describe('sr-reviewer lifecycle invariants', () => {
-  const files = {
-    template: readTemplate('sr-reviewer'),
-  }
-
-  for (const [label, content] of Object.entries(files)) {
-    describe(`[${label}]`, () => {
-      it('contains specName required-argument guard', () => {
-        expect(content).toMatch(/specName is required/)
-        expect(content).toMatch(/\[error\] specName is required/)
-      })
-
-      it('contains Task Completion Gate step that checks - [ ] pattern', () => {
-        expect(content).toMatch(/Task Completion Gate/)
-        expect(content).toMatch(/- \[ \]/)
-      })
-
-      it('blocks archive when unchecked tasks remain', () => {
-        expect(content).toMatch(/BLOCK archive/)
-      })
-
-      it('invokes opsx:archive via Skill tool only when gate passes', () => {
-        expect(content).toMatch(/opsx:archive/)
-        expect(content).toMatch(/Skill\("opsx:archive"/)
-      })
-
-      it('states archive step is only reachable when task gate passes', () => {
-        // Step 6 (Archive) should be conditional on Step 5 (gate) passing
-        const archiveIndex = content.indexOf('opsx:archive')
-        const gateIndex = content.indexOf('Task Completion Gate')
-        expect(archiveIndex).toBeGreaterThanOrEqual(0)
-        expect(gateIndex).toBeGreaterThanOrEqual(0)
-        // Gate must appear before archive instruction
-        expect(gateIndex).toBeLessThan(archiveIndex)
-      })
-    })
-  }
-})
-
-/**
- * Codex archive contract.
- *
- * Regression guard for the bug where a codex `clean` run closed the ticket
- * but never archived the OpenSpec change (the archive step was absent from
- * every committed version of the codex implement orchestrator).
- *
- * Archive is authorized by the orchestrator after aggregation, then executed
- * by the reviewer rail in archive-only mode. This keeps the aggregate verdict
- * decision in the orchestrator while forcing the lifecycle close through the
- * reviewer and the OpenSpec CLI.
- */
-function readCodexSkill(relPath: string): string {
-  return readFileSync(path.join(repoRoot, 'templates', 'codex-skills', relPath), 'utf8')
-}
 
 describe('implementation entry points use the programmatic lifecycle', () => {
-  it.each(['implement', 'batch-implement', 'retry'])('%s delegates lifecycle control to the runtime', name => {
-    const text = readFileSync(path.join(repoRoot, 'templates', 'codex-skills', name, 'SKILL.md'), 'utf8')
+  it.each(['implement', 'batch-implement', 'retry'])('%s delegates lifecycle control to the runtime', (name) => {
+    const text = read('commands', 'specrails', `${name}.md`)
     expect(text).toContain('agent-runtime.mjs')
     expect(text).toContain('resume --context')
     expect(text).not.toContain('spawn_agent')
-    expect(text).not.toContain('archive-only')
-  })
-})
-
-describe('codex reviewer rail archive contract', () => {
-  const content = readCodexSkill(path.join('rails', 'sr-reviewer', 'SKILL.md'))
-
-  it('archives with the OpenSpec CLI only when the orchestrator authorizes it', () => {
-    expect(content).toMatch(/ARCHIVE_AUTHORIZED=true/)
-    expect(content).toMatch(/ARCHIVE_ONLY=true/)
-    expect(content).toMatch(/openspec archive "<slug>" -y/)
-  })
-
-  it('validates and checks task boxes before archiving', () => {
-    const gateIndex = content.indexOf('openspec validate "<slug>" --strict')
-    const taskIndex = content.indexOf('- [ ]')
-    const archiveIndex = content.indexOf('openspec archive "<slug>" -y')
-    expect(gateIndex).toBeGreaterThanOrEqual(0)
-    expect(taskIndex).toBeGreaterThanOrEqual(0)
-    expect(archiveIndex).toBeGreaterThanOrEqual(0)
-    expect(gateIndex).toBeLessThan(archiveIndex)
-    expect(taskIndex).toBeLessThan(archiveIndex)
   })
 })

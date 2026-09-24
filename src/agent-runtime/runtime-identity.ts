@@ -24,7 +24,7 @@ export function runtimePackageIntegrity(root = fileURLToPath(new URL('../../', i
       hash.update(JSON.stringify([relative, stat.size])).update('\0').update(readFileSync(file)).update('\0')
     } else throw new Error('Runtime package contains a nonregular file: ' + relative)
   }
-  for (const entry of ['package.json', 'dist', 'bin', 'templates', 'schemas', 'commands', 'integration-contract.json', 'pinned-versions.json']) {
+  for (const entry of ['package.json', 'dist', 'bin', 'templates', 'schemas', 'integration-contract.json', 'pinned-versions.json']) {
     if (existsSync(path.join(root, entry))) visit(entry)
   }
   return 'sha256:' + hash.digest('hex')

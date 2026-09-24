@@ -1,16 +1,11 @@
 ---
 paths:
   - "templates/**"
-  - ".claude/setup-templates/**"
 ---
 
-# Template Conventions
+# Template conventions
 
-- Use `{{UPPER_SNAKE_CASE}}` for all template placeholders
-- Every placeholder must be documented in the setup wizard or a README
-- Template files are Markdown — follow standard Markdown formatting
-- Frontmatter uses YAML with `---` delimiters
-- File naming: kebab-case (e.g., `product-manager.md`, not `productManager.md`)
-- Test that placeholders render correctly after substitution — no leftover `{{...}}` in output
-- Keep templates focused — one agent/command/rule per file
-- Include example values in comments when the placeholder purpose isn't obvious
+- The only placeholder is `{{PROJECT_NAME}}`; unknown `{{TOKENS}}` render as empty strings, so do not add new ones.
+- Slash commands live in `templates/commands/specrails/` and are the single source for every provider (Codex skills, Gemini TOML and Kimi skills are generated from them).
+- Frontmatter uses YAML with `---` delimiters; file names are kebab-case.
+- Every template change affects every installed project: cover it in `src/installer/**/scaffold*.test.ts`.

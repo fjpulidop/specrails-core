@@ -2,7 +2,7 @@ import { spawn, spawnSync, type SpawnOptions } from 'node:child_process'
 
 import { ExecError } from './errors.js'
 
-export interface RunOptions {
+interface RunOptions {
   /** Working directory for the child. Defaults to `process.cwd()`. */
   cwd?: string
   /** Environment variables, merged on top of `process.env`. */
@@ -13,7 +13,7 @@ export interface RunOptions {
   timeoutMs?: number
 }
 
-export interface RunResult {
+interface RunResult {
   code: number
   stdout: string
   stderr: string
