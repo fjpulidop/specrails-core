@@ -296,3 +296,20 @@ describe('portable child process transport', () => {
     await expect(pending).rejects.toMatchObject({ code: 'aborted' })
   })
 })
+
+describe('Claude Opus generation', () => {
+  it.each(['architect', 'developer', 'reviewer'] as const)('pins the alias for %s, including resumed invocations', role => {
+    for (const resumeSessionId of [undefined, 'existing-session']) {
+      const args = buildCliInvocation('claude', request({ role, model: 'opus', resumeSessionId })).args
+      expect(args[args.indexOf('--model') + 1]).toBe('claude-opus-5-5')
+    }
+  })
+  it.each(['claude-opus-5-5', 'claude-opus-5', 'sonnet', 'custom-model'])('preserves explicit choice %s', model => {
+    const args = buildCliInvocation('claude', request({ model })).args
+    expect(args[args.indexOf('--model') + 1]).toBe(model)
+  })
+  it('does not interpret another provider model as a Claude alias', () => {
+    const args = buildCliInvocation('codex', request({ model: 'opus' })).args
+    expect(args[args.indexOf('--model') + 1]).toBe('opus')
+  })
+})

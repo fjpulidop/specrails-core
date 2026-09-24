@@ -383,3 +383,11 @@ Verification checks use the frozen plan and existing scoped receipts with a
 45-second deadline. OpenSpec validation reports must contain successful results,
 not merely an exit code of zero. Neither operation grants acceptance or marks
 workflow phases complete. Resume remains responsible for the required gates.
+
+### Claude Opus selection
+
+For Claude CLI roles, `model: opus` resolves to `claude-opus-5-5` (Opus 5.5).
+Explicit model IDs pass through unchanged, including older generations, and other
+providers are unaffected. This applies to base and escalation invocations.
+Claude Code owns the native thinking and tool protocol; Core does not send
+Anthropic Messages API parameters.

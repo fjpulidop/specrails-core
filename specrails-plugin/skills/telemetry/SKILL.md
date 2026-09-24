@@ -252,12 +252,13 @@ Compute estimated API cost per agent using published Claude pricing (per million
 
 | Model family | Input | Output | Cache read | Cache write |
 |---|---|---|---|---|
+| `claude-opus-5-5` | $4.00 | $20.00 | $0.20 | $5.00 |
 | `claude-opus-4*` | $15.00 | $75.00 | $1.50 | $3.75 |
 | `claude-sonnet-4*` | $3.00 | $15.00 | $0.30 | $0.75 |
 | `claude-haiku-4*` | $0.25 | $1.25 | $0.025 | $0.0625 |
 | `unknown` | $3.00 | $15.00 | $0.30 | $0.75 |
 
-Match model IDs by prefix (e.g. `claude-sonnet-4-6` → `claude-sonnet-4*`). If a model cannot be matched, use the `unknown` rate card and flag it in output.
+Opus 5.5 rates use the [official model pricing](https://platform.claude.com/docs/en/models/opus-5-5/overview), with 5-minute cache writes. Match exact model IDs first, then match model IDs by prefix (e.g. `claude-sonnet-4-6` → `claude-sonnet-4*`). If a model cannot be matched, use the `unknown` rate card and flag it in output.
 
 **Per-agent cost formula:**
 
