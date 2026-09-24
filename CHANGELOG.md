@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.6.0](https://github.com/fjpulidop/specrails-core/compare/v5.5.1...v5.6.0) (2026-09-24)
+
+
+### Features
+
+* **claude:** pin Opus alias to Claude Opus 5.5 ([#377](https://github.com/fjpulidop/specrails-core/issues/377)) ([3395627](https://github.com/fjpulidop/specrails-core/commit/339562788a04a7a26050310d69f6a7f2e7742d49))
+* **runtime:** add scoped recovery for stopped workflows ([#376](https://github.com/fjpulidop/specrails-core/issues/376)) ([6c8e8bb](https://github.com/fjpulidop/specrails-core/commit/6c8e8bb036e948fd4648a0740b9db8e03b96222e))
+
 ## [5.5.1](https://github.com/fjpulidop/specrails-core/compare/v5.5.0...v5.5.1) (2026-09-19)
 
 
