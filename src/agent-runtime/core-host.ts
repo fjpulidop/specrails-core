@@ -128,7 +128,10 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
       const inspection = inspectPipeline(context)
       if (stepId === 'architect' && checkpoint.pendingApproval?.stepId === 'archive' && options.approve?.includes('archive') && inspection.verification.valid && inspection.acceptance.valid && inspection.phases.reviewer.status === 'done') grantedArchiveScope = archiveConsent()
       if (stepId === 'architect') return inspection.phases.architect.status === 'done' && inspection.resumePhase !== 'architect'
-      if (stepId === 'verify' && checkpoint.status !== 'succeeded' && inspection.phases.archive.status !== 'done' && !(checkpoint.pendingApproval?.stepId === 'archive' && !options.approve?.includes('archive') && !checkpoint.pendingApproval.grantedAt)) return false
+      // A failed deterministic archive does not itself stale verification. The
+      // receipt checks below still invalidate changed code, specs or environment.
+      const retryingArchive = checkpoint.nextStep === 'archive' && checkpoint.steps.archive?.status === 'failed'
+      if (stepId === 'verify' && !retryingArchive && checkpoint.status !== 'succeeded' && inspection.phases.archive.status !== 'done' && !(checkpoint.pendingApproval?.stepId === 'archive' && !options.approve?.includes('archive') && !checkpoint.pendingApproval.grantedAt)) return false
       if (stepId === 'verify') return (_record.output as { valid?: boolean } | undefined)?.valid !== false && inspection.verification.valid
       if (stepId === 'reviewer') return inspection.phases.reviewer.status === 'done' && inspection.verification.valid && !['architect', 'developer', 'reviewer'].includes(inspection.resumePhase ?? '')
       if (stepId === 'archive') return inspection.phases.archive.status === 'done'

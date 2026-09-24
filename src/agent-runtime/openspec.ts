@@ -94,8 +94,9 @@ export async function runOpenSpec(cli: string, root: string, args: string[], sig
     })
     return result.stdout
   } catch (error) {
-    const result = error as { stdout?: string; stderr?: string; status?: number }
-    throw new Error(`OpenSpec ${args[0]} failed (${result.status ?? 'process error'}): ${String(result.stderr || result.stdout || '').slice(-6000)}`)
+    const result = error as { stdout?: string; stderr?: string; status?: number; code?: number | string }
+    const detail = [result.stdout, result.stderr].filter(Boolean).join('\n').slice(-6000)
+    throw new Error(`OpenSpec ${args[0]} failed (${result.status ?? result.code ?? 'process error'}): ${detail}`)
   }
 }
 /** Reject symlink traversal even when the final destination does not exist. */
