@@ -7,7 +7,6 @@
 !.claude/rules/
 .claude/rules/*
 !.claude/rules/agents.md
-!.claude/rules/shell.md
 !.claude/rules/templates.md
 
 coverage/
