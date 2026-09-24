@@ -10,9 +10,10 @@ import { AgentExecutionError, type AgentRequest, type AgentResult, type RuntimeC
 import { inspectPipeline, pipelineStateDirectory, type PipelineContext, type PipelineState } from '../installer/runtime/pipeline-state.js'
 import { readWorkflowEnvelope, writeWorkflowEnvelope } from './durable-store.js'
 import type { WorkflowState } from './workflow-types.js'
-import { runRuntimeCommand } from './cli.js'
+import { compactState, runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 import { runtimeEfficiency } from './efficiency.js'
+import { runRecovery } from './recovery.js'
 
 let root: string
 let context: PipelineContext
@@ -125,6 +126,41 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('programmatic Core host with real evidence gates', () => {
+  it.each([false, true])('preserves archive diagnostics and revalidates only changed candidate evidence (code changed: %s)', async (codeChanged) => {
+    const mainSpec = path.join(context.artifactRoot, 'openspec/specs/feature/spec.md')
+    write(mainSpec, '# Feature\n\nExisting behavior.\n\n## Requirements\n### Requirement: Existing behavior\nThe system SHALL preserve existing behavior.\n#### Scenario: Existing use\n- **WHEN** called\n- **THEN** existing behavior remains\n')
+    const { registry, calls } = fake()
+    const failed = await runCoreWorkflow(opts(registry))
+    expect(failed.status).toBe('failed')
+    expect(failed.nextStep).toBe('archive')
+    expect(failed.error).toContain('OpenSpec did not create an archive')
+    expect(failed.error).toContain('Purpose')
+    expect(failed.error).not.toContain('ambiguous')
+    expect(existsSync(active('tasks.md'))).toBe(true)
+    const receipt = inspectPipeline(context).verification.receipt?.id
+    const count = calls.length
+    const retried = await runCoreWorkflow(opts(registry, { resume: true }))
+    expect(retried.status).toBe('failed')
+    expect(retried.error).toContain('Purpose')
+    expect(calls).toHaveLength(count)
+    expect(inspectPipeline(context).verification.receipt?.id).toBe(receipt)
+    expect(compactState(retried)?.recentFailures).toEqual([
+      expect.objectContaining({ stepId: 'archive', status: 'failed', error: expect.stringContaining('Purpose') }),
+      expect.objectContaining({ stepId: 'archive', status: 'failed', error: expect.stringContaining('Purpose') }),
+    ])
+    const inspected = await runRecovery(context, { action: 'read_file', repositoryId: context.repositories[0]!.id, path: 'openspec/specs/feature/spec.md' }) as { hash: string }
+    expect(await runRecovery(context, { action: 'patch', repositoryId: context.repositories[0]!.id, path: 'openspec/specs/feature/spec.md',
+      operationId: '7ec505b8-a03d-4b1b-91cb-8ca9c8604fa7', expectedHash: inspected.hash, oldText: '# Feature\n', newText: '# Feature\n\n## Purpose\n', reason: 'Restore the section required by OpenSpec validation',
+    })).toMatchObject({ status: 'applied' })
+    if (codeChanged) write(path.join(context.repositories[0]!.path, 'code.cjs'), 'module.exports = 2\n// changed candidate\n')
+    const repaired = await runCoreWorkflow(opts(registry, { resume: true }))
+    expect(repaired.status, repaired.error).toBe('succeeded')
+    expect(calls.slice(count).map(call => call.role)).toEqual(codeChanged ? ['reviewer'] : [])
+    if (codeChanged) expect(inspectPipeline(context).verification.receipt?.id).not.toBe(receipt)
+    else expect(inspectPipeline(context).verification.receipt?.id).toBe(receipt)
+    expect(existsSync(active())).toBe(false)
+  })
+
   it('accepts real node:test TAP output whose passing test names describe failures', async () => {
     config.verification = context.repositories.map(repository => ({
       repositoryId: repository.id, command: process.execPath,

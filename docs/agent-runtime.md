@@ -345,3 +345,41 @@ Desktop Settings exposes global architect, developer and reviewer task definitio
 Overrides replace the role task definition across providers. Scope, acceptance evidence, correction feedback, output contracts and the mandatory OpenSpec binding are still assembled by the runtime. Omitted definitions retain the existing factory wording for older saved jobs. Resetting a role removes its global override, so future jobs use the active Core default.
 
 Codex output schemas use its strict transport format: every property is required and originally optional fields accept null. The adapter restores optional nulls to omitted fields before Core consumes the response. This transport adaptation does not alter frozen role contracts. Provider failures include bounded, credential-redacted diagnostics from structured errors or stderr.
+
+## Failed archive recovery diagnostics
+
+Archive success requires a destination and removal of the staged active change,
+not only an exit code of zero. On an aborted OpenSpec validation, the failure
+retains bounded CLI output so the host can identify the actual spec or prerequisite
+to repair. No writes from an unsuccessful staging pass are published.
+
+A retry of a failed archive reuses verification and review when their receipts
+remain valid. Candidate/environment changes continue to invalidate those receipts
+and require verification/review. Compact runtime status includes up to eight
+`recentFailures` with step, status, attempt, visit, timestamp and bounded error;
+it excludes agent outputs. Hosts should diagnose repeated errors and identify a
+changed precondition before retrying, preserving the original worktree.
+
+## Scoped recovery API
+
+Capability `scopedRecovery: 1` exposes `runtime recovery --context <json> --stdin`.
+The JSON actions are inspect, history (optional offset), list_files, read_file,
+diff, patch and check. File actions require a repositoryId from the frozen context
+and a relative path. Patch requires expectedHash, one unique oldText/newText
+replacement (16 KiB fragments), operationId UUID and reason. Check accepts only
+kind openspec or kind verification with an ID from inspect's registered checks;
+no submitted command/argv is accepted. The CLI requires the retained runtime
+identity before dispatch. Desktop maps patch to write and check to destructive.
+
+Recovery holds the workflow lease, rejects archived/completed mutations and
+requires explicit acknowledgement of interrupted writes. It reuses WorkspaceTools
+for bounded UTF-8 reads/diffs and atomic writes, adds protected-plan and portable
+path checks, and records bounded attempts in a separate write-ahead history.
+Same operation IDs never blindly rerun; changed requests with an old ID fail.
+Interrupted patches reconcile by their after-hash; uncertain checks remain
+interrupted. Repeated failed checks require a stated changed precondition.
+
+Verification checks use the frozen plan and existing scoped receipts with a
+45-second deadline. OpenSpec validation reports must contain successful results,
+not merely an exit code of zero. Neither operation grants acceptance or marks
+workflow phases complete. Resume remains responsible for the required gates.

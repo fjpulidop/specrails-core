@@ -16,6 +16,7 @@ import type { WorkflowState } from './workflow-types.js'
 import { runtimeEfficiency } from './efficiency.js'
 import { configuredCapabilities } from './capabilities.js'
 import { createExecutorRegistry } from './executors.js'
+import { runRecovery } from './recovery.js'
 
 function read(file: string): unknown { return JSON.parse(readFileSync(file, 'utf8')) }
 async function readStdin(): Promise<unknown> {
@@ -36,6 +37,12 @@ export function compactState(state: WorkflowState | null) {
     runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, updatedAt: state.updatedAt,
     error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage,
     steps: Object.fromEntries(Object.entries(state.steps).map(([id, step]) => [id, { status: step.status, visits: step.visits }])),
+    // Bounded failure history helps hosts distinguish repeated blockers from a
+    // resumable checkpoint without shipping transcripts or invoking a provider.
+    recentFailures: state.history.filter(attempt => attempt.status === 'failed' || attempt.status === 'interrupted').slice(-8).map(attempt => ({
+      stepId: attempt.stepId, status: attempt.status, attempt: attempt.attempt, visit: attempt.visit,
+      at: attempt.completedAt ?? attempt.startedAt, error: attempt.error?.slice(-6000),
+    })),
     metrics: runtimeEfficiency(state),
   }
 }
@@ -104,11 +111,12 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       'specrails-core runtime run --context <json> --config <json> --change <kebab-case>',
       'specrails-core runtime status --context <json> [--compact]',
       'specrails-core runtime resume --context <json> [--approve archive] [--answer <text>] [--recover developer] [--invalidate verify]',
+      'specrails-core runtime recovery --context <json> --stdin',
     ] })
     return 0
   }
   if (command === 'api') {
-    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1 }, guardrails: GUARDRAIL_CATALOG })
+    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'validate') {
@@ -123,6 +131,18 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     const query = { ...(flags.id === undefined ? {} : { id: stringFlag(flags, 'id') }), ...(flags.section === undefined ? {} : { section: stringFlag(flags, 'section') }), ...(flags['source-id'] === undefined ? {} : { sourceId: stringFlag(flags, 'source-id') }), ...(flags.cursor === undefined ? {} : { cursor: stringFlag(flags, 'cursor') }), ...(flags.limit === undefined ? {} : { limit: Number(stringFlag(flags, 'limit')) }) }
     emit(readVerificationEvidence(context, query as VerificationEvidenceQuery))
     return 0
+  }
+  if (command === 'recovery') {
+    if (flags.stdin !== true || Object.keys(flags).some(key => !['context', 'stdin'].includes(key))) throw new Error('Recovery requires --context and --stdin only')
+    const context = validatePipelineContext(read(stringFlag(flags, 'context')))
+    const request = read(path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')) as { runtimeIdentity?: RuntimeIdentity }
+    if (!request.runtimeIdentity || !sameRuntimeIdentity(request.runtimeIdentity, coreRuntimeIdentity())) throw new Error('Recovery requires the retained original runtime identity; do not replace or migrate the saved run')
+    const controller = new AbortController(), abort = () => controller.abort()
+    process.on('SIGINT', abort); process.on('SIGTERM', abort)
+    try {
+      emit({ type: 'runtime-recovery', schemaVersion: 1, runId: context.runId, result: await runRecovery(context, await readStdin(), controller.signal) })
+      return 0
+    } finally { process.off('SIGINT', abort); process.off('SIGTERM', abort) }
   }
   if (!['run', 'status', 'resume'].includes(command)) throw new Error('Unknown runtime operation: ' + command)
   const context = validatePipelineContext(read(stringFlag(flags, 'context')))

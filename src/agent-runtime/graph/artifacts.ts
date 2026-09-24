@@ -113,9 +113,14 @@ async function archiveWithOpenSpec(context: PipelineContext, change: string, act
       const source = artifactPath(context.artifactRoot, 'openspec')
       files(source) // Reject symlinks before copying or invoking the external CLI.
       cpSync(source, path.join(staging, 'openspec'), { recursive: true })
-      await runOpenSpec(resolveOpenSpecCli(), staging, ['archive', change, '--yes'], signal)
-      const archives = readdirSync(path.join(staging, 'openspec/changes/archive')).filter(name => name.endsWith('-' + change))
-      if (archives.length !== 1) throw new Error('OpenSpec archive destination is ambiguous')
+      const output = await runOpenSpec(resolveOpenSpecCli(), staging, ['archive', change, '--yes'], signal)
+      const archiveRoot = path.join(staging, 'openspec/changes/archive')
+      const archives = existsSync(archiveRoot) ? readdirSync(archiveRoot).filter(name => name.endsWith('-' + change)) : []
+      // OpenSpec can abort validation while exiting 0. Preserve its explanation;
+      // process success alone is not an archive receipt.
+      if (archives.length === 0) throw new Error(`OpenSpec did not create an archive for ${change}. Repair the reported cause before resuming.\n${output.slice(-6000)}`)
+      if (archives.length !== 1) throw new Error(`OpenSpec archive has multiple destinations for ${change}: ${archives.join(', ')}.\n${output.slice(-6000)}`)
+      if (existsSync(path.join(staging, 'openspec/changes', change))) throw new Error(`OpenSpec left the active change in place; archive was not completed.\n${output.slice(-6000)}`)
       const destination = 'openspec/changes/archive/' + archives[0]!
       if (existsSync(artifactPath(context.artifactRoot, destination))) throw new Error('OpenSpec archive destination already exists')
       const beforeRoot = path.join(source, 'specs'), afterRoot = path.join(staging, 'openspec/specs')
