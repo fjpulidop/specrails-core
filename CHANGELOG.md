@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.0.1](https://github.com/fjpulidop/specrails-core/compare/v6.0.0...v6.0.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **runtime:** keep implementations surgical and stop circular correction loops ([#383](https://github.com/fjpulidop/specrails-core/issues/383)) ([f839baf](https://github.com/fjpulidop/specrails-core/commit/f839baf7ab8a3773d6f5041d73533773f38ca64a))
+
 ## [6.0.0](https://github.com/fjpulidop/specrails-core/compare/v5.6.0...v6.0.0) (2026-09-24)
 
 
