@@ -842,17 +842,21 @@ describe('compact role pipelines through the Core graph', () => {
   }, 180_000)
 
   describe('wall clock per task group (observed: a three-group developer killed at minute 45 while still patching)', () => {
+    // The role budget also bounds the architect's own (undelayed) steps. A loaded
+    // Windows runner has taken more than 15 s on them, so every budget and delay
+    // below scales together there; the ratios the tests rely on stay the same.
+    const SCALE = process.platform === 'win32' ? 3 : 1
+    const BUDGET_MS = 15_000 * SCALE
     it('re-arms the role timeout at every group, so two slow groups that together exceed it still finish', async () => {
       // Group 1 = 3 turns × 4 s, group 2 = 1 turn × 4 s: 16 s of model time against a 15 s budget that is per GROUP (each group stays under it).
-      // Budgets are generous on purpose: under a full parallel suite the architect's own (undelayed) steps can take several seconds.
-      const { fetch } = smallModel({ delayGroupMs: 4000 })
-      const registry = createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: 15000 } })
+      const { fetch } = smallModel({ delayGroupMs: 4000 * SCALE })
+      const registry = createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: BUDGET_MS } })
       const state = await runCoreWorkflow({ context, config, change, registry })
       expect(state.status, state.error).toBe('succeeded')
-    }, 120_000)
+    }, 120_000 * SCALE)
     it('a group that outlives its budget BLOCKS the run with the finished groups ticked, and a resume continues from the open group', async () => {
-      const { fetch } = smallModel({ delayGroupTwoOnceMs: 20000 })
-      const registry = createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: 15000 } })
+      const { fetch } = smallModel({ delayGroupTwoOnceMs: 20_000 * SCALE })
+      const registry = createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: BUDGET_MS } })
       const state = await runCoreWorkflow({ context, config, change, registry })
       expect(state.status).toBe('blocked')
       expect(state.error).toMatch(/timed out after \d+ minutes on one task group.*resume to continue from the next open group/)
@@ -860,9 +864,9 @@ describe('compact role pipelines through the Core graph', () => {
       const tasks = readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', change, 'tasks.md'), 'utf8')
       expect(tasks).toMatch(/- \[x\] 1\.1/)
       expect(tasks).toMatch(/- \[ \] 2\.1/)
-      const resumed = await runCoreWorkflow({ context, config, change, registry: createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: 15000 } }), resume: true })
+      const resumed = await runCoreWorkflow({ context, config, change, registry: createExecutorRegistry(config, { openai: { fetch, defaultTimeoutMs: BUDGET_MS } }), resume: true })
       expect(resumed.status, resumed.error).toBe('succeeded')
-    }, 120_000)
+    }, 120_000 * SCALE)
     it('the idle watchdog stops a run that produces nothing for the idle bound, as a resumable block', async () => {
       const { fetch } = smallModel({ delayGroupTwoOnceMs: 12000 })
       const registry = createExecutorRegistry(config, { openai: { fetch, idleTimeoutMs: 6000 } })
