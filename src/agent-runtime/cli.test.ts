@@ -195,7 +195,7 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
-    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '6', instructionsVersion: '9', apiVersion: 1 } })
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '7', instructionsVersion: '10', apiVersion: 1 } })
 
     const forbidden = await invoke(['resume', '--context', contextFile, '--config', configFile])
     expect(forbidden.code).toBe(1)

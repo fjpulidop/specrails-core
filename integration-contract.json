@@ -289,7 +289,7 @@
   "execution": {
     "schemaVersion": 1,
     "contextEnv": "SPECRAILS_EXECUTION_CONTEXT",
-    "context": "Absolute JSON file: runId, backlogRoot, backlogPath?, artifactRoot, artifactRepositoryId, repositories[{id,name,path,baseSha?}], ownership{git,backlog,worktrees:host|core}, specs[{id,title,description,repositoryIds?,acceptanceCriteria?}]",
+    "context": "Absolute JSON file: runId, backlogRoot, backlogPath?, artifactRoot, artifactRepositoryId, repositories[{id,name,path,baseSha?,scope?}], ownership{git,backlog,worktrees:host|core}, specs[{id,title,description,repositoryIds?,acceptanceCriteria?}]. scope (runtime capability repositoryScope) lists the checkout-relative directories a repository is confined to — a package registered inside a larger checkout: commands without cwd run in the first one, model-proposed checks stay inside it, edits outside it are undone after each developer/fixer turn and reviews judge the git change set against the run base.",
     "runtime": ".specrails/runtime/pipeline.mjs",
     "operations": [
       "init",

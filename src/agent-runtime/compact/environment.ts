@@ -18,7 +18,8 @@ import path from 'node:path'
 const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
 
 interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[] }
-interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string }
+/** `precondition`: the install failed for a reason only the host can repair (see hostPreconditionFailure). */
+interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string; precondition?: string }
 
 const ENVIRONMENT_SIGNATURES: RegExp[] = [
   /command not found/i,
@@ -34,6 +35,8 @@ const ENVIRONMENT_SIGNATURES: RegExp[] = [
   /jest: not found|vitest: not found|mocha: not found|tsc: not found|pytest: not found/i,
   /TS2582|Do you need to install type definitions|Try `npm i --save-dev @types\//i,
   /Module (?:[\w@./-]+) in the \w+ option was not found|Preset [\w@./-]+ not found|Cannot find module '(?:ts-jest|babel-jest|@swc\/jest|ts-node|tsx)'/i,
+  // Yarn Berry refuses to run scripts in a checkout that was never installed.
+  /doesn't seem to have been installed - running an install there might help|Couldn't find the node_modules state file - running an install might help/i,
 ]
 
 /** True when a verification failure looks like a missing toolchain/dependency rather than a code defect. */
@@ -41,6 +44,30 @@ export function isEnvironmentFailure(exitCode: number | null | undefined, output
   if (exitCode === 127) return true
   const tail = output.slice(-6000)
   return ENVIRONMENT_SIGNATURES.some(pattern => pattern.test(tail))
+}
+
+const REGISTRY = String.raw`(?:registry|npmjs\.org|yarnpkg\.com|npm\.pkg\.github\.com|pkgs\.dev\.azure\.com|jfrog|artifactory|nexus|pypi\.org|crates\.io|proxy\.golang\.org)`
+/**
+ * Failures that no edit to the change can repair, because the verification
+ * process itself lacks something only the host can grant: an environment
+ * variable a configuration file references, registry credentials, registry
+ * network access, git credentials for a dependency. Feeding them to a fixer
+ * makes it edit package-manager configuration to route around the missing
+ * secret (observed: `.yarnrc.yml` rewritten, reverted by review, rewritten
+ * again). Returns a short host-facing reason, or undefined.
+ */
+export function hostPreconditionFailure(output: string): string | undefined {
+  const text = output.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').slice(-16_000)
+  const variable = /Environment variable not found \(([A-Za-z_][A-Za-z0-9_]*)\)/.exec(text)
+  if (variable) return `the environment variable ${variable[1]} is not available to verification commands, and a package-manager configuration file requires it`
+  if (/\bYN0041\b/.test(text) || /YN0035[\s\S]{0,400}?Response Code: 40[13]\b/.test(text) || /Response code 40[13] \((?:Unauthorized|Forbidden)\)/i.test(text)
+    || /npm (?:ERR!|error) code (?:E401|E403|ENEEDAUTH)\b/.test(text) || /ERR_PNPM_FETCH_40[13]\b/.test(text)
+    || new RegExp(String.raw`\b40[13] (?:Unauthorized|Forbidden)\b[^\n]{0,80}https?://[^\s]*${REGISTRY}`, 'i').test(text)
+    || /\b(?:401|403) Client Error: (?:Unauthorized|Forbidden) for url/.test(text)) return 'the package registry rejected the credentials available to verification commands (HTTP 401/403)'
+  if (/npm (?:ERR!|error) code (?:ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET)\b/.test(text) || /ERR_PNPM_META_FETCH_FAIL\b/.test(text)
+    || new RegExp(String.raw`\b(?:ENOTFOUND|EAI_AGAIN)\b[^\n]{0,200}${REGISTRY}|${REGISTRY}[^\n]{0,200}\b(?:ENOTFOUND|EAI_AGAIN)\b`, 'i').test(text)) return 'the package registry cannot be reached from the verification environment'
+  if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return 'git credentials needed to fetch a dependency are not available to verification commands'
+  return undefined
 }
 
 /** Packages a failure output names explicitly (`Try \`npm i --save-dev @types/jest\``); the host installs exactly those. */
@@ -138,7 +165,8 @@ export function installEnvironment(roots: readonly string[], io: { spawn?: typeo
       const ok = result.status === 0
       const detail = ok ? `installed ${plan.ecosystem} dependencies in ${path.basename(root)}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
       io.onEvent?.({ kind: 'text', text: `Environment: ${detail}` })
-      outcomes.push({ ...plan, ok, detail })
+      const precondition = ok ? undefined : hostPreconditionFailure(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
+      outcomes.push({ ...plan, ok, detail, ...(precondition ? { precondition } : {}) })
     }
   }
   return outcomes

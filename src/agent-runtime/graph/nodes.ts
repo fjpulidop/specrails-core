@@ -1,22 +1,25 @@
 import { guardrailEnabled } from '../guardrails.js'
 import { addDeveloperChecks, bindPlan, expandedPlanCommands, initializeVerificationPlan, readVerificationPlan, validateProposedChecks } from '../verification-plan.js'
+import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
-  candidateManifest, fingerprintCandidate, frozenAcceptanceCriteria, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
-  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type PipelineContext, type VerificationCommand,
+  candidateManifest, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
+  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type CommandReceipt, type PipelineContext, type VerificationCommand, type VerificationReceipt,
 } from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
-import { installEnvironment, isEnvironmentFailure } from '../compact/environment.js'
+import { hostPreconditionFailure, installEnvironment, isEnvironmentFailure } from '../compact/environment.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
 import { exitCodeContradiction, exitHonestyReason } from '../compact/exit-code-honesty.js'
 import type { RoleInvoker } from './roles.js'
 import { boundedReviewManifest, reviewChanges } from '../review-context.js'
 import type { ArchitectureRecord, CoreNodeId, CoreStateType, DeveloperRecord, VerificationRecord } from './state.js'
+import { describeFailure, divergence, outcomesSinceResume, unchangedFailure, type VerifyOutcome } from './convergence.js'
+import { captureOutOfScope, changeBases, changeSet, describeDiscarded, discardOutOfScopeEdits, renderChangeSet, type DiscardedEdit } from '../change-scope.js'
 
 /** Autonomous investigation passes before a low-confidence design asks or proceeds. */
 export const MAX_DEEPEN_PASSES = 1
@@ -90,6 +93,27 @@ export function developerRecord(output: Record<string, unknown> | undefined, tex
   }
 }
 
+/** The change so far as prompt lines; a checkout git cannot measure yields no section instead of failing the role. */
+function measuredChange(context: PipelineContext, change: string): string[] | undefined {
+  try { return renderChangeSet(changeSet(context, change)) } catch { return undefined }
+}
+
+/** The turn's record without the files Core undid: they are not part of the change, so they never count as progress. */
+function withoutDiscarded<T extends DeveloperRecord>(context: PipelineContext, record: T, discarded: readonly DiscardedEdit[]): T {
+  if (!discarded.length) return record
+  const undone = new Set(discarded.map(edit => edit.path))
+  const relative = (file: string): string => {
+    let value = file.replace(/\\/g, '/').replace(/^\.\//, '')
+    for (const repository of context.repositories) {
+      const root = repository.path.replace(/\\/g, '/')
+      if (value.startsWith(root + '/')) { value = value.slice(root.length + 1); break }
+    }
+    return value
+  }
+  const kept = (files: string[]): string[] => files.filter(file => !undone.has(relative(file)))
+  return { ...record, files: kept(record.files), tests: kept(record.tests), discarded: discarded.map(edit => (context.repositories.length > 1 ? edit.repositoryId + ':' : '') + edit.path).slice(0, 200) }
+}
+
 function architectNode(deps: CoreNodeDeps): CoreNode {
   const { context, config, change, invoke, note } = deps
   const accept = (output: Record<string, unknown> | undefined): ReturnType<typeof parseArchitecture> => {
@@ -103,6 +127,8 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
     effect: 'write', ends: ['developer'],
     async run(state, step): Promise<Result> {
       transitionPipeline(context, 'architect', 'running')
+      // The change is measured from here: record each repository's base before any role edits.
+      changeBases(context)
       // A resumed node collects the requester's answer first, so the pass that
       // asked the question is never repeated.
       const answers = [...state.answers]
@@ -188,7 +214,9 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
   // instructions.
   const fixer = fixing ? config.fixer : undefined
   const provider = (fixer ?? config.agents.developer).provider
-  const full = roleInstructions('developer', context, change, { definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
+  // What the run has changed so far, from git: a correction stays inside it.
+  const changes = state.development ? measuredChange(context, change) : undefined
+  const full = roleInstructions('developer', context, change, { definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan, developer: state.development, ...(changes ? { changeSet: changes } : {}) }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
   const previous = state.development
   // A CLI developer with a live session takes corrections and continuations
   // as a short follow-up in that session; a configured fixer engine always
@@ -196,11 +224,13 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
   const visits = developerVisitsSinceResume(step.checkpoint) + fixerVisitsSinceResume(step.checkpoint)
   const resumable = !fixer && previous?.sessionId !== undefined && previous.provider === provider && visits > 1
   if (fixer) note('fixer', `Correction round on the fixer engine (${fixer.provider}/${fixer.model ?? 'provider default'}).`)
+  // Out-of-scope state before the turn: afterwards the host undoes exactly what the turn did outside the scope.
+  const guard = captureOutOfScope(context, change)
   const outcome = await invoke('developer', step, {
     kind: visits > 1 ? 'correction' : 'initial',
     ...(fixer ? { agentOverride: fixer } : {}), ...(fixing ? { stance: 'fixer' as const } : {}),
     ...(resumable
-      ? { prompt: correctionInstructions('developer', feedback), resumeSessionId: previous.sessionId, fallbackPrompt: full }
+      ? { prompt: correctionInstructions('developer', feedback, { ...(changes ? { changeSet: changes } : {}), developer: state.development }), resumeSessionId: previous.sessionId, fallbackPrompt: full }
       : { prompt: full }),
     structured: true, lenient: true, outputSchema: DEVELOPER_OUTPUT_SCHEMA,
   }, (output, text, result) => {
@@ -209,16 +239,26 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
     if (checks.length && config.efficiency?.acceptDeveloperChecks === false) throw new Error('Developer verification proposals are disabled by the frozen policy')
     return { ...developerRecord(output, text, result, provider), ...(checks.length ? { verificationChecks: checks } : {}) }
   })
+  const who = fixing ? 'Fixer' : 'Developer'
+  let discarded: DiscardedEdit[]
+  try { discarded = discardOutOfScopeEdits(context, guard) }
+  catch (error) {
+    return { status: 'blocked', error: `${who} edited files outside the repository scope and Core could not undo them: ${error instanceof Error ? error.message : String(error)}. Restore those files in the worktree, then resume.` }
+  }
+  const multiple = context.repositories.length > 1
+  if (discarded.length) {
+    const scopes = context.repositories.filter(repository => repository.scope?.length).map(repository => repository.scope!.join(', ')).join('; ')
+    note(mode, `Undid ${plural(discarded.length, 'edit')} outside the repository scope (${scopes}): ${describeDiscarded(discarded, multiple)}. Only changes inside the scope are part of this change.`)
+  }
   // A timeout is a budget, not a defect: the groups already finished are
   // ticked in tasks.md and verified, and write_progress holds the handoff, so
   // the run BLOCKS (resume continues from the next open group, or raise
   // limits.timeoutMs) instead of failing the whole workflow.
   if (!outcome.ok) return settle(outcome, 'Finished task groups are ticked and verified; resume to continue from the next open group, or raise limits.timeoutMs.')
   new OpenSpecTools(deps.openspec.developer, step.signal).assertParticipation()
-  const record = outcome.value
+  const record = withoutDiscarded(context, outcome.value, discarded)
   const effective = addDeveloperChecks(context, record.verificationChecks ?? [])
   bindPlan(context, effective)
-  const who = fixing ? 'Fixer' : 'Developer'
   note(mode, record.structured
     ? `${who} finished: ${plural(record.files.length, 'file')} changed, ${plural(record.tests.length, 'test file')} touched${record.incomplete.length ? `, ${plural(record.incomplete.length, 'task')} left incomplete` : ''}.`
     : `${who} finished without the structured summary; the prose summary is recorded instead.`)
@@ -259,8 +299,48 @@ function fixerNode(deps: CoreNodeDeps): CoreNode {
   }
 }
 
+/** Where a missing dependency install belongs: the nearest directory with a lockfile or manifest above the failing command, else the repository root. */
+const INSTALL_MARKERS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml']
+function installRoots(context: PipelineContext, commands: readonly CommandReceipt[]): string[] {
+  const roots: string[] = []
+  for (const command of commands) {
+    const repository = context.repositories.find(repo => repo.id === command.repositoryId)
+    if (!repository) continue
+    let directory = command.cwd
+    let chosen = repository.path
+    for (;;) {
+      const relative = path.relative(repository.path, directory)
+      if (relative.startsWith('..') || path.isAbsolute(relative)) break
+      if (INSTALL_MARKERS.some(name => existsSync(path.join(directory, name)))) { chosen = directory; break }
+      if (!relative) break
+      directory = path.dirname(directory)
+    }
+    roots.push(chosen)
+  }
+  // Every repository root stays a candidate: its plan is a no-op when it is already installed.
+  return [...new Set([...roots, ...context.repositories.map(repository => repository.path)])]
+}
+/** A directory as the log should name it: relative to the checkout that contains it. */
+function checkoutRelative(context: PipelineContext, directory: string): string {
+  const repository = context.repositories.find(repo => { const relative = path.relative(repo.path, directory); return !relative.startsWith('..') && !path.isAbsolute(relative) })
+  return repository ? path.relative(repository.path, directory).split(path.sep).join('/') || '.' : directory
+}
+function hostPreconditionMessage(reason: string, command: string, args: readonly string[], directory: string): string {
+  return `Verification cannot run in this environment: ${reason} (\`${[command, ...args].join(' ')}\` in ${directory}). This is not a defect in the change, so no correction round was started. Make it available to Specrails (for example in the login shell profile Specrails loads, or with a refreshed registry token), then resume.`
+}
+/** A failed check the host must unblock (credentials, registry access, a missing variable): no correction round can repair it. */
+function preconditionBlock(context: PipelineContext, receipt: VerificationReceipt): string | undefined {
+  for (const command of receipt.commands) {
+    if (command.exitCode === 0) continue
+    const reason = hostPreconditionFailure(command.output)
+    if (reason) return hostPreconditionMessage(reason, command.command, command.args, checkoutRelative(context, command.cwd))
+  }
+  return undefined
+}
+
 function verifyNode(deps: CoreNodeDeps): CoreNode {
   const { context, note, config } = deps
+  const roots = context.repositories.map(repository => repository.path)
   return {
     effect: 'write', ends: ['reviewer', 'developer', 'fixer'],
     async run(state, step): Promise<Result> {
@@ -278,35 +358,81 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
       if (!effective) throw new Error('Verification plan is unavailable')
       const plan = expandedPlanCommands(context, effective)
       const uncovered = uncoveredRepositories(context, plan)
-      let receipt = await verifyPipeline(context, { kind: 'full', planHash: effective.planHash, commands: plan, ...(uncovered.length ? { unverified: true } : {}) }, deps.onVerificationOutput, step.signal, { ...(guardrailEnabled(config.guardrails, 'verify-idle-timeout') ? {} : { idleTimeoutMs: 0 }), onEvidence: async (kind, payload) => { await step.reportEfficiencyActivity?.(kind, payload) }, maxConcurrency: effective.executionPolicy.maxConcurrency, ...(step.remainingBudget().maxDurationMs === undefined ? {} : { deadline: Date.now() + step.remainingBudget().maxDurationMs! }) })
+      // A correction round that left the failed candidate exactly as it was
+      // cannot pass the same checks: stop instead of re-running them.
+      const recent = outcomesSinceResume(state.verifyHistory ?? [], step.checkpoint)
+      const last = recent.at(-1)
+      const rejected = last?.passed === true && state.review !== null && !state.review.approved
+      if (recent.some(entry => !entry.passed) || rejected) {
+        const candidate = fingerprintCandidate(journal(context))
+        const unchanged = unchangedFailure(recent, candidate, effective.planHash)
+        if (unchanged) {
+          note('fixer', 'The correction round did not change the candidate that failed verification; stopping instead of re-running the same checks.')
+          return { status: 'blocked', error: `Correction loop stopped: the last correction round left the change exactly as it was when verification failed (${unchanged.summary}). Re-running the same checks cannot pass. If the failure lies outside this change (a pre-existing failure, another package or the environment), fix it there and resume.`, usage: NO_SPEND }
+        }
+        // The reviewer rejected exactly this candidate and the correction round changed nothing: the
+        // fixer disputes the request. Its evidence still holds, so the reviewer decides again without
+        // re-running the same checks; a second rejection of the same change ends the dispute.
+        if (rejected && last.candidateHash === candidate && last.planHash === effective.planHash) {
+          const reviews = recent.filter(entry => entry.passed && entry.candidateHash === candidate && entry.planHash === effective.planHash).length
+          if (reviews >= 2) {
+            note('fixer', 'The reviewer rejected the same unchanged change twice; stopping instead of another round.')
+            return { status: 'blocked', error: `Correction loop stopped: the reviewer rejected the same change twice and the correction rounds did not change it (${state.review!.issues.slice(0, 3).join('; ').slice(0, 600) || state.review!.summary.slice(0, 300)}). Decide whether the review request applies to this change, then resume.`, usage: NO_SPEND }
+          }
+          if (inspectPipeline(context).verification.valid && state.verifyResult) {
+            note('developer', 'The correction round did not change the verified change; reusing its verification evidence and returning to the reviewer.')
+            transitionPipeline(context, 'developer', 'done')
+            return { status: 'succeeded', next: 'reviewer', update: { verifyResult: state.verifyResult, verifyHistory: [{ ...last, at: new Date().toISOString() }] }, output: state.verifyResult as unknown as JsonValue, usage: NO_SPEND }
+          }
+        }
+      }
+      const run = () => verifyPipeline(context, { kind: 'full', planHash: effective.planHash, commands: plan, ...(uncovered.length ? { unverified: true } : {}) }, deps.onVerificationOutput, step.signal, { ...(guardrailEnabled(config.guardrails, 'verify-idle-timeout') ? {} : { idleTimeoutMs: 0 }), onEvidence: async (kind, payload) => { await step.reportEfficiencyActivity?.(kind, payload) }, maxConcurrency: effective.executionPolicy.maxConcurrency, ...(step.remainingBudget().maxDurationMs === undefined ? {} : { deadline: Date.now() + step.remainingBudget().maxDurationMs! }) })
+      let receipt = await run()
+      const hostBlocked = (reason: string): Result => {
+        note('fixer', 'Verification failed on the environment, not on the change; stopping for the host instead of starting a correction round.')
+        return { status: 'blocked', error: reason, usage: NO_SPEND }
+      }
+      let precondition = receipt.valid ? undefined : preconditionBlock(context, receipt)
+      if (precondition) return hostBlocked(precondition)
       // A failure that is really a missing toolchain or dependency (exit 127,
       // "command not found", "Cannot find module"…) is the HOST's to fix, not
       // the model's — for every developer: a fresh worktree has no
-      // node_modules whatever wrote the code. Install once and re-verify; only
-      // a second failure becomes developer feedback.
+      // node_modules whatever wrote the code. Install once where the failing
+      // command runs and re-verify; only a second failure becomes feedback.
       if (!receipt.valid && guardrailEnabled(config.guardrails, 'environment-repair') && receipt.commands.some(command => isEnvironmentFailure(command.exitCode, command.output))) {
-        const installs = installEnvironment(context.repositories.map(repository => repository.path), { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(config.guardrails, 'lockfile-repair'), onEvent: event => note('developer', event.kind === 'text' ? event.text ?? '' : `[environment] ${event.tool ?? ''} ${event.detail ?? ''}`.trim()) })
+        const installs = installEnvironment(installRoots(context, receipt.commands.filter(command => command.exitCode !== 0)), { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(config.guardrails, 'lockfile-repair'), onEvent: event => note('developer', event.kind === 'text' ? event.text ?? '' : `[environment] ${event.tool ?? ''} ${event.detail ?? ''}`.trim()) })
+        const refused = installs.find(outcome => outcome.precondition)
+        if (refused) return hostBlocked(hostPreconditionMessage(`installing its dependencies failed because ${refused.precondition}`, refused.command, refused.args, checkoutRelative(context, refused.root)))
         if (installs.some(outcome => outcome.ok)) {
           note('developer', 'Verification failed on the environment (missing dependencies or tools); the host installed them and is verifying again.')
-          receipt = await verifyPipeline(context, { kind: 'full', planHash: effective.planHash, commands: plan, ...(uncovered.length ? { unverified: true } : {}) }, deps.onVerificationOutput, step.signal, { ...(guardrailEnabled(config.guardrails, 'verify-idle-timeout') ? {} : { idleTimeoutMs: 0 }), onEvidence: async (kind, payload) => { await step.reportEfficiencyActivity?.(kind, payload) }, maxConcurrency: effective.executionPolicy.maxConcurrency, ...(step.remainingBudget().maxDurationMs === undefined ? {} : { deadline: Date.now() + step.remainingBudget().maxDurationMs! }) })
+          receipt = await run()
+          precondition = receipt.valid ? undefined : preconditionBlock(context, receipt)
+          if (precondition) return hostBlocked(precondition)
         }
       }
       const evidence: VerificationRecord = {
         valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), receiptId: receipt.id, unverifiedRepositories: uncovered,
         commands: receipt.commands.map(({ evidenceId, repositoryId, command, args, exitCode, output }) => ({ ...(evidenceId ? { evidenceId } : {}), repositoryId, command, args, exitCode, output: output.slice(-2000) })),
       }
-      if (!receipt.valid) {
-        note('fixer', `Verification failed (${receipt.reason ?? 'a command failed'}); handing the exact output to the fixer.`)
-        return { status: 'succeeded', next: 'fixer', update: { verifyResult: evidence }, output: evidence as unknown as JsonValue, usage: NO_SPEND }
+      const outcome = (passed: boolean, finding?: string): VerifyOutcome => ({ at: new Date().toISOString(), candidateHash: receipt.candidateHash, planHash: effective.planHash, passed, ...(passed ? {} : describeFailure(receipt, roots, finding)) })
+      /** Hands a failure to the fixer unless the correction loop has stopped converging. */
+      const toFixer = (record: VerificationRecord, message: string, finding?: string): Result => {
+        const failure = outcome(false, finding)
+        const loop = divergence(recent, failure)
+        if (loop) {
+          note('fixer', 'The correction loop is not converging; stopping instead of starting another round.')
+          return { status: 'blocked', error: `Correction loop stopped: ${loop} Inspect the evidence, fix what lies outside the change (or adjust the request), then resume.`, output: record as unknown as JsonValue, usage: NO_SPEND }
+        }
+        note('fixer', message)
+        return { status: 'succeeded', next: 'fixer', update: { verifyResult: record, verifyHistory: [failure] }, output: record as unknown as JsonValue, usage: NO_SPEND }
       }
+      if (!receipt.valid) return toFixer(evidence, `Verification failed (${receipt.reason ?? 'a command failed'}); handing the exact output to the fixer.`)
       // Exit 0 with "3 failed" in the output is a broken harness, not a pass.
       if (guardrailEnabled(config.guardrails, 'exit-code-honesty')) {
         const findings = receipt.commands.flatMap(command => { const found = exitCodeContradiction(command.exitCode, command.output); return found ? [{ ...found, command: [command.command, ...command.args].join(' ') }] : [] })
         if (findings.length) {
           const reason = exitHonestyReason(findings)
-          note('fixer', `Verification exited 0 but reported failures (${findings.map(item => item.sample).join(' | ')}); handing it to the fixer as a failure.`)
-          const dishonest: VerificationRecord = { ...evidence, valid: false, reason }
-          return { status: 'succeeded', next: 'fixer', update: { verifyResult: dishonest }, output: dishonest as unknown as JsonValue, usage: NO_SPEND }
+          return toFixer({ ...evidence, valid: false, reason }, `Verification exited 0 but reported failures (${findings.map(item => item.sample).join(' | ')}); handing it to the fixer as a failure.`, reason)
         }
       }
       // Every command exited 0 — but did any of them RUN the tests the
@@ -320,14 +446,12 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
         const unreached = context.repositories.flatMap(repository => unreachedTestFiles(repository.path, plan.filter(command => command.repositoryId === repository.id).map(({ command, args, cwd }) => ({ command, args, ...(cwd ? { cwd } : {}) })), reported).map(file => context.repositories.length > 1 ? `${repository.id}:${file}` : file))
         if (unreached.length) {
           const reason = unreachedTestsReason(unreached)
-          note('fixer', `Verification incomplete: ${unreached.join(', ')} ${unreached.length === 1 ? 'is' : 'are'} not run by any verification command; handing it to the fixer.`)
-          const incomplete: VerificationRecord = { ...evidence, valid: false, reason }
-          return { status: 'succeeded', next: 'fixer', update: { verifyResult: incomplete }, output: incomplete as unknown as JsonValue, usage: NO_SPEND }
+          return toFixer({ ...evidence, valid: false, reason }, `Verification incomplete: ${unreached.join(', ')} ${unreached.length === 1 ? 'is' : 'are'} not run by any verification command; handing it to the fixer.`, reason)
         }
       }
       transitionPipeline(context, 'developer', 'done')
       note('developer', plan.length ? `Verification passed: ${plural(plan.length, 'command')} exited 0.` : 'No verification commands available; relying on task completion and review.')
-      return { status: 'succeeded', next: 'reviewer', update: { verifyResult: evidence }, output: evidence as unknown as JsonValue, usage: NO_SPEND }
+      return { status: 'succeeded', next: 'reviewer', update: { verifyResult: evidence, verifyHistory: [outcome(true)] }, output: evidence as unknown as JsonValue, usage: NO_SPEND }
     },
   }
 }
@@ -385,9 +509,12 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
         ? { changes: delta.changes, previouslyMet: (journal(context).acceptance?.criteria ?? []).filter(item => item.status === 'met').map(({ specId, criterionIndex }) => ({ specId, criterionIndex })) }
         : undefined
       if (reReview) note('reviewer', `Re-review: ${plural(reReview.changes.length, 'file')} changed since the previous verdict; certifying the previous issues instead of re-reading the candidate.`)
-      const prompt = roleInstructions('reviewer', context, change, { definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(reReview ? { reReview } : {}) })
+      // The reviewer judges the change itself, measured from git — not the whole checkout.
+      const changes = measuredChange(context, change)
+      const prompt = roleInstructions('reviewer', context, change, { definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
       const incremental = config.efficiency?.reviewMode !== 'full' && delta.mode === 'incremental' && state.review?.sessionId
       const followup = correctionInstructions('reviewer', feedbackFor(state)) + '\nChanges since YOUR previous reviewed candidate:\n' + JSON.stringify(delta.changes)
+        + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')
         + '\nRecertify EVERY current acceptance criterion; previous met results are not current evidence:\n' + JSON.stringify(criteria)
         + '\nCurrent developer handoff:\n' + JSON.stringify(state.development)
       const outcome = await invoke('reviewer', step, { kind: state.review ? 'correction' : 'initial', prompt: incremental ? followup : prompt, ...(incremental ? { resumeSessionId: state.review!.sessionId, fallbackPrompt: prompt } : {}), structured: true, outputSchema: REVIEW_OUTPUT_SCHEMA }, output => {

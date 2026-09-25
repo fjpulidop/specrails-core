@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { bindVerificationPlan, pipelineStateDirectory, validateVerificationRequest, type PipelineContext, type VerificationCommand, type HostCheckPolicy } from '../pipeline/pipeline-state.js'
+import { assertProposalInScope, withScopeDefault } from './change-scope.js'
 import { fingerprint } from './durable-store.js'
 import { child, write } from './graph/artifacts.js'
 
@@ -64,7 +65,9 @@ export function validateProposedChecks(context: PipelineContext, raw: unknown): 
     text(check.label, 'label', 256)
     text(check.command, 'command', 4096)
     if (!Array.isArray(check.args) || check.args.length > 128 || check.args.some(arg => typeof arg !== 'string' || arg.includes('\0') || arg.length > 4096)) throw new Error('Invalid verification proposal args')
-    validateVerificationRequest(context, { kind: 'scoped', commands: [check] })
+    if (check.cwd !== undefined && typeof check.cwd !== 'string') throw new Error('Invalid verification proposal cwd')
+    assertProposalInScope(context, check as { repositoryId: string; cwd?: string })
+    validateVerificationRequest(context, { kind: 'scoped', commands: [withScopeDefault(context, check as { repositoryId: string; cwd?: string })] })
     if (check.kind === 'command') {
       if (check.entrypoint !== undefined || check.files !== undefined) throw new Error('Invalid command proposal: harness fields are forbidden')
     } else {
@@ -131,7 +134,8 @@ export function readVerificationPlan(context: PipelineContext): VerificationPlan
 }
 export function initializeVerificationPlan(context: PipelineContext, host: VerificationCommand[], architect: VerificationCommand[], maxConcurrency = 1): VerificationPlan {
   const previous = readVerificationPlan(context)
-  const baseline = ([['host', host], ['architect', architect]] as const).flatMap(([origin, commands]) => commands.map((command, i) => entry(`${origin}:${command.key ?? `${i}-${fingerprint(normalized(command)).slice(0, 12)}`}`, command.label ?? [command.command, ...command.args].join(' ').slice(0, 256), command, origin)))
+  // The key hashes the command as declared, so a scope default never renames a check.
+  const baseline = ([['host', host], ['architect', architect]] as const).flatMap(([origin, commands]) => commands.map((command, i) => entry(`${origin}:${command.key ?? `${i}-${fingerprint(normalized(command)).slice(0, 12)}`}`, command.label ?? [command.command, ...command.args].join(' ').slice(0, 256), withScopeDefault(context, command), origin)))
   if (!Number.isSafeInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 4) throw new Error('Invalid verification concurrency')
   if (previous && fingerprint(previous.baseline) !== fingerprint(baseline)) throw new Error('Verification baseline is immutable')
   return savePlan(context, baseline, previous?.developer ?? [], previous, { maxConcurrency })
@@ -159,7 +163,7 @@ export function addDeveloperChecks(context: PipelineContext, proposals: Proposed
   const developer = new Map(previous.developer.map(item => [item.key, item]))
   const sources: Array<{ file: string; content: string }> = []
   for (const check of checked) {
-    const command: VerificationCommand = { repositoryId: check.repositoryId, command: check.command, args: check.args, ...(check.cwd === undefined ? {} : { cwd: check.cwd }), ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) }
+    const command: VerificationCommand = withScopeDefault(context, { repositoryId: check.repositoryId, command: check.command, args: check.args, ...(check.cwd === undefined ? {} : { cwd: check.cwd }), ...(check.timeoutMs === undefined ? {} : { timeoutMs: check.timeoutMs }) })
     const files = check.files?.slice().sort((a, b) => a.path.localeCompare(b.path)).map(file => ({ path: file.path, hash: bytesHash(file.content), byteCount: Buffer.byteLength(file.content) }))
     const harness = files ? { hash: fingerprint(files), entrypoint: check.entrypoint!, sources: files } : undefined
     const item = entry('dev:' + check.key, check.label, command, 'developer', harness)
