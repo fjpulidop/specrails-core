@@ -11,6 +11,8 @@ import { repositoryContext } from './repository-context.js'
 
 let root: string, checkout: string
 function write(file: string, text: string): void { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text) }
+/** A file git restored: a Windows checkout with core.autocrlf rewrites its line endings. */
+function restored(file: string): string { return readFileSync(file, 'utf8').replace(/\r\n/g, '\n') }
 function git(args: string[]): string {
   const result = spawnSync('git', ['-C', checkout, ...args], { encoding: 'utf8' })
   if (result.status !== 0) throw new Error(result.stderr)
@@ -54,7 +56,7 @@ describe('repository scope in the execution context', () => {
   })
 
   it('rejects a symlinked scope directory', () => {
-    symlinkSync(path.join(checkout, 'apps/app'), path.join(checkout, 'apps/link'))
+    symlinkSync(path.join(checkout, 'apps/app'), path.join(checkout, 'apps/link'), process.platform === 'win32' ? 'junction' : 'dir')
     expect(() => context(['apps/link'])).toThrow(/real directory/)
   })
 
@@ -144,8 +146,8 @@ describe('change set and out-of-scope edits', () => {
     expect(discarded.map(edit => [edit.path, edit.restored])).toEqual([
       ['.mcp.json', 'previous'], ['.yarnrc.yml', 'base'], ['apps/other/src/mappings.js', 'previous'], ['apps/other/src/new.js', 'removed'], ['apps/other/src/staged.js', 'removed'], ['package.json', 'base'],
     ])
-    expect(readFileSync(path.join(checkout, '.yarnrc.yml'), 'utf8')).toBe('npmAuthToken: "${NODE_AUTH_TOKEN}"\n')
-    expect(readFileSync(path.join(checkout, 'package.json'), 'utf8')).toBe('{"scripts":{"test":"turbo run test"}}\n')
+    expect(restored(path.join(checkout, '.yarnrc.yml'))).toBe('npmAuthToken: "${NODE_AUTH_TOKEN}"\n')
+    expect(restored(path.join(checkout, 'package.json'))).toBe('{"scripts":{"test":"turbo run test"}}\n')
     expect(readFileSync(path.join(checkout, 'apps/other/src/mappings.js'), 'utf8')).toBe('module.exports = { earlier: true }\n')
     expect(readFileSync(path.join(checkout, '.mcp.json'), 'utf8')).toBe('{"overlay":true}\n')
     expect(existsSync(path.join(checkout, 'apps/other/src/new.js'))).toBe(false)

@@ -30,6 +30,8 @@ const approve = {
 }
 const reject = { ...approve, approved: false, issues: ['apps/app/code.cjs: add an explanatory comment'], score: 60 }
 function write(file: string, text: string): void { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text) }
+/** A file git restored: a Windows checkout with core.autocrlf rewrites its line endings. */
+function restored(file: string): string { return readFileSync(file, 'utf8').replace(/\r\n/g, '\n') }
 function git(args: string[]): string {
   const result = spawnSync('git', ['-C', checkout, ...args], { encoding: 'utf8' })
   if (result.status !== 0) throw new Error(result.stderr)
@@ -126,8 +128,8 @@ describe('surgical implementation runs', () => {
     const state = await runCoreWorkflow(opts(registry, { onAgentEvent: (_role, event) => { if (event.text) notes.push(event.text) } }))
     expect(state.status, state.error).toBe('succeeded')
     expect(runs()).toEqual([realpathSync(path.join(checkout, 'apps', 'app'))])
-    expect(readFileSync(path.join(checkout, '.yarnrc.yml'), 'utf8')).toBe('npmAuthToken: "${NODE_AUTH_TOKEN}"\n')
-    expect(readFileSync(path.join(checkout, 'apps', 'other', 'mappings.cjs'), 'utf8')).toBe('module.exports = {}\n')
+    expect(restored(path.join(checkout, '.yarnrc.yml'))).toBe('npmAuthToken: "${NODE_AUTH_TOKEN}"\n')
+    expect(restored(path.join(checkout, 'apps', 'other', 'mappings.cjs'))).toBe('module.exports = {}\n')
     expect(existsSync(path.join(checkout, 'apps', 'other', 'extra.cjs'))).toBe(false)
     expect(notes.join('\n')).toContain('Undid 3 edits outside the repository scope (apps/app): .yarnrc.yml, apps/other/extra.cjs, apps/other/mappings.cjs')
     const review = calls.find(call => call.role === 'reviewer')!.prompt
