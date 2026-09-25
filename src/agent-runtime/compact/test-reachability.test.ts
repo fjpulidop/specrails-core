@@ -24,6 +24,19 @@ describe('expandCommandText', () => {
   })
 })
 
+describe('commands that run in a package directory', () => {
+  it('resolves path arguments from the command cwd while reported files stay checkout-relative', () => {
+    file('apps/web/package.json', JSON.stringify({ name: 'web', scripts: { test: 'node tests/a.test.js' } }))
+    file('apps/web/tests/a.test.js')
+    file('apps/web/tests/b.test.js')
+    const command = { command: 'npm', args: ['test'], cwd: 'apps/web' }
+    expect(commandReachesTest(root, command, 'apps/web/tests/a.test.js')).toBe(true)
+    expect(commandReachesTest(root, command, 'apps/web/tests/b.test.js')).toBe(false)
+    expect(unreachedTestFiles(root, [command], ['apps/web/tests/a.test.js', 'apps/web/tests/b.test.js'])).toEqual(['apps/web/tests/b.test.js'])
+    expect(unreachedTestFiles(root, [{ command: 'npx', args: ['jest'], cwd: 'apps/web' }], ['apps/web/tests/b.test.js'])).toEqual([])
+  })
+})
+
 describe('commandReachesTest', () => {
   it('flags the observed shape: an enumerating test script that omits a new file', () => {
     manifest({ test: 'node tests/board.test.js && node tests/tetromino.test.js && node tests/game.test.js' })

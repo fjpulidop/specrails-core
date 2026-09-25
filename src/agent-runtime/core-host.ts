@@ -21,7 +21,7 @@ import { readWorkflowState, runWorkflow } from './workflow.js'
 import type { JsonValue, WorkflowEvent, WorkflowSpan, WorkflowState } from './workflow-types.js'
 
 export const RUNTIME_API_VERSION = 1
-export const CORE_WORKFLOW_VERSION = '6'
+export const CORE_WORKFLOW_VERSION = '7'
 export const CORE_PACKAGE_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 export function coreRuntimeIdentity(): RuntimeIdentity {
   return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: 1 }

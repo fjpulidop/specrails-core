@@ -59,6 +59,20 @@ export function repositoryContextSnapshot(context: PipelineContext): RepositoryC
       } catch { return undefined }
     }
     const lines: string[] = []
+    // A repository that is one package of a larger checkout is oriented by
+    // that package first: its own instructions and scripts, not the root's.
+    for (const directory of repo.scope ?? []) {
+      lines.push(`Repository scope: ${directory}/ — the change belongs inside it; commands without a cwd run there.`)
+      for (const file of ['AGENTS.md', 'CLAUDE.md']) {
+        const content = read(`${directory}/${file}`, true)
+        if (content !== undefined) lines.push(content)
+      }
+      const scoped = read(`${directory}/package.json`)
+      if (scoped) {
+        try { lines.push(`${directory}/package.json scripts: ` + JSON.stringify((JSON.parse(scoped) as { scripts?: unknown }).scripts ?? {}).slice(0, 2500)) }
+        catch { lines.push(`${directory}/package.json could not be parsed; inspect it before choosing commands.`) }
+      }
+    }
     const documents = ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', '.kimi-code/AGENTS.md']
     let instructions = false
     for (const file of documents) {

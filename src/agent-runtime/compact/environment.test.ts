@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectCheckCommand, installEnvironment, isEnvironmentFailure, missingNodeDependencies, plannedInstalls, runGroupCheck, suggestedPackages } from './environment.js'
+import { detectCheckCommand, hostPreconditionFailure, installEnvironment, isEnvironmentFailure, missingNodeDependencies, plannedInstalls, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -23,6 +23,34 @@ describe('isEnvironmentFailure', () => {
     expect(isEnvironmentFailure(1, "Error: Cannot find module './board' — relative imports are code, not environment")).toBe(false)
     expect(isEnvironmentFailure(1, 'FAIL src/game.spec.ts\n  ● clears lines\n    expect(received).toBe(expected)')).toBe(false)
     expect(isEnvironmentFailure(0, 'sh: jest: command not found')).toBe(true)
+  })
+})
+
+describe('hostPreconditionFailure', () => {
+  it('names failures only the host can repair: missing variables, rejected credentials, unreachable registries', () => {
+    // Observed verbatim: Yarn Berry refusing to run any script without the token its .yarnrc.yml references.
+    expect(hostPreconditionFailure('Usage Error: Environment variable not found (NODE_AUTH_TOKEN) in /w/ticket-199/.yarnrc.yml (in /w/ticket-199/.yarnrc.yml)\n\nYarn Package Manager - 4.5.0')).toContain('NODE_AUTH_TOKEN')
+    expect(hostPreconditionFailure('➤ YN0035: │ @busuu/experiments@npm:5.17.1: The remote server failed to provide the requested resource\n➤ YN0035: │   Response Code: 403 (Forbidden)')).toContain('401/403')
+    expect(hostPreconditionFailure('➤ YN0041: │ Invalid authentication (as an anonymous user)')).toContain('credentials')
+    expect(hostPreconditionFailure('npm error code E401\nnpm error 401 Unauthorized - GET https://npm.pkg.github.com/@acme%2fui')).toContain('credentials')
+    expect(hostPreconditionFailure('npm ERR! code ENEEDAUTH\nnpm ERR! need auth This command requires you to be logged in')).toContain('credentials')
+    expect(hostPreconditionFailure(' ERR_PNPM_FETCH_403  GET https://registry.example.com/@acme%2Fui: Forbidden - 403')).toContain('credentials')
+    expect(hostPreconditionFailure('npm error code ENOTFOUND\nnpm error network request to https://registry.npmjs.org/left-pad failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org')).toContain('cannot be reached')
+    expect(hostPreconditionFailure("fatal: could not read Username for 'https://github.com': terminal prompts disabled")).toContain('git credentials')
+  })
+
+  it('leaves code failures to the fixer, even when they mention status codes or missing modules', () => {
+    for (const output of [
+      'FAIL src/api.spec.ts\n  ● rejects anonymous users\n    expect(received).toBe(expected)\n    Expected: 401\n    Received: 403 Forbidden',
+      "Error: Cannot find module './navigation' from 'src/app.ts'",
+      'sh: jest: command not found',
+      'TypeError: Cannot read properties of undefined (reading \'env\')',
+      'Error: process.env.API_TOKEN is not defined',
+    ]) expect(hostPreconditionFailure(output)).toBeUndefined()
+  })
+
+  it('treats a Yarn checkout that was never installed as an installable environment failure', () => {
+    expect(isEnvironmentFailure(1, "Usage Error: The project in /w/app/package.json doesn't seem to have been installed - running an install there might help")).toBe(true)
   })
 })
 

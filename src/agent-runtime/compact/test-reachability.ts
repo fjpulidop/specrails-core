@@ -95,7 +95,11 @@ function tokenReaches(token: string, file: string, root: string, discovery: bool
  * file. Unknown ⇒ true: only an enumerating command can prove absence.
  */
 export function commandReachesTest(root: string, command: ReachabilityCommand, file: string): boolean {
-  const target = posix(file)
+  // Path arguments are relative to the directory the command runs in (a
+  // package inside a larger checkout), while reported files are relative to
+  // the checkout: compare both from the command's directory.
+  const base = path.resolve(root, command.cwd ?? '.')
+  const target = posix(path.relative(base, path.resolve(root, file)))
   let judged = false
   for (const tokens of segments(expandCommandText(root, command))) {
     if (!tokens.length) continue
@@ -111,7 +115,7 @@ export function commandReachesTest(root: string, command: ReachabilityCommand, f
     // enumerate nothing we can judge: the script may discover tests itself.
     if (!paths.some(token => TEST_FILE_PATTERN.test(posix(token)) || token.includes('*') || token.endsWith('...'))) continue
     judged = true
-    if (paths.some(token => tokenReaches(token, target, root, discovery))) return true
+    if (paths.some(token => tokenReaches(token, target, base, discovery))) return true
   }
   return !judged
 }

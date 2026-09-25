@@ -7,6 +7,7 @@ import {
   type PipelineContext, type PipelineState, type VerificationCommand,
 } from '../../pipeline/pipeline-state.js'
 import type { DesignConfidence } from './state.js'
+import { assertProposalInScope, withScopeDefault } from '../change-scope.js'
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -87,7 +88,8 @@ export function proposedVerification(context: PipelineContext, configured: Verif
     if (typeof command.repositoryId !== 'string' || typeof command.command !== 'string' || !command.command.trim() || !Array.isArray(command.args) || !command.args.every(arg => typeof arg === 'string')) throw new Error('Invalid proposed verification command')
     return { repositoryId: command.repositoryId, command: command.command, args: command.args as string[], ...(typeof command.cwd === 'string' && command.cwd ? { cwd: command.cwd } : {}) }
   }).filter(command => !covered.has(command.repositoryId) && context.repositories.some(repository => repository.id === command.repositoryId))
-  if (proposed.length) validateVerificationRequest(context, { kind: 'scoped', commands: proposed })
+  for (const command of proposed) assertProposalInScope(context, command, 'proposed verification command')
+  if (proposed.length) validateVerificationRequest(context, { kind: 'scoped', commands: proposed.map(command => withScopeDefault(context, command)) })
   return proposed
 }
 /** Publish an archive prepared by the real CLI. The durable write set makes a

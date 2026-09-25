@@ -1,5 +1,6 @@
 import { Annotation } from '@langchain/langgraph'
 import type { VerificationCommand } from '../../pipeline/pipeline-state.js'
+import type { VerifyOutcome } from './convergence.js'
 
 export type DesignConfidence = 'high' | 'medium' | 'low'
 export interface ArchitectureRecord {
@@ -27,6 +28,8 @@ export interface DeveloperRecord {
   incomplete: Array<{ task: string; reason: string }>
   /** False when the provider returned prose instead of the structured summary. */
   structured: boolean
+  /** Edits outside the repository scope that Core undid after this turn (repository-qualified when several repositories are in scope). */
+  discarded?: string[]
 }
 export interface VerificationRecord {
   valid: boolean
@@ -68,6 +71,8 @@ export const CoreState = Annotation.Root({
   /** Autonomous investigation passes the architect already spent on a low-confidence design. */
   deepenPasses: Annotation<number>({ ...replace<number>(), default: () => 0 }),
   archived: Annotation<ArchiveRecord | null>({ ...replace<ArchiveRecord | null>(), default: () => null }),
+  /** Recent verify outcomes (bounded), so the host can tell a converging correction loop from a circular one. */
+  verifyHistory: Annotation<VerifyOutcome[]>({ reducer: (previous: VerifyOutcome[], next: VerifyOutcome[]): VerifyOutcome[] => [...previous, ...next].slice(-50), default: () => [] }),
 })
 export type CoreStateType = typeof CoreState.State
 export type CoreStateUpdate = typeof CoreState.Update

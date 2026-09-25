@@ -173,12 +173,37 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(calls.filter(call => call.role === 'developer')).toHaveLength(1)
   })
 
-  it('blocks a persistent exit-zero failure after the configured fixer budget', async () => {
+  it('stops a persistent exit-zero failure as soon as a correction round leaves the candidate unchanged', async () => {
     config.verification = context.repositories.map(repository => ({
       repositoryId: repository.id, command: process.execPath,
       args: ['-e', 'process.stdout.write("not ok 1 - broken\\n# fail 1\\n")'],
     }))
     const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('blocked')
+    expect(state.error).toContain('left the change exactly as it was')
+    expect(calls.filter(call => call.stance === 'fixer')).toHaveLength(1)
+    expect(state.history.filter(attempt => attempt.stepId === 'verify')).toHaveLength(2)
+    expect(calls.some(call => call.role === 'reviewer')).toBe(false)
+    expect(inspectPipeline(context).phases.archive.status).toBe('pending')
+  })
+
+  it('blocks a persistent exit-zero failure after the configured fixer budget', async () => {
+    // Each round changes the candidate and the reported failure, so only the budget can stop it.
+    const words = ['alpha', 'beta', 'gamma', 'delta']
+    config.verification = context.repositories.map(repository => ({
+      repositoryId: repository.id, command: process.execPath,
+      args: ['-e', 'process.stdout.write("not ok 1 - broken " + require("fs").readFileSync("round.txt", "utf8") + "\\n# fail 1\\n")'],
+    }))
+    let round = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'reviewer') return result(review)
+      develop()
+      for (const repository of context.repositories) write(path.join(repository.path, 'round.txt'), words[round]!)
+      round++
+      return result('Implemented and marked completed tasks')
+    })
     const state = await runCoreWorkflow(opts(registry))
     expect(state.status).toBe('blocked')
     expect(state.error).toContain('correction limit')

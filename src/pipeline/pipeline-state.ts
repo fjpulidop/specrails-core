@@ -7,7 +7,13 @@ import { StringDecoder } from 'node:string_decoder'
 export type PipelinePhase = 'architect' | 'developer' | 'reviewer' | 'archive' | 'ship' | 'ci'
 export type PhaseStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'skipped'
 export interface PipelineSpec { id: string | number; title: string; description: string; repositoryIds?: string[]; acceptanceCriteria?: string[] }
-export interface PipelineRepository { id: string; name: string; path: string; baseSha?: string }
+/**
+ * `scope`: checkout-relative directories the repository is confined to — a
+ * package registered inside a larger checkout (a monorepo app). Edits outside
+ * them are not part of the change, and a command without `cwd` runs in the
+ * first one. Absent: the whole checkout is the repository.
+ */
+export interface PipelineRepository { id: string; name: string; path: string; baseSha?: string; scope?: string[] }
 export interface PipelineContext {
   schemaVersion: 1
   runId: string
@@ -173,6 +179,50 @@ function safeChild(root: string, relative: string): string {
   }
   return target
 }
+/** Case-insensitive filesystems: compare checkout paths the way the OS resolves them. */
+const foldedPaths = process.platform === 'win32' || process.platform === 'darwin'
+function samePathPrefix(file: string, directory: string): boolean {
+  const [a, b] = foldedPaths ? [file.toLowerCase(), directory.toLowerCase()] : [file, directory]
+  return a === b || a.startsWith(b + '/')
+}
+/** Normalized scope: existing, symlink-free directories spelled as on disk. Undefined = whole checkout. */
+function repositoryScope(root: string, raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0 || raw.length > 32) fail('Invalid repository scope: expected 1–32 directories')
+  const scope: string[] = []
+  for (const value of raw) {
+    if (typeof value !== 'string' || !value.trim() || value.includes('\0') || value.length > 1024) fail('Invalid repository scope directory')
+    const relative = value.replace(/\\/g, '/').replace(/^(?:\.\/)+/, '').replace(/\/+$/, '')
+    // The checkout root is the whole repository: no narrower scope applies.
+    if (!relative || relative === '.') return undefined
+    if (/^[a-z]:/i.test(relative) || relative.startsWith('/') || relative.split('/').some(part => !part || part === '.' || part === '..')) fail('Invalid repository scope directory: ' + value)
+    // Spell every component as the directory listing does, so git paths match it.
+    let current = root
+    const parts: string[] = []
+    for (const part of relative.split('/')) {
+      let name = part
+      try {
+        const names = readdirSync(current)
+        if (!names.includes(part)) name = names.find(entry => entry.toLowerCase() === part.toLowerCase()) ?? part
+      } catch { /* the lstat below reports the missing directory */ }
+      current = path.join(current, name)
+      const stat = lstatSync(current, { throwIfNoEntry: false })
+      if (!stat) fail('Repository scope directory does not exist: ' + value)
+      if (stat.isSymbolicLink() || !stat.isDirectory()) fail('Repository scope must be a real directory: ' + value)
+      parts.push(name)
+    }
+    scope.push(parts.join('/'))
+  }
+  const unique = [...new Set(scope)]
+  return unique.filter(item => !unique.some(other => other !== item && samePathPrefix(item, other)))
+}
+/** True when a checkout-relative POSIX path belongs to the repository's scope (always, without a scope). */
+export function withinRepositoryScope(repository: Pick<PipelineRepository, 'scope'>, relative: string): boolean {
+  return !repository.scope?.length || repository.scope.some(directory => samePathPrefix(relative, directory))
+}
+/** Where a command without `cwd` runs: the first scope directory, else the checkout root. */
+export function repositoryWorkingDirectory(repository: Pick<PipelineRepository, 'path' | 'scope'>): string {
+  return repository.scope?.length ? path.join(repository.path, ...repository.scope[0]!.split('/')) : repository.path
+}
 function atomicJson(file: string, value: unknown): void {
   mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   const temp = file + '.' + randomUUID() + '.tmp'
@@ -189,7 +239,9 @@ export function validatePipelineContext(input: unknown): PipelineContext {
     const repo = object(entry)
     if (typeof repo.id !== 'string' || !ID.test(repo.id) || typeof repo.name !== 'string') fail('Invalid repository identity')
     if (repo.baseSha !== undefined && (typeof repo.baseSha !== 'string' || !/^[a-f0-9]{40,64}$/.test(repo.baseSha))) fail('Invalid repository base SHA')
-    return { id: repo.id, name: repo.name, path: directory(repo.path), ...(repo.baseSha ? { baseSha: repo.baseSha as string } : {}) }
+    const root = directory(repo.path)
+    const scope = repo.scope === undefined ? undefined : repositoryScope(root, repo.scope)
+    return { id: repo.id, name: repo.name, path: root, ...(repo.baseSha ? { baseSha: repo.baseSha as string } : {}), ...(scope ? { scope } : {}) }
   })
   if (new Set(repositories.map((repo) => repo.id)).size !== repositories.length || new Set(repositories.map((repo) => repo.path)).size !== repositories.length) fail('Duplicate repository identity or path')
   const artifactRoot = directory(data.artifactRoot)
@@ -666,7 +718,7 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
   const command = object(raw)
   const repo = context.repositories.find((item) => item.id === command.repositoryId)
   if (!repo || typeof command.command !== 'string' || !command.command || command.command.includes('\0') || !Array.isArray(command.args) || !command.args.every((arg) => typeof arg === 'string' && !arg.includes('\0'))) fail('Invalid verification command')
-  const cwd = command.cwd === undefined ? repo.path : directory(path.resolve(repo.path, String(command.cwd)))
+  const cwd = command.cwd === undefined ? directory(repositoryWorkingDirectory(repo)) : directory(path.resolve(repo.path, String(command.cwd)))
   if (!within(repo.path, cwd)) fail('Verification cwd escapes selected repository')
   const env = command.env === undefined ? undefined : object(command.env)
   if (env && Object.values(env).some((value) => typeof value !== 'string' || value.includes('\0'))) fail('Invalid verification environment')
