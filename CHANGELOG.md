@@ -1,5 +1,16 @@
 # Changelog
 
+## [6.0.0](https://github.com/fjpulidop/specrails-core/compare/v5.6.0...v6.0.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* specrails-core now ships only what specrails-desktop drives.
+
+### Code Refactoring
+
+* make Core a thin, Desktop-only engine ([#379](https://github.com/fjpulidop/specrails-core/issues/379)) ([92b3683](https://github.com/fjpulidop/specrails-core/commit/92b3683f77b7fa60803b8e12f168942d876cee4a))
+
 ## [5.6.0](https://github.com/fjpulidop/specrails-core/compare/v5.5.1...v5.6.0) (2026-09-24)
 
 
