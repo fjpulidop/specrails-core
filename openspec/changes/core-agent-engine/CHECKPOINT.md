@@ -334,3 +334,14 @@ Final checkpoint verification: Core typecheck/build pass and focused tests 48/48
 Desktop full typecheck and architecture pass. The working trees were clean after
 source commits. Later documentation-only commits add these cross-references.
 Read `CHECKPOINT-C3-C7-C8.md` in Core for detailed persistence/fork notes.
+
+## Fork acknowledgement recovery — 26 September 2026, 23:03 CEST
+
+Added optional fork request idempotency backed by a durable child receipt. Repeated
+identical requests return the original receipt without changing source/child DBs;
+different cuts/patches/IDs still reject an existing destination. The receipt is
+committed before publication and remains stable after child progress. Core fork
+suite passed 7 tests (53.19s), typecheck and build passed. Desktop's paired CLI test
+also reproduced a post-publication host-file failure and repaired it on retry
+without replacing either Core database (34 paired bridge/recovery tests passed).
+This is groundwork for the pending Desktop fork endpoint/ownership transfer.

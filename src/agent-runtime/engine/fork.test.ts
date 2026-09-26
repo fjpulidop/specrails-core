@@ -75,6 +75,27 @@ it('rejects an active source lease and ambiguous visits without leaving a destin
   await expect(forkRun(f.directory, { fromNodePath: 'missing', runId: 'rejected', registry: f.registry })).rejects.toMatchObject({ code: 'fork_ambiguous' })
 })
 
+it('recovers the same published fork after a lost acknowledgement without changing either journal', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
+  await createRun(f)
+  const source = readFileSync(path.join(f.directory, 'run.sqlite'))
+  const options = { fromNodePath: 'ask', runId: 'retry-child', requestId: 'host-fork-1', registry: f.registry }
+  const fork = await forkRun(f.directory, options)
+  const child = readFileSync(path.join(fork.directory, 'run.sqlite'))
+  expect(await forkRun(f.directory, options)).toEqual(fork)
+  expect(readFileSync(path.join(fork.directory, 'run.sqlite'))).toEqual(child)
+  expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(source)
+  await expect(forkRun(f.directory, { ...options, state: { $vars: { changed: true } } })).rejects.toMatchObject({ code: 'run_exists' })
+  await expect(forkRun(f.directory, { ...options, requestId: 'different' })).rejects.toMatchObject({ code: 'run_exists' })
+  await expect(forkRun(f.directory, { ...options, requestId: undefined })).rejects.toMatchObject({ code: 'run_exists' })
+  const paused = await resumeRun(fork.directory, { registry: f.registry })
+  expect(paused.state.status).toBe('paused')
+  const progressed = readFileSync(path.join(fork.directory, 'run.sqlite'))
+  expect(await forkRun(f.directory, options)).toEqual(fork)
+  expect(readFileSync(path.join(fork.directory, 'run.sqlite'))).toEqual(progressed)
+  expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(source)
+})
+
 it('preserves completed siblings and a nested child checkpoint when applying a branch-local state patch', async () => {
   const f = fixture({ each: { kind: 'map', params: { over: 'tickets', body: 'body', concurrency: 1 }, ends: { next: 'join' } },
     join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'done', fail: null } }, done }, {

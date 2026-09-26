@@ -141,3 +141,15 @@ entry, together with kind and attemptId. This additive public projection lets
 hosts harvest evidence without opening SQLite or collapsing map/component
 scopes. Compact status omits outputs; `state.steps` remains the existing summary.
 The source is the exact `steps.last_attempt_id`, never an older successful visit.
+
+### Fork acknowledgement recovery
+
+`fork --request-id <safe-id>` optionally makes a published child recoverable after
+a host acknowledgement loss. Core stores the exact request digest and original
+fork receipt in the child's durable ledger before publication. A retry with the
+same child ID, source, cut, patch and request ID returns that receipt read-only,
+even if the child has progressed. A different request or a child created without
+that receipt still returns `run_exists`; no existing directory is overwritten.
+Desktop preserves published children after transport/materialization failure and
+retries with the same request ID, comparing every existing frozen host file before
+completing missing files. This does not reexecute a node or alter the source.

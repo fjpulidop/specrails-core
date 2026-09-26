@@ -91,6 +91,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     ...(flags.visit === undefined ? {} : { visit: Number(required(flags, 'visit')) }) })
   if (command === 'fork') {
     const fork = await forkRun(directory(flags), { fromNodePath: required(flags, 'from'), runId: required(flags, 'run-id'), ...cutOptions(),
+      ...(flags['request-id'] === undefined ? {} : { requestId: required(flags, 'request-id') }),
       ...(flags.state === undefined ? {} : { state: read(required(flags, 'state')) as ForkRunOptions['state'] }) })
     await freezeRunRequest(fork.directory)
     emit(fork)
