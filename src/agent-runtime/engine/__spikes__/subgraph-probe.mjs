@@ -8,10 +8,13 @@ const concat = { reducer: (a, b) => a.concat(b), default: () => [] }
 export async function subgraphProbe(directory) {
   const saver = new SpikeSqliteSaver(path.join(directory, 'subgraphs', 'run.sqlite'))
   try {
+    const physicalCalls = new Map()
+    const countCall = key => physicalCalls.set(key, (physicalCalls.get(key) ?? 0) + 1)
     const Child = Annotation.Root({ item: Annotation(), completed: Annotation(concat), answers: Annotation(concat) })
     const childBuilder = new StateGraph(Child)
-      .addNode('prepare', state => ({ completed: [`prepare-${state.item}`] }))
+      .addNode('prepare', state => { countCall(`prepare-${state.item}`); return { completed: [`prepare-${state.item}`] } })
       .addNode('ask', state => {
+        countCall(`ask-${state.item}`)
         const answer = state.item === 1 ? interrupt({ question: 'Approve branch 1?' }) : 'automatic'
         getWriter()?.({ kind: 'branch-answer', item: state.item })
         return { completed: [`answer-${state.item}`], answers: [{ item: state.item, answer }] }
@@ -59,7 +62,10 @@ export async function subgraphProbe(directory) {
     assert.equal(forked.answers[0].answer, 'fork-answer')
     assert.equal(JSON.stringify(saver.db.prepare("SELECT * FROM checkpoints WHERE thread_id='branches' ORDER BY checkpoint_ns,checkpoint_id").all()), sourceBefore, 'Fork must preserve source history')
 
+    const completedSiblingCalls = { prepare: physicalCalls.get('prepare-0'), ask: physicalCalls.get('ask-0') }
+    assert.deepEqual(completedSiblingCalls, { prepare: 1, ask: 1 })
     const resumed = await parent.invoke(new Command({ resume: { [interrupted[0].id]: 'approved' } }), config)
+    assert.deepEqual({ prepare: physicalCalls.get('prepare-0'), ask: physicalCalls.get('ask-0') }, completedSiblingCalls, 'Completed sibling nodes must not physically execute again')
     assert.equal(joins, 1)
     assert.deepEqual(resumed.answers.map(answer => answer.item).sort(), [0, 1])
     assert.equal(resumed.answers.find(answer => answer.item === 1).answer, 'approved')
@@ -104,6 +110,7 @@ export async function subgraphProbe(directory) {
 
     return { branches: 2, branchInterruptResume: true, deferredJoinCount: joins, namespaces: histories,
       namespaceStreamChunks: chunks.filter(chunk => chunk[0]?.length).length, internalCheckpointHistory: true,
+      completedSiblingPhysicalCalls: completedSiblingCalls,
       newThreadForkSeed: true, sourceUnchangedAfterFork: true, commandParent: true, classifiedRetryAttempts: attempts,
       recursionLimitNeedsGlobalVisitCounter: true, nestedNodeVisitsAtLimitFive: 7,
       forkLimitation: 'updateState seeds a fresh child thread from inspected state; copying a complete parent-plus-branch run and preserving pending interrupts remains C3/C6 work' }

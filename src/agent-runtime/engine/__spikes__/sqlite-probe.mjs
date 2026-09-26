@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
@@ -14,6 +14,8 @@ function assertInjectedKill(result, database, phase, target) {
   assert.equal(marker.phase, phase)
   assert.equal(marker.target, target)
   assert.ok(Number.isInteger(marker.pid) && marker.pid > 0)
+  assert.equal(existsSync(database + '.kill-failed.json'), false, 'A failed process.kill is not crash evidence')
+  assert.equal(existsSync(database + '.cleanup.json'), false, 'The killed worker must not reach graceful database cleanup')
   if (process.platform !== 'win32') assert.equal(result.signal, 'SIGKILL', result.stderr)
   else assert.ok(result.signal === 'SIGKILL' || result.signal === null && Number.isInteger(result.status), 'Windows termination must match its flushed kill marker')
 }

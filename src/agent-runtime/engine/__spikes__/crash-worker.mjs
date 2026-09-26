@@ -1,5 +1,5 @@
 import { Annotation, StateGraph, START, END } from '@langchain/langgraph'
-import { closeSync, fsyncSync, openSync, writeSync } from 'node:fs'
+import { closeSync, fsyncSync, openSync, writeFileSync, writeSync } from 'node:fs'
 import { SpikeSqliteSaver } from './sqlite-saver.mjs'
 
 export const LinearState = Annotation.Root({ completed: Annotation({ reducer: (a, b) => a.concat(b), default: () => [] }) })
@@ -25,7 +25,13 @@ if (process.argv[1]?.endsWith('crash-worker.mjs')) {
       const marker = openSync(database + '.fault.json', 'w', 0o600)
       try { writeSync(marker, JSON.stringify({ phase: faultPhase, target, pid: process.pid })); fsyncSync(marker) }
       finally { closeSync(marker) }
-      process.kill(process.pid, 'SIGKILL')
+      try {
+        process.kill(process.pid, 'SIGKILL')
+        throw new Error('SIGKILL returned without terminating the worker')
+      } catch (error) {
+        writeFileSync(database + '.kill-failed.json', JSON.stringify({ phase: faultPhase, target, message: error.message }))
+        throw error
+      }
     }
   } })
   try {
@@ -33,5 +39,10 @@ if (process.argv[1]?.endsWith('crash-worker.mjs')) {
     const prior = await saver.getTuple(config)
     const result = await linearGraph(saver, Number(countText)).invoke(prior ? null : {}, config)
     process.stdout.write(JSON.stringify({ completed: result.completed.length, putMs: saver.putMs, writeMs: saver.writeMs }) + '\n')
-  } finally { saver.close() }
+  } finally {
+    // A thrown process.kill() or unrelated error must never count as a crash:
+    // graceful cleanup can close/rollback SQLite and would weaken the probe.
+    writeFileSync(database + '.cleanup.json', JSON.stringify({ pid: process.pid }))
+    saver.close()
+  }
 }

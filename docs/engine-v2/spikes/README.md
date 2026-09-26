@@ -2,7 +2,7 @@
 
 These experiments inform the proposed engine; they do not enable it. Production Core still supports Node 20.19.0 and uses the unchanged legacy runner. Prototypes live in `src/agent-runtime/engine/__spikes__/` as directly executable `.mjs` files, outside TypeScript build input, package files and production coverage. This makes the exact Node 22.22.3 experiment reproducible without introducing a production SQLite dependency.
 
-Run `npm run test:engine-spikes -- --output <directory>` with Node 22.22.3. The JSON evidence records OS, architecture, versions, timing and assertions. The existing `npm run ci` remains mandatory. CI additionally verifies the real npm package on each spike platform; Desktop assembly acceptance remains a paired check and must be attached separately.
+Run `npm run test:engine-spikes -- --output <directory>` with Node 22.22.3. It rebuilds the legacy runtime before measuring its callback baseline, so stale `dist` output cannot qualify. The JSON evidence records OS, architecture, versions, timing and assertions. The existing `npm run ci` remains mandatory. CI additionally verifies the real npm package on each spike platform; Desktop assembly acceptance remains a paired check and must be attached separately.
 
 | Question | Report | Acceptance |
 | --- | --- | --- |

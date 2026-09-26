@@ -159,7 +159,6 @@ jobs:
           EXPECTED_ARCH: ${{ matrix.arch }}
         run: node -e "if(process.arch!==process.env.EXPECTED_ARCH)throw Error('Wrong spike architecture')"
       - run: npm ci
-      - run: npm run build
       - name: Exercise crash recovery, subgraphs and committed streams
         run: npm run test:engine-spikes
       - name: Install and exercise the real package with Desktop Node
