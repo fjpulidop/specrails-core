@@ -7,6 +7,7 @@ merge, release, check off pending gates, or describe the complete migration as d
 
 ## Codex continuation — 26 September 2026, 20:30 CEST
 
+- Windows general also found an invalid performance assumption in active-duration acceptance: resume was required to complete faster than a fixed 1200ms human pause. Kept the semantic assertions (exactly unchanged duration across pause, resume increment bounded by measured resume wall time, stable terminal duration) and removed only the arbitrary speed assertion.
 - Follow-up CI 36267164838 on e49a4268 passed installed-package recovery on Windows, Linux and macOS. Runtime-3 found another hardcoded 60-second compiler Batch timeout; removed those two overrides so Vitest's existing 180-second Windows / 60-second POSIX policy applies. This failure and its cleanup EPERM follow the timeout; no tests skipped or thresholds lowered.
 - Full-status scoped committed outputs are committed as c5defe25; 12 runtime tests, typecheck and build passed. Desktop consumes them at settlement and packet healing, preserving scope/attempt identities and multiple reviewer verdicts without inventing an aggregate.
 
