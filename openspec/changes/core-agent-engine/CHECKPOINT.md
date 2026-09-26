@@ -1,3 +1,16 @@
+## Integration CI follow-up — 27 September 2026, 00:51 CEST
+
+Local CI started at production revision 06d563c5 and finished successfully:
+99 suites, 1,223 passed / one platform skip; coverage 87.95% statements, 80%
+branches, 93.24% functions, 94.04% lines; installed package run/resume/fork passed.
+Workflow-only revision 886db4fc landed while that command was running, after its
+script tests. Remote run 36276957318 correctly exposed a stale script assertion
+requiring main-only PRs. Updated that regression to require all PR bases without
+path filters; main-only push and package release assertions remain unchanged.
+Remote installed robustness passed Linux/macOS/Windows. The C1 Windows spike
+still fails on its known ACL issue; pending C1 commits are not integrated and no
+merge authorization is inferred. Other remote suites must rerun after this fix.
+
 ## CI branch admission — 27 September 2026, 00:38 CEST
 
 Core pull-request CI now covers integration bases as well as main. The previous

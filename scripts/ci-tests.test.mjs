@@ -32,7 +32,8 @@ test('missing, extra or duplicated selected tests fail closed', () => {
 test('CI retains all OS/Node combinations and the main push release gate without duplicate branch push runs', () => {
   const ci = yaml(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
   assert.deepEqual(ci.on.push.branches, ['main'])
-  assert.deepEqual(ci.on.pull_request.branches, ['main'])
+  assert.ok(Object.hasOwn(ci.on, 'pull_request'), 'Every integration PR must receive CI')
+  assert.equal(ci.on.pull_request, null, 'Do not restrict PR bases or changed paths')
   const matrix = ci.jobs.test.strategy.matrix
   for (const node of ['22.22.3', '24']) {
     assert.ok(matrix.node.includes(node))
