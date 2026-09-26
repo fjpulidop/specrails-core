@@ -70,7 +70,11 @@ To use the local endpoint, set the desired role to `{"provider":"local","model":
 
 For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provider configuration and set that variable in the process launching Core. Omit `apiKeyEnv` when no key is required. URLs cannot contain credentials, query parameters or fragments. Verification commands inherit process credentials; do not put secrets into their persisted `env` overrides.
 
-The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from the existing [profile v1 schema](../schemas/profile.v1.json); it does not translate legacy profile routing into programmatic phases.
+The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
+
+The [integration contract](../integration-contract.json) uses schema 5.1 and describes the current engine: API 1, workflow 7 and role instructions 10. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. Engine metadata identifies engine 1, an empty piece catalog and the non-deprecated `specrails-implementation` built-in at version 7. This metadata does not enable JSON workflow definitions or the planned v2 engine.
+
+Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
 ## Run from the CLI
 

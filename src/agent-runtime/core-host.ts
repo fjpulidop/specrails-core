@@ -13,18 +13,18 @@ import { archive, child, journal, parseAgentObject, SLUG } from './graph/artifac
 import { coreNodes } from './graph/nodes.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
 import { createRoleInvoker } from './graph/roles.js'
-import { CORE_NODE_ORDER, CoreState, type CoreStateType } from './graph/state.js'
+import { CORE_NODE_ORDER, CoreState, type CoreNodeId, type CoreStateType } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { assertEffortSupported } from './capabilities.js'
 import { runtimePackageIntegrity, type RuntimeIdentity } from './runtime-identity.js'
 import { readWorkflowState, runWorkflow } from './workflow.js'
-import type { JsonValue, WorkflowEvent, WorkflowSpan, WorkflowState } from './workflow-types.js'
+import type { JsonValue, WorkflowDefinition, WorkflowEvent, WorkflowNode, WorkflowSpan, WorkflowState } from './workflow-types.js'
 
 export const RUNTIME_API_VERSION = 1
 export const CORE_WORKFLOW_VERSION = '7'
 export const CORE_PACKAGE_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 export function coreRuntimeIdentity(): RuntimeIdentity {
-  return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: 1 }
+  return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: RUNTIME_API_VERSION }
 }
 export { parseAgentObject }
 
@@ -66,9 +66,23 @@ export async function preflightCoreWorkflow(options: Pick<CoreWorkflowOptions, '
   return { context, config, registry }
 }
 
+/** The legacy graph's resume identity; extracting it must never change its fingerprint. */
+export function implementationWorkflowDefinition(
+  nodes: Record<CoreNodeId, WorkflowNode<CoreStateType>>,
+  { attempts, compactDeveloper }: { attempts: number; compactDeveloper: boolean },
+): WorkflowDefinition<CoreStateType> {
+  return {
+    id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, schema: CoreState, entry: 'architect',
+    // The compact developer finishes task groups over developer→verify passes
+    // that do not count as corrections (bounded: +2 passes each).
+    maxTransitions: attempts * 3 + 3 + (compactDeveloper ? attempts * 2 * 2 : 0),
+    nodes: Object.fromEntries(CORE_NODE_ORDER.map(id => [id, nodes[id]])),
+  }
+}
+
 /**
- * Runs the Core implementation graph: architect → developer → verify → review (→ fixer → verify → review on corrections)er → archive,
- * with bounded corrections routed back to the developer, an autonomous investigation pass
+ * Runs the Core implementation graph: architect → developer → verify → reviewer → archive,
+ * with bounded corrections through fixer → verify → reviewer, an autonomous investigation pass
  * before a low-confidence design asks the requester, real verification receipts, acceptance
  * evidence bound to the exact candidate, and an optional approval before archive.
  */
@@ -137,13 +151,6 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
       if (stepId === 'archive') return inspection.phases.archive.status === 'done'
       return true
     },
-    workflow: {
-      id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, schema: CoreState, entry: 'architect',
-      // The compact (small-model) developer finishes its task groups over
-      // several developer→verify passes that do not count as corrections, so
-      // the transition budget must cover them too (bounded: +2 passes each).
-      maxTransitions: attempts * 3 + 3 + (compactDeveloper ? attempts * 2 * 2 : 0),
-      nodes: Object.fromEntries(CORE_NODE_ORDER.map(id => [id, nodes[id]])),
-    },
+    workflow: implementationWorkflowDefinition(nodes, { attempts, compactDeveloper }),
   })
 }

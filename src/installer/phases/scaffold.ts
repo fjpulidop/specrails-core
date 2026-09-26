@@ -29,8 +29,8 @@ import type { Provider } from './provider-detect.js'
  * ships. The implement pipeline depends on all three. Any additional agent
  * comes from a user-authored profile (`custom-*`), never the installer.
  *
- * Mirrors the `allOf` baseline in schemas/profile.v1.json — update
- * both files together if this set ever changes.
+ * Mirrors the required built-in roles in schemas/agent-runtime.schema.json
+ * (`agents`, with the sr- prefix in installed files); keep both in sync.
  */
 export const CORE_AGENTS = new Set([
   'sr-architect',

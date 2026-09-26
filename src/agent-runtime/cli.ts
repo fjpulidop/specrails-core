@@ -18,6 +18,9 @@ import { configuredCapabilities } from './capabilities.js'
 import { createExecutorRegistry } from './executors.js'
 import { runRecovery } from './recovery.js'
 
+/** Machine operations are mirrored in integration-contract.json; help is presentation-only. */
+export const RUNTIME_CLI_OPERATIONS = ['api', 'validate', 'run', 'status', 'resume', 'prompts', 'capabilities', 'evidence', 'recovery', 'evaluate', 'help'] as const
+
 function read(file: string): unknown { return JSON.parse(readFileSync(file, 'utf8')) }
 async function readStdin(): Promise<unknown> {
   const chunks: Buffer[] = []
@@ -85,6 +88,7 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
 
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
   const command = flags.help === true ? 'help' : positionals[0] ?? 'help'
+  if (!RUNTIME_CLI_OPERATIONS.some(operation => operation === command)) throw new Error('Unknown runtime operation: ' + command)
   if (command === 'prompts') { emit({ type: 'runtime-role-prompts', defaults: rolePromptDefaults() }); return 0 }
   if (command === 'capabilities') {
     if (flags.stdin !== undefined && flags.stdin !== true) throw new Error('--stdin is a boolean flag')
@@ -144,7 +148,6 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       return 0
     } finally { process.off('SIGINT', abort); process.off('SIGTERM', abort) }
   }
-  if (!['run', 'status', 'resume'].includes(command)) throw new Error('Unknown runtime operation: ' + command)
   const context = validatePipelineContext(read(stringFlag(flags, 'context')))
   const directory = path.join(pipelineStateDirectory(context), 'agent-workflow')
   const previous = await readWorkflowState(directory, context.runId)

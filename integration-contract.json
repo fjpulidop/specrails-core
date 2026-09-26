@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.0",
+  "schemaVersion": "5.1",
   "providers": {
     "claude": {
       "cli": {
@@ -229,8 +229,14 @@
       "validate",
       "run",
       "status",
-      "resume"
+      "resume",
+      "prompts",
+      "capabilities",
+      "evidence",
+      "recovery",
+      "evaluate"
     ],
+    "cliPresentationOperations": ["help"],
     "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion}; does not invoke providers",
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
@@ -260,6 +266,7 @@
     "phases": [
       "architect",
       "developer",
+      "fixer",
       "verify",
       "reviewer",
       "archive"
@@ -277,8 +284,17 @@
     "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "3",
-    "workflowVersion": "3",
+    "instructionsVersion": "10",
+    "workflowVersion": "7",
+    "engine": {
+      "version": 1,
+      "definitionSchema": null,
+      "nodeKindsVersion": 0
+    },
+    "nodeKinds": [],
+    "builtins": [
+      { "id": "specrails-implementation", "version": "7", "deprecated": false }
+    ],
     "developerTools": "The developer role runs with each CLI's autonomous edit+shell mode (claude --tools default --dangerously-skip-permissions with Agent/Task/Skill disallowed; codex workspace-write; gemini --yolo; kimi print mode). Architect and reviewer stay read-only. Claude roles load project settings only (--setting-sources project,local).",
     "verificationPolicy": "Configured commands are optional. The architect proposes commands for repositories without one; repositories with no automated check are admitted and recorded in the receipt as unverifiedRepositories. Unchecked tasks return to the developer as feedback instead of failing the run.",
     "sessionReuse": "Developer correction passes resume the previous provider session (claude --resume, codex exec resume, gemini --resume, kimi --session) with a short correction prompt; an unavailable session falls back to a fresh full turn. Structured roles get one repair turn in-session when their JSON is unusable.",
