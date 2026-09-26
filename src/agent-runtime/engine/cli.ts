@@ -11,12 +11,13 @@ import { MAX_DEFINITION_BYTES } from './canonical-json.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { configuredRoles } from './preflight.js'
 import { validationPieceRegistry } from './pieces/index.js'
-import { cancelRun, createRun, definitionRunDirectory, resumeRun, signalRun } from './runs.js'
+import { NODE_KINDS_VERSION } from './piece-registry.js'
+import { cancelRun, createRun, definitionRunDirectory, freezeRunRequest, frozenRequestEngine, frozenRequestFile, resumeRun, signalRun } from './runs.js'
 import { statusRun } from './run-status.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
 
+export { NODE_KINDS_VERSION }
 type Flags = Record<string, string | boolean>
-export const NODE_KINDS_VERSION = 1
 const required = (flags: Flags, key: string): string => {
   const value = flags[key]
   if (typeof value !== 'string' || !value.trim()) throw new EngineError('invalid_arguments', `--${key} requires a value`)
@@ -42,12 +43,23 @@ function directory(flags: Flags): string {
   return flags['run-dir'] !== undefined ? path.resolve(required(flags, 'run-dir')) : definitionRunDirectory(validatePipelineContext(read(required(flags, 'context'))))
 }
 
+/**
+ * Resume and status select the engine from the frozen request (`workflow.engine`). A request
+ * without the block is a legacy run. A definition database without a request (a fork destination
+ * created before its request was materialized) still resolves to this engine.
+ */
 export function isDefinitionCommand(flags: Flags, command: string): boolean {
   if (['workflows', 'fork', 'signal', 'cancel'].includes(command) || flags.definition !== undefined && command === 'run') return true
   if (!['resume', 'status'].includes(command)) return false
   if (flags['run-dir'] !== undefined) return true
-  return flags.context !== undefined && existsSync(path.join(directory(flags), 'run.sqlite'))
+  if (flags.context === undefined) return false
+  const context = validatePipelineContext(read(required(flags, 'context'))), requestFile = frozenRequestFile(context)
+  if (existsSync(requestFile)) return frozenRequestEngine(read(requestFile)) === 2
+  return existsSync(path.join(definitionRunDirectory(context), 'run.sqlite'))
 }
+
+/** Public workflow identity carried by status and results, matching the frozen request block. */
+const workflowIdentity = (workflow: { id: string; version: string; source: string }) => ({ ...workflow, definitionHash: workflow.version, engine: 2 as const })
 
 export async function runDefinitionCommand(flags: Flags, positionals: string[], emit: (value: unknown) => void): Promise<number> {
   const command = positionals[0]
@@ -64,7 +76,10 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     emit({ ...validation, ...(flags.structural ? { roleResolution: 'deferred' } : {}) })
     return validation.ok ? 0 : 1
   }
-  if (command === 'status') { emit(await statusRun(directory(flags), flags.compact === true)); return 0 }
+  if (command === 'status') {
+    const status = await statusRun(directory(flags), flags.compact === true)
+    emit({ ...status, workflow: workflowIdentity(status.workflow) }); return 0
+  }
   if (command === 'signal') {
     if (flags.stdin !== true) throw new EngineError('invalid_arguments', 'Signal requires --stdin')
     const text = new TextDecoder('utf-8', { fatal: true }).decode(await stdinBytes(MAX_STEERING_BYTES))
@@ -75,8 +90,10 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   const cutOptions = () => ({ ...(flags['scope-id'] === undefined ? {} : { scopeId: required(flags, 'scope-id') }),
     ...(flags.visit === undefined ? {} : { visit: Number(required(flags, 'visit')) }) })
   if (command === 'fork') {
-    emit(await forkRun(directory(flags), { fromNodePath: required(flags, 'from'), runId: required(flags, 'run-id'), ...cutOptions(),
-      ...(flags.state === undefined ? {} : { state: read(required(flags, 'state')) as ForkRunOptions['state'] }) }))
+    const fork = await forkRun(directory(flags), { fromNodePath: required(flags, 'from'), runId: required(flags, 'run-id'), ...cutOptions(),
+      ...(flags.state === undefined ? {} : { state: read(required(flags, 'state')) as ForkRunOptions['state'] }) })
+    await freezeRunRequest(fork.directory)
+    emit(fork)
     return 0
   }
   const controller = new AbortController(), abort = () => controller.abort(new EngineError('aborted', 'Process termination requested'))
@@ -97,6 +114,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
         if (flags.recover !== undefined) throw new EngineError('invalid_arguments', 'Invalidate selects a new historical run; use recovery separately on that run')
         const fork = await forkRun(target, { fromNodePath: required(flags, 'invalidate'),
           runId: optional(flags, 'run-id') ?? previous.state.runId.slice(0, 96) + '-invalidate-' + randomUUID().slice(0, 8), ...cutOptions() })
+        await freezeRunRequest(fork.directory)
         emit(fork); target = fork.directory
         previous = await statusRun(target)
       }
@@ -119,7 +137,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       const current = result.state.usage[key], prior = previous ? previous.state.usage[key] : 0
       return current === null || prior === null ? null : Math.max(0, current - prior)
     }
-    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, workflow: result.workflow, completion: result.completion,
+    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, workflow: workflowIdentity(result.workflow), completion: result.completion,
       ...('forkOf' in result ? { forkOf: result.forkOf } : {}), ...('error' in result ? { error: result.error } : {}),
       usage: result.state.usage, invocationUsage: { costUsd: delta('costUsd'), inputTokens: delta('inputTokens'), outputTokens: delta('outputTokens') }, metrics: result.metrics, efficiencySummary: result.efficiencySummary })
     return result.state.status === 'succeeded' ? 0 : result.state.status === 'paused' ? 2 : 1

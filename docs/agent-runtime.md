@@ -103,7 +103,7 @@ Programmatic `AgentRequest` accepts `access`, `artifacts`, `instructions: 'role'
 
 Claude/Gemini receive `/<id> <args>` and Codex `$<id> <args>`. Kimi uses its installed managed skill runner in `--render-only` mode to expand the native skill without inference, then the runtime executes that text through its normal read/write policy and ACP fallback. `specrails:<x>` maps to `specrails-<x>`; `opsx:ff`, `opsx:apply` and `opsx:verify` map to the corresponding OpenSpec skills. Simple IDs name installed Kimi skills. Upgrade the managed framework if its runner lacks render-only support. Unknown namespaces, missing skills and OpenAI-compatible native commands fail with `native_command_unsupported` before provider inference.
 
-`runtime api` advertises `openRoles: 1`; this additive capability does not advertise definition execution or engine v2. Desktop schema/settings support is paired through D1b. Existing frozen runs continue to use their retained runtime package.
+`runtime api` advertises `openRoles: 1` together with the engine v2 capabilities listed under [Run from the CLI](#run-from-the-cli). Desktop schema/settings support is paired through D1b. Existing frozen runs continue to use their retained runtime package.
 
 ## Run from the CLI
 
@@ -149,7 +149,20 @@ The commands work in macOS shells and PowerShell; quote paths and answers contai
 
 Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
-`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion:"..."}` without invoking providers. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
+`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the sixteen piece kinds registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `component`, `map`, `implementation`, `join`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
+
+| Capability | Meaning |
+| --- | --- |
+| `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal` and `cancel` operate on those runs |
+| `workflowDefinitions: 1` | `runtime workflows list` and `runtime workflows validate --stdin` expose the piece catalog, definition schema and Core-computed definition hash |
+| `openRoles: 1` | Declared roles with explicit access, artifact and instruction policies |
+| `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
+| `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
+| `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
+| `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
+| `efficientRoleExecution: 1`, `reproducibleVerification: 1`, `implementationEfficiencyMetrics: 1`, `compactAgentLoop: 1`, `configurableGuardrails: 1`, `compactOutputBudget: 1`, `roleThinkingControl: 1`, `repositoryScope: 1` | Existing built-in workflow capabilities; unchanged |
+
+Hosts negotiate on these capability keys, never on the Core major version. Saved runs keep working with the package that created them: the frozen `agent-runtime-request.json` records which engine owns the run, and `resume`/`status` honor that record instead of guessing from the installed package. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
 
 ## Verification output and correction limits
 
@@ -175,9 +188,10 @@ State lives below `<backlogRoot>/.specrails/pipeline/<runId>/`:
 | File | Purpose |
 | --- | --- |
 | `state.json` and `receipts/` | Authoritative Core gates, verification and acceptance evidence |
-| `agent-runtime-request.json` | Frozen CLI change name and runtime configuration |
-| `agent-workflow/<runId>/checkpoint.json` | One atomic envelope: the host ledger (attempts, receipts, usage, ordered events, pending interrupts) and the complete LangGraph checkpoint history |
-| `agent-workflow/<runId>/.lease/` | Exclusive runtime process ownership |
+| `agent-runtime-request.json` | Frozen CLI change name, runtime configuration, runtime identity and `workflow: { id, version, source: builtin \| definition, definitionHash, engine: 1 \| 2 }`. Written once with no overwrite by both engines (a fork destination receives its own); `resume`/`status` select the engine from `workflow.engine`, a request without the block is a legacy run, and `definitionHash` is `null` for the built-in workflow whose identity is the checkpoint `workflowFingerprint` |
+| `agent-workflow/<runId>/checkpoint.json` | Legacy engine: one atomic envelope with the host ledger (attempts, receipts, usage, ordered events, pending interrupts) and the complete LangGraph checkpoint history |
+| `agent-workflow/<runId>/.lease/` | Legacy engine: exclusive runtime process ownership |
+| `agent-workflow/run.sqlite` | Engine v2: the frozen definition, config and context, LangGraph checkpoints, ledger, events, leases and steering inbox in one SQLite database |
 
 Resume uses the saved configuration and change. It rejects a different frozen input, Core/instruction identity or workflow definition. Valid completed phases are retained; stale evidence invalidates the affected phase and everything declared after it, and the graph travels back in time to the checkpoint taken right before that phase last ran, so its predecessors' state is exactly what it saw then. The ledger is authoritative for which node runs next: if LangGraph's own position disagrees after a crash, traversal follows the ledger. Once archived, changed evidence requires a new run.
 

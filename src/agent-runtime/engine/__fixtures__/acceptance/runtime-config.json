@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "enabled": true,
+  "providers": [{ "id": "claude", "kind": "cli", "cli": "claude" }],
+  "agents": {
+    "architect": { "provider": "claude" },
+    "developer": { "provider": "claude" },
+    "reviewer": { "provider": "claude" }
+  },
+  "verification": []
+}

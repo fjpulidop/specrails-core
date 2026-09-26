@@ -7,6 +7,12 @@ function freezeData<T>(value: T): T {
   return value
 }
 
+/**
+ * Version of the published piece catalog. Bump it only when a descriptor's kind,
+ * outcomes, effect or params schema changes incompatibly; hosts pin definitions to it.
+ */
+export const NODE_KINDS_VERSION = 1
+
 /** Immutable bindings supplied by Core's composition root; user definitions cannot register code. */
 export class PieceRegistry {
   private readonly entries = new Map<string, { piece: Piece; validate: ValidateFunction }>()
@@ -29,6 +35,9 @@ export class PieceRegistry {
   }
 
   catalog(): PieceDescriptor[] { return [...this.entries.values()].map(({ piece }) => structuredClone(piece.descriptor)) }
+
+  /** Registered kinds in registration order: the `nodeKinds` advertised by `runtime api` and the integration contract. */
+  kinds(): string[] { return [...this.entries.keys()] }
 
   validateParams(kind: string, params: JsonObject, path: string): DefinitionIssue[] {
     const entry = this.entries.get(kind)

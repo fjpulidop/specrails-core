@@ -1,0 +1,47 @@
+{
+  "change": "none",
+  "entry": "check",
+  "id": "acceptance-question-flow",
+  "journal": "ledger-only",
+  "maxTransitions": 20,
+  "nodes": {
+    "ask": {
+      "ends": {
+        "next": "done"
+      },
+      "kind": "question",
+      "params": {
+        "text": "Continue to completion?"
+      }
+    },
+    "check": {
+      "ends": {
+        "false": "stopped",
+        "true": "ask"
+      },
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.stop != true"
+      }
+    },
+    "done": {
+      "ends": {},
+      "kind": "end",
+      "params": {
+        "outcome": "success"
+      }
+    },
+    "stopped": {
+      "ends": {},
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "stopped_by_fork_patch"
+      }
+    }
+  },
+  "roles": [],
+  "schemaVersion": 1,
+  "title": "Acceptance question flow",
+  "version": "5532e3e78215b0a3eeccb1425f02ccd075020972cbefb1f5f800766aa2200e55"
+}

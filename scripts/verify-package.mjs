@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync
 import os from 'node:os'
 import path from 'node:path'
 import { integrity, isMain, npm, run, validatePackFiles } from './release-utils.mjs'
+import { verifyEngineV2 } from './verify-package-v2.mjs'
 
 export function isolatedEnvironment(home) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^(SPECRAILS_|NODE_OPTIONS$|NODE_PATH$|NODE_AUTH_TOKEN$|NPM_TOKEN$|GIT_)/i.test(key)))
@@ -96,9 +97,13 @@ export function verifyPackage(root, outputDir) {
         if (!source.available || !source.text) throw Error('Installed evidence read failed');
       `, path.join(path.dirname(runtime), 'pipeline-state.mjs'), path.join(installed, 'dist/agent-runtime/verification-plan.js'), contextFile], { cwd: code, env })
     }
+    // Engine v2 through the same installed tarball: validate, run to a question
+    // pause, resume, fork, status, catalog/API advertisement and package exports.
+    const engine = verifyEngineV2({ root, installed, prefix, temp, env, contract })
     const manifest = { schemaVersion: 1, name: pkg.name, version: pkg.version, sha, filename: pack.filename, integrity: pack.integrity }
     writeFileSync(path.join(outputDir, 'release-manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
-    console.log(`Verified ${pack.filename}: two CLI entries, four provider assemblies and four frozen runtime journals`)
+    console.log(`Verified ${pack.filename}: two CLI entries, four provider assemblies, four frozen runtime journals and one installed engine v2 run, resume and fork`)
+    console.log(`Engine v2 API advertisement: ${engine.apiNote}`)
     return manifest
   } finally { rmSync(temp, { recursive: true, force: true }) }
 }

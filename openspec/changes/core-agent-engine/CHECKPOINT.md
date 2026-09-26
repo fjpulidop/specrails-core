@@ -5,6 +5,121 @@ The original objective remains **the entire plan, not just the foundations**.
 This checkpoint is unfinished implementation, not production acceptance. Do not
 merge, release, check off pending gates, or describe the complete migration as done.
 
+## Continuation checkpoint — 26 September 2026, 19:55 CEST (Claude Code session)
+
+A second assistant session resumed from this checkpoint, verified every claim
+below against code and tests, planned the remaining work, and started a first
+implementation wave with parallel agents. That wave was cut by the account's
+session limit before any agent finished or verified its work. **Nothing from the
+wave is verified or committed on this branch.** The partial edits are left
+uncommitted in `/private/tmp/specrails-core-engine-v2` and backed up on branch
+`wip/claude-wave1-core` (pushed if the push succeeded; check `git branch -r`).
+Treat them as a head start, not as accepted work: keep what passes, rewrite what
+does not. Read this section first, then the original checkpoint below.
+
+### Verified baseline (HEAD `af7bbcd8`, all commands on macOS arm64, Node 22.22.3)
+
+| Claim | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run build` | pass (exit 0) |
+| Engine suite `vitest run src/agent-runtime/engine` | 26 files, **156/156** pass |
+| `fork.test.ts -t 'exact incomplete implementation'` (the rerun the C3-C7-C8 note asked for) | **passes** (15.3 s) |
+| Full suite `vitest run` (no coverage) | 94 files, **1188 passed / 1 skipped** (Windows-only quoting case); 683 s |
+| `npm run test:scripts` | 24/24 |
+| actionlint on `.github/workflows/*.yml` | 0 findings |
+| `git diff --check origin/main...HEAD` | 7 delta spec files end with an extra blank line (cosmetic) |
+| Coverage / `npm run ci` / `check:package` on this HEAD | **not run** (the wave was going to run them) |
+
+Findings the original checkpoint did not state:
+
+- **Core CI has never run on PR #389.** `ci.yml` triggers only on `push: main`,
+  `pull_request: main` and `workflow_dispatch`; the PR targets `feat/core-engine-c0`.
+  The run IDs cited under "Accepted evidence" belong to other branches. To get
+  evidence for this head: `gh workflow run ci.yml --ref feat/core-engine-v2` (or
+  widen the triggers to feature branches the way Desktop does with `push: ['**']`).
+- Branch ancestry still unreconciled: C1 commits `d2569939`, `e1e25589`, `7ef947df`
+  (spike files + docs) and C2 docs commit `ac48c1a0` are not ancestors of HEAD; the
+  C2 feature `4ad57b54` was applied as a patch. Plan: `git merge origin/feat/core-engine-c1`
+  then cherry-pick `ac48c1a0`, resolving conflicts only in `openspec/` docs.
+- The `engine-spikes` CI job pins Desktop commit `70c9e8a4`, which exists only on
+  Desktop feature branches (D0 is not merged); re-pin once D0 lands.
+- The validation registry advertises exactly these 16 kinds: `prompt, role-turn,
+  decider, verify, shell, openspec-validate, openspec-archive, condition, end,
+  approval, question, gate, component, map, implementation, join`.
+
+### Partial, unverified edits left in the worktree (do not trust without tests)
+
+Typecheck and build pass with these edits. A focused run of
+`cli.test.ts integration-contract.test.ts engine/cli-acceptance.test.ts
+engine/package-surface.test.ts engine/docs-examples.test.ts install-config.test.ts
+legacy-runtime.test.ts core-host.test.ts` gives **120 passed / 7 failed**:
+
+| File | State |
+| --- | --- |
+| `integration-contract.json` | `agentRuntime.engine = { version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: 1 }`, `nodeKinds` = the 16 kinds above. Contract stays `5.1`. |
+| `src/agent-runtime/cli.ts` | `runtime api` now emits `engineVersion: 2`, `nodeKindsVersion`, `nodeKinds`, capabilities `engineV2/workflowDefinitions/fanOut/fork/steeringInbox: 1` (plus the existing ones). Decision: advertise now because Desktop D5 factories and D7 depend on it; the three-platform robustness gate stays a release gate, not an advertising gate. Revert this decision if you disagree, but do it explicitly. |
+| `src/agent-runtime/engine/runs.ts`, `engine/cli.ts` | Frozen request gains `workflow: { id, version, source, definitionHash, engine: 2 }` per contracts.md §9; resume selects the engine from it (legacy when absent). |
+| `src/agent-runtime/engine/execution.ts` | Test-only crash hook: honoured only when `SPECRAILS_ENGINE_TEST_HOOKS=1`; `SPECRAILS_ENGINE_CRASH_AT='<nodePath>:<before|during|after-writes|after-snapshot>'`. Documented in `contracts.md` implementation note. Production ignores both. |
+| `src/agent-runtime/engine/piece-registry.ts` | Small catalog/kinds helper for the contract test. |
+| `src/agent-runtime/cli.test.ts`, `integration-contract.test.ts` | Updated for the advertised surface; passing. |
+| `docs/agent-runtime.md` | Capability table updated. |
+| `scripts/verify-package.mjs` + new `scripts/verify-package-v2.mjs` | Installed-package v2 flow (validate → run to `question` pause → resume `--answer` → fork → status → api → package exports). **`npm run check:package` was not run after this change.** |
+| `src/agent-runtime/engine/__fixtures__/acceptance/{question-flow.json,runtime-config.json}` | Provider-free fixture for the CLI/package tests. |
+| `src/agent-runtime/engine/__fixtures__/robustness/{thirty-node.json,marker.mjs}` | 30-node provider-free definition and shell marker helper for the robustness harness. **`engine/robustness.test.ts` was never written**; the CI job `engine-robustness` was never added. |
+| `src/agent-runtime/engine/cli-acceptance.test.ts` (new) | 3 failures: "rejects resume with a definition and fork under an active lease without touching the run" (both entry points: the run DB byte size changes 319488→327680, i.e. the assertion or the fork-under-lease path touches the DB — investigate WAL checkpointing before changing production code) and "forks a historical cut ... source database byte-identical" (`runtime-status` shape does not match the expected `{ engineVersion: 2, ... }` object — check the compact status fields). |
+| `src/agent-runtime/engine/package-surface.test.ts` (new) | passes. |
+| `src/agent-runtime/engine/docs-examples.test.ts` (new) + `docs/engine-v2/pieces.md` (new) | 4 failures because the other C9 documents were never written: expects `docs/engine-v2/README.md`, `definition-format.md` (with the reference examples incl. `freestyle` and byte-equal copies of the four published fixtures), `recovery.md`, `adding-a-piece.md`, `desktop-integration.md`; `pieces.md` header is stale and the test supports `SPECRAILS_UPDATE_DOCS=1` to regenerate the descriptor catalog. |
+| `openspec/changes/core-agent-engine/contracts.md` | Dated "Implementation note" about capability advertisement, frozen request and test hooks. |
+
+Also pending from that wave (written to a request file, not applied): update
+`src/agent-runtime/engine/README.md` ("capabilities remain disabled" is now
+false) and append a dated clarification to `c3-protocol.md` §"Implementation
+clarifications" that `fork`/`steeringInbox` are advertised.
+
+### Remaining Core work, in order, with acceptance
+
+1. **Robustness harness (C3 gate, CHECKPOINT item 2).** Write
+   `src/agent-runtime/engine/robustness.test.ts` driving the REAL CLI
+   (`dist/agent-runtime/cli.js`) on `__fixtures__/robustness/thirty-node.json`:
+   SIGKILL before effect / during a write piece / after pending writes / after
+   snapshot (resume never repeats a completed node; shell marker files count once;
+   interrupted write requires `--recover` and `status` exposes
+   `state.recoverableSteps`); two-process contention (`lease_held`, exit 1) and
+   expired-lease takeover; SIGTERM cancellation (`cancelled`, resumable, no
+   orphan children) and `cancel --context --request-id`; modified definition on
+   resume (`definition_hash_mismatch`/`resume_incompatible`); >2 MB shell output
+   within the JSONL line bound. Add job `engine-robustness` to `ci.yml`
+   (ubuntu-latest, macos-15, windows-latest, Node 22.22.3, against the packed
+   package via `npm pack` + `SPECRAILS_ENGINE_CLI=<installed cli.js>`), validate
+   with actionlint, dispatch CI on the branch and record the run ID here.
+2. **Package/CLI acceptance (item 3).** Make `cli-acceptance.test.ts` pass, run
+   `npm run check:package` with the new v2 flow, keep the legacy checks and output
+   line format.
+3. **C9 docs (tasks 10.1/10.2).** Write the five missing `docs/engine-v2/*.md`
+   files grounded in the code, make `docs-examples.test.ts` pass, add the legacy
+   banner to `docs/agent-runtime.md`.
+4. **Offline evaluation against final source (item 4).**
+   `node dist/agent-runtime/cli.js runtime evaluate --output <dir> --definition <fixture>`
+   over the fixtures in `engine/__fixtures__/*.json` plus the focused-correction
+   corpus (`/private/tmp/core-engine-v2-focused-correction/` has the previous
+   report); store the JSON under `openspec/changes/core-agent-engine/evidence/`.
+   No paid benchmarks; no invented savings.
+5. **Reconcile ancestry** (merge C1, cherry-pick `ac48c1a0`), trim the 7 EOF blank
+   lines, update `tasks.md` checkboxes only for work with evidence, rewrite the
+   PR #389 body for the final scope. Then `npm run ci` (never lower thresholds).
+
+### Environment notes for this continuation
+
+- Node 22.22.3: `export PATH=/private/tmp/specrails-engine-tools/node-v22.22.3-darwin-arm64/bin:$PATH`.
+- `dist/` was rebuilt at 19:52 with the partial edits.
+- Desktop paired tests resolve Core from `../specrails-core`, which does not
+  exist; export `SPECRAILS_CORE_SOURCE_DIR=/private/tmp/specrails-core-engine-v2`
+  and `SPECRAILS_EFFICIENCY_CORE_ROOT=/private/tmp/specrails-core-engine-v2`
+  when running Desktop suites instead of creating a symlink.
+- Paired Desktop continuation: `openspec/changes/core-agent-engine/CHECKPOINT-GLOBAL.md`
+  in `/private/tmp/specrails-desktop-engine` has the matching section, the shared
+  server API contracts and the Desktop/Web plan.
+
 ## User scope and authority
 
 Implement Core engine v2 with LangGraph, all pieces and lifecycle operations;

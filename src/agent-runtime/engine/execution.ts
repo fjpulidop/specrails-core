@@ -1,3 +1,4 @@
+import { writeSync } from 'node:fs'
 import { isGraphInterrupt } from '@langchain/langgraph'
 import { AgentExecutionError } from '../executor-types.js'
 import { EngineError, type AttemptFrame, type DurableEngineEvent, type EngineEffect, type NodeAdmission,
@@ -13,6 +14,29 @@ const errorDetails = (error: unknown) => ({
   message: error instanceof Error ? error.message : String(error),
 })
 
+const CRASH_PHASES = ['before', 'during', 'after-writes', 'after-snapshot'] as const
+type CrashPhase = typeof CRASH_PHASES[number]
+/**
+ * Test-only crash point for the robustness harness: `SPECRAILS_ENGINE_CRASH_AT=<nodePath>:<phase>`
+ * is honoured only when `SPECRAILS_ENGINE_TEST_HOOKS=1`; production ignores both variables.
+ * `before` kills after admission and permits but before the effect, `during` after the effect
+ * returns but before its terminal marker exists, `after-writes` after the pending-writes/ledger
+ * transaction committed but before LangGraph's aggregate snapshot, and `after-snapshot` once the
+ * next node is admitted (LangGraph awaits that snapshot under sync durability before it).
+ */
+function testCrashPoint(): { nodePath: string; phase: CrashPhase } | undefined {
+  if (process.env.SPECRAILS_ENGINE_TEST_HOOKS !== '1') return undefined
+  const value = process.env.SPECRAILS_ENGINE_CRASH_AT ?? '', separator = value.lastIndexOf(':')
+  const phase = value.slice(separator + 1) as CrashPhase
+  if (separator <= 0 || !CRASH_PHASES.includes(phase)) return undefined
+  return { nodePath: value.slice(0, separator), phase }
+}
+function crashNow(nodePath: string, phase: CrashPhase): never {
+  writeSync(2, `engine-test-crash ${nodePath}:${phase}\n`)
+  process.kill(process.pid, 'SIGKILL')
+  throw new EngineError('internal', 'Test crash hook did not terminate the process')
+}
+
 /** Owns effect/concurrency windows across execution AND durable terminal commit. */
 export class DefinitionExecution implements NodeExecutionPort {
   private readonly admissions = new Map<string, NodeAdmission>()
@@ -20,6 +44,8 @@ export class DefinitionExecution implements NodeExecutionPort {
   private readonly effects = new RepositoryEffectGate()
   private readonly agents: ConcurrencyGate
   private readonly groups = new Map<string, ConcurrencyGate>()
+  private readonly crash = testCrashPoint()
+  private readonly settled = new Set<string>()
 
   constructor(readonly ledger: RunLedger, private readonly stream: EngineEventStream,
     private readonly signal: AbortSignal, concurrency = 1,
@@ -27,6 +53,7 @@ export class DefinitionExecution implements NodeExecutionPort {
 
   async enter(input: NodeAdmission): Promise<AttemptFrame> {
     if (this.signal.aborted) throw new EngineError('aborted', 'Execution cancelled before node admission')
+    if (this.crash?.phase === 'after-snapshot' && this.settled.has(this.crash.nodePath)) crashNow(this.crash.nodePath, 'after-snapshot')
     const frame = this.ledger.enter(input)
     this.admissions.set(frame.attemptId, input)
     this.stream.flush()
@@ -58,7 +85,9 @@ export class DefinitionExecution implements NodeExecutionPort {
     // evidence commit. Releasing on function return admits a later write before
     // the previous verification receipt is durable and can certify stale work.
     this.held.set(frame.attemptId, () => { agentRelease(); for (const release of groupReleases.reverse()) release(); effectRelease() })
+    if (this.crash?.phase === 'before' && this.crash.nodePath === frame.nodePath) crashNow(frame.nodePath, 'before')
     const result = await operation(this.signal)
+    if (this.crash?.phase === 'during' && this.crash.nodePath === frame.nodePath) crashNow(frame.nodePath, 'during')
     const current = this.ledger.scopeSnapshot(frame.scope.id)
     return { ...result, usage: current.usage,
       ...(effect === 'write' && !result.receipt ? { verified: null } : {}),
@@ -92,6 +121,11 @@ export class DefinitionExecution implements NodeExecutionPort {
 
   committed(events: DurableEngineEvent[]): void {
     for (const event of events) if (event.attemptId && /^step_(?:succeeded|failed|blocked|paused|interrupted)$/.test(event.type)) this.release(event.attemptId)
+    if (this.crash) for (const event of events) {
+      if (!event.nodePath || !/^step_(?:succeeded|failed|blocked)$/.test(event.type)) continue
+      if (this.crash.phase === 'after-writes' && event.nodePath === this.crash.nodePath) crashNow(event.nodePath, 'after-writes')
+      this.settled.add(event.nodePath)
+    }
     this.stream.flush()
   }
 
