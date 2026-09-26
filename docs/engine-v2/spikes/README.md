@@ -4,6 +4,10 @@ These experiments inform the proposed engine; they do not enable it. Production 
 
 Run `npm run test:engine-spikes -- --output <directory>` with Node 22.22.3. It rebuilds the legacy runtime before measuring its callback baseline, so stale `dist` output cannot qualify. The JSON evidence records OS, architecture, versions, timing and assertions. The existing `npm run ci` remains mandatory. CI additionally verifies the real npm package on each spike platform; Desktop assembly acceptance remains a paired check and must be attached separately.
 
+The same CI job checks out Desktop at `70c9e8a4a7fbc26b89ed5ac724aed97dfcc27d9f`, installs its locked production dependencies without lifecycle scripts and runs `scripts/check-engine-spike-assembly.mjs --desktop <checkout> --dest <outside Core source> --output <assembly-evidence.json>`. The wrapper verifies the exact assembler inputs, invokes Desktop's real source assembly and records Desktop/Core commits, source-bundle and lock hashes, and the staged runtime identity. This checks a locked development source assembly, not a fabricated registry release or v2 shipment.
+
+On Windows the spike creates a protected ACL for its disposable directory containing only the current user's SID and SYSTEM. It then inspects the actual SQLite database ACL and rejects broad access. The policy is experimental and applies only to test directories; production private-storage policy remains an engine implementation responsibility. POSIX uses and verifies 0700/0600 modes.
+
 | Question | Report | Acceptance |
 | --- | --- | --- |
 | SQLite binding and real graph persistence | [01-sqlite.md](01-sqlite.md) | Every boundary of 200 nodes survives a killed process; actual graph pending writes and ledger stay atomic; WAL/private permissions; mean checkpoint put below 5 ms; packed/assembled runtime on three platforms |

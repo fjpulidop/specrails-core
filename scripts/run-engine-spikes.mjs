@@ -8,6 +8,7 @@ import { npm, run } from './release-utils.mjs'
 import { sqliteProbe } from '../src/agent-runtime/engine/__spikes__/sqlite-probe.mjs'
 import { subgraphProbe } from '../src/agent-runtime/engine/__spikes__/subgraph-probe.mjs'
 import { streamingProbe } from '../src/agent-runtime/engine/__spikes__/streaming-probe.mjs'
+import { privatePathEvidence } from '../src/agent-runtime/engine/__spikes__/private-directory.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const args = process.argv.slice(2)
@@ -29,6 +30,8 @@ const evidence = {
 }
 const save = () => writeFileSync(path.join(output, 'evidence.json'), JSON.stringify(evidence, null, 2) + '\n')
 try {
+  save()
+  evidence.results.privateDirectory = privatePathEvidence(scratch, { protect: true })
   save()
   for (const [name, probe] of [['sqlite', sqliteProbe], ['subgraphs', subgraphProbe], ['streaming', streamingProbe]]) {
     process.stderr.write(`Running C1 ${name} probe (${process.platform}/${process.arch})\n`)

@@ -6,6 +6,7 @@ import path from 'node:path'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import { SpikeSqliteSaver } from './sqlite-saver.mjs'
 import { linearGraph } from './crash-worker.mjs'
+import { privatePathEvidence } from './private-directory.mjs'
 
 const mean = values => values.reduce((sum, value) => sum + value, 0) / values.length
 function assertInjectedKill(result, database, phase, target) {
@@ -117,5 +118,5 @@ export async function sqliteProbe(directory, count = 200) {
   if (process.platform !== 'win32') { assert.equal(fileMode, 0o600); assert.equal(directoryMode, 0o700) }
   return { binding: 'node:sqlite', completedBoundaries: boundaries.length, boundaries, rollbackBeforeWrites: true, rollbackBetweenWritesAndLedger: true,
     completedNodesNeverRepeated: true, publicSaverConformance: true, journalMode, fileMode, directoryMode,
-    windowsAclAcceptance: process.platform === 'win32' ? 'POSIX mode is not an ACL guarantee; host-private directory ACL verification remains a packaging gate' : 'not-applicable', ...timing }
+    privateDatabase: privatePathEvidence(filename), ...timing }
 }
