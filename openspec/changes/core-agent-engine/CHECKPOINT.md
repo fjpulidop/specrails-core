@@ -1,3 +1,11 @@
+## CI branch admission — 27 September 2026, 00:38 CEST
+
+Core pull-request CI now covers integration bases as well as main. The previous
+main-only filter left PR #389 without checks on updates. Main push and explicit
+workflow dispatch remain available; required test/package/platform jobs are
+unchanged. Actionlint validates the workflow. Local full CI on 06d563c5 is running;
+this metadata change does not close the C1 reconciliation or Windows spike gate.
+
 # Checkpoint — 26 September 2026
 
 ## Fork construction recovery — 26 September 2026, 23:45 CEST
