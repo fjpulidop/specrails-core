@@ -110,6 +110,9 @@ export interface PipelineState {
   archivePath?: string
   archiveApproval?: { candidateHash: string; artifactHash: string; confidenceHash: string; acceptanceHash: string }
   artifactExclusions: string[]
+  /** Explicit engine-owned metadata; absent for all legacy journals. */
+  runtimeExclusions?: readonly string[]
+  repositoryExclusions?: Readonly<Record<string, readonly string[]>>
   preview?: { baseHash: string; files: PreviewFile[]; createdAt: string }
 }
 export interface PreviewFile { repositoryId: string; path: string; operation: 'write' | 'delete'; sourcePath?: string; contentHash?: string }
@@ -316,9 +319,51 @@ function saveState(state: PipelineState): void {
   atomicJson(stateFile(state.context), state)
 }
 function relativeUnix(value: string): string { return value.split(path.sep).join('/') }
-function excluded(state: PipelineState, repo: PipelineRepository, relative: string): boolean {
+export type CandidateScope = Pick<PipelineState, 'context' | 'scopeHash' | 'artifactExclusions'> & {
+  /** Engine-owned child journals and artifact paths, never user-defined exclusion patterns. */
+  runtimeExclusions?: readonly string[]
+  repositoryExclusions?: Readonly<Record<string, readonly string[]>>
+}
+/** Bind only engine-owned metadata paths; callers supply declared run/branch ownership. */
+export function bindImplementationExclusions(contextInput: PipelineContext, exclusions: { runtimeExclusions: readonly string[]; repositoryExclusions: Readonly<Record<string, readonly string[]>> }): void {
+  const context = validatePipelineContext(contextInput)
+  const root = path.join(context.backlogRoot, '.specrails/pipeline')
+  const runtimeExclusions = [...new Set(exclusions.runtimeExclusions)].sort()
+  for (const item of runtimeExclusions) {
+    const relative = path.relative(root, item)
+    const memory = ['', '-wal', '-shm'].some(suffix => item === path.join(context.backlogRoot, '.specrails/engine-store.sqlite' + suffix))
+    if (memory) { safeChild(context.backlogRoot, path.relative(context.backlogRoot, item)); continue }
+    if (!path.isAbsolute(item) || path.resolve(item) !== item || !ID.test(relative) || relative.includes(path.sep)) fail('Implementation runtime exclusion is not an admitted pipeline journal')
+    safeChild(root, relative)
+  }
+  const repositoryExclusions: Record<string, string[]> = {}
+  for (const [id, paths] of Object.entries(exclusions.repositoryExclusions)) {
+    const repository = context.repositories.find(repository => repository.id === id)
+    if (!repository) continue // A scoped child receives the parent union, filtered to its frozen repositories.
+    repositoryExclusions[id] = [...new Set(paths)].sort()
+    for (const item of repositoryExclusions[id]!) {
+      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:changes|specs)\/[a-z0-9][a-z0-9./-]*$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
+      safeChild(repository.path, item)
+    }
+  }
+  locked(context, () => {
+    const state = readState(context)
+    if (canonical(state.runtimeExclusions ?? []) === canonical(runtimeExclusions) && canonical(state.repositoryExclusions ?? {}) === canonical(repositoryExclusions)) return
+    state.runtimeExclusions = runtimeExclusions
+    state.repositoryExclusions = repositoryExclusions
+    saveState(state)
+  })
+}
+/** Read the validated implementation journal's dynamic candidate exclusions. */
+export function readCandidateScope(contextInput: unknown): CandidateScope {
+  const state = readState(validatePipelineContext(contextInput))
+  return { context: state.context, scopeHash: state.scopeHash, artifactExclusions: [...state.artifactExclusions], ...(state.runtimeExclusions ? { runtimeExclusions: [...state.runtimeExclusions] } : {}), ...(state.repositoryExclusions ? { repositoryExclusions: structuredClone(state.repositoryExclusions) } : {}) }
+}
+function excluded(state: CandidateScope, repo: PipelineRepository, relative: string): boolean {
   const absolute = path.join(repo.path, relative)
   if (within(pipelineStateDirectory(state.context), absolute)) return true
+  if (state.runtimeExclusions?.some(directory => within(directory, absolute))) return true
+  if (state.repositoryExclusions?.[repo.id]?.some(item => relative === item || relative.startsWith(item + '/'))) return true
   if (relative === '.specrails/runtime' || relative.startsWith('.specrails/runtime/')) return true
   if (repo.id !== state.context.artifactRepositoryId) return false
   return state.artifactExclusions.some((item) => relative === item || relative.startsWith(item + '/'))
@@ -387,7 +432,7 @@ export interface CandidateManifest {
   scopeHash: string
   repositories: Array<{ id: string; path: string; files: Array<[string, string]> }>
 }
-export function candidateManifest(state: PipelineState): CandidateManifest {
+export function candidateManifest(state: CandidateScope): CandidateManifest {
   const entries = state.context.repositories.map((repo) => ({
     id: repo.id, path: repo.path,
     files: trackedFiles(repo)
@@ -396,7 +441,7 @@ export function candidateManifest(state: PipelineState): CandidateManifest {
   }))
   return { schemaVersion: 1, scopeHash: state.scopeHash, repositories: entries }
 }
-export function fingerprintCandidate(state: PipelineState): string { return digest(canonical(candidateManifest(state).repositories)) }
+export function fingerprintCandidate(state: CandidateScope): string { return digest(canonical(candidateManifest(state).repositories)) }
 function activeArtifactPath(state: PipelineState): string { return state.archivePath ?? path.join(state.context.artifactRoot, 'openspec', 'changes', state.change) }
 function artifactFingerprint(state: PipelineState): string {
   const root = activeArtifactPath(state)
@@ -774,6 +819,10 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
 
 /** Silence a verification command may keep before it counts as hung (env `SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, default 5 min). */
 function verificationIdleTimeoutMs(): number { const raw = Number(process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS); return Number.isFinite(raw) && raw >= 100 ? raw : 5 * 60_000 }
+/** Structured shell execution with the same scope, environment and tree-kill rules, without a receipt or journal. */
+export async function executeVerificationCommand(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; idleTimeoutMs?: number } = {}): Promise<CommandReceipt> {
+  return executeCheck(validateCommand(validatePipelineContext(contextInput), raw), log, signal, options.deadline, undefined, options.idleTimeoutMs)
+}
 async function executeCheck(command: VerificationCommand & { cwd: string }, log: (text: string) => void, signal?: AbortSignal, deadline?: number, evidenceId = digest(randomUUID()), idleTimeoutOverrideMs?: number): Promise<CommandReceipt> {
   const started = Date.now()
   const overrides = normalizeVerificationEnvironment(command.env ?? {}) as Record<string, string>
@@ -935,9 +984,26 @@ export function verificationWaves<T extends VerificationCommand>(commands: T[], 
   if (current.length) waves.push(current)
   return waves
 }
-export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; maxConcurrency?: number; idleTimeoutMs?: number; onEvidence?: (kind: 'check-started' | 'check-finished' | 'check-reused' | 'check-invalidated', payload: Record<string, string | number | null>) => Promise<void> } = {}): Promise<VerificationReceipt> {
+export interface VerificationRunOptions {
+  deadline?: number
+  maxConcurrency?: number
+  idleTimeoutMs?: number
+  onEvidence?: (kind: 'check-started' | 'check-finished' | 'check-reused' | 'check-invalidated', payload: Record<string, string | number | null>) => Promise<void>
+}
+/** Persistence and candidate ownership are bound by the host, never inferred from a journal path. */
+export interface VerificationEvidencePort {
+  candidateHash: string
+  scopeHash: string
+  planHash?: string
+  previous?: VerificationReceipt
+  isCurrent(): boolean
+  persistCheck(result: CommandReceipt, planHash: string, candidateHash: string): void | Promise<void>
+  commitReceipt(receipt: VerificationReceipt): VerificationReceipt | Promise<VerificationReceipt>
+}
+
+export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: VerificationRunOptions = {}): Promise<VerificationReceipt> {
   const context = validatePipelineContext(contextInput)
-  const { request, commands, unverifiedRepositories } = verificationPlan(context, raw)
+  const { request } = verificationPlan(context, raw)
   let previous: VerificationReceipt | undefined
   const state = locked(context, () => {
     const current = readState(context)
@@ -953,6 +1019,31 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
   const identityProblems = planReasons(state, typeof request.planHash === 'string' ? request.planHash : undefined)
   if (identityProblems.length) fail(identityProblems.join('; '))
   const candidateHash = fingerprintCandidate(state)
+  const isCurrent = (): boolean => {
+    const current = readState(context)
+    return fingerprintCandidate(current) === candidateHash && current.revision === state.revision && planReasons(current, request.planHash as string | undefined).length === 0
+  }
+  return executeVerification(context, raw, {
+    candidateHash, scopeHash: state.scopeHash, planHash: state.verificationPlan?.hash, previous,
+    isCurrent: () => locked(context, isCurrent),
+    persistCheck: (result, planHash, candidate) => persistCheckEvidence(context, result, planHash, candidate),
+    commitReceipt: receipt => locked(context, () => {
+      const current = readState(context)
+      if (!isCurrent()) receipt = { ...receipt, valid: false, reason: 'Candidate changed during verification' }
+      atomicJson(safeChild(pipelineStateDirectory(context), 'receipts/' + receipt.id + '.json'), receipt)
+      if (receipt.kind === 'full' || !receipt.valid || !current.verification) current.verification = receipt
+      else if (previous?.valid && previous.candidateHash === candidateHash) current.verification = previous
+      saveState(current)
+      return receipt
+    }),
+  }, log, signal, options)
+}
+
+/** Same deterministic command/evidence runner for legacy journals and ledger-only engine runs. */
+export async function executeVerification(contextInput: unknown, raw: unknown, evidence: VerificationEvidencePort, log: (text: string) => void = () => {}, signal?: AbortSignal, options: VerificationRunOptions = {}): Promise<VerificationReceipt> {
+  const context = validatePipelineContext(contextInput)
+  const { request, commands, unverifiedRepositories } = verificationPlan(context, raw)
+  const { candidateHash, previous } = evidence
   const results: CommandReceipt[] = []
   const controller = new AbortController()
   const abort = () => controller.abort()
@@ -970,7 +1061,7 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
         const evidenceId = digest(randomUUID())
         if (!reuse) {
           const pending: CommandReceipt = { repositoryId: command.repositoryId, key: command.key, label: command.label, command: command.command, args: command.args, cwd: command.cwd, environmentHash: '', environmentKeys: [], environmentOverrideKeys: [], environmentOverridesHash: '', evidenceId, pending: true, disposition: 'executed', outcome: 'interrupted', exitCode: -1, durationMs: 0, output: '' }
-          persistCheckEvidence(context, pending, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
+          await evidence.persistCheck(pending, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
           await options.onEvidence?.('check-started', { executionId: evidenceId, repositoryId: command.repositoryId, checkId: command.key ?? '', label: command.label ?? command.command })
         }
         const result: CommandReceipt = reuse ? { ...old, evidenceId, disposition: 'reused', reusedFrom: old.evidenceId, durationMs: 0, snapshot, reuseReason: 'snapshot-local-identities-match' } : { ...await executeCheck(command, text => log(prefix + text), controller.signal, options.deadline, evidenceId, options.idleTimeoutMs), disposition: 'executed', snapshot, reuseReason: snapshot.eligible ? 'snapshot-local-no-current-match' : snapshot.reason }
@@ -980,7 +1071,7 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
         const after = verificationSnapshot(context, command)
         if (snapshot.eligible && (!after.eligible || after.inputHash !== snapshot.inputHash || after.toolchainHash !== snapshot.toolchainHash)) { result.exitCode = -1; result.outcome = 'failed'; result.reuseReason = 'snapshot-inputs-changed-during-verification' }
         if (result.exitCode !== 0) controller.abort()
-        persistCheckEvidence(context, result, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
+        await evidence.persistCheck(result, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
         await options.onEvidence?.(reuse ? 'check-reused' : 'check-finished', { executionId: evidenceId, repositoryId: command.repositoryId, checkId: command.key ?? '', label: command.label ?? command.command, exitCode: result.exitCode, durationMs: result.durationMs, reason: result.reuseReason ?? null })
         return result
         } catch (error) { controller.abort(); throw error }
@@ -998,23 +1089,15 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
   for (const command of commands.slice(results.length)) {
     const id = digest(randomUUID())
     const skipped: CommandReceipt = { repositoryId: command.repositoryId, key: command.key, label: command.label, command: command.command, args: command.args, cwd: command.cwd, environmentHash: '', environmentKeys: [], environmentOverrideKeys: [], environmentOverridesHash: '', evidenceId: id, disposition: 'not-run', outcome: 'cancelled', exitCode: -1, durationMs: 0, output: 'Not run after cancellation or an earlier failed check' }
-    persistCheckEvidence(context, skipped, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
+    await evidence.persistCheck(skipped, (request.planHash as string | undefined) ?? digest(canonical(commands)), candidateHash)
     notRunEvidenceIds.push(id)
   }
-  const receipt = locked(context, () => {
-    const current = readState(context)
-    const changed = fingerprintCandidate(current) !== candidateHash || current.revision !== state.revision || planReasons(current, request.planHash as string | undefined).length > 0
-    const receipt: VerificationReceipt = {
-      id: randomUUID(), ...(state.verificationPlan ? { planHash: state.verificationPlan.hash } : {}), kind: request.kind as 'full' | 'scoped', scopeHash: state.scopeHash, candidateHash, commands: results, ...(notRunEvidenceIds.length ? { notRunEvidenceIds } : {}),
-      completedAt: new Date().toISOString(), valid: !changed && !signal?.aborted && (options.deadline === undefined || Date.now() <= options.deadline) && results.length === commands.length && results.every((result) => result.exitCode === 0),
-      ...(changed ? { reason: 'Candidate changed during verification' } : results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
-      ...(unverifiedRepositories.length ? { unverifiedRepositories } : {}),
-    }
-    atomicJson(safeChild(pipelineStateDirectory(context), 'receipts/' + receipt.id + '.json'), receipt)
-    if (receipt.kind === 'full' || !receipt.valid || !current.verification) current.verification = receipt
-    else if (previous?.valid && previous.candidateHash === candidateHash) current.verification = previous
-    saveState(current)
-    return receipt
+  const changed = !evidence.isCurrent()
+  const receipt = await evidence.commitReceipt({
+    id: randomUUID(), ...(evidence.planHash ? { planHash: evidence.planHash } : {}), kind: request.kind as 'full' | 'scoped', scopeHash: evidence.scopeHash, candidateHash, commands: results, ...(notRunEvidenceIds.length ? { notRunEvidenceIds } : {}),
+    completedAt: new Date().toISOString(), valid: !changed && !signal?.aborted && (options.deadline === undefined || Date.now() <= options.deadline) && results.length === commands.length && results.every((result) => result.exitCode === 0),
+    ...(changed ? { reason: 'Candidate changed during verification' } : results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
+    ...(unverifiedRepositories.length ? { unverifiedRepositories } : {}),
   })
   if (!receipt.valid) for (const result of results) {
     await options.onEvidence?.('check-invalidated', { executionId: result.evidenceId ?? '', repositoryId: result.repositoryId, checkId: result.key ?? '', label: result.label ?? result.command, reason: receipt.reason ?? 'Verification did not complete successfully' })
@@ -1199,7 +1282,7 @@ function evidenceSummary(document: EvidenceDocument) {
   const { stdout: _out, stderr: _err, sources, ...summary } = document
   return { ...summary, sources: sources.map(({ text: _text, ...source }) => source) }
 }
-function persistCheckEvidence(context: PipelineContext, result: CommandReceipt, planHash: string, candidateHash: string): void {
+export function persistCheckEvidence(context: PipelineContext, result: CommandReceipt, planHash: string, candidateHash: string): void {
   const id = result.evidenceId!
   const planPath = safeChild(pipelineStateDirectory(context), 'verification/plan.json')
   const plan = existsSync(planPath) ? object(readJson(planPath)) : undefined

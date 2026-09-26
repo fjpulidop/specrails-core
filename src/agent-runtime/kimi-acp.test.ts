@@ -135,3 +135,13 @@ describe('Kimi 0.27 read-only ACP compatibility', () => {
     expect((await executeKimiReadonlyAcp(input, { runProcess })).structured).toEqual({ approved: true })
   })
 })
+
+
+it('enforces explicit read access for a declared role through ACP', async () => {
+  const input = request({ role: 'security-reviewer', access: 'read', artifacts: 'none', instructions: 'role' })
+  const read = harness(input)
+  expect((await executeKimiReadonlyAcp(input, read)).structured).toEqual({ approved: true })
+  const write = harness(input, { operation: 'fs/write_text_file' })
+  await expect(executeKimiReadonlyAcp(input, write)).rejects.toMatchObject({ code: 'tool_policy_violation' })
+  expect(readFileSync(path.join(input.cwd, 'source.ts'), 'utf8')).toContain('value = 42')
+})

@@ -13,7 +13,7 @@
       "verification": { "type": "object", "additionalProperties": false, "properties": { "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 4 } } }
     } },
     "guardrails": { "type": "object", "additionalProperties": false, "properties": { "plan-validation": { "type": "boolean" }, "genuine-blocking-question": { "type": "boolean" }, "plan-language-hint": { "type": "boolean" }, "frozen-plan-writes": { "type": "boolean" }, "primary-language": { "type": "boolean" }, "duplicate-sibling": { "type": "boolean" }, "one-test-per-module": { "type": "boolean" }, "empty-write": { "type": "boolean" }, "evidence-gated-ticking": { "type": "boolean" }, "inventory-retry": { "type": "boolean" }, "synthetic-corrections": { "type": "boolean" }, "silent-group-closure": { "type": "boolean" }, "verify-per-group": { "type": "boolean" }, "test-reachability": { "type": "boolean" }, "exit-code-honesty": { "type": "boolean" }, "environment-repair": { "type": "boolean" }, "lockfile-repair": { "type": "boolean" }, "verify-idle-timeout": { "type": "boolean" } } },
-    "rolePrompts": { "type": "object", "additionalProperties": false, "properties": {
+    "rolePrompts": { "type": "object", "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,63}$" }, "additionalProperties": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" }, "properties": {
       "architect": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
       "developer": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
       "reviewer": { "type": "string", "minLength": 1, "maxLength": 20000, "pattern": "\\S" },
@@ -35,6 +35,98 @@
       } }
     ] } },
     "fixer": { "$ref": "#/definitions/agent" },
+    "roles": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,63}$",
+        "not": {
+          "const": "fixer"
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "provider",
+          "access",
+          "artifacts"
+        ],
+        "dependencies": {
+          "escalation": [
+            "model"
+          ]
+        },
+        "properties": {
+          "effort": {
+            "$ref": "#/definitions/effort"
+          },
+          "thinking": {
+            "type": "string",
+            "enum": [
+              "on",
+              "off"
+            ],
+            "description": "OpenAI-compatible engines only: private thinking (chat_template_kwargs.enable_thinking). Default off."
+          },
+          "escalation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "model"
+            ],
+            "properties": {
+              "model": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$"
+              },
+              "effort": {
+                "$ref": "#/definitions/effort"
+              }
+            }
+          },
+          "provider": {
+            "$ref": "#/definitions/id"
+          },
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[^-\\r\\n\\u0000][^\\r\\n\\u0000]*$"
+          },
+          "maxTurns": {
+            "$ref": "#/definitions/positiveInteger"
+          },
+          "access": {
+            "enum": [
+              "read",
+              "write"
+            ]
+          },
+          "artifacts": {
+            "enum": [
+              "none",
+              "tasks-checkboxes",
+              "all"
+            ]
+          },
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000,
+            "pattern": "\\S"
+          },
+          "openspecSkill": {
+            "enum": [
+              "openspec-ff-change",
+              "openspec-apply-change",
+              "openspec-verify-change"
+            ]
+          }
+        }
+      }
+    },
     "agents": { "type": "object", "additionalProperties": false, "required": ["architect", "developer", "reviewer"], "properties": {
       "architect": { "$ref": "#/definitions/agent" }, "developer": { "$ref": "#/definitions/agent" }, "reviewer": { "$ref": "#/definitions/agent" }
     } },

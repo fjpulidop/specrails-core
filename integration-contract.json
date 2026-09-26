@@ -85,6 +85,16 @@
           "<model-id>",
           "--args",
           "<arguments>"
+        ],
+        "renderOnlyArgs": [
+          ".kimi-code/specrails/run-skill.mjs",
+          "--skill",
+          "<skill-id>",
+          "--model",
+          "<model-id>",
+          "--args",
+          "<arguments>",
+          "--render-only"
         ]
       },
       "initCommand": "init",
@@ -234,10 +244,14 @@
       "capabilities",
       "evidence",
       "recovery",
-      "evaluate"
+      "evaluate",
+      "workflows",
+      "fork",
+      "signal",
+      "cancel"
     ],
     "cliPresentationOperations": ["help"],
-    "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion}; does not invoke providers",
+    "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion, runtimeIdentity, workflowVersions, engineVersion, nodeKindsVersion, nodeKinds, capabilities, guardrails}; does not invoke providers",
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
     "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed",
@@ -247,7 +261,7 @@
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
-    "minimumNode": "20.19.0",
+    "minimumNode": "22.22.3",
     "platforms": [
       "darwin",
       "win32"
@@ -287,11 +301,30 @@
     "instructionsVersion": "10",
     "workflowVersion": "7",
     "engine": {
-      "version": 1,
-      "definitionSchema": null,
-      "nodeKindsVersion": 0
+      "version": 2,
+      "definitionSchema": "schemas/workflow-definition.schema.json",
+      "nodeKindsVersion": 1
     },
-    "nodeKinds": [],
+    "nodeKinds": [
+      "prompt",
+      "role-turn",
+      "decider",
+      "verify",
+      "shell",
+      "openspec-validate",
+      "openspec-archive",
+      "condition",
+      "end",
+      "approval",
+      "question",
+      "gate",
+      "component",
+      "map",
+      "implementation",
+      "join"
+    ],
+    "engineStatePath": "<backlogRoot>/.specrails/pipeline/<runId>/agent-workflow/run.sqlite",
+    "frozenRequest": "agent-runtime-request.json carries workflow {id, version, source: builtin|definition, definitionHash, engine: 1|2}; resume and status select the engine from workflow.engine and a request without the block is a legacy (engine 1) run",
     "builtins": [
       { "id": "specrails-implementation", "version": "7", "deprecated": false }
     ],
@@ -300,7 +333,32 @@
     "sessionReuse": "Developer correction passes resume the previous provider session (claude --resume, codex exec resume, gemini --resume, kimi --session) with a short correction prompt; an unavailable session falls back to a fresh full turn. Structured roles get one repair turn in-session when their JSON is unusable.",
     "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
     "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget.",
-    "defaultImplementationEngine": true
+    "defaultImplementationEngine": true,
+    "openRoles": {
+      "version": 1,
+      "builtinRoles": [
+        "architect",
+        "developer",
+        "reviewer"
+      ],
+      "configField": "roles",
+      "roleIdPattern": "^[a-z][a-z0-9-]{0,63}$",
+      "access": [
+        "read",
+        "write"
+      ],
+      "artifacts": [
+        "none",
+        "tasks-checkboxes",
+        "all"
+      ],
+      "instructions": [
+        "role",
+        "none"
+      ],
+      "customAgentLoop": "free",
+      "nativeCommandUnsupported": "native_command_unsupported"
+    }
   },
   "execution": {
     "schemaVersion": 1,

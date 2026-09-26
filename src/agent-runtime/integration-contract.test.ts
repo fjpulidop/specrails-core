@@ -1,9 +1,13 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { RUNTIME_CLI_OPERATIONS, runRuntimeCommand } from './cli.js'
 import { CORE_WORKFLOW_VERSION, RUNTIME_API_VERSION, coreRuntimeIdentity } from './core-host.js'
+import { NODE_KINDS_VERSION } from './engine/piece-registry.js'
+import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
+
+const ENGINE_V2_CAPABILITIES = ['engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -27,16 +31,32 @@ describe('Desktop integration contract', () => {
     expect(new Set(RUNTIME_CLI_OPERATIONS).size).toBe(RUNTIME_CLI_OPERATIONS.length)
   })
 
-  it('advertises only the available legacy engine and built-in', async () => {
-    expect(contract.agentRuntime.engine).toEqual({ version: 1, definitionSchema: null, nodeKindsVersion: 0 })
-    expect(contract.agentRuntime.nodeKinds).toEqual([])
+  it('advertises the real engine v2 catalog: contract, runtime api and workflows list agree with the validation registry', async () => {
+    const registry = validationPieceRegistry(), kinds = registry.kinds()
+    expect(kinds).toHaveLength(16)
+    expect(kinds).toEqual(registry.catalog().map(piece => piece.kind))
+    expect(kinds.some(kind => /test|fixture|fake/.test(kind))).toBe(false)
+    expect(contract.agentRuntime.engine).toEqual({ version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: NODE_KINDS_VERSION })
+    expect(existsSync(new URL('../../' + contract.agentRuntime.engine.definitionSchema, import.meta.url))).toBe(true)
+    expect(contract.agentRuntime.nodeKinds).toEqual(kinds)
     expect(contract.agentRuntime.builtins).toEqual([{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: false }])
+
     const messages: unknown[] = []
     expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
     expect(messages).toHaveLength(1)
-    expect(messages[0]).toMatchObject({ apiVersion: RUNTIME_API_VERSION, workflowVersions: [CORE_WORKFLOW_VERSION] })
-    const capabilities = (messages[0] as { capabilities: Record<string, unknown> }).capabilities
-    for (const name of ['engineV2', 'workflowDefinitions', 'fanOut', 'steeringInbox']) expect(capabilities).not.toHaveProperty(name)
+    const api = messages[0] as { apiVersion: number; workflowVersions: string[]; engineVersion: number; nodeKindsVersion: number; nodeKinds: string[]; capabilities: Record<string, unknown> }
+    expect(api).toMatchObject({ apiVersion: RUNTIME_API_VERSION, workflowVersions: [CORE_WORKFLOW_VERSION], engineVersion: contract.agentRuntime.engine.version, nodeKindsVersion: NODE_KINDS_VERSION })
+    expect(api.nodeKinds).toEqual(contract.agentRuntime.nodeKinds)
+    for (const name of ENGINE_V2_CAPABILITIES) expect(api.capabilities[name]).toBe(1)
+    // Desktop's loader accepts only safe integers >= 1 for every capability value.
+    expect(Object.values(api.capabilities).every(value => Number.isSafeInteger(value) && (value as number) >= 1)).toBe(true)
+
+    const workflows: unknown[] = []
+    expect(await runRuntimeCommand({}, ['workflows', 'list'], value => workflows.push(value))).toBe(0)
+    const listed = workflows[0] as { nodeKindsVersion: number; nodeKinds: { kind: string }[]; builtins: unknown }
+    expect(listed.nodeKindsVersion).toBe(NODE_KINDS_VERSION)
+    expect(listed.nodeKinds.map(piece => piece.kind)).toEqual(contract.agentRuntime.nodeKinds)
+    expect(listed.builtins).toEqual(contract.agentRuntime.builtins)
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

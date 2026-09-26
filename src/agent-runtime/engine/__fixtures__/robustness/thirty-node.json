@@ -1,0 +1,490 @@
+{
+  "schemaVersion": 1,
+  "id": "robustness-thirty",
+  "title": "C3 robustness: thirty provider-free nodes",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "s01",
+  "maxTransitions": 200,
+  "roles": [],
+  "delivery": {
+    "requiresVerified": false
+  },
+  "nodes": {
+    "s01": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s01",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s02",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s02": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s02",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s03",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s03": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s03",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s04",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s04": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s04",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "c01",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "c01": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.s04.exitCode == 0 && exists($outputs.s04.stdout)"
+      },
+      "ends": {
+        "true": "s05",
+        "false": "bad"
+      }
+    },
+    "s05": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s05",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s06",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s06": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s06",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s07",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s07": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s07",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s08",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s08": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s08",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "c02",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "c02": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.s08.exitCode == 0 && exists($outputs.s08.stdout)"
+      },
+      "ends": {
+        "true": "s09",
+        "false": "bad"
+      }
+    },
+    "s09": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s09",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s10",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s10": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s10",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s11",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s11": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s11",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s12",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s12": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s12",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "c03",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "c03": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.s12.exitCode == 0 && exists($outputs.s12.stdout)"
+      },
+      "ends": {
+        "true": "s13",
+        "false": "bad"
+      }
+    },
+    "s13": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s13",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s14",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s14": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s14",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "sleep",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "sleep": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "sleep",
+          "__MARKERS__",
+          "--sleep",
+          "__SLEEP_MS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "c04",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "c04": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.sleep.exitCode == 0 && exists($outputs.sleep.stdout)"
+      },
+      "ends": {
+        "true": "s15",
+        "false": "bad"
+      }
+    },
+    "s15": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s15",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s16",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s16": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s16",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s17",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s17": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s17",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s18",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s18": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s18",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "s19",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "s19": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s19",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "big",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "big": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "big",
+          "__MARKERS__",
+          "--bytes",
+          "__BIG_BYTES__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "c05",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "c05": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.big.exitCode == 0 && exists($outputs.big.stdout)"
+      },
+      "ends": {
+        "true": "q",
+        "false": "bad"
+      }
+    },
+    "q": {
+      "kind": "question",
+      "params": {
+        "text": "Continue the robustness run?"
+      },
+      "ends": {
+        "next": "s20"
+      }
+    },
+    "s20": {
+      "kind": "shell",
+      "params": {
+        "repositoryId": "repo",
+        "argv": [
+          "__NODE__",
+          "__MARKER__",
+          "s20",
+          "__MARKERS__"
+        ],
+        "timeoutMs": 120000
+      },
+      "ends": {
+        "ok": "done",
+        "fail": "bad",
+        "failed": "bad"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "reason": "robustness-complete"
+      },
+      "ends": {}
+    },
+    "bad": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "robustness-branch-failed"
+      },
+      "ends": {}
+    }
+  }
+}

@@ -11,8 +11,15 @@ import { OpenSpecTools } from './openspec.js'
 import { validatePipelineContext, type PipelineContext } from '../pipeline/pipeline-state.js'
 import type { AgentRequest, RuntimeConfig } from './executor-types.js'
 import { runtimeEfficiency } from './efficiency.js'
+import { validateWorkflowDefinition } from './engine/definition-validator.js'
+import { validationPieceRegistry } from './engine/pieces/index.js'
+import { configuredRoles } from './engine/preflight.js'
+import { createRun, definitionRunDirectory } from './engine/runs.js'
+import { observeLedger } from './engine/run-status.js'
+import { RunDatabase } from './engine/checkpoint/database.js'
+import { ledgerWorkflowState } from './engine/invocation-context.js'
 
-interface EvaluationOptions { output: string; config?: RuntimeConfig; maxCostUsd?: number; real?: boolean; repetitions?: number }
+export interface EvaluationOptions { capturePrompts?: boolean; definition?: unknown; caseIds?: string[]; output: string; config?: RuntimeConfig; maxCostUsd?: number; real?: boolean; repetitions?: number }
 function oracle(test: EvaluationCase, file: string): boolean {
   return spawnSync(process.execPath, ['-e', 'const assert = require("node:assert/strict"); const api = require(process.argv[1]);' + test.oracle, file], { encoding: 'utf8', timeout: 10000 }).status === 0
 }
@@ -28,12 +35,13 @@ function prepare(test: EvaluationCase, root: string): PipelineContext {
   })
   return validatePipelineContext({ schemaVersion: 1, runId: randomUUID(), backlogRoot: root, artifactRoot: repositories[0]!.path, artifactRepositoryId: repositories[0]!.id, repositories, ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: test.id, description: test.description + ' Implement behavior in implementation.cjs in every selected repository.', repositoryIds: test.repositories, acceptanceCriteria: [test.description] }] })
 }
-function fixtureRegistry(test: EvaluationCase, context: PipelineContext): ExecutorRegistry {
+function fixtureRegistry(test: EvaluationCase, context: PipelineContext, onPrompt?: (request: AgentRequest) => void): ExecutorRegistry {
   let developers = 0, reviews = 0
   const sessions = new Map<string, string[]>()
   return new ExecutorRegistry().register('fixture', {
     capabilities: () => ({ transport: 'offline-fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }),
     async execute(request: AgentRequest) {
+      onPrompt?.(request)
       const sessionId = 'fixture-' + request.role
       if (request.resumeSessionId && !sessions.has(request.resumeSessionId)) throw new Error('Fixture session was not restored')
       const history = sessions.get(sessionId) ?? []; history.push(request.prompt); sessions.set(sessionId, history)
@@ -52,7 +60,7 @@ function fixtureRegistry(test: EvaluationCase, context: PipelineContext): Execut
         output = { confidence: 'high', planningDepth: context.repositories.length > 1 ? 'full' : 'focused', referencePatterns: ['implementation.cjs'], riskFlags: [], verification: [] }
       } else {
         await tools.execute({ action: 'instructions', artifact: 'apply' })
-        if (request.role === 'developer') {
+        if (request.role === 'developer' || request.role === 'fixer') {
           developers++
           for (const repo of context.repositories) writeFileSync(path.join(repo.path, 'implementation.cjs'), test.correction && developers === 1 ? test.defects[0]! : test.solution)
           writeFileSync(path.join(context.artifactRoot, 'openspec/changes/evaluation-change/tasks.md'), '## 1. Implementation\n- [x] 1.1 Implement and test the requested behavior\n')
@@ -69,15 +77,18 @@ function fixtureRegistry(test: EvaluationCase, context: PipelineContext): Execut
 }
 
 export async function runEvaluation(options: EvaluationOptions) {
+  if (options.capturePrompts && options.real) throw new Error('Prompt capture is limited to offline fixture evaluation')
   const repetitions = options.repetitions ?? 1
   if (!Number.isSafeInteger(repetitions) || repetitions < 1 || repetitions > 20) throw new Error('Evaluation repetitions must be 1–20')
   if (options.real && (!options.config || !Number.isFinite(options.maxCostUsd) || options.maxCostUsd! <= 0 || Object.values(options.config.agents).some(role => !role.model))) throw new Error('Real evaluation requires explicit per-role models and a positive aggregate spend limit')
+  const corpus = options.caseIds ? EVALUATION_CORPUS.filter(item => options.caseIds!.includes(item.id)) : EVALUATION_CORPUS
+  if (!corpus.length || options.caseIds?.some(id => !corpus.some(item => item.id === id))) throw new Error('Unknown or empty evaluation case selection')
   const identity = coreRuntimeIdentity()
   const observations: Array<Record<string, unknown>> = []
-  let spend = 0, stopReason: string | null = null
+  let spend = 0, stopReason: string | null = null, evaluatedDefinitionVersion: string | null = null
   const root = mkdtempSync(path.join(tmpdir(), 'specrails-evaluation-'))
   try {
-    for (let repeat = 0; repeat < repetitions && !stopReason; repeat++) for (const test of EVALUATION_CORPUS) {
+    for (let repeat = 0; repeat < repetitions && !stopReason; repeat++) for (const test of corpus) {
       // Check the independent oracle itself against defective candidates.
       const probe = path.join(root, 'oracle-probe.cjs')
       writeFileSync(probe, test.solution)
@@ -93,7 +104,28 @@ export async function runEvaluation(options: EvaluationOptions) {
         if (options.real && config.limits!.maxCostUsd! <= 0) { stopReason = 'Aggregate spend limit reached'; break }
         const started = Date.now()
         let state
-        try { state = await runCoreWorkflow({ context, change: 'evaluation-change', config, ...(options.real ? {} : { registry: fixtureRegistry(test, context) }) }) }
+        try {
+          let promptNumber = 0
+          const capture = options.capturePrompts ? (request: AgentRequest) => {
+            const directory = path.join(options.output, 'prompts', test.id + '-' + repeat + '-' + mode)
+            mkdirSync(directory, { recursive: true, mode: 0o700 })
+            const filename = String(++promptNumber).padStart(2, '0') + '-' + request.role + (request.stance ? '-' + request.stance : '')
+            writeFileSync(path.join(directory, filename + '.txt'), request.prompt, { mode: 0o600 })
+            writeFileSync(path.join(directory, filename + '.json'), JSON.stringify({ role: request.role, stance: request.stance ?? null,
+              model: request.model ?? null, resumeSessionId: request.resumeSessionId ?? null, promptBytes: Buffer.byteLength(request.prompt),
+              sections: request.prompt.split(/(?=^#{1,4} )/m).map(section => ({ heading: section.split('\n')[0].slice(0, 150), bytes: Buffer.byteLength(section) })) }, null, 2) + '\n', { mode: 0o600 })
+          } : undefined
+          const registry = options.real ? undefined : fixtureRegistry(test, context, capture)
+          if (options.definition === undefined) state = await runCoreWorkflow({ context, change: 'evaluation-change', config, ...(registry ? { registry } : {}) })
+          else {
+            const validation = validateWorkflowDefinition(options.definition, validationPieceRegistry(), configuredRoles(config), { published: true })
+            if (!validation.ok) throw new Error('Evaluation definition failed validation: ' + JSON.stringify(validation.errors))
+            evaluatedDefinitionVersion = validation.version
+            await createRun({ context, change: 'evaluation-change', config, definition: validation.definition, ...(registry ? { registry } : {}) })
+            const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'), { readOnly: true })
+            try { state = ledgerWorkflowState(observeLedger(database), validation.definition, '*') } finally { database.close() }
+          }
+        }
         catch (error) { observations.push({ caseId: test.id, repeat, mode, status: 'blocked', independentAccepted: false, error: error instanceof Error ? error.message : String(error), runtimeIdentity: identity, taskHash: fingerprint(test), oracleHash: fingerprint(test.oracle), repositories: context.repositories.map(({ id, baseSha }) => ({ id, baseSha })), configHash: fingerprint(config) }); stopReason = 'Runtime preflight failed; experiment stopped without retry'; break }
         const accepted = context.repositories.every(repo => oracle(test, path.join(repo.path, 'implementation.cjs')))
         const metrics = runtimeEfficiency(state)
@@ -117,7 +149,7 @@ export async function runEvaluation(options: EvaluationOptions) {
       return [mode, { samples: rows.length, independentlyAccepted: accepted, costPerAcceptedUsd: options.real && knownCost !== null && accepted ? knownCost / accepted : null, medianActiveDurationMs: median(durations), minActiveDurationMs: durations.length ? Math.min(...durations) : null, maxActiveDurationMs: durations.length ? Math.max(...durations) : null, standardDeviationMs: average === null ? null : Math.sqrt(durations.reduce((sum, value) => sum + (value - average) ** 2, 0) / durations.length) }]
     }))
     const full = groups.full!, optimized = groups.optimized!
-    const paired = observations.length === EVALUATION_CORPUS.length * repetitions * 2 && full.samples === optimized.samples
+    const paired = observations.length === corpus.length * repetitions * 2 && full.samples === optimized.samples
     const noObservedQualityDrop = paired && optimized.independentlyAccepted >= full.independentlyAccepted
     const promptPairs = observations.filter(row => row.mode === 'full' && row.caseId === 'verification-correction').map(row => {
       const other = observations.find(item => item.mode === 'optimized' && item.caseId === row.caseId && item.repeat === row.repeat)
@@ -130,7 +162,10 @@ export async function runEvaluation(options: EvaluationOptions) {
       return Array.isArray(row.invocations) && Array.isArray(other?.invocations) && other.invocations.length <= row.invocations.length
     })
     const monetaryConclusion = options.real && paired && full.costPerAcceptedUsd !== null && optimized.costPerAcceptedUsd !== null && full.costPerAcceptedUsd > 0 ? optimized.costPerAcceptedUsd <= full.costPerAcceptedUsd * 0.8 && noObservedQualityDrop ? 'target-met-in-this-sample' : 'target-not-met-in-this-sample' : 'inconclusive'
-    const report = { schemaVersion: 1, experiment: Object.values(options.config?.agents ?? {}).some(role => role.escalation) ? 'routing' : 'same-model', noExtraInvocations, mode: options.real ? 'real' : 'offline', runtimeIdentity: identity, corpusHash: fingerprint(EVALUATION_CORPUS), measurement: options.real ? 'reported-provider-usage' : 'synthetic-fixture-usage; no actual AI savings measured', monetaryTarget: 0.2, monetaryConclusion, groups, noObservedQualityDrop, promptPairs, correctionPromptTargetMet: promptPairs.length > 0 && promptPairs.every(pair => pair.reduction !== null && pair.reduction >= 0.4), sampleLimitations: 'Small descriptive paired sample; does not establish a universal quality or savings guarantee.', stopReason, reportedSpendUsd: options.real ? spend : 0, observations }
+    const report = { schemaVersion: 1, isDefinitionEvaluation: options.definition !== undefined,
+      ...(options.definition === undefined ? {} : { definitionHash: evaluatedDefinitionVersion }),
+      acceptedCases: observations.filter(row => row.independentAccepted).length,
+      allCasesAccepted: paired && observations.every(row => row.independentAccepted), experiment: Object.values(options.config?.agents ?? {}).some(role => role.escalation) ? 'routing' : 'same-model', noExtraInvocations, mode: options.real ? 'real' : 'offline', runtimeIdentity: identity, corpusHash: fingerprint(corpus), measurement: options.real ? 'reported-provider-usage' : 'synthetic-fixture-usage; no actual AI savings measured', monetaryTarget: 0.2, monetaryConclusion, groups, noObservedQualityDrop, promptPairs, correctionPromptTargetMet: promptPairs.length > 0 && promptPairs.every(pair => pair.reduction !== null && pair.reduction >= 0.4), sampleLimitations: 'Small descriptive paired sample; does not establish a universal quality or savings guarantee.', stopReason, reportedSpendUsd: options.real ? spend : 0, observations }
     mkdirSync(options.output, { recursive: true })
     writeFileSync(path.join(options.output, 'evaluation.json'), JSON.stringify(report, null, 2) + '\n')
     writeFileSync(path.join(options.output, 'evaluation.md'), `# Implementation efficiency evaluation\n\nMode: ${report.mode}. ${report.measurement}.\n\nMonetary target: 20% lower aggregate cost per independently accepted output. Conclusion: ${monetaryConclusion}.\n\n${JSON.stringify(groups, null, 2)}\n\nCorrection prompt comparison: ${JSON.stringify(promptPairs)}\n\n${observations.map(row => `- ${row.caseId}, ${row.mode}: ${row.status}; independent acceptance ${row.independentAccepted}; ${row.activeDurationMs} ms`).join('\n')}\n\n${stopReason ?? (options.real ? report.sampleLimitations : 'No paid benchmark has established monetary savings.')}\n`)

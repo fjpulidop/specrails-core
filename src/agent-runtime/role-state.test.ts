@@ -10,7 +10,7 @@ import type { PipelineContext } from '../pipeline/pipeline-state.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
-function fixture(continuation: 'supported' | 'unsupported' | 'unknown', run?: (request: AgentRequest, call: number) => string) {
+function fixture(continuation: 'supported' | 'unsupported' | 'unknown', run?: (request: AgentRequest, call: number) => string, resumeRequiresFullContext = false) {
   const root = mkdtempSync(path.join(tmpdir(), 'role-packets-')); roots.push(root)
   writeFileSync(path.join(root, 'AGENTS.md'), 'Important project instructions. '.repeat(80))
   const context: PipelineContext = { schemaVersion: 1, runId: 'run', backlogRoot: root, artifactRoot: root, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: root }], specs: [{ id: 1, title: 'Feature', description: 'Preserve behavior', acceptanceCriteria: ['Required behavior'] }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' } }
@@ -18,7 +18,7 @@ function fixture(continuation: 'supported' | 'unsupported' | 'unknown', run?: (r
   const config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: role, developer: role, reviewer: role }, verification: [] }
   const calls: AgentRequest[] = []
   const registry = new ExecutorRegistry().register('fixture', {
-    capabilities: () => ({ transport: 'fixture', continuation, effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }),
+    capabilities: () => ({ transport: 'fixture', continuation, resumeRequiresFullContext, effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }),
     execute: async request => { calls.push(request); return { text: run?.(request, calls.length) ?? '{"ok":true}', sessionId: 'session-1', usage: { inputTokens: 1, outputTokens: 1, costUsd: 0 } } },
   })
   const step = { attemptId: 'attempt-1', checkpoint: { history: [] }, signal: new AbortController().signal, remainingBudget: () => ({}), reportUsage: () => {}, reportInvocation: async () => {} } as unknown as WorkflowStepContext
@@ -31,6 +31,16 @@ it.each(['unsupported', 'unknown'] as const)('sends full context when returned s
   expect(f.calls[1].resumeSessionId).toBeUndefined()
   expect(f.calls[1].prompt).toContain('FULL ROLE AND FEEDBACK')
   expect(f.calls[1].prompt).toContain('Important project instructions')
+})
+it('keeps full instructions when a native continuation may silently start a fresh session', async () => {
+  const f = fixture('supported', undefined, true)
+  await f.invoke('developer', f.step, { prompt: 'FULL ROLE' }, (_out, text) => text)
+  await f.invoke('developer', f.step, { prompt: 'SHORT CORRECTION', fallbackPrompt: 'FULL ROLE AND FEEDBACK', resumeSessionId: 'session-1' }, (_out, text) => text)
+  expect(f.calls).toHaveLength(2)
+  expect(f.calls[1].resumeSessionId).toBe('session-1')
+  expect(f.calls[1].prompt).toContain('FULL ROLE AND FEEDBACK')
+  expect(f.calls[1].prompt).toContain('Important project instructions')
+  expect(f.calls[1].prompt).toContain('Required behavior')
 })
 it('persists compatible context across invoker instances, removes duplication and restores full context on a model change', async () => {
   const f = fixture('supported')

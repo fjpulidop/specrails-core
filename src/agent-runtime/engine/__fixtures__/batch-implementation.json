@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "id": "batch-implementation",
+  "title": "Batch Implementation",
+  "journal": "implementation",
+  "change": "new",
+  "entry": "work",
+  "maxTransitions": 100,
+  "roles": [
+    "architect",
+    "developer",
+    "reviewer"
+  ],
+  "nodes": {
+    "work": {
+      "kind": "map",
+      "params": {
+        "over": "tickets",
+        "body": "implementation",
+        "concurrency": 2
+      },
+      "ends": {
+        "next": "join"
+      }
+    },
+    "join": {
+      "kind": "join",
+      "params": {
+        "reduce": "all-ok"
+      },
+      "ends": {
+        "next": "verify",
+        "fail": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "components": {
+    "implementation": {
+      "entry": "implement",
+      "nodes": {
+        "implement": {
+          "kind": "implementation",
+          "params": {
+            "approvalBeforeArchive": false
+          },
+          "ends": {
+            "next": "done",
+            "rejected": "failed",
+            "failed": "failed"
+          }
+        },
+        "done": {
+          "kind": "end",
+          "params": {
+            "outcome": "success",
+            "exit": "next"
+          },
+          "ends": {}
+        },
+        "failed": {
+          "kind": "end",
+          "params": {
+            "outcome": "failure",
+            "exit": "failed"
+          },
+          "ends": {}
+        }
+      }
+    }
+  },
+  "delivery": {
+    "requiresVerified": true
+  },
+  "version": "e558d771a4b840478fcee22fb3079e56ba8be7ee188008d937547240aeed46f5"
+}

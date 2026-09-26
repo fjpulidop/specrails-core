@@ -113,6 +113,7 @@ interface RunnerModule {
       fileExists?: (file: string) => boolean
       env?: Record<string, string>
       signalSource?: EventEmitter
+      writeStdout?: (text: string) => void
       readStdin?: () => string
       spawnChild: (
         command: string,
@@ -1248,5 +1249,19 @@ describe('managed Kimi skill runner — Windows npm shim', () => {
         readFile: () => '@echo off\r\nsome-custom-launcher %*\r\n',
       }),
     ).toThrow(/Refusing to execute non-standard/)
+  })
+})
+
+
+describe('native skill rendering without provider execution', () => {
+  it('returns the exact expanded skill while leaving the executor in charge of permissions', async () => {
+    const providerRoot = path.join(tmpDir, '.kimi-code')
+    writeSkill('custom-auditor', 'Audit $ARGUMENTS')
+    const writeStdout = vi.fn(), spawnChild = vi.fn()
+    const status = await runner.runSkillCli(['--skill', 'custom-auditor', '--model', 'k3', '--args', 'literal $(data)', '--render-only'], { scriptPath: path.join(providerRoot, 'specrails/run-skill.mjs'), cwd: tmpDir, writeStdout, spawnChild })
+    expect(status).toBe(0)
+    expect(JSON.parse(writeStdout.mock.calls[0]![0]).prompt).toContain('Audit literal $(data)')
+    expect(spawnChild).not.toHaveBeenCalled()
+    expect(() => runner.parseRunnerArgs(['--render-only', '--plain-prompt-stdin', '--model', 'k3'])).toThrow('requires a skill')
   })
 })

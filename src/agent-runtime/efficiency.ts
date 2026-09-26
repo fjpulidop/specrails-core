@@ -1,3 +1,4 @@
+import { BUILTIN_ROLES } from './executor-types.js'
 import type { StepAttemptRecord, WorkflowState } from './workflow-types.js'
 import { CACHE_TOKEN_KEYS, type EfficiencyTotals, type RuntimeEfficiency } from './efficiency-types.js'
 export * from './efficiency-types.js'
@@ -5,11 +6,11 @@ export * from './efficiency-types.js'
 function sum(values: Array<number | null | undefined>): number | null {
   return values.some(value => value == null || !Number.isFinite(value) || value < 0) ? null : values.reduce<number>((total, value) => total + (value ?? 0), 0)
 }
-const AGENT_PHASES = new Set(['architect', 'developer', 'reviewer'])
 
-function totals(attempts: StepAttemptRecord[]): EfficiencyTotals {
+
+function totals(attempts: StepAttemptRecord[], agentRoles: ReadonlySet<string>): EfficiencyTotals {
   const invocations = attempts.flatMap(attempt => attempt.invocations ?? [])
-  const measured = attempts.filter(attempt => !AGENT_PHASES.has(attempt.stepId) || attempt.invocations !== undefined)
+  const measured = attempts.filter(attempt => !agentRoles.has(attempt.stepId) || attempt.invocations !== undefined)
   const complete = measured.length === attempts.length && attempts.every(attempt => !attempt.pendingInvocations?.length)
   const duration = (attempt: StepAttemptRecord) => attempt.completedAt ? Math.max(0, Date.parse(attempt.completedAt) - Date.parse(attempt.startedAt)) : null
   const cache = Object.fromEntries(CACHE_TOKEN_KEYS.map(key => [key, complete ? sum(invocations.map(call => call.usage[key])) : null])) as Pick<EfficiencyTotals, typeof CACHE_TOKEN_KEYS[number]>
@@ -27,12 +28,13 @@ function totals(attempts: StepAttemptRecord[]): EfficiencyTotals {
 }
 
 /** Read-only projection: failed/superseded attempts remain spend, polling never changes it. */
-export function runtimeEfficiency(state: WorkflowState): RuntimeEfficiency {
+export function runtimeEfficiency(state: WorkflowState, roleIds: readonly string[] = BUILTIN_ROLES): RuntimeEfficiency {
+  const agentRoles = new Set(roleIds)
   const phases = [...new Set(state.history.map(attempt => attempt.stepId))].map(stepId => {
     const attempts = state.history.filter(attempt => attempt.stepId === stepId)
     const calls = attempts.flatMap(attempt => attempt.invocations ?? [])
-    return { stepId, ...totals(attempts), providers: [...new Set(calls.map(call => call.provider))], models: [...new Set(calls.map(call => call.model).filter((model): model is string => model !== undefined))] }
+    return { stepId, ...totals(attempts, agentRoles), providers: [...new Set(calls.map(call => call.provider))], models: [...new Set(calls.map(call => call.model).filter((model): model is string => model !== undefined))] }
   })
   const pending = state.history.some(attempt => attempt.pendingInvocations?.length)
-  return { schemaVersion: 1, total: { ...totals(state.history), durationMs: state.usage.durationMs, inputTokens: pending ? null : state.usage.inputTokens, outputTokens: pending ? null : state.usage.outputTokens, costUsd: pending ? null : state.usage.costUsd }, phases }
+  return { schemaVersion: 1, total: { ...totals(state.history, agentRoles), durationMs: state.usage.durationMs, inputTokens: pending ? null : state.usage.inputTokens, outputTokens: pending ? null : state.usage.outputTokens, costUsd: pending ? null : state.usage.costUsd }, phases }
 }

@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 20.19.0
+          node-version: 22.22.3
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -71,17 +71,17 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: ['20.19.0', '22', '24']
+        node: ['22.22.3', '24']
         partition: [full]
+        # The coverage job executes this exact combination once and supplies
+        # the verified release package; do not repeat its complete suite here.
+        exclude:
+          - { os: ubuntu-latest, node: '24', partition: full }
         include:
-          - { os: windows-latest, node: '20.19.0', partition: general }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-1 }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-2 }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-3 }
-          - { os: windows-latest, node: '22', partition: general }
-          - { os: windows-latest, node: '22', partition: runtime-1 }
-          - { os: windows-latest, node: '22', partition: runtime-2 }
-          - { os: windows-latest, node: '22', partition: runtime-3 }
+          - { os: windows-latest, node: '22.22.3', partition: general }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-1 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-2 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-3 }
           - { os: windows-latest, node: '24', partition: general }
           - { os: windows-latest, node: '24', partition: runtime-1 }
           - { os: windows-latest, node: '24', partition: runtime-2 }
@@ -104,15 +104,6 @@ jobs:
       - name: Install and exercise the actual npm package on this OS
         if: matrix.node == '24' && (matrix.partition == 'full' || matrix.partition == 'general')
         run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
-      - name: Preserve the exact package approved for release
-        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: core-package
-          path: ${{ runner.temp }}/core-package/
-          if-no-files-found: error
-          retention-days: 14
-
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -125,11 +116,105 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run test:scripts
       - run: npm run test:coverage
+      - name: Install and exercise the exact package approved for release
+        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
+      - name: Preserve the exact package approved for release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-package
+          path: ${{ runner.temp }}/core-package/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: coverage-report
           path: coverage/
+          retention-days: 14
+
+  engine-robustness:
+    name: Installed engine recovery (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, arch: x64 }
+          - { os: macos-15, arch: arm64 }
+          - { os: windows-latest, arch: x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22.22.3
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify installed package and real CLI crash recovery
+        env:
+          SPECRAILS_VERIFY_ENGINE_ROBUSTNESS: '1'
+        run: node scripts/verify-package.mjs engine-robustness-results
+      - name: Preserve acceptance and recovery evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: engine-robustness-${{ matrix.os }}-${{ matrix.arch }}
+          path: engine-robustness-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  engine-spikes:
+    name: Engine spikes (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, arch: x64 }
+          - { os: macos-15, arch: arm64 }
+          - { os: windows-latest, arch: x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22.22.3
+          architecture: ${{ matrix.arch }}
+          cache: npm
+      - name: Verify target architecture
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e "if(process.arch!==process.env.EXPECTED_ARCH)throw Error('Wrong spike architecture')"
+      - run: npm ci
+      - name: Exercise crash recovery, subgraphs and committed streams
+        run: npm run test:engine-spikes
+      - name: Install and exercise the real package with Desktop Node
+        run: node scripts/verify-package.mjs engine-spike-results/package
+      - name: Check out the exact paired Desktop assembler
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: fjpulidop/specrails-desktop
+          ref: 70c9e8a4a7fbc26b89ed5ac724aed97dfcc27d9f
+          path: engine-spike-desktop
+          persist-credentials: false
+      - name: Install the assembler's locked production dependencies
+        run: npm ci --prefix engine-spike-desktop --omit=dev --ignore-scripts --no-audit --no-fund
+      - name: Assemble the Core source with the paired Desktop script
+        run: node scripts/check-engine-spike-assembly.mjs --desktop engine-spike-desktop --dest "${{ runner.temp }}/core-engine-assembly" --output engine-spike-results/desktop-assembly.json
+      - name: Preserve measured evidence, including failed gates
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: engine-spikes-${{ matrix.os }}-${{ matrix.arch }}
+          path: engine-spike-results/
+          if-no-files-found: error
           retention-days: 14

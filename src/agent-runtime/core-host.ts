@@ -6,7 +6,7 @@ import {
   fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, validatePipelineContext, validateVerificationRequest,
   type PipelineContext,
 } from '../pipeline/pipeline-state.js'
-import { normalizeRuntimeConfig } from './config.js'
+import { normalizeRuntimeConfig, resolveRoleDescriptor, roleIds } from './config.js'
 import { createExecutorRegistry, type ExecutorRegistry } from './executors.js'
 import type { AgentEvent, AgentRole, RuntimeConfig, AgentEventRole } from './executor-types.js'
 import { archive, child, journal, parseAgentObject, SLUG } from './graph/artifacts.js'
@@ -57,7 +57,7 @@ export async function preflightCoreWorkflow(options: Pick<CoreWorkflowOptions, '
   // is completed by the architect (or left explicitly unverified) at run time.
   if (config.verification.length) validateVerificationRequest(context, { kind: 'scoped', commands: config.verification })
   const registry = options.registry ?? createExecutorRegistry(config)
-  for (const selected of Object.values(config.agents)) {
+  for (const selected of roleIds(config).map(id => resolveRoleDescriptor(config, id))) {
     registry.validateLimits(selected.provider, config.limits ?? {})
     for (const tier of [selected, ...(selected.escalation ? [selected.escalation] : [])]) {
       if (tier.effort !== undefined) assertEffortSupported(tier, await registry.capabilities(selected.provider, tier.model))
@@ -102,11 +102,11 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
     }
   }
   const prepared = prepareOpenSpec(context.artifactRoot, options.change, directory)
-  const openspec = Object.fromEntries((['architect', 'developer', 'reviewer'] as const).map(role => {
-    const provider = config.providers.find(item => item.id === config.agents[role].provider)
-    return [role, roleOpenSpecContext(prepared, context.artifactRoot, options.change, directory, role, provider?.kind === 'cli' ? provider.cli : 'claude')]
+  const openspec = Object.fromEntries(roleIds(config).filter(role => resolveRoleDescriptor(config, role).openspecSkill).map(role => {
+    const provider = config.providers.find(item => item.id === resolveRoleDescriptor(config, role).provider)
+    return [role, roleOpenSpecContext(prepared, context.artifactRoot, options.change, directory, resolveRoleDescriptor(config, role), provider?.kind === 'cli' ? provider.cli : 'claude')]
   })) as Record<AgentRole, ReturnType<typeof roleOpenSpecContext>>
-  for (const role of ['architect', 'developer', 'reviewer'] as const) await registry.get(config.agents[role].provider).validateOpenSpec?.(openspec[role])
+  for (const role of Object.keys(openspec)) await registry.get(resolveRoleDescriptor(config, role).provider).validateOpenSpec?.(openspec[role])
   const attempts = config.limits?.maxAttempts ?? 3
   const developerProvider = config.providers.find(item => item.id === config.agents.developer.provider)
   const compactDeveloper = developerProvider?.kind === 'openai-compatible' && (developerProvider.agentLoop ?? 'compact') === 'compact'

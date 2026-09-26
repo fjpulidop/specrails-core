@@ -1,6 +1,6 @@
 import { toolEvent } from './tool-event.js'
 import { normalizeKimiCliModel } from './kimi-model.js'
-import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentRequest, type AgentResult } from './executor-types.js'
+import { AgentExecutionError, unknownUsage, normalizeAgentRequest, type AgentRequest, type AgentResult } from './executor-types.js'
 import { runCliProcess, type CliDuplexControl, type CliProcessRunner } from './cli-process.js'
 import { parseStructuredText } from './openai-executor.js'
 import { WorkspaceTools } from './workspace-tools.js'
@@ -8,13 +8,13 @@ import { WorkspaceTools } from './workspace-tools.js'
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
 /** Native ACP v1 keeps Kimi 0.27 read-only roles usable without a platform skill or a model call during capability negotiation. */
 export async function executeKimiReadonlyAcp(request: AgentRequest, options: { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv; openspecBridge?: { command: string; args: string[] } } = {}): Promise<AgentResult> {
-  validateAgentRequest(request)
-  if (request.role === 'developer' && !options.openspecBridge) throw new AgentExecutionError('Read-only ACP transport cannot execute developer roles', 'invalid_request')
+  request = normalizeAgentRequest(request)
+  if (request.access === 'write' && !options.openspecBridge) throw new AgentExecutionError('Read-only ACP transport cannot execute developer roles', 'invalid_request')
   if (request.maxCostUsd !== undefined) throw new AgentExecutionError('Kimi cannot enforce a strict USD cap', 'cost_limit_unsupported')
   if (request.maxTokens !== undefined) throw new AgentExecutionError('Kimi 0.27 ACP does not report authoritative token usage. Remove the token cap or choose another provider for this role.', 'usage_unavailable')
-  const readOnly = request.role !== 'developer'
+  const readOnly = request.access === 'read'
   const mode = readOnly ? 'plan' : 'auto'
-  const tools = new WorkspaceTools(request.cwd, request.allowedRoots, request.role)
+  const tools = new WorkspaceTools(request.cwd, request.allowedRoots, request.access!)
   let transport: CliDuplexControl | undefined, nextId = 0, sessionId: string | undefined, text = '', completed = false, turns = 0, permissionDenied = false
   const calls = new Map<number, { method: string; success: (result: Record<string, unknown>) => void }>()
   const send = (method: string, params: Record<string, unknown>, success: (result: Record<string, unknown>) => void): void => {

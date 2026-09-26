@@ -1,0 +1,155 @@
+# C3 implementation decisions — 2026-09-26
+
+This is the normative refinement of the paired `core-agent-engine` contract, based on the actual Core 7/instructions 10 baseline, C1 LangGraph 1.4.14/checkpoint 1.1.5 experiments and the C2 role interfaces. It authorizes no capability advertisement before integration tests. C1's required platform/package gate and C2 integration still apply.
+
+## 1. Publication is a two-shape protocol
+
+- `WorkflowDefinitionDraft = Omit<WorkflowDefinition, 'version'> & { version?: string }`. `WorkflowDefinition` is the published schema with its required 64-character lowercase SHA-256 version. There is one public published JSON schema; validation internally permits the one missing top-level field when accepting a draft.
+- `workflows validate --stdin` accepts either shape and returns `{ type: 'runtime-definition-validated', ok: true, version, definition, graph }`. `definition` is the published document. A supplied version must match; return `definition_hash_mismatch` rather than silently rewriting it. Structural/semantic errors return `ok: false, errors` and exit 1. No execution or provider call occurs.
+- Desktop compiles to a raw draft, then saves Core's returned published `definition`. Editing a previously published document removes its old version before validation. `runtime run --definition` requires the published shape and revalidates the hash. Resume uses the frozen published definition and exact retained runtime.
+- Hash the exact parsed document after removing only its top-level `version`. Do not materialize defaults, reorder arrays, normalize Unicode, resolve roles, or rewrite expressions before hashing. Apply runtime defaults after identity validation; the retained Core version fixes their interpretation.
+- Use RFC 8785 canonical UTF-8 bytes and SHA-256. Strict input parsing rejects duplicate keys, invalid UTF-8, lone surrogates, non-finite numbers and unsupported JSON values. Sort object keys by unsigned UTF-16 code units at every level and serialize directly; reconstructing an object and calling JSON.stringify is incorrect for integer-looking keys such as `"10"`/`"2"`. Scalars use ECMAScript JSON serialization; arrays retain order. Limit definition input to 2 MiB and nesting to 64. [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785)
+- Invalid identifiers, missing targets/roles/components, undeclared outcomes, cycles without bounded transitions, invalid expressions/interpolation and recursive component references are errors before execution. Piece schemas are closed registry data. No user callbacks, arbitrary JS, eval or executable plugin registration.
+
+## 2. Three identities, one stable task binding
+
+- `nodePath` identifies a static declared node (`component/child`). `scopeId` identifies a component invocation, including the owning map visit and item index; `branchId` is the stable dynamic branch identifier. They must not be conflated.
+- A durable visit is unique on `(checkpointThreadId, taskCheckpointNs, checkpointId, taskId)`, using the public node `config.executionInfo`. `nodePath`, scope and branch are attached by the compiler, not reverse-engineered from LangGraph namespace strings. The saver already receives taskId and checkpoint config through its public API. ExecutionInfo.checkpointNs is the task namespace, whereas saver.putWrites receives the containing graph namespace: they are different values. Correlate by threadId/checkpointId/taskId, require a unique match, and bind saver_checkpoint_ns on the first putWrites; never compare or parse the two namespace strings.
+- The ledger allocates one monotonically increasing global transition ordinal and one local visit number per `(runId, nodePath, scopeId)` when this task is first admitted. A LangGraph retry or an interrupted-node resume reuses that visit. Every physical retried piece execution gets a new persistent attempt ordinal/attemptId; re-entering a paused approval/question reuses its attempt until it settles. A completed attempt is never executed again.
+- `executionInfo.nodeAttempt` is diagnostic only: the local public-API probe confirms `[1,2]` for retry, but `[1,1]` across interrupt/resume while taskId/checkpointId remain stable. Do not derive durable attempt numbering from it. No private `__pregel_*` APIs are needed.
+- `steps` is keyed by `(run_id,node_path,scope_id)`, not nodePath alone. Status retains aggregate `steps: Record<nodePath,...>` for the agreed compact shape and adds `stepInstances[]` with scopeId/branchId/visit/attempt. Fork/answer selectors use these unambiguous identities.
+
+## 3. State and reducers
+
+Declared business channels remain `$outputs`, `$vars`, `$history`, `$sessions`, `$usage`, `$attempts`, `$consecutiveFailures`, `$candidate`, `$verified`, `$answers`, `$branches`, `$transitions`. State is scoped to a component invocation. Branch children get independent state and return explicit outputs; they never merge all private channels into the parent.
+
+- Add private `$lastOutcome: Record<localNodeId, outcome>` (merge by local node key), `$item: { index, value } | null` (set only at map child admission), `$scope: { id, nodePathPrefix, branchId? }` (immutable) and `$commit` (ephemeral terminal marker). They are not editable via fork patches or exposed as user input channels. `$item` is readable by permitted interpolation inside its map child.
+- `$outputs` and `$sessions` merge by local node key; revisiting one local node replaces its previous value. Distinct nodes never overwrite each other. `$vars` starts from initial/fork inputs; declared capture output may merge its explicit keys, and component input mapping initializes the child's vars. Undefined deletes nothing.
+- `$history`, `$answers` and branch result collections merge entries by stable record ID, reject a conflicting duplicate, and order by `(transition, attempt, ordinal)`. History truncation removes whole oldest entries under `historyMaxChars`; one oversize entry is bounded before insertion and marked truncated. Preserve complete acceptance obligations outside this summary channel.
+- `$usage` merges invocation deltas by invocationId, including unknown flags and known lower bounds. An unknown component keeps the corresponding aggregate null; it does not zero out known usage. The ledger is the authority and prevents duplicates. State contains the bounded projection, not an ever-growing invocation history.
+- `$transitions` takes the maximum committed global admission ordinal; the ledger enforces the global count before admitting every declared node, including components and their children. LangGraph recursionLimit is a secondary guard, not this budget. Retries and interrupt re-entry do not spend a second transition.
+- `$candidate`/`$verified` are authoritative ledger projections with a monotonic candidate revision. Conditional routing uses the just-finished node's `$lastOutcome[nodeId]`, not a single scalar shared by parallel nodes. A stale branch may not replace a newer candidate or receipt.
+- `$consecutiveFailures` reflects the durable failure policy over committed AI attempts; a successful AI attempt resets it, deterministic/non-AI bookkeeping does not. Branch-local recent failure information also remains available, without letting concurrent branches bypass the run-global failure budget.
+
+## 4. Exact terminal transaction
+
+Use `EphemeralValue<TerminalCommit>(false)` from the **public `@langchain/langgraph/channels` export** for `$commit`. The package's root TypeScript declarations misleadingly list EphemeralValue, but its root JS export does not provide it in the installed 1.4.14 build; the channels export works. The local real graph probe verifies putWrites receives the marker with the same taskId as public ExecutionInfo.
+
+1. In a short ledger transaction, validate lease fencing, budget, cancellation and recovery; insert/reuse the visit, start the attempt, claim steering and commit `step_started`. Release the transaction before effects.
+2. Run the piece under its effect/concurrency lease. Record each physical provider invocation's start and settlement durably under invocationId; usage belongs to the invocation and is never billed again from a terminal node summary.
+3. Return state updates plus a bounded `$commit` marker containing attemptId, task binding, lease epoch, outcome, output/history projection, candidate/receipt proposal and completion/error information. The compiler owns this marker; a piece cannot forge it. Failed/retrying attempts are recorded before throwing only a classified retryable error; interrupts must be rethrown unchanged.
+4. In `saver.putWrites`, serialize all writes before entering SQLite. Within **one** `BEGIN IMMEDIATE`, validate marker/task/attempt/lease, write LangGraph pending writes, settle the matching attempt/step, store receipt/candidate projections, allocate persisted workflow event sequences, update run counters and append revision history. Commit once. Any injected failure rolls back all these records.
+5. Emit committed lifecycle events only after commit. Repeated identical putWrites is a no-op for ledger/events; conflicting content for an already settled task is an invariant error. LangGraph's later aggregate `put` is a separate transaction. Restart consumes pending writes instead of invoking the completed node again.
+6. Raw updates, writer chunks and chain-end spans are transient observations, not success evidence. All saver work must settle before final runtime-result. Durable output can be replayed by sequence; transient progress never advances the durable cursor.
+
+Use the SQLite serializer/checkpoint storage format behind the saver only. Engine public ports contain no SQL or LangGraph private types. Serialize no provider work under a DB transaction. `$commit` is excluded from component output schemas, public state/status and fork patches.
+
+## 5. Minimal additive database refinements
+
+Retain the proposed runs/checkpoints/writes/attempts/invocations/receipts/interrupts/inbox/events tables, with these required corrections before v2 ships:
+
+- `runs`: add checkpoint_thread_id, head_checkpoint_json, current_revision, transitions, candidate_revision and lease_epoch; run status/completion are projections of committed effects.
+- `visits`: visit_id PK; run_id/node_path/scope_id/branch_id; local_visit/global_transition; public task binding; before_revision; UNIQUE task binding and UNIQUE(run_id,node_path,scope_id,local_visit).
+- `attempts`: attempt_id PK, visit_id FK, attempt integer, status, lease_epoch, timings and bounded output/error; UNIQUE(visit_id,attempt). `steps` gains scope_id in its key. Invocations remain UNIQUE invocation_id and reference their physical attempt.
+- `interrupts`: interrupt_id PK (LangGraph's actual public interrupt ID), visit_id/attempt_id, node_path/scope_id/branch_id, payload, requested_at, answered_at and answer_json. Resume must target this ID; nodePath-only shorthand is allowed only for one matching pending interrupt.
+- `events`: unique `(run_id,sequence)` with monotonic allocation in the same business transaction, including resume/fork. Unknown usage is preserved. A copied fork never re-emits historical invocation charges.
+- `leases`: owner, epoch/fencing token, acquired_at/heartbeat_at/expires_at. A transaction that mutates execution state checks the current owner+epoch. `control_inbox`: idempotent request_id, kind(cancel/steer), payload, created_at, consumed_by_attempt_id, consumed_at. This replaces separate ad hoc cancellation sidecars; steer is exposed in C8.
+- Add `durable_revisions` and append-only checkpoint-write revisions, recording the logical revision of checkpoint snapshots, pending-write versions and business ledger inserts/updates. This narrowly supports an exact historical fork cut, including overwritten special pending writes. Lease heartbeats are not graph revisions. Compact obsolete revision history only under a future explicitly tested retention policy.
+
+## 6. Verification ordering and concurrency
+
+- Shared repositories have a run-local asynchronous read/write gate: independent read pieces can run concurrently; every write-capable piece takes the exclusive gate. A verification piece is conservatively exclusive. Component/map coordinators do not hold that gate while waiting for children. No parallel writer receives the same mutable candidate.
+- On write admission, invalidate the previous `$verified` durably **before** effects, even if a later failure leaves partial work. At piece settlement fingerprint the actual candidate and increment its revision. Verification itself follows this same initial invalidation, executes its commands, fingerprints again and proposes a new valid receipt only if its checks and pre/post identity rules pass. Install that receipt after candidate refresh in the atomic terminal transaction; do not clear it again because verify is write-capable.
+- End/requiresVerified rechecks the actual candidate and the receipt binding before reporting verified success. An external edit, failing receipt or interrupted writer prevents stale verified delivery. A crash after checks but before terminal commit cannot fabricate a verified receipt.
+- `journal:'ledger-only'` must not create state.json. Existing verifyPipeline currently reads/writes that file, and fingerprintCandidate currently accepts PipelineState: C5 must extract the existing deterministic verification/evidence behavior behind a journal-independent verification port, preserving its tested legacy wrapper and file format. Calling the current wrapper unchanged is invalid for ledger-only runs.
+- Global concurrency and budget admission live in one run coordinator/ledger, not independently in each subgraph. Reserve available provider slots and finite token/cost allowances before parallel invocations; known usage plus live reservations bounds new admissions. Unknown prices are not zero. Never duplicate the entire remaining run budget per branch.
+
+## 7. Fork is a complete historical copy
+
+- Fork requires no current source execution lease and uses the immutable frozen request/definition/config/runtime identity. Select a **visit**, not merely a label. `--from <nodePath>` selects its latest recorded visit only when the scope is unambiguous; add `--scope <scopeId> --visit <number>` for repeated/nested selection. Invalid or ambiguous selection is a structured error, never a guessed branch.
+- `before_revision` is the complete DB cut immediately before the selected visit was admitted. Fork copies the entire parent graph, all child namespaces and pending writes at that cut into a newly staged private run directory. It reconstructs active saver rows from their append-only revisions, not only the child values. It preserves opaque checkpoint IDs and checkpoint thread IDs inside the isolated destination DB; external runId is new. This avoids rewriting serialized checkpoint blobs or private LangGraph namespace structures.
+- Preserve the root checkpoint config and all child namespace heads as of that same cut. Keep completed sibling pending writes that existed then; remove later writes/checkpoints/attempts from the active fork history. Resume the root graph so its parent continuation and pending branches survive. The original DB and files are never modified.
+- Acquire a short source SQLite writer reservation (`BEGIN IMMEDIATE`), verify the inactive lease, and copy rows into a separately opened staged destination DB using source SELECTs. Release the source with ROLLBACK. Do not use raw filesystem copying with an outstanding WAL, and do not use node:sqlite.backup on the connection holding BEGIN IMMEDIATE: the local Node22.22.3 probe fails that operation (`not an error`). Copying serialized blobs/rows preserves their bytes; destination publication is an atomic no-overwrite directory operation after integrity/foreign-key checks.
+- Apply only a validated `$vars`/`$outputs` patch through public updateState on the **destination** selected state, then update the destination root/namespace head record using returned checkpoint configs. Preserve all untouched siblings. Nested updateState propagation must be proven with a complete parent fixture; child-only seed success does not satisfy acceptance.
+- Fork inherits historical usage/transition consumption at the cut (so budget ceilings cannot be reset by repeated forks), but copied invocations are marked inherited and emit no new accounting events. New invocationUsage counts only physical calls made by the fork. Clear source execution leases and pending control messages; preserve pending human interrupts at the selected cut and identify their ancestry. New provider sessions start unless explicit safe cross-fork continuation is separately proven.
+- No automatic repository rollback is implied: Desktop owns worktree snapshots. On fork admission re-fingerprint its supplied repository context, invalidate receipts when changed and preserve explicit interrupted-write recovery. Implementation-subgraph fork additionally requires its pipeline journal/artifact snapshot to match the chosen cut; C6 must supply that adapter before this case is advertised.
+
+## 8. Cancellation, leases and steering
+
+- Execution lease: heartbeat every15s, expiry60s; compare-and-swap acquisition/takeover with increasing epoch. Only the current epoch may begin or settle work. Lost lease aborts the process tree and rejects late commits.
+- Cancel is an idempotent inbox transaction available to another process without acquiring the execution lease. The owner observes it at every admission and at most every250ms while awaiting effects, aborts all descendant controllers/process groups, waits for them to settle and confirms cancelled state durably. A write with uncertain effects remains an interrupted write requiring explicit recovery; cancellation never converts it into success.
+- A crashed owner is distinguished from a cooperative cancellation. Taking an expired lease does not authorize replaying an uncertain write; run status surfaces the pending recovery decision first. Read-only failures can retry under the declared policy.
+- Steering is at most20,000 characters per message and a bounded inbox. Claim messages atomically at the next eligible AI attempt boundary, recording attemptId before provider work. If that attempt crashes, recovering the same logical attempt uses its claimed messages again; later attempts do not consume them twice. The injector appends a clearly delimited operator section and never changes frozen instructions/acceptance obligations. Do not advertise signal/steeringInbox before C8 consumer tests.
+
+## 9. Narrow ports and file ownership for parallel C3 work
+
+Seed `engine/contracts.ts` first (compiler owner) with these concrete shared values; both implementations import them without reaching across adapter internals:
+
+```ts
+interface TaskIdentity { checkpointThreadId: string; checkpointId: string; taskCheckpointNs: string; taskId: string }
+interface ExecutionScope { id: string; nodePathPrefix: string; branchId?: string }
+interface AttemptFrame { runId: string; nodePath: string; scope: ExecutionScope; task: TaskIdentity; visitId: string; visit: number; transition: number; attemptId: string; attempt: number; leaseEpoch: number }
+interface PieceResult { outcome: string; output?: JsonValue; history?: HistoryEntry[]; candidate?: CandidateProposal; receipt?: VerificationReceipt; completion?: Completion }
+interface PieceExecutionContext { state: CoreDefinitionState; frame: AttemptFrame; signal: AbortSignal; progress(event: TransientEngineEvent): void }
+interface PieceDescriptor { kind: string; paramsSchema: JsonObject; outcomes: readonly string[]; effect: 'read' | 'write'; requiresAI: boolean }
+interface Piece { descriptor: PieceDescriptor; execute(params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> }
+interface NodeExecutionPort {
+  enter(input: NodeAdmission): Promise<AttemptFrame>;
+  execute(frame: AttemptFrame, effect: 'read' | 'write', operation: (signal: AbortSignal) => Promise<PieceResult>): Promise<PieceResult>;
+  terminal(frame: AttemptFrame, result: PieceResult): TerminalCommit;
+  interrupted(frame: AttemptFrame, error: unknown): Promise<void>;
+  failed(frame: AttemptFrame, error: unknown): Promise<{ retryable: boolean }>;
+}
+```
+
+`NodeAdmission` contains nodePath/kind/scope/public task identity/retry policy/AI flag; it never asks the compiler to allocate SQL IDs. `TerminalCommit` is a versioned engine-owned bounded data marker built by the port, containing frame/result plus a content digest. The compiler returns it with state patches; saver commits it. Piece factories bind their own provider/shell/verification/OpenSpec ports at composition, so PieceExecutionContext does not become a service locator. For human nodes, a dedicated interrupt adapter validates/stores the public interrupt payload and result; errors representing LangGraph interruption are not ordinary failures.
+
+- **Compiler owner (/root/core_audit):** contracts.ts, definition-types.ts, definition-schema.ts and schemas/workflow-definition.schema.json, canonical-json.ts, definition-validator.ts, expressions.ts, state.ts, piece-registry.ts, compiler.ts and nearest pure/compiler tests. Expose `validateWorkflowDefinition(input, registry, roles)`, `compileWorkflowDefinition(definition, registry, execution)`; registry dependencies are immutable constructor inputs.
+- **Durability owner (/root/core_planning):** checkpoint/database.ts, checkpoint/saver.ts, checkpoint/ledger.ts, checkpoint/lease.ts and their real durable/crash tests. Supply the transactional ledger admission/settlement methods used by NodeExecutionPort. No repository-wide manager hierarchy.
+- **Root/integration:** runs.ts, execution.ts, budget.ts, events.ts, fork.ts and NodeExecutionPort composition, plus CLI operations/admission and runtime identity, package exports/schema packaging, C2 role integration, real provider/verification composition and three-platform acceptance. C3 registry may use deterministic fixture pieces until C4; no engineV2 capability or runtime dispatch switch until the integrated admission/recovery tests and gates pass.
+- Before parallel edits, agree the contracts.ts exact types in the shared integrated checkout. Each owner edits only assigned files; root handles commits/PRs. No changes to C0 checkout for C3.
+
+## 10. Reuse existing cost/quality policy instead of new provider loops
+
+- Adapt existing createRoleInvoker/selectRoleRoute, provider strategies and compact guardrails. C2's descriptors (`access`, `artifacts`, optional `prompt`/`openspecSkill`) remain authoritative; do not add an invented compact descriptor field. Built-in compact behavior stays explicit; custom roles use bounded free turns.
+- Existing role-execution.json is keyed only by role and cannot back parallel graph scopes. Inject a narrow RoleStatePort for session/routing state keyed by `(runId,scopeId,nodePath,role,provider identity)`; retain the legacy file default. Identity includes provider/config/selection, role instructions/OpenSpec/context fingerprints. Session continuation requires supported capability plus exact identity; otherwise build full context.
+- Reuse repositoryContextSnapshot/renderRepositoryContext bounded manifests and revocation of removed facts. Keep complete acceptance obligations even when subsequent turns receive incremental repository context. Reuse incremental review logic; truncated context, repository/scope changes and transversal build/dependency/security/contracts require full review.
+- Reuse one bounded in-session protocol/participation repair and the single documented full-context fallback for an unsupported/expired session. Retrying malformed output must not open unbounded extra agent turns. Persist invocation starts/results and prompt/context bytes so evaluation measures physical cost, not graph events.
+- Keep existing adaptive built-in routes: architect deepening and reviewer repair may escalate to configured quality; developer escalates after two distinct failed candidates. Feed candidate-based failures through a narrow routing-history projection, not fabricated legacy WorkflowState. Custom role escalation remains opt-in configuration, not an automatic tier jump.
+- Reuse verification receipt reuse only when deterministic/read-only declarations, candidate, plan, command, explicit inputs, toolchain, environment and overrides match. Preserve configured concurrency/resource conflicts. Reuse convergence stops for unchanged failing candidates/plans, repeated blockers and regression cycles; do not rerun identical checks or ask the same agent to repair an unchanged candidate indefinitely.
+- C3 adds no cross-run LLM cache and no opaque LangGraph node cache for effectful nodes. Durable pending writes are the reuse mechanism for completed work. Reservations, null-safe usage and terminal evidence enforce budgets; quality escalation is evaluated against the existing corpus before changing defaults.
+
+## Required C3 evidence
+
+Canonical RFC vectors and duplicate-key rejection; real parallel scoped reducers; retry/resume stable visits and unique physical attempts; no global-transition overrun with nested nodes; repeated/failed putWrites rollback and exactly-once terminal events; SIGKILL before/after effects/pending writes/snapshot; lease takeover rejects late writer; cancellation stops descendants; verification self-write installs a valid receipt and later writes invalidate it; read pieces overlap but writers/verification do not; fork preserves every source row/blob and parent/child/sibling continuation with repeated internal nodes; inherited usage emits no accounting twice. Include actual package/platform runtime tests, not mocked LangGraph metadata. Keep C3 capability advertising off until these pass.
+
+Local probe: `/private/tmp/core-engine-c3-public-api-probe.mjs`, Node22.22.3, 2026-09-26: assertions passed for public ExecutionInfo retry/resume stability and ephemeral marker putWrites task correlation; backup-under-source-write-reservation correctly identified as unsupported. This is targeted API evidence, not production fork acceptance.
+
+## Implementation clarifications (2026-09-26)
+
+- Final non-retry failures return a normal engine terminal marker and commit atomically with pending writes. Only an approved safe retry records its failed attempt before throwing. `NodeExecutionPort.failed(frame,error,{retry})` therefore settles early only when it actually authorizes that retry. An uncertain write (abort/timeout/lost lease) rethrows its error and uses LangGraph error pending writes plus an interrupted ledger attempt; it must not publish ordinary completed-node writes that would make `--recover` skip the node. Human interruptions retain their dedicated interrupt writes.
+- An internal component `end` keeps the business `outcome: success|failure` and may additionally declare `exit: <label>` to select a declared component output. Its default is next for success and failed for failure. A root end cannot set exit. This resolves the former contradiction between a two-value end outcome and arbitrary declared component output labels without mixing business success with routing labels.
+- Regex matching/capture evaluates a constant trusted script with regex/text supplied as data under a 50ms VM execution timeout. User JavaScript remains forbidden. Pattern and input bounds apply before evaluation, and timeout yields a structured condition/capture error.
+
+- Definition-level `delivery.requiresVerified:true` enforces root terminal verification even if an end parameter omits or disables it. The compiler combines the policies at execution time without rewriting the frozen document/hash. Component-local exits do not prematurely enforce the root delivery gate. Only compiler-owned `completesRun:true` settles global run completion; local component veredicts remain node evidence.
+- Component/map coordinators acquire no repository or AI permit while waiting for children. Their metadata still reports the aggregate write effect for authoring validation; their wrapper admission itself is read-only and safely reentrant. Each actual child piece owns its effect through terminal commit. Map scopes carry the stable map-visit ID and inherited concurrency limits; the run coordinator applies local groups and the global limit around physical AI work. `$maps` and `$exit` are private engine state; repeated maps replace branch collections by visit ID and transition, never mixing results from separate visits.
+
+### Full-status evidence projection (26 September continuation)
+
+Full status adds the current committed attempt's `output` to each `state.scopes`
+entry, together with kind and attemptId. This additive public projection lets
+hosts harvest evidence without opening SQLite or collapsing map/component
+scopes. Compact status omits outputs; `state.steps` remains the existing summary.
+The source is the exact `steps.last_attempt_id`, never an older successful visit.
+
+### Fork acknowledgement recovery
+
+`fork --request-id <safe-id>` optionally makes a published child recoverable after
+a host acknowledgement loss. Core stores the exact request digest and original
+fork receipt in the child's durable ledger before publication. A retry with the
+same child ID, source, cut, patch and request ID returns that receipt read-only,
+even if the child has progressed. A different request or a child created without
+that receipt still returns `run_exists`; no existing directory is overwritten.
+Desktop preserves published children after transport/materialization failure and
+retries with the same request ID, comparing every existing frozen host file before
+completing missing files. This does not reexecute a node or alter the source.

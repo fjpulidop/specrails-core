@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "id": "verify-fix",
+  "title": "Verify Fix",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "verify",
+  "maxTransitions": 100,
+  "roles": [
+    "developer"
+  ],
+  "nodes": {
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "fix",
+        "failed": "failed"
+      }
+    },
+    "fix": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "developer",
+        "prompt": "Repair the actual verification failures, preserving the accepted scope."
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "470a81ee0ecd22e41b4bacbe3c48fe9e05a48799c15f4b77cc36443d177a281e"
+}
