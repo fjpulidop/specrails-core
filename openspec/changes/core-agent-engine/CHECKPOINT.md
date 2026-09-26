@@ -1,5 +1,10 @@
 # Checkpoint — 26 September 2026
 
+## CI continuation — 26 September 2026, 22:25 CEST
+
+Run 36268127165 (37a46681) completed: all general/runtime matrix jobs and all three installed-package recovery jobs passed. Windows C1 spikes remain failing while local C1 integration awaits explicit approval after auto-review rejection. Coverage failed two late-fork integration cases at their explicit 40-second POSIX ceiling (not a coverage threshold failure). Raised only these multi-workflow fork test ceilings, plus their related incomplete-journal case, to 120 seconds on POSIX; Windows remains 180 seconds. Assertions and coverage thresholds are unchanged. Focused fork regression: 6/6 passed in 51.17 seconds. Full CI rerun is still required for this change.
+
+
 The user requested a checkpoint because their weekly quota was almost exhausted.
 The original objective remains **the entire plan, not just the foundations**.
 This checkpoint is unfinished implementation, not production acceptance. Do not
