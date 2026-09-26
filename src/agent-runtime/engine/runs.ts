@@ -206,7 +206,11 @@ export async function cancelRun(directory: string, requestId?: string) {
       const ledger = new RunLedger(database, token, { maxTransitions: 1 })
       database.transaction('workflow-cancelled', () => {
         lease.assert(token)
-        database.put('runs', { ...ledger.run(), status: 'cancelled', active_duration_ms: ledger.activeDurationMs(), active_started_at: null })
+        const run = ledger.run()
+        // An idempotent retry or a run finishing between inbox admission and
+        // lease acquisition must not rewrite terminal truth or duplicate it.
+        if (run.status === 'cancelled' || run.status === 'succeeded' || run.completion_json) return
+        database.put('runs', { ...run, status: 'cancelled', active_duration_ms: ledger.activeDurationMs(), active_started_at: null })
         appendRunEvent(database, runId, 'workflow_cancelled', {})
       })
       inbox.acknowledgeCancellation(token)

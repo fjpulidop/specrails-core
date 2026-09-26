@@ -18,6 +18,7 @@ This update supersedes the partial-wave findings below only where stated. Work r
 - Verified Core changes are saved in `c282a12b` with DCO. Local C1 ancestry integration was rejected by automatic approval review because the handoff prohibits merges; clarification is pending. No merge executed. C1/C2 branch reconciliation and remote CI dispatch remain outstanding.
 - Full Core coverage passed: 98 files, 1215 passed / 1 Windows-only skip, 605.27 seconds; statements 87.89%, branches 79.95%, functions 93.21%, lines 93.99%. This includes actual CLI validation of all eight documentation examples. Thresholds unchanged. C1/C2 ancestry, full paired Desktop/Web work and remote platform gates remain pending.
 - Follow-up D2 transport fix: v2 `runtime-result` now carries authoritative `revision` and `eventCursor`, allowing Desktop to persist the final projection frontier atomically. Build and all seven real CLI acceptance tests passed after this change; the full coverage result above predates this additive field change.
+- Follow-up cancellation fix: retrying an accepted cancellation no longer duplicates `workflow_cancelled` or replaces terminal truth reached before lease acquisition. Run lifecycle tests passed 11/11 and build passed. CI run 36265688629 was dispatched on preceding commit 4dd75eae; it is not acceptance of this later fix.
 
 ## Continuation checkpoint — 26 September 2026, 19:55 CEST (Claude Code session)
 

@@ -125,6 +125,18 @@ it('cancels an inactive human pause and rejects subsequent provider execution', 
   expect(f.requests).toHaveLength(0)
 })
 
+it('does not duplicate the terminal cancellation event when its request is retried', async () => {
+  const f = fixture({ ask: { kind: 'approval', params: { reason: 'Proceed?' }, ends: { next: 'inspect' } }, inspect: prompt, done })
+  await createRun(f)
+  const accepted = await cancelRun(f.directory, 'cancel-retry')
+  expect(await cancelRun(f.directory, 'cancel-retry')).toEqual(accepted)
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    const rows = database.sqlite.prepare('SELECT payload_json FROM events WHERE run_id=?').all(f.context.runId)
+    expect(rows.filter(row => JSON.parse(String(row.payload_json)).type === 'workflow_cancelled')).toHaveLength(1)
+  } finally { database.close() }
+})
+
 it('rejects an incompatible definition before creating a run database', async () => {
   const f = fixture()
   await expect(createRun({ ...f, definition: { ...f.definition, title: 'Tampered' } })).rejects.toMatchObject({ code: 'invalid_definition' })
