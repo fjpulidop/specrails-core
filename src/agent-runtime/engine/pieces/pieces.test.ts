@@ -102,6 +102,18 @@ describe('reviewed piece catalog and control', () => {
 })
 
 describe('free prompts and declared roles', () => {
+  it('pauses a blocked verification turn before accepting its success sentinel', async () => {
+    const f = fixture((_request, call) => ({ text: call === 1 ? 'VERIFICATION: PASS\nLOOP_BLOCKED: Which scope?' : 'VERIFICATION: PASS', usage: unknownUsage() }))
+    const params = { engine: { provider: 'fixture' }, text: 'Verify the selected scope', access: 'read', sentinel: 'verification' }
+    await expect(f.run('prompt', params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    f.execution.interrupt = request => { expect(request).toMatchObject({ kind: 'question', prompt: 'Which scope?' }); return 'Billing only' }
+    const resumed = await f.run('prompt', params)
+    expect(resumed).toMatchObject({ outcome: 'pass', answers: [{ value: 'Billing only' }] })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('Billing only')
+  })
+
   it.each(['role-turn', 'decider'])('preserves %s timer overrides through structured-response repair', async kind => {
     const f = fixture((_request, call) => ({ text: call === 1 ? 'malformed' : '{"verdict":"stop","reason":"evidence verified"}', usage: unknownUsage() }))
     f.deps.config.limits = { timeoutMs: 1000, idleTimeoutMs: 2000 }

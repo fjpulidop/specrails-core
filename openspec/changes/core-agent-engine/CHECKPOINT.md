@@ -1,3 +1,16 @@
+## Compatibility follow-up — 27 September 2026
+
+Kimi's ACP transport now forwards explicit idle bounds, including zero, instead
+of dropping them. Verification prompts also preserve human blocking: a
+`LOOP_BLOCKED` question takes precedence even if that response contains
+`VERIFICATION: PASS`. Resume reuses the recorded response, accepts the selected
+answer and requires the subsequent provider result before completing verification.
+
+Typecheck/build and 45 focused Kimi/piece/documentation tests passed after the
+full-CI timer commit `75e8e975`. The regression proves two total invocations
+across pause/resume, rather than replaying the original blocked invocation.
+No paid model calls were used.
+
 ## Invocation timer compatibility — 27 September 2026
 
 The `prompt`, `role-turn` and `decider` pieces accept per-piece invocation and

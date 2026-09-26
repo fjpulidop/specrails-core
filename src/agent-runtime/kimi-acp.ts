@@ -121,7 +121,7 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
     call.success(record(message.result))
   }
   const result = await (options.runProcess ?? runCliProcess)({ command: 'kimi', args: ['acp'] }, {
-    cwd: tools.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, env: options.env, onLine: onMessage,
+    cwd: tools.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 15 * 60_000, idleTimeoutMs: request.idleTimeoutMs, env: options.env, onLine: onMessage,
     duplex: control => {
       transport = control
       send('initialize', { protocolVersion: 1, clientInfo: { name: 'specrails-core', version: '1' }, clientCapabilities: { fs: { readTextFile: readOnly, writeTextFile: readOnly }, terminal: readOnly } }, initialized => {

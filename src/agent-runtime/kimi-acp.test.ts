@@ -62,6 +62,13 @@ function harness(input: AgentRequest, options: HarnessOptions = {}): { runProces
   return { runProcess, messages }
 }
 describe('Kimi 0.27 read-only ACP compatibility', () => {
+  it.each([0, 30_000])('preserves explicit invocation and idle limits in ACP (%s ms idle)', async idleTimeoutMs => {
+    const input = request({ timeoutMs: 0, idleTimeoutMs }), fake = harness(input)
+    const runProcess = vi.fn(fake.runProcess)
+    await executeKimiReadonlyAcp(input, { runProcess })
+    expect(runProcess.mock.calls[0][1]).toMatchObject({ timeoutMs: 0, idleTimeoutMs })
+  })
+
   it('negotiates observed 0.27 mode options before prompting and serves scoped source reads', async () => {
     const input = request(), fake = harness(input)
     const result = await executeKimiReadonlyAcp(input, fake)

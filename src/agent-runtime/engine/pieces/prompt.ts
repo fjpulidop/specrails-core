@@ -71,7 +71,7 @@ export function promptPiece(bindings: PieceDependencyProvider): Piece {
           }
         }
         sessionId = params.sessionContinuity !== 'none' && capabilities.continuation === 'supported' ? result.sessionId : undefined
-        if (params.sentinel === 'blocked') {
+        if (params.sentinel === 'blocked' || params.sentinel === 'verification') {
           const question = result.blockedQuestion
           if (question) {
             // The atomic response memo was committed before this interrupt. A
