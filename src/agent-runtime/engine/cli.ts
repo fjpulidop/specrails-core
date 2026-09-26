@@ -137,7 +137,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       const current = result.state.usage[key], prior = previous ? previous.state.usage[key] : 0
       return current === null || prior === null ? null : Math.max(0, current - prior)
     }
-    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, workflow: workflowIdentity(result.workflow), completion: result.completion,
+    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
       ...('forkOf' in result ? { forkOf: result.forkOf } : {}), ...('error' in result ? { error: result.error } : {}),
       usage: result.state.usage, invocationUsage: { costUsd: delta('costUsd'), inputTokens: delta('inputTokens'), outputTokens: delta('outputTokens') }, metrics: result.metrics, efficiencySummary: result.efficiencySummary })
     return result.state.status === 'succeeded' ? 0 : result.state.status === 'paused' ? 2 : 1

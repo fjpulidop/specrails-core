@@ -151,6 +151,9 @@ describe('status and efficiency summary', () => {
       state: { runId: 'timed', status: 'paused', lease: null, pendingQuestion: { stepId: 'ask' }, steps: { check: { kind: 'condition', status: 'succeeded', visits: 1 }, ask: { kind: 'question', status: 'paused', visits: 1 } } },
       efficiencySummary: { schemaVersion: 1, runId: 'timed', invocations: { total: 0, byKind: { initial: 0 } } } })
     expect(first.last!.state.pendingInterrupts).toHaveLength(1)
+    expect(result.last!.revision).toBe(first.last!.revision)
+    expect(result.last!.eventCursor).toBe(first.last!.eventCursor)
+    expect(result.last!.revision).toBeGreaterThan(0)
     const pausedActive = first.last!.state.usage.durationMs as number
     expect(pausedActive).toBeGreaterThanOrEqual(0)
     expect(first.last!.metrics.total.durationMs).toBe(pausedActive)
