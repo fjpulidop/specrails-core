@@ -7,8 +7,12 @@ Precondition: both paired OpenSpec changes pass strict validation. Preserve audi
 - [x] 1.3 Extract the existing pure definition fingerprint and implementation workflow factory without changing observable legacy behavior.
 - [x] 1.4 Freeze normal and compact-developer fingerprints; test drift in edges, identity, ordering and transition budgets against actual node descriptors.
 - [x] 1.5 Use the API constant in runtime identity, correct stale runtime/scaffold docs and record any further audited drift in the tracked plan.
-- [ ] 1.6 Run affected contract/core-host/CLI/legacy/install-config tests and full `npm run ci`; capture command results and retained-runtime evidence in the C0 PR.
-- [ ] 1.7 Record dated commit/evidence and remaining publication gate; pair D0 acceptance with published C0 without auto-publishing releases.
+- [x] 1.6 Run affected contract/core-host/CLI/legacy/install-config tests and full `npm run ci`; capture command results and retained-runtime evidence in the C0 PR.
+- [x] 1.7 Record dated commit/evidence and remaining publication gate; pair D0 acceptance with published C0 without auto-publishing releases.
+
+C0 evidence, 2026-09-26: implementation [6ab6b3ce](https://github.com/fjpulidop/specrails-core/commit/6ab6b3ce2f26ee5f5d8f8055b9229322a65ad501), [PR #385](https://github.com/fjpulidop/specrails-core/pull/385). On macOS arm64 with Node 22.22.3, the six affected suites passed **144/144** with no skips, including the retained-runtime regression. `npm run ci` exited 0: typecheck passed, **24/24** script tests, **67/67** coverage suites and **1004 passed / 1 platform-only skip**. The pre-existing skip is the Windows executable-path quoting case in `src/installer/util/exec.test.ts`; the successful Windows CI lanes exercise it. No new skip or coverage reduction was introduced. Coverage: statements **86.62%**, branches **78.79%**, functions **91.04%**, lines **92.32%**. Package verification reported: `Verified specrails-core-6.0.1.tgz: two CLI entries, four provider assemblies and four frozen runtime journals`.
+
+The [source-commit CI run](https://github.com/fjpulidop/specrails-core/actions/runs/36227847244) passed all **22 jobs**, covering Linux, macOS and Windows across Node 20/22/24, coverage and package checks. `runtime api` retains `apiVersion: 1`, `workflowVersions: ["7"]`, instructions `"10"` and no v2 capability. OpenSpec strict validation passed with zero issues. C0 publication and therefore D0 release acceptance remain pending; these results do not mark C1 or later engine blocks complete.
 
 ## 2. C1 — Evidence-driven SQLite, subgraph and streaming spikes
 
