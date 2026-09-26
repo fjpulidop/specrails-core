@@ -173,7 +173,7 @@ describe('free prompts and declared roles', () => {
     expect(first.outcome).toBe('continue')
     f.execution.state.$outputs.node = first.output!
     const second = await f.run('decider', { roleId: 'analyst', goal: 'finish', noProgress: 2 })
-    expect(second).toMatchObject({ outcome: 'stop', output: { stalled: true }, completion: { ok: false, reasons: ['no_progress'] } })
+    expect(second).toMatchObject({ outcome: 'failed', status: 'failed', output: { verdict: 'continue', stalled: true }, completion: { ok: false, reasons: ['no_progress'] } })
     expect(f.requests[0].prompt).toContain('not proof on its own')
     expect(f.requests[0].prompt).toContain('Tests must pass')
   })

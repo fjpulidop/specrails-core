@@ -40,10 +40,10 @@ export function deciderPiece(bindings: PieceDependencyProvider): Piece {
       const continueCount = structured.verdict === 'continue' && candidateHash !== null ? previous?.verdict === 'continue' && previous.candidateHash === candidateHash ? (previous.continueCount ?? 0) + 1 : 1 : 0
       const limit = (params.noProgress as number | undefined) ?? deps.policies?.noProgress
       const stalled = limit !== undefined && continueCount >= limit
-      const verdict = stalled ? 'stop' : structured.verdict
-      return { ...result, outcome: verdict, output: { verdict, reason: structured.reason, candidateHash, continueCount, ...(stalled ? { stalled: true } : {}) },
+      const verdict = structured.verdict
+      return { ...result, outcome: stalled ? 'failed' : verdict, output: { verdict, reason: structured.reason, candidateHash, continueCount, ...(stalled ? { stalled: true } : {}) },
         history: [historyEntry(context, `${verdict}: ${structured.reason}${stalled ? ' (no progress)' : ''}`)],
-        ...(stalled ? { completion: { ok: false, verified: false, reasons: ['no_progress'] } } : {}) }
+        ...(stalled ? { status: 'failed' as const, error: { code: 'no_progress', message: 'The candidate did not change across the allowed continue decisions' }, completion: { ok: false, verified: false, reasons: ['no_progress'] } } : {}) }
     },
   }
 }

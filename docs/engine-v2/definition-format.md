@@ -560,3 +560,9 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
   }
 }
 ```
+
+A decider reaching `noProgress` emits `failed` with `no_progress`, preserving the
+model's `continue` verdict in its output. Route that outcome to a failure end or
+an explicit repair path. It never takes `stop`: an unchanged candidate is not
+proof that the goal is complete. Any repair path remains subject to the run's
+transition, budget and verification limits.

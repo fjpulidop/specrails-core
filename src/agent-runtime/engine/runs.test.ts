@@ -20,14 +20,14 @@ afterEach(() => { for (const directory of directories.splice(0)) rmSync(director
 const done: DefinitionNode = { kind: 'end', params: { outcome: 'success' }, ends: {} }
 const prompt: DefinitionNode = { kind: 'prompt', params: { engine: { provider: 'fixture' }, text: 'Read the project', access: 'read' }, ends: { next: 'done', failed: null } }
 
-function fixture(nodes: Record<string, DefinitionNode> = { done }, extra: Partial<WorkflowDefinitionDraft> = {}) {
+function fixture(nodes: Record<string, DefinitionNode> = { done }, extra: Partial<WorkflowDefinitionDraft> = {}, configOverrides: Partial<RuntimeConfig> = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'definition runtime ')); directories.push(root)
   const repository = path.join(root, 'repository'), backlog = path.join(root, 'backlog')
   mkdirSync(repository); mkdirSync(backlog); execFileSync('git', ['init', '-q', repository])
   writeFileSync(path.join(repository, 'source.txt'), 'frozen fixture')
   const context = validatePipelineContext({ schemaVersion: 1, runId: 'definition', backlogRoot: backlog, artifactRoot: repository, artifactRepositoryId: 'repo',
     repositories: [{ id: 'repo', name: 'Repo', path: repository }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 'goal', title: 'Inspect project', description: 'Execute the selected workflow' }] })
-  const role = { provider: 'fixture' }, config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: role, developer: role, reviewer: role }, verification: [] }
+  const role = { provider: 'fixture' }, config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: role, developer: role, reviewer: role }, verification: [], ...configOverrides }
   const requests: AgentRequest[] = []
   const registry = new ExecutorRegistry().register('fixture', { async execute(request) { requests.push(request); return { text: 'Inspected', usage: { inputTokens: 3, outputTokens: 2, costUsd: 0.01 } } } })
   const published = validateWorkflowDefinition({ schemaVersion: 1, id: 'runtime-test', title: 'Runtime test', journal: 'ledger-only', change: 'none', roles: [],
@@ -162,4 +162,22 @@ it('refuses a second executor while the existing lease is current', async () => 
   const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite')), lease = new RunLease(database, f.context.runId), token = lease.acquire('another-process')
   try { await expect(resumeRun(f.directory, { registry: f.registry })).rejects.toMatchObject({ code: 'lease_held' }) }
   finally { lease.release(token); database.close() }
+})
+
+it('routes an unchanged decider limit to failure rather than a successful stop end', async () => {
+  const f = fixture({
+    decide: { kind: 'decider', params: { roleId: 'auditor', goal: 'Finish the missing work', noProgress: 2 }, ends: { continue: 'decide', stop: 'done', failed: null } },
+    done,
+  }, { roles: ['auditor'] }, { roles: { auditor: { provider: 'fixture', access: 'read', artifacts: 'none' } } })
+  f.registry.register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: '{"verdict":"continue","reason":"Required behavior remains missing"}', usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const result = await createRun(f)
+  expect(result.state.status).toBe('failed')
+  expect(result.completion).toMatchObject({ ok: false, reasons: ['no_progress'] })
+  expect(f.requests).toHaveLength(2)
+  const full = await statusRun(f.directory, false)
+  expect(full.state.scopes.some(scope => scope.nodePath === 'done')).toBe(false)
+  expect(full.state.scopes.find(scope => scope.nodePath === 'decide')).toMatchObject({ status: 'failed', output: { verdict: 'continue', stalled: true } })
 })

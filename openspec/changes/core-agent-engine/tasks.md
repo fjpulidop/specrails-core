@@ -31,10 +31,10 @@ Independent experiment branch/PR; no production engine implementation or Node mi
 
 Depends on C0; preserve built-in argv. Detailed checklist: [C2](reference/core-agent-engine-tasks-core.md#c2--roles-abiertos-access-artifacts-instructions-nativecommand-y-roles).
 
-- [ ] 3.1 Add role descriptors and request access/artifacts/instructions/nativeCommand validation with backward-compatible built-in defaults.
-- [ ] 3.2 Derive provider, workspace and OpenSpec permissions from descriptors; implement native commands through existing provider strategies.
-- [ ] 3.3 Extend config/schema, role resolution, prompt construction, routing and efficiency code; tolerate free prompt inputs and advertise openRoles only when complete.
-- [ ] 3.4 Test built-in argv identity and custom permission/command behavior across provider fixtures, update contract/docs, run `npm run ci` and pair schema vendoring with D1b.
+- [x] 3.1 Add role descriptors and request access/artifacts/instructions/nativeCommand validation with backward-compatible built-in defaults.
+- [x] 3.2 Derive provider, workspace and OpenSpec permissions from descriptors; implement native commands through existing provider strategies.
+- [x] 3.3 Extend config/schema, role resolution, prompt construction, routing and efficiency code; tolerate free prompt inputs and advertise openRoles only when complete.
+- [x] 3.4 Test built-in argv identity and custom permission/command behavior across provider fixtures, update contract/docs, run `npm run ci` and pair schema vendoring with D1b.
 
 ## 4. C3 — Durable definition engine
 
@@ -44,10 +44,10 @@ Depends on accepted C1 and C2. Contract questions are resolved in [c3-protocol.m
 - [x] 4.2 Implement/export definition schema, canonical hash and semantic validation with one test per contract error and no executor side effects.
 - [x] 4.3 Implement state reducers, bounded history, null-preserving usage, piece descriptors/registry and test-only pieces.
 - [x] 4.4 Compile static/conditional edges, retry, bounded cycles and proven interruption/composition primitives; test graph equivalence.
-- [ ] 4.5 Implement SQLite saver/ledger/lease with atomic terminal records and rollback/crash tests over real graph execution.
-- [ ] 4.6 Implement create/resume/status/fork/cancel and explicit interrupted-write recovery with frozen request identity.
-- [ ] 4.7 Implement shared budget enforcement and committed/bounded event projection with per-run monotonic sequence.
-- [ ] 4.8 Add CLI definition/catalog/validation/fork/status operations and truthful capabilities, schema exports and contract parity.
+- [x] 4.5 Implement SQLite saver/ledger/lease with atomic terminal records and rollback/crash tests over real graph execution.
+- [x] 4.6 Implement create/resume/status/fork/cancel and explicit interrupted-write recovery with frozen request identity.
+- [x] 4.7 Implement shared budget enforcement and committed/bounded event projection with per-run monotonic sequence.
+- [x] 4.8 Add CLI definition/catalog/validation/fork/status operations and truthful capabilities, schema exports and contract parity.
 - [ ] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
 
 C3 compiler evidence, 2026-09-26: strict draft/published hashing, semantic validation, bounded JSON/history, state reducers, classified retries, actual task metadata, component interruption, Send/deferred joins and all join policies pass focused tests. `compiler-sqlite.test.ts` runs the real compiler with RunLedger, SqliteRunSaver and DefinitionExecution: three branches obey local AI concurrency 1 under global 2; a branch question survives DB close/reopen and lease replacement; completed siblings execute once, join settles once, only root completion ends the run, and no attempt remains running. Integrated local check on Node 22.22.3: `npx vitest run src/agent-runtime/engine` passed 14 files / 103 tests in 3.68 seconds; `npm run typecheck` exited 0 and OpenSpec strict validation reported zero issues. Global C3 remains incomplete until CLI/fork/cancel/package/platform acceptance and full CI pass.
@@ -56,9 +56,9 @@ C3 compiler evidence, 2026-09-26: strict draft/published hashing, semantic valid
 
 Depends on C3. Detailed checklist: [C4](reference/core-agent-engine-tasks-core.md#c4--piezas-básicas-y-quick-sdd-de-referencia).
 
-- [ ] 5.1 Implement prompt with native commands, identity-bound sessions, sentinels, bounded capture and classified retries.
-- [ ] 5.2 Implement portable bounded shell, evidence mode, pinned OpenSpec validation/archive and a pure condition parser without eval.
-- [ ] 5.3 Implement approval/question/gate/end according to the validated interruption/terminal protocol.
+- [x] 5.1 Implement prompt with native commands, identity-bound sessions, sentinels, bounded capture and classified retries.
+- [x] 5.2 Implement portable bounded shell, evidence mode, pinned OpenSpec validation/archive and a pure condition parser without eval.
+- [x] 5.3 Implement approval/question/gate/end according to the validated interruption/terminal protocol.
 - [ ] 5.4 Add Quick SDD fixture parity, repair, blocked-question and per-node crash tests; publish the nine implemented basic descriptors.
 - [ ] 5.5 Run `npm run ci` and robustness, update contract/docs and coordinate D1/D2/D5 acceptance against the published Core release.
 
@@ -66,16 +66,16 @@ Depends on C3. Detailed checklist: [C4](reference/core-agent-engine-tasks-core.m
 
 Depends on C4.
 
-- [ ] 6.1 Implement role-turn, decider/no-progress and verify using existing invocation/verification policies and real receipts.
-- [ ] 6.2 Implement fail-fast, session continuity, bounded history and later-write verification invalidation with failure-path tests.
+- [x] 6.1 Implement role-turn, decider/no-progress and verify using existing invocation/verification policies and real receipts.
+- [x] 6.2 Implement fail-fast, session continuity, bounded history and later-write verification invalidation with failure-path tests.
 - [ ] 6.3 Add Freestyle and verify-fix reference definitions plus rule parity/robustness tests; update contract/docs and run `npm run ci`.
 
 ## 7. C6 — Implementation composition and fan-out
 
 Depends on C5 and accepted C1 nested-graph evidence.
 
-- [ ] 7.1 Reuse the existing implementation nodes in a dedicated subgraph with journal ownership and resume validation intact.
-- [ ] 7.2 Specify safe fan-out effects over shared repositories; implement map/join/component with bounded shared concurrency, nested paths and branch checkpoints.
+- [x] 7.1 Reuse the existing implementation nodes in a dedicated subgraph with journal ownership and resume validation intact.
+- [x] 7.2 Specify safe fan-out effects over shared repositories; implement map/join/component with bounded shared concurrency, nested paths and branch checkpoints.
 - [ ] 7.3 Add implementation receipt/acceptance parity over the existing evaluation corpus, internal fork, nested interrupt and all join policy tests.
 - [ ] 7.4 Advertise fanOut only when complete; expand robustness, run `npm run ci`, update contract/docs and pair Implement/Batch acceptance with D5.
 
@@ -83,24 +83,24 @@ Depends on C5 and accepted C1 nested-graph evidence.
 
 Depends on C6.
 
-- [ ] 8.1 Implement per-project SQLite store namespaces and declared read/write permissions with cross-project isolation and deletion tests.
-- [ ] 8.2 Extend offline evaluation to definitions and reference corpus; add optional OpenTelemetry export with fake collector tests and documented configuration.
+- [x] 8.1 Implement per-project SQLite store namespaces and declared read/write permissions with cross-project isolation and deletion tests.
+- [x] 8.2 Extend offline evaluation to definitions and reference corpus; add optional OpenTelemetry export with fake collector tests and documented configuration.
 - [ ] 8.3 Update contract/docs, run definition evaluation and `npm run ci`, and record actual parity/trace evidence.
 
 ## 9. C8 — Durable steering inbox
 
 Depends on C3 plus the consuming prompt/role pieces.
 
-- [ ] 9.1 Implement bounded signal ingestion and serialized inbox writes without acquiring or bypassing the execution lease.
-- [ ] 9.2 Consume steering atomically at attempt boundaries, render the operator section and expose receipt/consumption state.
+- [x] 9.1 Implement bounded signal ingestion and serialized inbox writes without acquiring or bypassing the execution lease.
+- [x] 9.2 Consume steering atomically at attempt boundaries, render the operator section and expose receipt/consumption state.
 - [ ] 9.3 Test recovery/invalidation/fork idempotence and missing-run errors; advertise steeringInbox, update contract/docs and run `npm run ci` with D7 pairing.
 
 ## 10. C9 — Engine documentation and cross-repository integration
 
 Depends on C6; synchronize later C7/C8 additions as they ship.
 
-- [ ] 10.1 Publish architecture, definition format, piece catalog, extension guide and recovery documentation under `docs/engine-v2/` with legacy guide links.
-- [ ] 10.2 Validate every complete documentation definition through the CLI and keep descriptors/examples aligned with the registry.
+- [x] 10.1 Publish architecture, definition format, piece catalog, extension guide and recovery documentation under `docs/engine-v2/` with legacy guide links.
+- [x] 10.2 Validate every complete documentation definition through the CLI and keep descriptors/examples aligned with the registry.
 - [ ] 10.3 Update corresponding Desktop and specrails-web documentation to shipped behavior; run relevant documentation checks and record the paired commits.
 - [ ] 10.4 Execute integrated stage acceptance, full Core/Desktop CI and package compatibility checks; document unresolved limitations without marking later gates complete.
 
@@ -112,3 +112,31 @@ Blocked until published D8, migration parity and two releases of zero legacy-lau
 - [ ] 11.2 Remove only the proven obsolete legacy runner/checkpointer/CLI paths and exclusive tests, retaining identity utilities and current recovery contracts.
 - [ ] 11.3 Advance Core major and integration schema to 6.0 in the paired release change; test engine-1 rejection directing users to the retained runtime.
 - [ ] 11.4 Run full `npm run ci`, Desktop D8 compatibility/package checks and final three-repository documentation validation; record completion date and commit evidence.
+
+## Source acceptance reconciliation — 27 September 2026
+
+The checked implementation tasks above are verified against the integrated source,
+not inferred from branch ancestry. C2 is present in `open-roles.test.ts`, the C0
+built-in argv baseline in `cli-executor.test.ts`, config/request validation and
+provider permission fixtures. The vendored Desktop runtime schema is byte-identical;
+Desktop's real Agent Studio → API → Core CLI permission test passed in all three
+paired CI platforms (Desktop 3378b644, run 36277372514).
+
+C3 ledger/lease/crash, run/resume/fork/cancel, budget, event and CLI implementation
+is covered by the checkpoint, runs, CLI acceptance, fork-allocation, budget and
+event suites. C4/C5 pieces and policies use the production catalog fixtures,
+Quick SDD, receipts and failure-path suites. C6 implementation composition and
+nested fan-out use implementation-binding/compiler-sqlite and concurrency tests.
+C7's project-store tests prove isolation, deletion and declared permissions;
+definition evaluation runs independent behavioral oracles and rejects a no-op
+success. OTLP uses a real local collector. C8 inbox/runs tests cover atomic
+steering admission and attempt-boundary consumption. Documentation tests validate
+complete examples and generated piece descriptors.
+
+Local full CI at production revision 06d563c5 passed 99 suites / 1,223 tests,
+one platform skip, typecheck, script tests and installed package acceptance.
+Later workflow assertion repair cdc3a61c passed all 24 script tests; trace
+correlation 7fd4ceb6 passed seven focused tests and typecheck. These additive
+checks do not turn a failed remote run green. C1 integration, global platform
+acceptance, published-package/release gates, full corpus parity and retirement
+remain separately unchecked. No C1 merge or release has been performed.

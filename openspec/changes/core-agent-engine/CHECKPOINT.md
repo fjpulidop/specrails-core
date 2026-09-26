@@ -1,3 +1,17 @@
+## No-progress correctness — 27 September 2026
+
+A new real LangGraph/SQLite run regression reproduced a false success: the
+decider emitted `stop` at the no-progress limit and the downstream success end
+overrode its unsuccessful completion. The decider now emits `failed` with
+`no_progress`, preserves the model's `continue` verdict, and follows the authored
+failure route. The success end is never visited in the regression; exactly two
+fixture invocations occur and the retained scoped output records the failure.
+Two affected suites passed 33 tests; build passed. No threshold was changed.
+
+The task ledger also reconciles already-integrated source against the completed
+local full CI and named suites. Implementation checkboxes do not close C1,
+publication, global platform acceptance or actual release/retirement gates.
+
 ## Recorded trace correlation — 27 September 2026
 
 JSONL workflow events now expose the same stable per-event span ID as optional
