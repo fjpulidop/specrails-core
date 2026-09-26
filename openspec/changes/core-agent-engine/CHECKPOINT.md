@@ -1,3 +1,13 @@
+## Windows module URL correction — 27 September 2026
+
+Remote CI on `60cf9cd8` exposed Windows loader rejection of the native drive
+path passed to `node --import` in both fork crash fixtures. Preloads now use
+file URLs, matching the existing dynamic-import arguments; executable and run
+paths remain native paths. The focused fork suite passes all 10 tests locally
+on Node 22.22.3, including real process termination and journal preservation.
+Windows confirmation remains pending the next matrix run. The separate C1
+Windows permissions spike still awaits the explicitly authorized integration.
+
 ## No-progress correctness — 27 September 2026
 
 A new real LangGraph/SQLite run regression reproduced a false success: the

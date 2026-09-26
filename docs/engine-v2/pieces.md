@@ -46,7 +46,7 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop', reason }` as structured output with no session continuity.
 
 - Outcomes: `continue`, `stop`, `failed`.
-- No-progress: consecutive `continue` verdicts with an unchanged candidate hash are counted; when the count reaches `params.noProgress ?? policies.noProgress` the engine forces `stop` with `stalled: true` and `completion: { ok: false, reasons: ['no_progress'] }`. If neither value is declared, no stall limit applies.
+- No-progress: consecutive `continue` verdicts with an unchanged candidate hash are counted; when the count reaches `params.noProgress ?? policies.noProgress` the engine emits `failed` with `stalled: true`, preserves the original `continue` verdict in the output, and records `completion: { ok: false, reasons: ['no_progress'] }`. If neither value is declared, no stall limit applies.
 - Writes: `$outputs[nodeId] = { verdict, reason, candidateHash, continueCount, stalled? }` and one `$history` entry.
 
 ### `condition`

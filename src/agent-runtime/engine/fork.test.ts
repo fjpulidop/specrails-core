@@ -104,7 +104,7 @@ it.each(['after-allocation', 'before-publish', 'after-publish'])('recovers the r
   const bytes = readFileSync(path.join(f.directory, 'run.sqlite')), context = path.join(f.root, 'context.json')
   writeFileSync(context, JSON.stringify(f.context))
   const cli = fileURLToPath(new URL('../../../dist/agent-runtime/cli.js', import.meta.url))
-  const preload = fileURLToPath(new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url))
+  const preload = new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url).href
   const args = [cli, 'fork', '--context', context, '--from', 'ask', '--run-id', 'crash-child', '--request-id', 'crash-request']
   const crashed = spawnSync(process.execPath, ['--import', preload, ...args], { encoding: 'utf8', env: { ...process.env, SPECRAILS_FORK_CRASH: phase }, timeout: 90_000 })
   expect(crashed.error).toBeUndefined()
@@ -188,7 +188,7 @@ it('restores the exact incomplete implementation journal and preserves its compl
   expect(original, JSON.stringify(original)).toMatchObject({ completion: { ok: true, verified: true } })
   const directory = definitionRunDirectory(f.context), bytes = readFileSync(path.join(directory, 'run.sqlite'))
   const roles = f.requests.map(request => request.role)
-  const preload = fileURLToPath(new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url))
+  const preload = new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url).href
   const engine = new URL('../../../dist/agent-runtime/engine/fork.js', import.meta.url).href
   const executors = new URL('../../../dist/agent-runtime/executors.js', import.meta.url).href
   const worker = `const { forkRun } = await import(process.argv[1]); const { ExecutorRegistry } = await import(process.argv[2]); await forkRun(process.argv[3], { fromNodePath: 'implement/developer', runId: 'unfinished-fork', requestId: 'implementation-crash', registry: new ExecutorRegistry() })`
