@@ -10,7 +10,7 @@ Reglas de lectura:
 
 > Revalidación de implementación, 2026-09-26: la base actual es Core 6.0.1, workflow 7 e instrucciones 10. Este contrato conserva el protocolo propuesto y corrige esas identidades; los documentos originales están en `reference/`. Las capacidades v2 descritas son objetivos de bloques posteriores y NO se anuncian en C0. C0 añade `engine: { version: 1, definitionSchema: null, nodeKindsVersion: 0 }`, `nodeKinds: []`, `builtins: [{ id: 'specrails-implementation', version: '7', deprecated: false }]` y contrato 5.1. Las capacidades se publican solo cuando su implementación y aceptación estén completas.
 
-> El CLI real incluye `evaluate`; `cliOperations` lo incluye desde C0 junto a todas las operaciones de máquina actuales. `help` se documenta como salida de presentación, no como operación de integración. La congelación del legado se refiere a la identidad real 7/10. D0 puede prepararse y probarse de forma local, pero la aceptación de release exige C0 publicado.
+> El CLI real incluye `evaluate`; `cliOperations` lo incluye desde C0 junto a todas las operaciones de máquina actuales. `cliPresentationOperations: ["help"]` clasifica explícitamente la salida de presentación, fuera de las operaciones de integración. La congelación del legado se refiere a la identidad real 7/10. D0 puede prepararse y probarse de forma local, pero la aceptación de release exige C0 publicado.
 
 ## 1. Vocabulario
 

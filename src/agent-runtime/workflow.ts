@@ -64,9 +64,14 @@ function validateWorkflow<S extends Record<string, unknown>>(workflow: WorkflowD
   if (!Number.isInteger(maxTransitions) || maxTransitions < 1 || maxTransitions > 10_000) {
     throw new WorkflowError('INVALID_WORKFLOW', 'maxTransitions must be an integer from 1 to 10000')
   }
+  return definitionFingerprint(workflow)
+}
+
+/** Pure legacy resume identity; preserve node order, declared exits and default metadata. */
+export function definitionFingerprint<S extends Record<string, unknown>>(workflow: WorkflowDefinition<S>): string {
   return fingerprint({
-    id: workflow.id, version: workflow.version, maxTransitions, entry: workflow.entry,
-    nodes: ids.map(id => ({ id, effect: workflow.nodes[id]!.effect ?? 'read', maxAttempts: workflow.nodes[id]!.maxAttempts ?? 1, retrySafe: workflow.nodes[id]!.retrySafe ?? false, ends: workflow.nodes[id]!.ends })),
+    id: workflow.id, version: workflow.version, maxTransitions: workflow.maxTransitions ?? 100, entry: workflow.entry,
+    nodes: Object.keys(workflow.nodes).map(id => ({ id, effect: workflow.nodes[id]!.effect ?? 'read', maxAttempts: workflow.nodes[id]!.maxAttempts ?? 1, retrySafe: workflow.nodes[id]!.retrySafe ?? false, ends: workflow.nodes[id]!.ends })),
   })
 }
 

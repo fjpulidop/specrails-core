@@ -1,0 +1,12 @@
+[
+  {
+    "fingerprint": "8027c61b71888f583f9418d5388df95bcd233b03d224e0209b3327104511bb74",
+    "attempts": 3,
+    "compactDeveloper": false
+  },
+  {
+    "fingerprint": "89b61af29b684f9dc8b2969b864d89d3dd09bb49c9c6b5fc30e33d04f87d419a",
+    "attempts": 3,
+    "compactDeveloper": true
+  }
+]

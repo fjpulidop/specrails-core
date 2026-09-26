@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { runCoreWorkflow, parseAgentObject, type CoreWorkflowOptions } from './core-host.js'
+import { implementationWorkflowDefinition, runCoreWorkflow, parseAgentObject, type CoreWorkflowOptions } from './core-host.js'
 import { createExecutorRegistry, ExecutorRegistry } from './executors.js'
 import { AgentExecutionError, type AgentRequest, type AgentResult, type RuntimeConfig } from './executor-types.js'
 import { inspectPipeline, pipelineStateDirectory, type PipelineContext, type PipelineState } from '../pipeline/pipeline-state.js'
@@ -14,6 +14,12 @@ import { compactState, runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 import { runtimeEfficiency } from './efficiency.js'
 import { runRecovery } from './recovery.js'
+import { definitionFingerprint } from './workflow.js'
+import { coreNodes, type CoreNodeDeps } from './graph/nodes.js'
+import { CORE_NODE_ORDER } from './graph/state.js'
+import { resolveReviewPolicy } from './graph/review-policy.js'
+
+const legacyFingerprints = JSON.parse(readFileSync(new URL('./__fixtures__/implementation-workflow-fingerprint.json', import.meta.url), 'utf8')) as Array<{ fingerprint: string; attempts: number; compactDeveloper: boolean }>
 
 let root: string
 let context: PipelineContext
@@ -126,6 +132,27 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
 describe('programmatic Core host with real evidence gates', () => {
+  it.each(legacyFingerprints)('preserves the legacy definition fingerprint (compactDeveloper: $compactDeveloper)', fixture => {
+    const invoke = vi.fn(async () => { throw new Error('Fingerprint inspection must not invoke a provider') })
+    const note = vi.fn<CoreNodeDeps['note']>()
+    // Inspect the real descriptors without executing providers or OpenSpec tools.
+    const nodes = coreNodes({ context, config, change, attempts: fixture.attempts,
+      openspec: {} as CoreNodeDeps['openspec'], policy: resolveReviewPolicy(config), invoke, note })
+    const definition = implementationWorkflowDefinition(nodes, fixture)
+    expect(definitionFingerprint(definition)).toBe(fixture.fingerprint)
+    expect(Object.keys(definition.nodes)).toEqual(CORE_NODE_ORDER)
+    for (const id of CORE_NODE_ORDER) {
+      expect(definition.nodes[id]).toBe(nodes[id])
+      const changed = { ...definition, nodes: { ...definition.nodes, [id]: { ...nodes[id], ends: [...nodes[id].ends, 'architect'] } } }
+      expect(definitionFingerprint(changed)).not.toBe(fixture.fingerprint)
+    }
+    expect(definitionFingerprint({ ...definition, version: 'changed' })).not.toBe(fixture.fingerprint)
+    expect(definitionFingerprint({ ...definition, maxTransitions: definition.maxTransitions! + 1 })).not.toBe(fixture.fingerprint)
+    expect(definitionFingerprint({ ...definition, nodes: Object.fromEntries(Object.entries(definition.nodes).reverse()) })).not.toBe(fixture.fingerprint)
+    expect(invoke).not.toHaveBeenCalled()
+    expect(note).not.toHaveBeenCalled()
+  })
+
   it.each([false, true])('preserves archive diagnostics and revalidates only changed candidate evidence (code changed: %s)', async (codeChanged) => {
     const mainSpec = path.join(context.artifactRoot, 'openspec/specs/feature/spec.md')
     write(mainSpec, '# Feature\n\nExisting behavior.\n\n## Requirements\n### Requirement: Existing behavior\nThe system SHALL preserve existing behavior.\n#### Scenario: Existing use\n- **WHEN** called\n- **THEN** existing behavior remains\n')

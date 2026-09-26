@@ -2,11 +2,11 @@
 
 Precondition: both paired OpenSpec changes pass strict validation. Preserve audited workflow 7/instructions 10; do not copy historical 6/9 pins. Detailed source checklist: [C0](reference/core-agent-engine-tasks-core.md#c0--higiene-de-contrato-y-fingerprint-congelado-del-legado).
 
-- [ ] 1.1 Correct integration schema to 5.1, real workflow/instruction identities, phase order including fixer, all machine CLI operations including evaluate, engine 1/empty pieces/built-in 7 metadata and existing schema pins.
-- [ ] 1.2 Export a typed runtime CLI operation catalog used by dispatch and assert contract parity; document help as presentation-only.
-- [ ] 1.3 Extract the existing pure definition fingerprint and implementation workflow factory without changing observable legacy behavior.
-- [ ] 1.4 Freeze normal and compact-developer fingerprints; test drift in edges, identity, ordering and transition budgets against actual node descriptors.
-- [ ] 1.5 Use the API constant in runtime identity, correct stale runtime/scaffold docs and record any further audited drift in the tracked plan.
+- [x] 1.1 Correct integration schema to 5.1, real workflow/instruction identities, phase order including fixer, all machine CLI operations including evaluate, engine 1/empty pieces/built-in 7 metadata and existing schema pins.
+- [x] 1.2 Export a typed runtime CLI operation catalog used by dispatch and assert contract parity; document help as presentation-only.
+- [x] 1.3 Extract the existing pure definition fingerprint and implementation workflow factory without changing observable legacy behavior.
+- [x] 1.4 Freeze normal and compact-developer fingerprints; test drift in edges, identity, ordering and transition budgets against actual node descriptors.
+- [x] 1.5 Use the API constant in runtime identity, correct stale runtime/scaffold docs and record any further audited drift in the tracked plan.
 - [ ] 1.6 Run affected contract/core-host/CLI/legacy/install-config tests and full `npm run ci`; capture command results and retained-runtime evidence in the C0 PR.
 - [ ] 1.7 Record dated commit/evidence and remaining publication gate; pair D0 acceptance with published C0 without auto-publishing releases.
 
