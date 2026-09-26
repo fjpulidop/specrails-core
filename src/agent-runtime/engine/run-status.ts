@@ -19,7 +19,9 @@ export function observeLedger(database: RunDatabase): RunLedger {
 export function projectRunStatus(ledger: RunLedger, compact = true) {
   const row = ledger.run(), definition = JSON.parse(String(row.definition_json)) as WorkflowDefinition
   const base = ledgerWorkflowState(ledger, definition, '*'), pending = ledger.pendingInterrupts()
-  const steps = ledger.db.sqlite.prepare('SELECT * FROM steps WHERE run_id=? ORDER BY node_path,scope_id').all(ledger.runId)
+  const steps = ledger.db.sqlite.prepare(`SELECT s.*, a.output_json, a.terminal_digest FROM steps s
+    LEFT JOIN attempts a ON a.attempt_id=s.last_attempt_id AND a.run_id=s.run_id
+    WHERE s.run_id=? ORDER BY s.node_path,s.scope_id`).all(ledger.runId)
   const failures = ledger.db.sqlite.prepare("SELECT node_path,scope_id,branch,status,attempt,visit,ended_at,error_code,error_message FROM attempts WHERE run_id=? AND status IN ('failed','interrupted','blocked') ORDER BY started_at DESC LIMIT 8").all(ledger.runId)
   const lease = ledger.lease.current()
   const recoverable = ledger.db.sqlite.prepare("SELECT a.node_path,a.scope_id,a.attempt_id,a.status,v.effect FROM attempts a JOIN visits v ON a.visit_id=v.visit_id JOIN steps s ON s.last_attempt_id=a.attempt_id WHERE a.run_id=? AND a.terminal_digest IS NULL AND a.status IN ('running','interrupted') AND v.effect='write'").all(ledger.runId)
@@ -28,7 +30,16 @@ export function projectRunStatus(ledger: RunLedger, compact = true) {
     ...(base.pendingApproval ? { pendingApproval: base.pendingApproval } : {}), ...(base.pendingQuestion ? { pendingQuestion: base.pendingQuestion } : {}) } : base),
     nextNodePath: next, nextStep: next,
     steps: Object.fromEntries(steps.map(step => [String(step.node_path), { kind: String(step.kind), status: String(step.status), visits: Number(step.visits) }])),
-    scopes: steps.map(step => ({ nodePath: String(step.node_path), scopeId: String(step.scope_id), branch: step.branch_id, status: String(step.status), visits: Number(step.visits) })),
+    scopes: steps.map(step => {
+      // Read only the current committed attempt. A previous successful visit is
+      // not evidence for a later pending/failed visit of the same node.
+      const result = !compact && step.terminal_digest && step.output_json
+        ? JSON.parse(String(step.output_json)) as { output?: unknown } : undefined
+      return { nodePath: String(step.node_path), scopeId: String(step.scope_id), branch: step.branch_id,
+        kind: String(step.kind), status: String(step.status), visits: Number(step.visits),
+        attemptId: step.last_attempt_id === null ? null : String(step.last_attempt_id),
+        ...(result && Object.hasOwn(result, 'output') ? { output: result.output } : {}) }
+    }),
     lease: lease ? { owner: lease.owner, epoch: lease.epoch, expiresAt: lease.expiresAt, active: lease.expiresAt > Date.now() } : null,
     recoverableSteps: recoverable.map(value => ({ nodePath: String(value.node_path), scopeId: String(value.scope_id), attemptId: String(value.attempt_id), status: String(value.status), effect: 'write' as const })),
     steering: new ControlInbox(ledger.db, ledger.runId).status(),

@@ -13,3 +13,11 @@ Delivery requires a succeeded terminal result, `completion.ok`, and verified sco
 The host's per-project execution claims additionally prevent a parent and fork from concurrently modifying their shared worktree. Core's per-run lease alone cannot fence two different run databases over one checkout. Release claims while waiting for a human, reacquire before continuation, and preserve an actually live Core owner during restart inspection.
 
 Use the durable steering inbox for operator instructions. See [recovery and steering](recovery.md) for accepted-versus-consumed semantics. Package metadata advertises capabilities; hosts must capability-gate authoring and launching while retaining the older engine for its historical runs. Legacy retirement requires measured migration parity and the agreed real-release telemetry gate, not guessed usage or fabricated rollout evidence.
+
+For delivery evidence, retained `runtime status` without `--compact` exposes the
+latest committed piece output in `state.scopes[].output`, keyed by `nodePath`,
+`scopeId` and `attemptId`. Select the declared reviewer/implementation node and
+its exact scope; never collapse parallel branches by node name. Compact status
+omits these payloads. An unfinished current attempt does not inherit an older
+visit's successful output. These outputs supplement, and never replace, the
+terminal completion/verification gate.

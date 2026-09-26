@@ -133,3 +133,11 @@ Local probe: `/private/tmp/core-engine-c3-public-api-probe.mjs`, Node22.22.3, 20
 
 - Definition-level `delivery.requiresVerified:true` enforces root terminal verification even if an end parameter omits or disables it. The compiler combines the policies at execution time without rewriting the frozen document/hash. Component-local exits do not prematurely enforce the root delivery gate. Only compiler-owned `completesRun:true` settles global run completion; local component veredicts remain node evidence.
 - Component/map coordinators acquire no repository or AI permit while waiting for children. Their metadata still reports the aggregate write effect for authoring validation; their wrapper admission itself is read-only and safely reentrant. Each actual child piece owns its effect through terminal commit. Map scopes carry the stable map-visit ID and inherited concurrency limits; the run coordinator applies local groups and the global limit around physical AI work. `$maps` and `$exit` are private engine state; repeated maps replace branch collections by visit ID and transition, never mixing results from separate visits.
+
+### Full-status evidence projection (26 September continuation)
+
+Full status adds the current committed attempt's `output` to each `state.scopes`
+entry, together with kind and attemptId. This additive public projection lets
+hosts harvest evidence without opening SQLite or collapsing map/component
+scopes. Compact status omits outputs; `state.steps` remains the existing summary.
+The source is the exact `steps.last_attempt_id`, never an older successful visit.

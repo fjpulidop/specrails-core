@@ -50,6 +50,19 @@ it('executes a published graph and status remains read-only with no implementati
   expect(result.efficiencySummary.invocations).toMatchObject({ total: 0, complete: true })
 })
 
+it('exposes committed outputs with scope and attempt identity only in full status', async () => {
+  const f = fixture({ inspect: prompt, done })
+  await createRun(f)
+  const filename = path.join(f.directory, 'run.sqlite'), before = readFileSync(filename)
+  const compact = await statusRun(f.directory)
+  expect(compact.state.scopes.find(step => step.nodePath === 'inspect')).not.toHaveProperty('output')
+  const full = await statusRun(f.directory, false)
+  expect(full.state.scopes.find(step => step.nodePath === 'inspect')).toMatchObject({
+    scopeId: 'root', kind: 'prompt', status: 'succeeded', attemptId: expect.any(String), output: { text: 'Inspected' },
+  })
+  expect(readFileSync(filename)).toEqual(before)
+})
+
 it('answers a durable question after closing SQLite without repeating a provider call', async () => {
   const f = fixture({ inspect: { ...prompt, ends: { next: 'ask', failed: null } }, ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
   const first = await createRun(f)
