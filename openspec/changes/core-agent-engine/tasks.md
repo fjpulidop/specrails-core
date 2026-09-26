@@ -38,17 +38,19 @@ Depends on C0; preserve built-in argv. Detailed checklist: [C2](reference/core-a
 
 ## 4. C3 — Durable definition engine
 
-Depends on accepted C1 and C2. Resolve the open contract questions in design before implementation. Detailed checklist: [C3](reference/core-agent-engine-tasks-core.md#c3--núcleo-del-motor-v2).
+Depends on accepted C1 and C2. Contract questions are resolved in [c3-protocol.md](c3-protocol.md), dated 2026-09-26; its targeted public-API probe is evidence for task identity/marker correlation, not production acceptance. Detailed checklist: [C3](reference/core-agent-engine-tasks-core.md#c3--núcleo-del-motor-v2).
 
-- [ ] 4.1 Specify hash bootstrap, private routing channels, verification receipt ordering and actual checkpoint/ledger commit boundaries using C1 evidence.
-- [ ] 4.2 Implement/export definition schema, canonical hash and semantic validation with one test per contract error and no executor side effects.
-- [ ] 4.3 Implement state reducers, bounded history, null-preserving usage, piece descriptors/registry and test-only pieces.
-- [ ] 4.4 Compile static/conditional edges, retry, bounded cycles and proven interruption/composition primitives; test graph equivalence.
+- [x] 4.1 Specify hash bootstrap, private routing channels, verification receipt ordering and actual checkpoint/ledger commit boundaries using C1 evidence.
+- [x] 4.2 Implement/export definition schema, canonical hash and semantic validation with one test per contract error and no executor side effects.
+- [x] 4.3 Implement state reducers, bounded history, null-preserving usage, piece descriptors/registry and test-only pieces.
+- [x] 4.4 Compile static/conditional edges, retry, bounded cycles and proven interruption/composition primitives; test graph equivalence.
 - [ ] 4.5 Implement SQLite saver/ledger/lease with atomic terminal records and rollback/crash tests over real graph execution.
 - [ ] 4.6 Implement create/resume/status/fork/cancel and explicit interrupted-write recovery with frozen request identity.
 - [ ] 4.7 Implement shared budget enforcement and committed/bounded event projection with per-run monotonic sequence.
 - [ ] 4.8 Add CLI definition/catalog/validation/fork/status operations and truthful capabilities, schema exports and contract parity.
 - [ ] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
+
+C3 compiler evidence, 2026-09-26: strict draft/published hashing, semantic validation, bounded JSON/history, state reducers, classified retries, actual task metadata, component interruption, Send/deferred joins and all join policies pass focused tests. `compiler-sqlite.test.ts` runs the real compiler with RunLedger, SqliteRunSaver and DefinitionExecution: three branches obey local AI concurrency 1 under global 2; a branch question survives DB close/reopen and lease replacement; completed siblings execute once, join settles once, only root completion ends the run, and no attempt remains running. Integrated local check on Node 22.22.3: `npx vitest run src/agent-runtime/engine` passed 14 files / 103 tests in 3.68 seconds; `npm run typecheck` exited 0 and OpenSpec strict validation reported zero issues. Global C3 remains incomplete until CLI/fork/cancel/package/platform acceptance and full CI pass.
 
 ## 5. C4 — Basic pieces and Quick SDD
 

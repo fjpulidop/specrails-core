@@ -60,7 +60,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
         with:
-          node-version: 20.19.0
+          node-version: 22.22.3
           cache: npm
       - run: npm ci
       - run: npm run typecheck
@@ -71,17 +71,17 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        node: ['20.19.0', '22', '24']
+        node: ['22.22.3', '24']
         partition: [full]
+        # The coverage job executes this exact combination once and supplies
+        # the verified release package; do not repeat its complete suite here.
+        exclude:
+          - { os: ubuntu-latest, node: '24', partition: full }
         include:
-          - { os: windows-latest, node: '20.19.0', partition: general }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-1 }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-2 }
-          - { os: windows-latest, node: '20.19.0', partition: runtime-3 }
-          - { os: windows-latest, node: '22', partition: general }
-          - { os: windows-latest, node: '22', partition: runtime-1 }
-          - { os: windows-latest, node: '22', partition: runtime-2 }
-          - { os: windows-latest, node: '22', partition: runtime-3 }
+          - { os: windows-latest, node: '22.22.3', partition: general }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-1 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-2 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-3 }
           - { os: windows-latest, node: '24', partition: general }
           - { os: windows-latest, node: '24', partition: runtime-1 }
           - { os: windows-latest, node: '24', partition: runtime-2 }
@@ -104,15 +104,6 @@ jobs:
       - name: Install and exercise the actual npm package on this OS
         if: matrix.node == '24' && (matrix.partition == 'full' || matrix.partition == 'general')
         run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
-      - name: Preserve the exact package approved for release
-        if: matrix.os == 'ubuntu-latest' && matrix.node == '24'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: core-package
-          path: ${{ runner.temp }}/core-package/
-          if-no-files-found: error
-          retention-days: 14
-
   coverage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -125,7 +116,17 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - run: npm run test:scripts
       - run: npm run test:coverage
+      - name: Install and exercise the exact package approved for release
+        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
+      - name: Preserve the exact package approved for release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: core-package
+          path: ${{ runner.temp }}/core-package/
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

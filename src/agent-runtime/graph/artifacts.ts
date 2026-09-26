@@ -94,8 +94,8 @@ export function proposedVerification(context: PipelineContext, configured: Verif
 }
 /** Publish an archive prepared by the real CLI. The durable write set makes a
  * crash between main-spec updates recoverable without applying a delta twice. */
-async function archiveWithOpenSpec(context: PipelineContext, change: string, active: string, signal?: AbortSignal): Promise<void> {
-  const directory = pipelineStateDirectory(context)
+async function archiveWithOpenSpec(context: PipelineContext, change: string, active: string, signal?: AbortSignal, adapter?: { directory: string; beforePublish(): void }): Promise<void> {
+  const directory = adapter?.directory ?? pipelineStateDirectory(context)
   const receipt = path.join(directory, 'openspec-archive.json')
   type Plan = { activeHash: string; destination: string; writes: { path: string; before: string | null; after: string | null }[] }
   const files = (root: string, prefix = ''): string[] => {
@@ -106,7 +106,8 @@ async function archiveWithOpenSpec(context: PipelineContext, change: string, act
       return entry.isDirectory() ? files(path.join(root, entry.name), relative + '/') : [relative]
     })
   }
-  const activeHash = hash(JSON.stringify(files(active).sort().map(file => [file, readFileSync(artifactPath(active, file), 'utf8')])))
+  const treeHash = (root: string): string => hash(JSON.stringify(files(root).sort().map(file => [file, readFileSync(artifactPath(root, file), 'utf8')])))
+  const activeHash = treeHash(active)
   let plan: Plan
   if (existsSync(receipt)) plan = JSON.parse(readFileSync(receipt, 'utf8')) as Plan
   else {
@@ -115,6 +116,21 @@ async function archiveWithOpenSpec(context: PipelineContext, change: string, act
       const source = artifactPath(context.artifactRoot, 'openspec')
       files(source) // Reject symlinks before copying or invoking the external CLI.
       cpSync(source, path.join(staging, 'openspec'), { recursive: true })
+      // A fork prepares its delta against checkpoint-owned main specs. Publish
+      // still compares all current preimages below; no source files are rewound.
+      const forkBase = path.join(directory, 'openspec-archive-base.json')
+      let beforeRoot = path.join(source, 'specs')
+      let sourceChange: string | undefined
+      if (existsSync(forkBase)) {
+        const baseline = object(JSON.parse(readFileSync(forkBase, 'utf8')))
+        if (baseline.schemaVersion !== 1 || baseline.directory !== 'agent-workflow/openspec-base-specs' || typeof baseline.snapshot !== 'string' || !/^[a-f0-9]{64}$/.test(baseline.snapshot)
+          || typeof baseline.sourceChange !== 'string' || baseline.sourceChange.length > 64 || !SLUG.test(baseline.sourceChange)) throw new Error('Invalid fork archive baseline')
+        sourceChange = baseline.sourceChange
+        beforeRoot = child(directory, baseline.directory)
+        files(beforeRoot)
+        rmSync(path.join(staging, 'openspec/specs'), { recursive: true, force: true })
+        cpSync(beforeRoot, path.join(staging, 'openspec/specs'), { recursive: true })
+      }
       const output = await runOpenSpec(resolveOpenSpecCli(), staging, ['archive', change, '--yes'], signal)
       const archiveRoot = path.join(staging, 'openspec/changes/archive')
       const archives = existsSync(archiveRoot) ? readdirSync(archiveRoot).filter(name => name.endsWith('-' + change)) : []
@@ -125,34 +141,65 @@ async function archiveWithOpenSpec(context: PipelineContext, change: string, act
       if (existsSync(path.join(staging, 'openspec/changes', change))) throw new Error(`OpenSpec left the active change in place; archive was not completed.\n${output.slice(-6000)}`)
       const destination = 'openspec/changes/archive/' + archives[0]!
       if (existsSync(artifactPath(context.artifactRoot, destination))) throw new Error('OpenSpec archive destination already exists')
-      const beforeRoot = path.join(source, 'specs'), afterRoot = path.join(staging, 'openspec/specs')
+      const afterRoot = path.join(staging, 'openspec/specs')
       const names = new Set([...files(beforeRoot), ...files(afterRoot)])
       const contents = (root: string, name: string): string | null => existsSync(path.join(root, name)) ? readFileSync(path.join(root, name), 'utf8') : null
-      plan = { activeHash, destination, writes: [...names].map(name => ({ path: 'openspec/specs/' + name, before: contents(beforeRoot, name), after: contents(afterRoot, name) })).filter(item => item.before !== item.after) }
+      plan = { activeHash, destination, writes: [...names].map(name => {
+        const before = contents(beforeRoot, name)
+        let after = contents(afterRoot, name)
+        // Pinned OpenSpec inserts a change ID into the placeholder for a newly
+        // created specification. Preserve that provenance during fork replay;
+        // authored text and all byte-for-byte publication guards stay intact.
+        if (sourceChange && before === null && after !== null) after = after.replace(
+          `\n## Purpose\nTBD - created by archiving change ${change}. Update Purpose after archive.\n## Requirements\n`,
+          `\n## Purpose\nTBD - created by archiving change ${sourceChange}. Update Purpose after archive.\n## Requirements\n`)
+        return { path: 'openspec/specs/' + name, before, after }
+      }).filter(item => item.before !== item.after) }
       write(receipt, JSON.stringify(plan))
     } finally { rmSync(staging, { recursive: true, force: true }) }
   }
-  if (plan.activeHash !== activeHash) throw new Error('Reviewed artifacts changed since the OpenSpec archive was prepared')
   if (!new RegExp('^openspec/changes/archive/[0-9]{4}-[0-9]{2}-[0-9]{2}-' + change + '$').test(plan.destination)) throw new Error('Invalid OpenSpec archive receipt')
+  if (adapter && !existsSync(active)) {
+    const archived = artifactPath(context.artifactRoot, plan.destination)
+    if (!existsSync(archived) || treeHash(archived) !== plan.activeHash || plan.writes.some(item => {
+      if (!item.path.startsWith('openspec/specs/')) throw new Error('Invalid OpenSpec archive write')
+      const target = artifactPath(context.artifactRoot, item.path)
+      return (existsSync(target) ? readFileSync(target, 'utf8') : null) !== item.after
+    })) throw new Error('OpenSpec archive recovery does not match the prepared write set')
+    return
+  }
+  if (plan.activeHash !== activeHash) throw new Error('Reviewed artifacts changed since the OpenSpec archive was prepared')
   const targets = plan.writes.map(item => {
     if (!item.path.startsWith('openspec/specs/')) throw new Error('Invalid OpenSpec archive write')
     const target = artifactPath(context.artifactRoot, item.path)
     const current = existsSync(target) ? readFileSync(target, 'utf8') : null
     if (current !== item.before && current !== item.after) throw new Error('Main specification changed during archive; refusing to overwrite: ' + item.path)
-    return { ...item, target }
+    return { ...item, target, unchanged: current === item.after }
   })
   // The external CLI ran asynchronously; recheck the candidate and artifacts before publishing.
   signal?.throwIfAborted()
-  checkArchive(context)
+  if (treeHash(active) !== activeHash) throw new Error('Reviewed artifacts changed during OpenSpec archive preparation')
+  if (adapter) adapter.beforePublish()
+  else checkArchive(context)
   // Validate every path and preimage before publishing the first output.
   const destination = artifactPath(context.artifactRoot, plan.destination)
   if (existsSync(destination)) throw new Error('Archive destination already exists')
   for (const item of targets) {
+    if (item.unchanged) continue
     if (item.after === null) rmSync(item.target, { force: true })
     else write(item.target, item.after)
   }
   mkdirSync(path.dirname(destination), { recursive: true })
   renameSync(active, destination)
+}
+/** Recoverable pinned-CLI archive for ledger-only runs; no implementation journal. */
+export async function archiveOpenSpecChange(context: PipelineContext, change: string, adapter: { directory: string; beforePublish(): void }, signal?: AbortSignal): Promise<void> {
+  if (!SLUG.test(change) || change.length > 64) throw new Error('Invalid OpenSpec change identifier')
+  mkdirSync(adapter.directory, { recursive: true, mode: 0o700 })
+  if (lstatSync(adapter.directory).isSymbolicLink()) throw new Error('Refusing symlink archive adapter directory')
+  const active = artifactPath(context.artifactRoot, 'openspec/changes/' + change)
+  if (!existsSync(active) && !existsSync(path.join(adapter.directory, 'openspec-archive.json'))) throw new Error('OpenSpec active change does not exist')
+  await archiveWithOpenSpec(context, change, active, signal, adapter)
 }
 export async function archive(context: PipelineContext, change: string, signal?: AbortSignal): Promise<void> {
   const state = journal(context)

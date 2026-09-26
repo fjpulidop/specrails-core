@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specrails.dev/schemas/workflow-definition/1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "version",
+    "title",
+    "journal",
+    "change",
+    "entry",
+    "maxTransitions",
+    "roles",
+    "nodes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "journal": {
+      "enum": [
+        "ledger-only",
+        "implementation"
+      ]
+    },
+    "change": {
+      "enum": [
+        "new",
+        "existing",
+        "none"
+      ]
+    },
+    "entry": {
+      "$ref": "#/$defs/nodeId"
+    },
+    "maxTransitions": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxCostUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "maxTokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxDurationMs": {
+          "type": "integer",
+          "minimum": 1000
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "failFast": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 2
+        },
+        "noProgress": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10,
+          "default": 2
+        },
+        "historyMaxChars": {
+          "type": "integer",
+          "minimum": 200,
+          "maximum": 20000,
+          "default": 1500
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8,
+          "default": 1
+        }
+      }
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/roleId"
+      },
+      "uniqueItems": true
+    },
+    "nodes": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "$ref": "#/$defs/nodeId"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/node"
+      }
+    },
+    "components": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/componentBody"
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requiresVerified": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,119}$",
+      "not": {
+        "enum": [
+          "START",
+          "END",
+          "__start__",
+          "__end__",
+          "next"
+        ]
+      }
+    },
+    "roleId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,63}$"
+    },
+    "engine": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider"
+      ],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "effort": {
+          "type": "string"
+        },
+        "thinking": {
+          "enum": [
+            "on",
+            "off"
+          ]
+        }
+      }
+    },
+    "retry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        },
+        "backoffMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600000
+        },
+        "retryOn": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "idle_timeout",
+              "timeout",
+              "provider_request_error",
+              "session_not_found",
+              "invalid_structured_output"
+            ]
+          }
+        }
+      }
+    },
+    "ends": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      },
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/nodeId"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "params",
+        "ends"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "prompt",
+            "role-turn",
+            "decider",
+            "condition",
+            "verify",
+            "shell",
+            "openspec-validate",
+            "openspec-archive",
+            "approval",
+            "question",
+            "gate",
+            "map",
+            "join",
+            "component",
+            "implementation",
+            "end"
+          ]
+        },
+        "params": {
+          "type": "object"
+        },
+        "ends": {
+          "$ref": "#/$defs/ends"
+        },
+        "retry": {
+          "$ref": "#/$defs/retry"
+        },
+        "label": {
+          "type": "string",
+          "maxLength": 80
+        }
+      }
+    },
+    "componentBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry",
+        "nodes"
+      ],
+      "properties": {
+        "entry": {
+          "$ref": "#/$defs/nodeId"
+        },
+        "maxTransitions": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "nodes": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "$ref": "#/$defs/nodeId"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/node"
+          }
+        }
+      }
+    }
+  }
+}

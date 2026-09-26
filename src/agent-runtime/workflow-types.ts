@@ -48,6 +48,8 @@ export interface WorkflowStepContext {
   attemptId: string
   attempt: number
   input: JsonValue
+  /** Engine-owned, durably claimed operator text; cannot replace the frozen scope. */
+  operatorSteering?: string
   signal: AbortSignal
   /** A detached snapshot; modifying it cannot modify the persisted run. */
   checkpoint: WorkflowState

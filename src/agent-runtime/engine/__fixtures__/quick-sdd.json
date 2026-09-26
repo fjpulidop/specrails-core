@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "id": "quick-sdd",
+  "title": "Quick Sdd",
+  "journal": "ledger-only",
+  "change": "new",
+  "entry": "work",
+  "maxTransitions": 100,
+  "roles": [],
+  "nodes": {
+    "work": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "nativeCommand": {
+          "id": "opsx:ff",
+          "args": "{{run.changeId}}"
+        },
+        "access": "write"
+      },
+      "ends": {
+        "next": "validate",
+        "failed": "failed"
+      }
+    },
+    "validate": {
+      "kind": "openspec-validate",
+      "params": {
+        "change": "{{run.changeId}}"
+      },
+      "ends": {
+        "pass": "apply",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "apply": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "nativeCommand": {
+          "id": "opsx:apply",
+          "args": "{{run.changeId}}"
+        },
+        "access": "write"
+      },
+      "ends": {
+        "next": "check",
+        "failed": "failed"
+      }
+    },
+    "check": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "archive",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "archive": {
+      "kind": "openspec-archive",
+      "params": {
+        "change": "{{run.changeId}}"
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "7753bfa668f2ccabfcea83c1fbe52fe40883788e8a288ef57cd4ca168ed71c8b"
+}

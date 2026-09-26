@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "id": "freestyle",
+  "title": "Freestyle",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "work",
+  "maxTransitions": 100,
+  "roles": [],
+  "nodes": {
+    "work": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "text": "Inspect the project and report your findings.",
+        "access": "read"
+      },
+      "ends": {
+        "next": "done",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success"
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "cf93567154b74e166a95e67fb2f05e1b671f15eba3ac497d7bad6344498c1748"
+}

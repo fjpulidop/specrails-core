@@ -9,9 +9,15 @@
       "import": "./dist/agent-runtime/index.js",
       "default": "./dist/agent-runtime/index.js"
     },
+    "./agent-runtime/engine": {
+      "types": "./dist/agent-runtime/engine/index.d.ts",
+      "import": "./dist/agent-runtime/engine/index.js",
+      "default": "./dist/agent-runtime/engine/index.js"
+    },
     "./package.json": "./package.json",
     "./integration-contract.json": "./integration-contract.json",
-    "./schemas/agent-runtime.schema.json": "./schemas/agent-runtime.schema.json"
+    "./schemas/agent-runtime.schema.json": "./schemas/agent-runtime.schema.json",
+    "./schemas/workflow-definition.schema.json": "./schemas/workflow-definition.schema.json"
   },
   "bin": {
     "specrails-core": "bin/specrails-core.mjs"
@@ -25,7 +31,7 @@
     "pinned-versions.json"
   ],
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=22.22.3"
   },
   "repository": {
     "type": "git",
@@ -77,6 +83,7 @@
     "@langchain/langgraph": "1.4.14",
     "@langchain/langgraph-checkpoint": "1.1.5",
     "@modelcontextprotocol/sdk": "1.29.0",
+    "ajv": "^8.20.0",
     "cross-spawn": "7.0.6",
     "js-yaml": "^4.1.0",
     "picocolors": "^1.1.1",
@@ -87,7 +94,6 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
     "@vitest/coverage-v8": "^4.1.5",
-    "ajv": "^8.20.0",
     "typescript": "^5.7.2",
     "vitest": "^4.1.5"
   },

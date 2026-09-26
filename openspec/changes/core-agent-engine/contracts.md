@@ -1,3 +1,5 @@
+C3 refinement: [c3-protocol.md](c3-protocol.md) is normative for publication, state, task identity, atomic settlement, concurrency, fork and control. It resolves the initial ambiguities below without changing the legacy runtime.
+
 # Motor de agentes en Core (v2): contrato técnico compartido
 
 Estado: **contrato preparado; implementación pendiente**. Fecha: 26 de septiembre de 2026. Acompaña a [`core-agent-engine.md`](reference/core-agent-engine.md) (plan) y a las listas de tareas de [Core](reference/core-agent-engine-tasks-core.md) y [Desktop](reference/core-agent-engine-tasks-desktop.md). El [briefing para el implementador](reference/core-agent-engine-implementer-brief.md) explica cómo usar estos documentos.

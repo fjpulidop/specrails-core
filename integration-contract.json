@@ -85,6 +85,16 @@
           "<model-id>",
           "--args",
           "<arguments>"
+        ],
+        "renderOnlyArgs": [
+          ".kimi-code/specrails/run-skill.mjs",
+          "--skill",
+          "<skill-id>",
+          "--model",
+          "<model-id>",
+          "--args",
+          "<arguments>",
+          "--render-only"
         ]
       },
       "initCommand": "init",
@@ -234,7 +244,11 @@
       "capabilities",
       "evidence",
       "recovery",
-      "evaluate"
+      "evaluate",
+      "workflows",
+      "fork",
+      "signal",
+      "cancel"
     ],
     "cliPresentationOperations": ["help"],
     "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion}; does not invoke providers",
@@ -247,7 +261,7 @@
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
-    "minimumNode": "20.19.0",
+    "minimumNode": "22.22.3",
     "platforms": [
       "darwin",
       "win32"
@@ -300,7 +314,32 @@
     "sessionReuse": "Developer correction passes resume the previous provider session (claude --resume, codex exec resume, gemini --resume, kimi --session) with a short correction prompt; an unavailable session falls back to a fresh full turn. Structured roles get one repair turn in-session when their JSON is unusable.",
     "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
     "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget.",
-    "defaultImplementationEngine": true
+    "defaultImplementationEngine": true,
+    "openRoles": {
+      "version": 1,
+      "builtinRoles": [
+        "architect",
+        "developer",
+        "reviewer"
+      ],
+      "configField": "roles",
+      "roleIdPattern": "^[a-z][a-z0-9-]{0,63}$",
+      "access": [
+        "read",
+        "write"
+      ],
+      "artifacts": [
+        "none",
+        "tasks-checkboxes",
+        "all"
+      ],
+      "instructions": [
+        "role",
+        "none"
+      ],
+      "customAgentLoop": "free",
+      "nativeCommandUnsupported": "native_command_unsupported"
+    }
   },
   "execution": {
     "schemaVersion": 1,

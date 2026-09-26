@@ -117,6 +117,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<numb
   try {
     return await dispatch(subcommand, flags, positionals)
   } catch (err) {
+    if (subcommand === 'runtime') {
+      const { runtimeFailure } = await import('../agent-runtime/cli.js')
+      process.stdout.write(JSON.stringify(runtimeFailure(err)) + '\n')
+      return 1
+    }
     if (isInstallerError(err)) {
       fatal(err.message)
       return err.exitCode

@@ -1,3 +1,6 @@
+import implementation from './engine/__fixtures__/implementation.json' with { type: 'json' }
+import componentImplementation from './engine/__fixtures__/implementation-component.json' with { type: 'json' }
+
 /** Frozen fixture definitions and independent assertions; no model call or install. */
 export interface EvaluationCase {
   id: string
@@ -17,3 +20,6 @@ export const EVALUATION_CORPUS: EvaluationCase[] = [
   { id: 'verification-correction', verification: 'assert.strictEqual(api.clamp(11, 0, 10), 10)', description: 'Clamp values to both boundaries, including an already valid value.', repositories: ['math'], source: 'exports.clamp = value => value', solution: 'exports.clamp = (value, min, max) => Math.min(max, Math.max(min, value))', defects: ['exports.clamp = (value, min, max) => Math.max(min, value)', 'exports.clamp = (value, min, max) => Math.min(max, value)'], oracle: 'assert.strictEqual(api.clamp(-1, 0, 10), 0); assert.strictEqual(api.clamp(11, 0, 10), 10); assert.strictEqual(api.clamp(5, 0, 10), 5);', correction: 'verification' },
   { id: 'review-correction', verification: 'assert.strictEqual(typeof api.unique, "function")', description: 'Deduplicate stable values while preserving the first occurrence order.', repositories: ['collections'], source: 'exports.unique = values => values', solution: 'exports.unique = values => [...new Set(values)]', defects: ['exports.unique = values => [...new Set(values)].sort()', 'exports.unique = values => values'], oracle: 'assert.deepStrictEqual(api.unique([3, 1, 3, 2, 1]), [3, 1, 2]); assert.deepStrictEqual(api.unique([]), []);', correction: 'review' },
 ]
+
+/** Published reference definitions use the same independently checked behavioral corpus. */
+export const DEFINITION_EVALUATION_CORPUS = [implementation, componentImplementation] as const

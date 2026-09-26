@@ -1,3 +1,4 @@
+import { resolveRoleDescriptor, roleIds } from './config.js'
 import { readFileSync, statSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
@@ -66,7 +67,8 @@ export async function configuredCapabilities(config: RuntimeConfig, registry: Ex
     return probes.get(key)!
   }
   const roles = []
-  for (const [role, selected] of Object.entries(config.agents)) {
+  for (const role of roleIds(config)) {
+    const selected = resolveRoleDescriptor(config, role)
     for (const [tier, choice] of [['base', selected], ...(selected.escalation ? [['escalation', selected.escalation]] : [])] as Array<[string, { model?: string; effort?: string }]>) {
       roles.push({ role, tier, provider: selected.provider, model: choice.model ?? null, requestedEffort: choice.effort ?? null, ...await probe(selected.provider, choice.model) })
     }

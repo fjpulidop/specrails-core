@@ -1,4 +1,4 @@
-import type { AgentRole } from './executor-types.js'
+import { isBuiltinRole, type BuiltinAgentRole, type AgentRole, type RoleDescriptor } from './executor-types.js'
 import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-state.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
@@ -14,7 +14,7 @@ export interface RoleFeedback {
 /** One frozen acceptance criterion the reviewer must certify, identified by stable scope coordinates. */
 export interface FrozenCriterion { specId: string; criterionIndex: number; requirement: string }
 /** Roles with an editable definition: the three pipeline agents plus the FIXER stance the developer role takes on a correction round. */
-type PromptRole = AgentRole | 'fixer'
+type PromptRole = BuiltinAgentRole | 'fixer'
 export interface RoleInstructionOptions {
   definition?: string
   /** `fixer`: the developer invocation is a correction round on the fixer stance (own definition, no plan dump). */
@@ -118,8 +118,8 @@ function shellWords(command: VerificationCommand): string {
 }
 
 /** Frozen scope rendered for a model: explicit paths, no JSON dump to decode. */
-function scopeSection(context: PipelineContext, change: string): string[] {
-  const lines = ['## Frozen scope', '', `Change name: \`${change}\``, `Artifact root: \`${context.artifactRoot}\``, `Change artifacts: \`${context.artifactRoot}/openspec/changes/${change}/\``, '', 'Repositories in scope (edit nothing outside them):']
+function scopeSection(context: PipelineContext, change: string | undefined): string[] {
+  const lines = ['## Frozen scope', '', ...(change ? [`Change name: \`${change}\``] : []), `Artifact root: \`${context.artifactRoot}\``, ...(change ? [`Change artifacts: \`${context.artifactRoot}/openspec/changes/${change}/\``] : []), '', 'Repositories in scope (edit nothing outside them):']
   for (const repository of context.repositories) {
     lines.push(`- \`${repository.id}\` (${repository.name}): \`${repository.path}\``)
     if (repository.scope?.length) lines.push(`  Repository scope: ${repository.scope.map(directory => '`' + directory + '/`').join(', ')}. This repository is only that part of the checkout: change files inside it alone (the rest is read-only context; Core undoes edits outside it, except the OpenSpec change artifacts it manages). Commands without a cwd run in \`${repository.scope[0]}\`.`)
@@ -350,7 +350,7 @@ function discardedSection(developer: DeveloperRecord | null | undefined): string
   return ['## Edits Core undid', '', 'The previous turn edited files outside the repository scope; Core restored them because they are not part of this change. Do not redo them:', ...developer.discarded.slice(0, 50).map(file => `- \`${file}\``), '']
 }
 
-function feedbackSection(feedback: RoleFeedback | undefined): string[] {
+function feedbackSection(feedback: RoleFeedback | undefined, focused = false): string[] {
   const lines: string[] = []
   const verification = record(feedback?.verification)
   if (verification) {
@@ -366,7 +366,11 @@ function feedbackSection(feedback: RoleFeedback | undefined): string[] {
     for (const command of commands as Record<string, unknown>[]) {
       lines.push('', `Command (repository \`${String(command.repositoryId)}\`): \`${[command.command, ...(Array.isArray(command.args) ? command.args : [])].map(String).join(' ')}\` exited with code ${String(command.exitCode)}`)
       if (typeof command.evidenceId === 'string') lines.push(`Evidence ID: ${command.evidenceId}. Use read_verification_evidence to inspect complete persisted output and discover harness source IDs; page using nextCursor.`)
-      const output = outputBudget ? tail(command.output).slice(-Math.min(6000, outputBudget)) : ''
+      const raw = tail(command.output)
+      // Preserve exception text, assertions and application frames. Node's
+      // internal dispatch frames remain available through the evidence ID.
+      const relevant = focused ? raw.split('\n').filter(line => !/^\s+at .+\(node:internal\//.test(line) && !/^\s+at node:internal\//.test(line)).join('\n') : raw
+      const output = outputBudget ? relevant.slice(-Math.min(6000, outputBudget)) : ''
       outputBudget = Math.max(0, outputBudget - output.length)
       if (output.trim()) lines.push('```', output.trimEnd(), '```')
     }
@@ -421,7 +425,17 @@ function reReviewSection(context: ReReviewContext | undefined): string[] {
 
 /** Central role instructions. Roles describe their own work only: traversal,
  * retries, checks, approvals, archive and delivery belong to the host. */
-export function roleInstructions(role: AgentRole, context: PipelineContext, change: string, options: RoleInstructionOptions = {}): string {
+export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, context: PipelineContext, change: string | undefined, options: RoleInstructionOptions = {}): string {
+  const role = typeof roleOrDescriptor === 'string' ? roleOrDescriptor : roleOrDescriptor.id
+  if (!isBuiltinRole(role)) {
+    if (typeof roleOrDescriptor === 'string') throw new Error('Custom roles require a resolved descriptor')
+    return [
+      `## Your task: ${role}`, '', options.definition ?? roleOrDescriptor.prompt ?? `Complete the assigned ${role} task.`, '',
+      `Workspace access: ${roleOrDescriptor.access}. OpenSpec artifact permission: ${roleOrDescriptor.artifacts}.`,
+      'Execute only this assigned role. Traversal, retries, verification, approval, archive and delivery belong to Core. Do not spawn another role or change runtime metadata.',
+      ...conventionsSection(), ...scopeSection(context, change), ...feedbackSection(options.feedback),
+    ].join('\n').trimEnd() + '\n'
+  }
   const feedback = feedbackSection(options.feedback)
   const corrections = role === 'developer' && feedback.length > 0
   const sections = [
@@ -441,8 +455,12 @@ export function roleInstructions(role: AgentRole, context: PipelineContext, chan
 }
 
 /** A short follow-up for a provider session that already holds the role instructions. */
-export function correctionInstructions(role: AgentRole, feedback: RoleFeedback | undefined, extra: { changeSet?: string[]; developer?: DeveloperRecord | null } = {}): string {
-  const lines = ['Continue the same ' + role + ' role in this session. Address the feedback below precisely, keep the already-correct work, finish every remaining task, mark completed tasks `- [x]` in `tasks.md`, and finish with the same JSON summary object as before (summary, files, tests, verification, incomplete), with nothing after it.', '', ...(role === 'developer' ? [...changeSetSection(role, undefined, extra.changeSet), ...discardedSection(extra.developer)] : []), ...feedbackSection(feedback)]
+export function correctionInstructions(role: AgentRole, feedback: RoleFeedback | undefined, extra: { changeSet?: string[]; developer?: DeveloperRecord | null; focusedEvidence?: boolean } = {}): string {
+  if (!isBuiltinRole(role)) return ['Continue the same ' + role + ' role. Address the feedback and respect the original permissions and response contract. Keep already-correct work.', ...feedbackSection(feedback)].join('\n') + '\n'
+  const instruction = extra.focusedEvidence
+    ? `Continue the ${role} role with unchanged permissions and obligations. Fix the feedback, preserve correct work, finish all tasks and mark them \`- [x]\`. Return only the same JSON summary (summary, files, tests, verification, incomplete).`
+    : 'Continue the same ' + role + ' role in this session. Address the feedback below precisely, keep the already-correct work, finish every remaining task, mark completed tasks `- [x]` in `tasks.md`, and finish with the same JSON summary object as before (summary, files, tests, verification, incomplete), with nothing after it.'
+  const lines = [instruction, '', ...(role === 'developer' ? [...changeSetSection(role, undefined, extra.changeSet), ...discardedSection(extra.developer)] : []), ...feedbackSection(feedback, extra.focusedEvidence)]
   return lines.join('\n').trimEnd() + '\n'
 }
 

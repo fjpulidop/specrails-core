@@ -1,3 +1,4 @@
+import { isDefinitionCommand, runDefinitionCommand } from './engine/cli.js'
 import { GUARDRAIL_CATALOG } from './guardrails.js'
 import { runEvaluation } from './evaluation.js'
 import { efficiencySummary } from './efficiency-summary.js'
@@ -17,9 +18,17 @@ import { runtimeEfficiency } from './efficiency.js'
 import { configuredCapabilities } from './capabilities.js'
 import { createExecutorRegistry } from './executors.js'
 import { runRecovery } from './recovery.js'
+import { EngineError } from './engine/contracts.js'
+
+/** Both runtime entry points emit the same machine-readable fatal result. */
+export function runtimeFailure(error: unknown) {
+  return { type: 'runtime-result', status: 'failed', error: error instanceof EngineError
+    ? { code: error.code, message: error.message, ...(error.details === undefined ? {} : { details: error.details }) }
+    : error instanceof Error ? error.message : String(error) }
+}
 
 /** Machine operations are mirrored in integration-contract.json; help is presentation-only. */
-export const RUNTIME_CLI_OPERATIONS = ['api', 'validate', 'run', 'status', 'resume', 'prompts', 'capabilities', 'evidence', 'recovery', 'evaluate', 'help'] as const
+export const RUNTIME_CLI_OPERATIONS = ['api', 'validate', 'run', 'status', 'resume', 'prompts', 'capabilities', 'evidence', 'recovery', 'evaluate', 'workflows', 'fork', 'signal', 'cancel', 'help'] as const
 
 function read(file: string): unknown { return JSON.parse(readFileSync(file, 'utf8')) }
 async function readStdin(): Promise<unknown> {
@@ -88,6 +97,7 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
 
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
   const command = flags.help === true ? 'help' : positionals[0] ?? 'help'
+  if (isDefinitionCommand(flags, command)) return runDefinitionCommand(flags, positionals, emit)
   if (!RUNTIME_CLI_OPERATIONS.some(operation => operation === command)) throw new Error('Unknown runtime operation: ' + command)
   if (command === 'prompts') { emit({ type: 'runtime-role-prompts', defaults: rolePromptDefaults() }); return 0 }
   if (command === 'capabilities') {
@@ -99,28 +109,38 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
   }
   if (command === 'evaluate') {
     if (flags.real !== undefined && flags.real !== true) throw new Error('--real is a boolean flag')
-    const report = await runEvaluation({ output: stringFlag(flags, 'output'), real: flags.real === true, ...(flags.config === undefined ? {} : { config: validateRuntimeConfig(read(stringFlag(flags, 'config'))) }), ...(flags['max-cost-usd'] === undefined ? {} : { maxCostUsd: Number(stringFlag(flags, 'max-cost-usd')) }), ...(flags.repetitions === undefined ? {} : { repetitions: Number(stringFlag(flags, 'repetitions')) }) })
-    emit({ type: 'runtime-evaluation', mode: report.mode, observations: report.observations.length, output: stringFlag(flags, 'output'), monetaryConclusion: report.monetaryConclusion, correctionPromptTargetMet: report.correctionPromptTargetMet, noObservedQualityDrop: report.noObservedQualityDrop, stopReason: report.stopReason })
-    return report.stopReason || (!flags.real && (!report.noObservedQualityDrop || !report.noExtraInvocations || !report.correctionPromptTargetMet)) ? 1 : 0
+    const report = await runEvaluation({ output: stringFlag(flags, 'output'), real: flags.real === true,
+      ...(flags.definition === undefined ? {} : { definition: readFileSync(stringFlag(flags, 'definition')) }),
+      ...(flags.config === undefined ? {} : { config: validateRuntimeConfig(read(stringFlag(flags, 'config'))) }), ...(flags['max-cost-usd'] === undefined ? {} : { maxCostUsd: Number(stringFlag(flags, 'max-cost-usd')) }), ...(flags.repetitions === undefined ? {} : { repetitions: Number(stringFlag(flags, 'repetitions')) }) })
+    emit({ type: 'runtime-evaluation', mode: report.mode, observations: report.observations.length, output: stringFlag(flags, 'output'),
+      isDefinitionEvaluation: report.isDefinitionEvaluation, allCasesAccepted: report.allCasesAccepted, acceptedCases: report.acceptedCases,
+      monetaryConclusion: report.monetaryConclusion, correctionPromptTargetMet: report.correctionPromptTargetMet, noObservedQualityDrop: report.noObservedQualityDrop, noExtraInvocations: report.noExtraInvocations, stopReason: report.stopReason })
+    return report.stopReason || !report.allCasesAccepted || (!flags.real && (!report.noObservedQualityDrop || !report.noExtraInvocations || !report.correctionPromptTargetMet)) ? 1 : 0
   }
   if (command === 'help') {
     emit({ usage: [
       'specrails-core runtime api',
-      'specrails-core runtime evaluate --output <directory> [--repetitions <1..20>] [--real --config <json> --max-cost-usd <limit>]',
+      'specrails-core runtime evaluate --output <directory> [--definition <json>] [--repetitions <1..20>] [--real --config <json> --max-cost-usd <limit>]',
       'specrails-core runtime capabilities --config <json>',
       'specrails-core runtime evidence --context <json> [--id <opaqueId>] [--section summary|stdout|stderr|source] [--source-id <opaqueId>] [--cursor <cursor>] [--limit <1..100>]',
       'specrails-core runtime prompts',
       'specrails-core runtime validate --config <json>',
       'specrails-core runtime validate --stdin',
       'specrails-core runtime run --context <json> --config <json> --change <kebab-case>',
+      'specrails-core runtime run --context <json> --config <json> --definition <json> [--change <kebab-case>]',
+      'specrails-core runtime workflows list',
+      'specrails-core runtime workflows validate --stdin [--config <json> | --structural]',
       'specrails-core runtime status --context <json> [--compact]',
       'specrails-core runtime resume --context <json> [--approve archive] [--answer <text>] [--recover developer] [--invalidate verify]',
       'specrails-core runtime recovery --context <json> --stdin',
+      'specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--scope-id <scope>] [--visit <number>] [--state <json>]',
+      'specrails-core runtime signal --context <json> --stdin [--request-id <id>]',
+      'specrails-core runtime cancel --context <json> [--request-id <id>]',
     ] })
     return 0
   }
   if (command === 'api') {
-    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1 }, guardrails: GUARDRAIL_CATALOG })
+    emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION], capabilities: { openRoles: 1, scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'validate') {
@@ -201,7 +221,7 @@ if (process.argv[1] && existsSync(process.argv[1]) && import.meta.url === pathTo
   const { subcommand, flags, positionals } = parseArgs(process.argv.slice(2))
   try { process.exitCode = await runRuntimeCommand(flags, [subcommand ?? 'help', ...positionals]) }
   catch (error) {
-    process.stdout.write(JSON.stringify({ type: 'runtime-result', status: 'failed', error: error instanceof Error ? error.message : String(error) }) + '\n')
+    process.stdout.write(JSON.stringify(runtimeFailure(error)) + '\n')
     process.exitCode = 1
   }
 }
