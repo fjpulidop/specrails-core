@@ -113,7 +113,7 @@ it('revalidates verification and review after native archive approval with legac
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer', 'reviewer', 'reviewer'])
   expect(result.$exit?.completion.ok).toBe(true)
   expect(runtime.ledger.events().filter(event => event.type === 'workflow_succeeded')).toHaveLength(1)
-}, 40_000)
+}, process.platform === 'win32' ? 180_000 : 40_000)
 
 it('executes Batch with distinct native journals and certifies only the global verification after join', async () => {
   const f = fixture()

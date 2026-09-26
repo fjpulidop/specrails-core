@@ -135,7 +135,7 @@ it.each(['ask', 'done'])('inherits completed implementation evidence at %s witho
   expect(f.requests).toHaveLength(calls)
   expect(readFileSync(path.join(directory, 'run.sqlite'))).toEqual(bytes)
   expect(journalBytes(path.dirname(directory))).toEqual(sourceJournal)
-}, 40_000)
+}, process.platform === 'win32' ? 180_000 : 40_000)
 
 it('restores the exact incomplete implementation journal and preserves its completed architect', async () => {
   const f = implementationFixture(); roots.push(f.root)
@@ -149,4 +149,4 @@ it('restores the exact incomplete implementation journal and preserves its compl
   expect(resumed, JSON.stringify(resumed)).toMatchObject({ completion: { ok: true, verified: true } })
   expect(f.requests.slice(roles.length).map(request => request.role)).toEqual(['developer', 'reviewer'])
   expect(readFileSync(path.join(directory, 'run.sqlite'))).toEqual(bytes)
-}, 40_000)
+}, process.platform === 'win32' ? 180_000 : 40_000)

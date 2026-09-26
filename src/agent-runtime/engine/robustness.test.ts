@@ -2,7 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterAll, expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('../../../', import.meta.url))
@@ -13,7 +13,7 @@ type Message = Record<string, any>
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 function launch(directory: string, args: string[], crash?: string, input?: string) {
-  const child = spawn(process.execPath, [...(crash ? ['--import', path.join(fixtures, 'crash-preload.mjs')] : []), cli, ...args], {
+  const child = spawn(process.execPath, [...(crash ? ['--import', pathToFileURL(path.join(fixtures, 'crash-preload.mjs')).href] : []), cli, ...args], {
     cwd: directory, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
     env: { ...process.env, NODE_NO_WARNINGS: '1', SPECRAILS_ENGINE_CLI: cli, SPECRAILS_ENGINE_CRASH_AT: crash ?? '' },
   })

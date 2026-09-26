@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { load as yaml } from 'js-yaml'
 import { partitionTests, assertSelection, RUNTIME_PARTS } from './ci-tests.mjs'
 
-const inventory = ['core', 'compact'].flatMap(file => Array.from({ length: 12 }, (_, index) => ({ file, name: `test ${index} [.*] > nested`, location: { line: Math.floor(index / 2) + 1 } })))
+const inventory = ['core', 'compact', 'fork', 'compiler'].flatMap(file => Array.from({ length: 12 }, (_, index) => ({ file, name: `test ${index} [.*] > nested`, location: { line: Math.floor(index / 2) + 1 } })))
 
 test('runtime partitions are disjoint and exhaustive, keeping parameterized cases together', () => {
   const parts = partitionTests(inventory)
@@ -12,7 +12,7 @@ test('runtime partitions are disjoint and exhaustive, keeping parameterized case
   assertSelection(inventory, parts.flat())
   const owners = new Map()
   parts.forEach((part, index) => {
-    assert.deepEqual([...new Set(part.map(item => item.file))].sort(), ['compact', 'core'])
+    assert.deepEqual([...new Set(part.map(item => item.file))].sort(), ['compact', 'compiler', 'core', 'fork'])
     for (const item of part) {
       const key = item.file + ':' + item.location.line
       if (owners.has(key)) assert.equal(owners.get(key), index)

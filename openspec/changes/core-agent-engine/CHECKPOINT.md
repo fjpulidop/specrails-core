@@ -7,6 +7,9 @@ merge, release, check off pending gates, or describe the complete migration as d
 
 ## Codex continuation — 26 September 2026, 20:30 CEST
 
+- Remote CI run 36265688629 on 4dd75eae completed: coverage/build, all Linux/macOS jobs, and all six Windows runtime partitions passed. Windows general/installed recovery failed because the fault preload used a drive path as an ESM URL; fixed using pathToFileURL. Three test declarations also overrode the Windows timeout with 40 seconds; they now retain the configured 180-second Windows limit. Local focused engine regression: 16/16 pass.
+- Rebalanced the two new expensive engine suites (fork and implementation compiler) across the existing three Windows runtime jobs; no extra runner or removed test. Actual Vitest inventories verified exactly: 46/44/42 of 132 tests, exhaustive and disjoint. Script tests: 24/24. Remote Windows C1 spike ACL failure remains pending integration of the separate C1 branch; local merge was blocked by automatic review and user clarification is still pending. No merge was executed.
+
 This update supersedes the partial-wave findings below only where stated. Work remains in progress; no merge or release occurred.
 
 - CLI acceptance now passes 7/7. Corrected tests to compare the database before their own lease mutation and read historical rows inside a transaction. A fork before a question is inactive/running until its first resume reaches the question.
