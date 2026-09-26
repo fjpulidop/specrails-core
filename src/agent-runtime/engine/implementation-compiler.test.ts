@@ -98,7 +98,7 @@ it('executes the real implementation nodes on one SQLite saver with legacy accep
   expect(inspectPipeline(forkContext)).toMatchObject({ phases: { architect: { status: 'done' }, developer: { status: 'pending' }, reviewer: { status: 'pending' } }, verification: { valid: false } })
   expect(readVerificationPlan(forkContext)?.runId).toBe(forkContext.runId)
   expect(readFileSync(path.join(fresh.repository, 'openspec/changes/forked-implementation/tasks.md'), 'utf8')).toContain('- [ ]')
-}, 60_000)
+})
 
 it('revalidates verification and review after native archive approval with legacy parity', async () => {
   const f = fixture(true), runtime = await engine(f)
@@ -135,4 +135,4 @@ it('executes Batch with distinct native journals and certifies only the global v
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path='verify' AND status='succeeded'").get()?.count).toBe(1)
     expect(database.sqlite.prepare('SELECT count(*) count FROM invocations').get()?.count).toBe(6)
   } finally { database.close() }
-}, 60_000)
+})
