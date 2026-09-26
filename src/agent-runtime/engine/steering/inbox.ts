@@ -9,6 +9,10 @@ export const MAX_STEERING_BYTES = 80_000
 export const MAX_PENDING_STEERING = 128
 export const MAX_PENDING_STEERING_BYTES = 512 * 1024
 export interface SteeringMessage { id: string; text: string; sender: string; createdAt: string; consumedByAttemptId?: string; consumedAt?: string }
+export interface SteeringReceipt {
+  id: string; acceptedAt: string; preview: string; length: number
+  status: 'pending' | 'consumed'; consumedAttemptId?: string; consumedAt?: string
+}
 const project = (row: DatabaseRow): SteeringMessage => {
   const value = JSON.parse(String(row.payload_json)) as { text: string; sender: string }
   return { id: String(row.request_id), ...value, createdAt: String(row.created_at),
@@ -57,6 +61,20 @@ export class ControlInbox {
 
   pending(): SteeringMessage[] {
     return this.database.sqlite.prepare("SELECT * FROM control_inbox WHERE run_id=? AND kind='steer' AND consumed_at IS NULL ORDER BY received_sequence,request_id").all(this.runId).map(project)
+  }
+  /** Bounded read-only projection. Counts cover the whole inbox, previews never expose full prompts. */
+  status(): { receipts: SteeringReceipt[]; pending: number; consumed: number; truncated: boolean; consumptionReported: true } {
+    const counts = this.database.sqlite.prepare("SELECT COUNT(*) total,COALESCE(SUM(consumed_at IS NULL),0) pending FROM control_inbox WHERE run_id=? AND kind='steer'").get(this.runId)!
+    const rows = this.database.sqlite.prepare("SELECT * FROM control_inbox WHERE run_id=? AND kind='steer' ORDER BY consumed_at IS NULL DESC,received_sequence DESC,request_id DESC LIMIT 512").all(this.runId)
+    const receipts = rows.map(row => {
+      const message = project(row)
+      return { id: message.id, acceptedAt: message.createdAt, preview: message.text.slice(0, 240), length: message.text.length,
+        status: message.consumedAt ? 'consumed' as const : 'pending' as const,
+        ...(message.consumedByAttemptId ? { consumedAttemptId: message.consumedByAttemptId } : {}),
+        ...(message.consumedAt ? { consumedAt: message.consumedAt } : {}) }
+    })
+    return { receipts, pending: Number(counts.pending), consumed: Number(counts.total) - Number(counts.pending),
+      truncated: Number(counts.total) > rows.length, consumptionReported: true }
   }
   assigned(frame: AttemptFrame): SteeringMessage[] {
     return this.database.sqlite.prepare("SELECT * FROM control_inbox WHERE run_id=? AND kind='steer' AND consumed_by_attempt_id=? ORDER BY received_sequence,request_id").all(this.runId, frame.attemptId).map(project)

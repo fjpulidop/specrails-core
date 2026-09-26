@@ -6,6 +6,7 @@ import { ledgerWorkflowState } from './invocation-context.js'
 import { runtimeEfficiency } from '../efficiency.js'
 import path from 'node:path'
 import { definitionEfficiencySummary } from './efficiency-summary.js'
+import { ControlInbox } from './steering/inbox.js'
 
 /** An observer has no valid execution token; every attempted mutation remains fenced. */
 export function observeLedger(database: RunDatabase): RunLedger {
@@ -30,6 +31,7 @@ export function projectRunStatus(ledger: RunLedger, compact = true) {
     scopes: steps.map(step => ({ nodePath: String(step.node_path), scopeId: String(step.scope_id), branch: step.branch_id, status: String(step.status), visits: Number(step.visits) })),
     lease: lease ? { owner: lease.owner, epoch: lease.epoch, expiresAt: lease.expiresAt, active: lease.expiresAt > Date.now() } : null,
     recoverableSteps: recoverable.map(value => ({ nodePath: String(value.node_path), scopeId: String(value.scope_id), attemptId: String(value.attempt_id), status: String(value.status), effect: 'write' as const })),
+    steering: new ControlInbox(ledger.db, ledger.runId).status(),
     reservations: ledger.reservationStatus(), pendingInterrupts: pending, recentFailures: failures.map(failure => ({ nodePath: failure.node_path, scopeId: failure.scope_id, branch: failure.branch,
       status: failure.status, attempt: failure.attempt, visit: failure.visit, at: failure.ended_at, error: { code: failure.error_code, message: String(failure.error_message ?? '').slice(-6000) } })),
   }

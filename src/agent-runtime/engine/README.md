@@ -1,7 +1,8 @@
 # Definition engine
 
-This module is the additive Core v2 engine. Public capabilities remain disabled until
-the integrated CLI, retained package and platform acceptance gates pass. The legacy
+This module is the additive Core v2 engine. This integration branch advertises
+engine 2 and node catalog 1; publication still requires the integrated CLI,
+retained package and platform acceptance gates. The legacy
 workflow retains its frozen identity and independent entry point.
 
 `definition-validator.ts` publishes a draft as an immutable JSON definition. It

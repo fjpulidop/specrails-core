@@ -5,6 +5,17 @@ The original objective remains **the entire plan, not just the foundations**.
 This checkpoint is unfinished implementation, not production acceptance. Do not
 merge, release, check off pending gates, or describe the complete migration as done.
 
+## Codex continuation — 26 September 2026, 20:30 CEST
+
+This update supersedes the partial-wave findings below only where stated. Work remains in progress; no merge or release occurred.
+
+- CLI acceptance now passes 7/7. Corrected tests to compare the database before their own lease mutation and read historical rows inside a transaction. A fork before a question is inactive/running until its first resume reaches the question.
+- Added the real thirty-node CLI robustness harness. All seven cases passed locally (four SIGKILL boundaries with the real 60-second lease TTL, large output, cooperative cancel, POSIX SIGTERM). Fault injection lives in an external test preload; production execution has no crash environment switch.
+- Installed npm package acceptance and the same robustness harness passed on macOS arm64 / Node 22.22.3. Evidence: `/private/tmp/core-v2-package-acceptance/engine-robustness.json` and release-manifest.json. The new three-platform `engine-robustness` CI job is written and actionlint passes; remote execution is still pending.
+- Core steering status now projects up to 512 receipts, prioritizing pending messages, 240-character previews, total pending/consumed counts and authoritative consuming attempt/time. Signal acceptance returns Core's durable acceptedAt. Five inbox tests and typecheck passed. Paired Desktop consumes this projection rather than writing a second receipt ledger.
+- C9 architecture, definition examples, extension and recovery guides now exist; all four initial docs checks pass with eight complete definitions. Added actual CLI validation of the examples, awaiting the full suite currently running.
+- Full Core coverage passed: 98 files, 1215 passed / 1 Windows-only skip, 605.27 seconds; statements 87.89%, branches 79.95%, functions 93.21%, lines 93.99%. This includes actual CLI validation of all eight documentation examples. Thresholds unchanged. C1/C2 ancestry, offline evaluation, full paired Desktop/Web work and remote platform gates remain pending.
+
 ## Continuation checkpoint — 26 September 2026, 19:55 CEST (Claude Code session)
 
 A second assistant session resumed from this checkpoint, verified every claim

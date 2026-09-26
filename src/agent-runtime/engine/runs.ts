@@ -1,8 +1,10 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { Command } from '@langchain/langgraph'
 import { pipelineStateDirectory, type PipelineContext } from '../../pipeline/pipeline-state.js'
 import { coreRuntimeIdentity } from '../core-host.js'
+import type { RuntimeConfig } from '../executor-types.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.js'
 import type { ExecutorRegistry } from '../executors.js'
 import { appendRunEvent, RunDatabase } from './checkpoint/database.js'
@@ -20,6 +22,40 @@ import { createEngineTelemetry } from './otel.js'
 import { describeDefinition } from './graph-description.js'
 
 export const definitionRunDirectory = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-workflow')
+/** Frozen request shared with the legacy runtime (contracts.md section 9); `workflow.engine` selects the resume engine. */
+export const frozenRequestFile = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
+export interface FrozenWorkflowIdentity { id: string; version: string; source: 'builtin' | 'definition'; definitionHash: string | null; engine: 1 | 2 }
+export interface FrozenRunRequest { change?: string; config: RuntimeConfig; runtimeIdentity: RuntimeIdentity; workflow: FrozenWorkflowIdentity }
+
+/** A request without the workflow block predates the contract and belongs to the legacy engine. */
+export function frozenRequestEngine(request: unknown): 1 | 2 | undefined {
+  const workflow = request && typeof request === 'object' ? (request as { workflow?: unknown }).workflow : undefined
+  const engine = workflow && typeof workflow === 'object' ? (workflow as { engine?: unknown }).engine : undefined
+  return engine === 1 || engine === 2 ? engine : undefined
+}
+
+/** Same no-overwrite discipline as the legacy writer: identical bytes are idempotent, anything else is another run. */
+function freezeRequest(file: string, request: FrozenRunRequest): void {
+  const serialized = JSON.stringify(request, null, 2) + '\n'
+  mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
+  try { writeFileSync(file, serialized, { flag: 'wx', mode: 0o600 }) }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    if (readFileSync(file, 'utf8') !== serialized) throw new EngineError('run_exists', 'A different frozen request already uses this run ID; choose a new run ID')
+  }
+}
+
+/** Materializes the frozen request of an existing definition run (fork destinations) so hosts recognize a programmatic run. */
+export async function freezeRunRequest(directory: string): Promise<string> {
+  const database = await RunDatabase.open(path.join(directory, 'run.sqlite'), { readOnly: true })
+  try {
+    const row = observeLedger(database).run(), request = JSON.parse(String(row.request_json)) as DefinitionRunRequest
+    const file = frozenRequestFile(request.context)
+    freezeRequest(file, { ...(request.change ? { change: request.change } : {}), config: request.config, runtimeIdentity: JSON.parse(String(row.runtime_identity_json)) as RuntimeIdentity,
+      workflow: { id: String(row.workflow_id), version: String(row.definition_hash), source: 'definition', definitionHash: String(row.definition_hash), engine: 2 } })
+    return file
+  } finally { database.close() }
+}
 export interface RunObservers { signal?: AbortSignal; onEvent?: (value: JsonObject) => void; afterEvent?: number }
 export interface ResumeDefinitionOptions extends RunObservers {
   registry?: ExecutorRegistry
@@ -32,6 +68,10 @@ type Admitted = Awaited<ReturnType<typeof preflightDefinition>>
 
 export async function createRun(input: DefinitionRunInput & RunObservers) {
   const admitted = await preflightDefinition(input)
+  // The request is frozen before the database exists so a crash between the two leaves a
+  // request that a repeated identical `run` completes and a different one cannot reuse.
+  freezeRequest(frozenRequestFile(admitted.request.context), { ...(admitted.request.change ? { change: admitted.request.change } : {}), config: admitted.request.config, runtimeIdentity: coreRuntimeIdentity(),
+    workflow: { id: admitted.definition.id, version: admitted.definition.version, source: 'definition', definitionHash: admitted.definition.version, engine: 2 } })
   const database = await RunDatabase.open(path.join(definitionRunDirectory(admitted.request.context), 'run.sqlite'), { create: true })
   try {
     RunLedger.initialize(database, { runId: admitted.request.context.runId, workflowId: admitted.definition.id,

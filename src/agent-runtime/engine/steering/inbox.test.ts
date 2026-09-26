@@ -32,9 +32,11 @@ describe('durable operator controls', () => {
     const ineligible = ledger.enter(node('bookkeeping', false))
     expect(inbox.assigned(ineligible)).toEqual([])
     expect(inbox.pending()).toHaveLength(1)
+    expect(inbox.status()).toMatchObject({ pending: 1, consumed: 0, consumptionReported: true, receipts: [{ id: 'message', acceptedAt: message.createdAt, status: 'pending' }] })
     const frame = ledger.enter(node('agent'))
     expect(inbox.pending()).toEqual([])
     expect(inbox.assigned(frame)[0]).toMatchObject({ id: 'message', consumedByAttemptId: frame.attemptId })
+    expect(inbox.status()).toMatchObject({ pending: 0, consumed: 1, receipts: [{ id: 'message', status: 'consumed', consumedAttemptId: frame.attemptId }] })
     ledger.fail(frame, { code: 'provider_request_error', message: 'retry' }, true)
     const retry = ledger.enter(node('agent'))
     expect(inbox.assigned(retry)).toEqual([])
@@ -83,5 +85,19 @@ describe('durable operator controls', () => {
     const fork = await RunDatabase.open(path.join(dir, 'fork', 'run.sqlite'), { create: true }); clean.push(async () => fork.close())
     db.forkAt(fork, { revision: cut, runId: 'fork' })
     expect(fork.sqlite.prepare('SELECT * FROM control_inbox').all()).toEqual([])
+  })
+
+  it('projects bounded previews through a read-only connection without changing run history', async () => {
+    const { db, inbox } = await fixture()
+    const text = 'A'.repeat(300)
+    const message = inbox.append(text, { requestId: 'preview' })
+    const revision = db.revision
+    const reader = await RunDatabase.open(db.filename, { readOnly: true })
+    try {
+      const state = new ControlInbox(reader, 'run').status()
+      expect(state).toEqual({ receipts: [{ id: 'preview', acceptedAt: message.createdAt, preview: 'A'.repeat(240), length: 300, status: 'pending' }], pending: 1, consumed: 0, truncated: false, consumptionReported: true })
+      expect(reader.revision).toBe(revision)
+      expect(JSON.stringify(state)).not.toContain(text)
+    } finally { reader.close() }
   })
 })

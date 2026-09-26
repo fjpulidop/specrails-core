@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeRuntimeConfig } from './config.js'
 import { runRuntimeCommand } from './cli.js'
+import { coreRuntimeIdentity } from './core-host.js'
+import { validateWorkflowDefinition } from './engine/definition-validator.js'
+import { validationPieceRegistry } from './engine/pieces/index.js'
+import { configuredRoles } from './engine/preflight.js'
 import type { RuntimeConfig } from './executor-types.js'
 import { pipelineStateDirectory, type PipelineContext } from '../pipeline/pipeline-state.js'
 
@@ -195,11 +199,16 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
-    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '7', instructionsVersion: '10', apiVersion: 1 } })
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '7', instructionsVersion: '10', apiVersion: 1 },
+      workflow: { id: 'specrails-implementation', version: '7', source: 'builtin', definitionHash: null, engine: 1 } })
 
     const forbidden = await invoke(['resume', '--context', contextFile, '--config', configFile])
     expect(forbidden.code).toBe(1)
     expect(errorText(forbidden)).toContain('frozen configuration')
+    // The frozen request selects the legacy engine, which still refuses a definition on resume.
+    const forbiddenDefinition = await invoke(['resume', '--context', contextFile, '--definition', configFile])
+    expect(forbiddenDefinition.code).toBe(1)
+    expect(forbiddenDefinition.messages.at(-1)).toMatchObject({ type: 'runtime-result', status: 'failed', error: { code: 'invalid_arguments' } })
     const changedRun = await invoke(['run', '--context', contextFile, '--config', configFile, '--change', 'different-change'])
     expect(changedRun.code).toBe(1)
     expect(errorText(changedRun)).toContain('configuration changed')
@@ -230,4 +239,71 @@ describe('packaged programmatic runtime CLI', () => {
   // This runs real OpenSpec plus a fresh verification/review on resume. Windows
   // Node 20 needs a larger test-only budget; production deadlines are unchanged.
   }, process.platform === 'win32' ? 180000 : 150000)
+})
+
+describe('frozen request contract for engine v2', () => {
+  const run = async (flags: Record<string, string | boolean>, positionals: string[]) => {
+    const messages: Record<string, unknown>[] = []
+    const code = await runRuntimeCommand(flags, positionals, value => messages.push(value as Record<string, unknown>))
+    return { code, messages, last: messages.at(-1) }
+  }
+  function publish(id: string) {
+    const published = validateWorkflowDefinition({ schemaVersion: 1, id, title: 'CLI definition', journal: 'ledger-only', change: 'none', roles: [], entry: 'done', maxTransitions: 5,
+      nodes: { done: { kind: 'end', params: { outcome: 'success' }, ends: {} } } }, validationPieceRegistry(), configuredRoles(normalizeRuntimeConfig(config)))
+    if (!published.ok) throw new Error(JSON.stringify(published.errors))
+    const file = path.join(root, id + '.json')
+    writeFileSync(file, JSON.stringify(published.definition))
+    return { file, definition: published.definition }
+  }
+
+  it('freezes the workflow block, selects the engine from it on resume/status and rejects frozen-input flags', async () => {
+    const { file, definition } = publish('cli-definition')
+    const created = await run({ context: contextFile, config: configFile, definition: file }, ['run'])
+    expect(created.code, JSON.stringify(created.last)).toBe(0)
+    expect(created.last).toMatchObject({ type: 'runtime-result', engineVersion: 2, status: 'succeeded',
+      workflow: { id: 'cli-definition', version: definition.version, source: 'definition', definitionHash: definition.version, engine: 2 } })
+
+    const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
+    const frozen = JSON.parse(readFileSync(requestFile, 'utf8')) as Record<string, unknown>
+    expect(frozen).toEqual({ config: normalizeRuntimeConfig(config), runtimeIdentity: coreRuntimeIdentity(),
+      workflow: { id: 'cli-definition', version: definition.version, source: 'definition', definitionHash: definition.version, engine: 2 } })
+    expect(existsSync(path.join(pipelineStateDirectory(context), 'agent-workflow', 'run.sqlite'))).toBe(true)
+
+    // Resume never accepts a replacement definition or configuration; the frozen request is authoritative.
+    await expect(run({ context: contextFile, definition: file }, ['resume'])).rejects.toMatchObject({ code: 'invalid_arguments' })
+    await expect(run({ context: contextFile, config: configFile }, ['resume'])).rejects.toMatchObject({ code: 'invalid_arguments' })
+    // A different definition cannot silently reuse the run ID or its frozen request.
+    await expect(run({ context: contextFile, config: configFile, definition: publish('other-definition').file }, ['run'])).rejects.toMatchObject({ code: 'run_exists' })
+    // An identical repeat still refuses to recreate the durable run and leaves the request byte-identical.
+    await expect(run({ context: contextFile, config: configFile, definition: file }, ['run'])).rejects.toMatchObject({ code: 'run_exists' })
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toEqual(frozen)
+
+    const status = await run({ context: contextFile, compact: true }, ['status'])
+    expect(status.last).toMatchObject({ type: 'runtime-status', engineVersion: 2, state: { status: 'succeeded' }, workflow: { id: 'cli-definition', source: 'definition', engine: 2, definitionHash: definition.version } })
+    const resumed = await run({ context: contextFile }, ['resume'])
+    expect(resumed.code).toBe(0)
+    expect(resumed.last).toMatchObject({ type: 'runtime-result', engineVersion: 2, status: 'succeeded', workflow: { engine: 2 } })
+
+    // workflow.engine is the selector: a legacy block routes the same context to the legacy runtime.
+    writeFileSync(requestFile, JSON.stringify({ ...frozen, workflow: { ...(frozen.workflow as Record<string, unknown>), engine: 1 } }))
+    await expect(run({ context: contextFile }, ['resume'])).rejects.toThrow('No programmatic run exists')
+    expect((await run({ context: contextFile, compact: true }, ['status'])).last).toEqual({ type: 'runtime-status', state: null, pipeline: null })
+    // A request without the block predates the contract and is a legacy run as well.
+    writeFileSync(requestFile, JSON.stringify({ config: frozen.config, runtimeIdentity: frozen.runtimeIdentity }))
+    await expect(run({ context: contextFile }, ['resume'])).rejects.toThrow('No programmatic run exists')
+    // Only a definition database without any request falls back to this engine.
+    rmSync(requestFile)
+    expect((await run({ context: contextFile, compact: true }, ['status'])).last).toMatchObject({ engineVersion: 2, state: { status: 'succeeded' } })
+
+    // A fork destination receives its own frozen request so hosts and resume recognize it as an engine v2 run.
+    const forked = await run({ context: contextFile, from: 'done', 'run-id': 'cli-fork' }, ['fork'])
+    expect(forked.code).toBe(0)
+    expect(forked.last).toMatchObject({ type: 'runtime-forked', runId: 'cli-fork', forkOf: context.runId })
+    const forkContext = { ...context, runId: 'cli-fork' }, forkContextFile = path.join(root, 'fork context.json')
+    writeFileSync(forkContextFile, JSON.stringify(forkContext))
+    expect(JSON.parse(readFileSync(path.join(pipelineStateDirectory(forkContext), 'agent-runtime-request.json'), 'utf8'))).toEqual({ ...frozen, workflow: frozen.workflow })
+    const forkResumed = await run({ context: forkContextFile }, ['resume'])
+    expect(forkResumed.code, JSON.stringify(forkResumed.last)).toBe(0)
+    expect(forkResumed.last).toMatchObject({ type: 'runtime-result', engineVersion: 2, status: 'succeeded', runId: 'cli-fork', forkOf: context.runId, workflow: { id: 'cli-definition', engine: 2 } })
+  }, 30000)
 })
