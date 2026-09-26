@@ -31,10 +31,11 @@ Independent experiment branch/PR; no production engine implementation or Node mi
 
 Depends on C0; preserve built-in argv. Detailed checklist: [C2](reference/core-agent-engine-tasks-core.md#c2--roles-abiertos-access-artifacts-instructions-nativecommand-y-roles).
 
-- [ ] 3.1 Add role descriptors and request access/artifacts/instructions/nativeCommand validation with backward-compatible built-in defaults.
-- [ ] 3.2 Derive provider, workspace and OpenSpec permissions from descriptors; implement native commands through existing provider strategies.
-- [ ] 3.3 Extend config/schema, role resolution, prompt construction, routing and efficiency code; tolerate free prompt inputs and advertise openRoles only when complete.
-- [ ] 3.4 Test built-in argv identity and custom permission/command behavior across provider fixtures, update contract/docs, run `npm run ci` and pair schema vendoring with D1b.
+- [x] 3.1 Add role descriptors and request access/artifacts/instructions/nativeCommand validation with backward-compatible built-in defaults.
+- [x] 3.2 Derive provider, workspace and OpenSpec permissions from descriptors; implement native commands through existing provider strategies.
+- [x] 3.3 Extend config/schema, role resolution, prompt construction, routing and efficiency code; tolerate free prompt inputs and advertise openRoles only when complete.
+- [x] 3.4 Test built-in argv identity and custom permission/command behavior across provider fixtures, update contract/docs and run `npm run ci`.
+- [ ] 3.5 Release gate: pair schema vendoring and role configuration UI with Desktop D1b.
 
 ## 4. C3 — Durable definition engine
 

@@ -36,6 +36,7 @@ describe('Desktop integration contract', () => {
     expect(messages).toHaveLength(1)
     expect(messages[0]).toMatchObject({ apiVersion: RUNTIME_API_VERSION, workflowVersions: [CORE_WORKFLOW_VERSION] })
     const capabilities = (messages[0] as { capabilities: Record<string, unknown> }).capabilities
+    expect(capabilities.openRoles).toBe(1)
     for (const name of ['engineV2', 'workflowDefinitions', 'fanOut', 'steeringInbox']) expect(capabilities).not.toHaveProperty(name)
   })
 

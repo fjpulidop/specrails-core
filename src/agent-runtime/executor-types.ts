@@ -5,7 +5,19 @@ import type { GuardrailSettings } from './guardrails.js'
 export const DEFAULT_AGENT_TIMEOUT_MS = 60 * 60_000
 export const DEFAULT_AGENT_IDLE_TIMEOUT_MS = 15 * 60_000
 
-export type AgentRole = 'architect' | 'developer' | 'reviewer'
+export const BUILTIN_ROLES = ['architect', 'developer', 'reviewer'] as const
+export type BuiltinAgentRole = typeof BUILTIN_ROLES[number]
+export type AgentRole = string
+export type AgentAccess = 'read' | 'write'
+export type ArtifactAccess = 'none' | 'tasks-checkboxes' | 'all'
+export type OpenSpecSkill = 'openspec-ff-change' | 'openspec-apply-change' | 'openspec-verify-change'
+export const ROLE_ID = /^[a-z][a-z0-9-]{0,63}$/
+export function isBuiltinRole(role: string): role is BuiltinAgentRole { return (BUILTIN_ROLES as readonly string[]).includes(role) }
+export const BUILTIN_ROLE_POLICY = {
+  architect: { access: 'read', artifacts: 'all', openspecSkill: 'openspec-ff-change' },
+  developer: { access: 'write', artifacts: 'tasks-checkboxes', openspecSkill: 'openspec-apply-change' },
+  reviewer: { access: 'read', artifacts: 'none', openspecSkill: 'openspec-verify-change' },
+} as const
 /** Who an observer sees acting: a pipeline role, or the FIXER stance the developer step takes on a correction round. */
 export type AgentEventRole = AgentRole | 'fixer'
 export type CliProvider = 'claude' | 'codex' | 'gemini' | 'kimi'
@@ -29,6 +41,13 @@ export interface RuntimeAgentConfig {
   thinking?: 'on' | 'off'
   escalation?: { model: string; effort?: string }
 }
+export interface RuntimeRoleConfig extends RuntimeAgentConfig {
+  access: AgentAccess
+  artifacts: ArtifactAccess
+  prompt?: string
+  openspecSkill?: OpenSpecSkill
+}
+export interface RoleDescriptor extends RuntimeRoleConfig { id: AgentRole }
 export interface EfficiencyPolicy {
   schemaVersion: 1
   contextMode?: 'full' | 'incremental'
@@ -54,7 +73,8 @@ export interface RuntimeConfig {
   efficiency?: EfficiencyPolicy
   enabled: boolean
   providers: RuntimeProviderConfig[]
-  agents: Record<AgentRole, RuntimeAgentConfig>
+  agents: Record<BuiltinAgentRole, RuntimeAgentConfig>
+  roles?: Record<AgentRole, RuntimeRoleConfig>
   /** Optional engine for correction rounds (after a failed verification or a rejected review); unset ⇒ the developer corrects. */
   fixer?: RuntimeAgentConfig
   limits?: { maxAttempts?: number; maxTokens?: number; maxCostUsd?: number; timeoutMs?: number; idleTimeoutMs?: number }
@@ -85,6 +105,11 @@ export interface AgentEvent {
 export interface AgentRequest {
   openspec?: import('./openspec.js').OpenSpecRoleContext
   role: AgentRole
+  /** Optional only for backward-compatible built-in requests. Custom roles require explicit policy. */
+  access?: AgentAccess
+  artifacts?: ArtifactAccess
+  instructions?: 'role' | 'none'
+  nativeCommand?: { id: string; args?: string }
   prompt: string
   cwd: string
   allowedRoots: string[]
@@ -133,7 +158,13 @@ export class AgentExecutionError extends Error {
 }
 export function unknownUsage(): AgentUsage { return { inputTokens: null, outputTokens: null, costUsd: null } }
 export function validateAgentRequest(request: AgentRequest): void {
-  if (!['architect', 'developer', 'reviewer'].includes(request.role) || typeof request.prompt !== 'string' || !request.prompt.trim() || request.prompt.includes('\0')) throw new AgentExecutionError('Invalid role request', 'invalid_request')
+  if (typeof request.role !== 'string' || !ROLE_ID.test(request.role) || typeof request.prompt !== 'string' || request.prompt.includes('\0') || (!request.nativeCommand && !request.prompt.trim())) throw new AgentExecutionError('Invalid role request', 'invalid_request')
+  const policy = requestPolicy(request)
+  if (request.nativeCommand !== undefined) {
+    const command = request.nativeCommand
+    if (!command || typeof command !== 'object' || Array.isArray(command) || Object.keys(command).some(key => !['id', 'args'].includes(key)) || typeof command.id !== 'string' || !/^[a-z][a-z0-9:_-]{0,63}$/.test(command.id) || (command.args !== undefined && (typeof command.args !== 'string' || command.args.includes('\0'))) || request.prompt.trim() || policy.instructions !== 'none' || request.openspec) throw new AgentExecutionError('Invalid native command request', 'invalid_request')
+  }
+  if (policy.instructions === 'none' && request.openspec) throw new AgentExecutionError('Free prompts cannot bind role instructions', 'invalid_request')
   if (request.model !== undefined && (typeof request.model !== 'string' || !request.model.trim() || request.model.length > 256 || /^-/.test(request.model) || /[\0\r\n]/.test(request.model))) throw new AgentExecutionError('Invalid model identifier', 'invalid_model')
   for (const key of ['maxTurns', 'timeoutMs', 'idleTimeoutMs', 'maxTokens', 'maxCostUsd'] as const) {
     const value = request[key]
@@ -142,4 +173,21 @@ export function validateAgentRequest(request: AgentRequest): void {
   if (request.resumeSessionId !== undefined && (typeof request.resumeSessionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(request.resumeSessionId))) throw new AgentExecutionError('Invalid session identifier', 'invalid_request')
   if (request.outputSchema !== undefined && (!request.outputSchema || typeof request.outputSchema !== 'object' || Array.isArray(request.outputSchema))) throw new AgentExecutionError('Invalid output schema', 'invalid_request')
   if (request.signal?.aborted) throw new AgentExecutionError('Agent cancelled', 'aborted')
+}
+
+/** Resolve compatible defaults without changing the caller's frozen request. */
+export function requestPolicy(request: Pick<AgentRequest, 'role' | 'access' | 'artifacts' | 'instructions'>): { access: AgentAccess; artifacts: ArtifactAccess; instructions: 'role' | 'none' } {
+  const legacy = isBuiltinRole(request.role) ? BUILTIN_ROLE_POLICY[request.role] : undefined
+  const access = request.access ?? legacy?.access
+  const artifacts = request.artifacts ?? legacy?.artifacts
+  const instructions = request.instructions ?? (legacy ? 'role' : undefined)
+  if ((access !== 'read' && access !== 'write') || (artifacts !== 'none' && artifacts !== 'tasks-checkboxes' && artifacts !== 'all') || (instructions !== 'role' && instructions !== 'none')) throw new AgentExecutionError('Explicit access, artifacts and instructions are required', 'invalid_request')
+  return { access, artifacts, instructions }
+}
+export function normalizeAgentRequest(request: AgentRequest): AgentRequest & ReturnType<typeof requestPolicy> {
+  validateAgentRequest(request)
+  const policy = requestPolicy(request)
+  const legacy = isBuiltinRole(request.role) ? BUILTIN_ROLE_POLICY[request.role] : undefined
+  const unchangedBinding = request.openspec && request.openspec.role === request.role && request.openspec.access === undefined && request.openspec.artifacts === undefined && policy.access === legacy?.access && policy.artifacts === legacy?.artifacts
+  return { ...request, ...policy, ...(request.openspec && !unchangedBinding ? { openspec: { ...request.openspec, access: policy.access, artifacts: policy.artifacts } } : {}) }
 }

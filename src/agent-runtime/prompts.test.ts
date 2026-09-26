@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { roleInstructions, rolePromptDefaults } from './prompts.js'
-import type { AgentRole } from './executor-types.js'
+import type { BuiltinAgentRole } from './executor-types.js'
 import type { PipelineContext } from '../pipeline/pipeline-state.js'
 const context = { artifactRoot: '/repo', repositories: [{ id: 'app', name: 'App', path: '/repo' }], specs: [{ title: 'A feature', description: 'Implement the requested feature', acceptanceCriteria: ['Works'], repositoryIds: ['app'] }] } as PipelineContext
 
 describe('editable role definitions', () => {
-  it.each<AgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
+  it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
     expect(roleInstructions(role, context, 'change')).toContain(defaults[role])
     const prompt = roleInstructions(role, context, 'change', { definition: 'My custom definition', verification: [{ repositoryId: 'app', command: 'npm', args: ['test'] }], criteria: [{ specId: 'ticket', criterionIndex: 0, requirement: 'Works' }] })

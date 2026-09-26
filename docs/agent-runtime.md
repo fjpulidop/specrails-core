@@ -76,6 +76,35 @@ The [integration contract](../integration-contract.json) uses schema 5.1 and des
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
+## Declared roles and explicit permissions
+
+The required `agents` assignments remain architect, developer and reviewer. Add optional roles without changing their built-in prompts, invocation argv or workflow identity:
+
+```json
+{
+  "roles": {
+    "security-reviewer": {
+      "provider": "claude",
+      "access": "read",
+      "artifacts": "none",
+      "prompt": "Inspect the change for security regressions and report concrete evidence."
+    }
+  }
+}
+```
+
+This fragment extends the configuration above. Role IDs match `^[a-z][a-z0-9-]{0,63}$`; `fixer` remains reserved for developer corrections. `access` controls source tools and native CLI policies. `artifacts` controls scoped OpenSpec tools: `all` permits proposal/design/specs/tasks, `tasks-checkboxes` permits only task checkbox changes, and `none` denies writes. Progress records require `all` or `tasks-checkboxes`. Native CLIs retain their own workspace sandbox; artifact permissions are not an operating-system filesystem ACL.
+
+A role can declare `openspecSkill` as `openspec-ff-change`, `openspec-apply-change` or `openspec-verify-change`; absent means no OpenSpec binding. `rolePrompts` can override the prompt of a declared role. Built-ins retain implicit read/all, write/tasks-checkboxes and read/none policies respectively. Explicit built-in descriptors must match their assignment and policy. Validation of saved configuration adds no fields; new-run normalization materializes descriptors without editing the original document.
+
+`resolveRoleDescriptor(config, id)` and `roleInstructions(descriptor, context, change)` are public APIs. Custom roles use the guarded free loop on OpenAI-compatible providers; the compact architect/developer/reviewer pipelines remain specific to those built-in protocols. Existing context limits, read reuse, budgets, nullable accounting, review gates and verification stay in force. Select models and effort explicitly; no new automatic escalation or cheaper-model policy is inferred for custom roles.
+
+Programmatic `AgentRequest` accepts `access`, `artifacts`, `instructions: 'role'|'none'` and optional `nativeCommand: { id, args? }`. Old built-in requests retain compatible defaults; custom requests require explicit policy. A free request receives no appended role instructions. Native requests use an empty `prompt`, `instructions: 'none'` and no OpenSpec binding; arguments are literal data and cannot contain NUL.
+
+Claude/Gemini receive `/<id> <args>` and Codex `$<id> <args>`. Kimi uses its installed managed skill runner in `--render-only` mode to expand the native skill without inference, then the runtime executes that text through its normal read/write policy and ACP fallback. `specrails:<x>` maps to `specrails-<x>`; `opsx:ff`, `opsx:apply` and `opsx:verify` map to the corresponding OpenSpec skills. Simple IDs name installed Kimi skills. Upgrade the managed framework if its runner lacks render-only support. Unknown namespaces, missing skills and OpenAI-compatible native commands fail with `native_command_unsupported` before provider inference.
+
+`runtime api` advertises `openRoles: 1`; this additive capability does not advertise definition execution or engine v2. Desktop schema/settings support is paired through D1b. Existing frozen runs continue to use their retained runtime package.
+
 ## Run from the CLI
 
 Use an installed Core package that exposes runtime API 1. For a source checkout, run `npm ci` and `npm run build` in Core, then replace `specrails-core` below with `node /path/to/specrails-core/bin/specrails-core.mjs`.

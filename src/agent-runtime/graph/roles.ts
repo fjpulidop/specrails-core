@@ -1,8 +1,10 @@
+import { resolveRoleDescriptor } from '../config.js'
+import { isBuiltinRole } from '../executor-types.js'
 import { repositoryContextSnapshot, renderRepositoryContext } from '../repository-context.js'
 import { readRoleState, writeRoleState } from '../role-state.js'
 import { fingerprint } from '../durable-store.js'
 import { selectRoleRoute, type InvocationKind } from '../role-routing.js'
-import { ROLE_SKILLS, OPENSPEC_VERSION, OpenSpecTools, OpenSpecParticipationError, openSpecRepairPrompt } from '../openspec.js'
+import { openSpecSkill, OPENSPEC_VERSION, OpenSpecTools, OpenSpecParticipationError, openSpecRepairPrompt } from '../openspec.js'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { frozenAcceptanceCriteria, pipelineStateDirectory, type PipelineContext } from '../../pipeline/pipeline-state.js'
@@ -75,15 +77,16 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
   }
   const note = (role: AgentEventRole, text: string): void => { try { deps.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
   const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: { kind?: InvocationKind; resumeSessionId?: string; outputSchema?: Record<string, unknown>; fallbackPrompt?: string; agentOverride?: RuntimeAgentConfig; stance?: 'fixer' }): Promise<AgentResult> => {
-    const directory = deps.openspec?.[role].stateDirectory ?? path.join(pipelineStateDirectory(context), 'agent-workflow')
+    const directory = deps.openspec?.[role]?.stateDirectory ?? path.join(pipelineStateDirectory(context), 'agent-workflow')
     const saved = readRoleState(directory)
     const budget = step.remainingBudget()
     if (budget.maxTokens === 0 || budget.maxCostUsd === 0 || step.signal.aborted) throw new AgentExecutionError('No budget remains for another role invocation', step.signal.aborted ? 'aborted' : 'budget_exhausted', { inputTokens: 0, outputTokens: 0, costUsd: 0 })
     const kind = extra.kind ?? (extra.resumeSessionId ? 'correction' : 'initial')
-    const route = selectRoleRoute(role, extra.agentOverride ?? config.agents[role], kind, step.checkpoint, extra.agentOverride ? undefined : saved.routes[role])
+    const descriptor = resolveRoleDescriptor(config, role)
+    const route = selectRoleRoute(role, extra.agentOverride ?? (isBuiltinRole(role) ? config.agents[role] : descriptor), kind, step.checkpoint, extra.agentOverride ? undefined : saved.routes[role])
     const selected = route.selection
     const capabilities = await registry.capabilities(selected.provider, selected.model)
-    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: (extra.agentOverride ? config.rolePrompts?.fixer : config.rolePrompts?.[role]) ?? null, openspec: deps.openspec?.[role] ?? null, context })
+    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: (extra.agentOverride ? config.rolePrompts?.fixer : config.rolePrompts?.[role] ?? descriptor.prompt) ?? null, ...(isBuiltinRole(role) ? {} : { policy: descriptor }), openspec: deps.openspec?.[role] ?? null, context })
     const previous = saved.sessions[role]
     const resumeSessionId = capabilities.continuation === 'supported' && previous?.identity === identity && previous.sessionId === extra.resumeSessionId ? extra.resumeSessionId : undefined
     const snapshot = repositoryContextSnapshot(context)
@@ -105,9 +108,9 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     // the log reads `[fixer] read_file …`, not as another developer pass.
     const onEvent = forward(extra.stance === 'fixer' ? 'fixer' : role, structured)
     try {
-      if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${ROLE_SKILLS[role]} (official skill document through scoped tools).`)
+      if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${openSpecSkill(deps.openspec![role]!)} (official skill document through scoped tools).`)
       const result = await registry.execute(selected.provider, {
-        role, prompt: fullPrompt, openspec: deps.openspec?.[role] ? { ...deps.openspec[role], ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
+        role, access: descriptor.access, artifacts: descriptor.artifacts, instructions: 'role', prompt: fullPrompt, openspec: deps.openspec?.[role] ? { ...deps.openspec[role], ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
         model: selected.model, effort: selected.effort, ...(selected.thinking ? { thinking: selected.thinking } : {}), maxTurns: selected.maxTurns, signal: step.signal,
         timeoutMs: config.limits?.timeoutMs,
         maxTokens: budget.maxTokens, maxCostUsd: budget.maxCostUsd,
