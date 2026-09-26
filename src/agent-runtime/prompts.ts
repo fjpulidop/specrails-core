@@ -1,4 +1,4 @@
-import type { AgentRole } from './executor-types.js'
+import { isBuiltinRole, type BuiltinAgentRole, type AgentRole, type RoleDescriptor } from './executor-types.js'
 import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-state.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
@@ -14,7 +14,7 @@ export interface RoleFeedback {
 /** One frozen acceptance criterion the reviewer must certify, identified by stable scope coordinates. */
 export interface FrozenCriterion { specId: string; criterionIndex: number; requirement: string }
 /** Roles with an editable definition: the three pipeline agents plus the FIXER stance the developer role takes on a correction round. */
-type PromptRole = AgentRole | 'fixer'
+type PromptRole = BuiltinAgentRole | 'fixer'
 export interface RoleInstructionOptions {
   definition?: string
   /** `fixer`: the developer invocation is a correction round on the fixer stance (own definition, no plan dump). */
@@ -421,7 +421,17 @@ function reReviewSection(context: ReReviewContext | undefined): string[] {
 
 /** Central role instructions. Roles describe their own work only: traversal,
  * retries, checks, approvals, archive and delivery belong to the host. */
-export function roleInstructions(role: AgentRole, context: PipelineContext, change: string, options: RoleInstructionOptions = {}): string {
+export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, context: PipelineContext, change: string, options: RoleInstructionOptions = {}): string {
+  const role = typeof roleOrDescriptor === 'string' ? roleOrDescriptor : roleOrDescriptor.id
+  if (!isBuiltinRole(role)) {
+    if (typeof roleOrDescriptor === 'string') throw new Error('Custom roles require a resolved descriptor')
+    return [
+      `## Your task: ${role}`, '', options.definition ?? roleOrDescriptor.prompt ?? `Complete the assigned ${role} task.`, '',
+      `Workspace access: ${roleOrDescriptor.access}. OpenSpec artifact permission: ${roleOrDescriptor.artifacts}.`,
+      'Execute only this assigned role. Traversal, retries, verification, approval, archive and delivery belong to Core. Do not spawn another role or change runtime metadata.',
+      ...conventionsSection(), ...scopeSection(context, change), ...feedbackSection(options.feedback),
+    ].join('\n').trimEnd() + '\n'
+  }
   const feedback = feedbackSection(options.feedback)
   const corrections = role === 'developer' && feedback.length > 0
   const sections = [
@@ -442,6 +452,7 @@ export function roleInstructions(role: AgentRole, context: PipelineContext, chan
 
 /** A short follow-up for a provider session that already holds the role instructions. */
 export function correctionInstructions(role: AgentRole, feedback: RoleFeedback | undefined, extra: { changeSet?: string[]; developer?: DeveloperRecord | null } = {}): string {
+  if (!isBuiltinRole(role)) return ['Continue the same ' + role + ' role. Address the feedback and respect the original permissions and response contract. Keep already-correct work.', ...feedbackSection(feedback)].join('\n') + '\n'
   const lines = ['Continue the same ' + role + ' role in this session. Address the feedback below precisely, keep the already-correct work, finish every remaining task, mark completed tasks `- [x]` in `tasks.md`, and finish with the same JSON summary object as before (summary, files, tests, verification, incomplete), with nothing after it.', '', ...(role === 'developer' ? [...changeSetSection(role, undefined, extra.changeSet), ...discardedSection(extra.developer)] : []), ...feedbackSection(feedback)]
   return lines.join('\n').trimEnd() + '\n'
 }

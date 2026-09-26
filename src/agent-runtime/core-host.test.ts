@@ -1,3 +1,7 @@
+import { Annotation } from '@langchain/langgraph'
+import { createRoleInvoker } from './graph/roles.js'
+import { resolveRoleDescriptor, roleIds } from './config.js'
+import { roleInstructions } from './prompts.js'
 import { OpenSpecTools } from './openspec.js'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -14,7 +18,7 @@ import { compactState, runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 import { runtimeEfficiency } from './efficiency.js'
 import { runRecovery } from './recovery.js'
-import { definitionFingerprint } from './workflow.js'
+import { definitionFingerprint, runWorkflow } from './workflow.js'
 import { coreNodes, type CoreNodeDeps } from './graph/nodes.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
@@ -950,4 +954,61 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(projected.pipeline.context).toBeUndefined()
     expect(projected.pipeline.verification.receipt.commands.every(command => command.output === undefined && command.exitCode === 0 && command.repositoryId)).toBe(true)
   })
+})
+
+
+describe('declared role execution through the existing graph boundary', () => {
+  it('executes an optional-skill custom role and records all nullable usage and invocation metadata', async () => {
+    config.roles = { 'security-reviewer': { provider: 'fixture', access: 'read', artifacts: 'none', prompt: 'Inspect permission enforcement before approving.' } }
+    const calls: AgentRequest[] = []
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls.push(request)
+      expect(request).toMatchObject({ role: 'security-reviewer', access: 'read', artifacts: 'none', instructions: 'role' })
+      expect(request.openspec).toBeUndefined()
+      expect(request.prompt).toContain('Inspect permission enforcement')
+      expect(request.prompt).not.toContain('## Your task: reviewer')
+      return { text: '{"approved":true}', usage: { inputTokens: 12, outputTokens: 4, costUsd: null } }
+    } })
+    const invoke = createRoleInvoker({ context, config, registry, openspec: {} })
+    const schema = Annotation.Root({ result: Annotation<string>({ reducer: (_previous, next) => next, default: () => '' }) })
+    const state = await runWorkflow({ directory: path.join(root, 'custom-role-workflow'), runId: context.runId, input: {}, workflow: {
+      id: 'custom-role-fixture', version: '1', schema, entry: 'security-reviewer', nodes: { 'security-reviewer': { effect: 'read', ends: [], run: async (_state, step) => {
+        const output = await invoke('security-reviewer', step, { prompt: roleInstructions(resolveRoleDescriptor(config, 'security-reviewer'), context, change), structured: true }, value => value?.approved)
+        if (!output.ok) throw new Error(output.error)
+        return { status: 'succeeded', output: output.value as boolean }
+      } } },
+    } })
+    expect(state.status).toBe('succeeded')
+    expect(calls).toHaveLength(1)
+    expect(state.usage).toMatchObject({ inputTokens: 12, outputTokens: 4, costUsd: null })
+    const metrics = runtimeEfficiency(state, roleIds(config))
+    expect(metrics.total).toMatchObject({ providerCalls: 1, costUsd: null })
+    expect(metrics.phases[0]).toMatchObject({ stepId: 'security-reviewer', providerCalls: 1 })
+  })
+})
+
+
+it('reuses a custom role session only while its effective policy matches', async () => {
+  config.roles = { auditor: { provider: 'fixture', access: 'read', artifacts: 'none', prompt: 'Audit the files.' } }
+  const calls: AgentRequest[] = []
+  const registry = new ExecutorRegistry().register('fixture', {
+    capabilities: () => ({ transport: 'fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }),
+    execute: async request => { calls.push(request); return { text: 'Reviewed', sessionId: 'auditor-session', usage: { inputTokens: 1, outputTokens: 1, costUsd: null } } },
+  })
+  const invoke = createRoleInvoker({ context, config, registry })
+  const changed = createRoleInvoker({ context, config: { ...config, roles: { auditor: { ...config.roles.auditor!, artifacts: 'all' } } }, registry })
+  const schema = Annotation.Root({ note: Annotation<string>({ reducer: (_old, next) => next, default: () => '' }) })
+  const prompt = roleInstructions(resolveRoleDescriptor(config, 'auditor'), context, change)
+  const state = await runWorkflow({ directory: path.join(root, 'role-session-workflow'), runId: context.runId, input: {}, workflow: {
+    id: 'role-session', version: '1', schema, entry: 'first', nodes: Object.fromEntries(['first', 'same', 'changed'].map((id, i, ids) => [id, {
+      effect: 'read' as const, ends: ids[i + 1] ? [ids[i + 1]!] : [], run: async (_state: Record<string, unknown>, step: import('./workflow-types.js').WorkflowStepContext) => {
+        const result = await (id === 'changed' ? changed : invoke)('auditor', step, { prompt: i ? 'Continue the audit.' : prompt, ...(i ? { resumeSessionId: 'auditor-session', fallbackPrompt: prompt } : {}) }, (_object, text) => text)
+        if (!result.ok) throw new Error(result.error)
+        return { status: 'succeeded' as const, output: result.value }
+      },
+    }])) },
+  })
+  expect(state.status).toBe('succeeded')
+  expect(calls.map(call => call.resumeSessionId)).toEqual([undefined, 'auditor-session', undefined])
+  expect(calls[2]!.prompt).toContain('Audit the files.')
 })

@@ -14,6 +14,18 @@ Reglas de lectura:
 
 ## 1. Vocabulario
 
+### C2: roles abiertos y permisos explícitos (2026-09-26)
+
+`RuntimeConfig` mantiene `schemaVersion: 1` y `agents` con los tres built-ins obligatorios. Añade `roles: Record<roleId, RuntimeAgentConfig & { access: 'read'|'write'; artifacts: 'none'|'tasks-checkboxes'|'all'; prompt?: string; openspecSkill?: 'openspec-ff-change'|'openspec-apply-change'|'openspec-verify-change' }>`; `rolePrompts` admite únicamente built-ins, `fixer` y roles declarados. Un descriptor con id built-in solo es válido si coincide con su asignación y permisos implícitos; no puede cambiar el protocolo legado. `fixer` queda reservado a la corrección del developer. `resolveRoleDescriptor(config, id)` resuelve sin mutar documentos congelados; `normalizeRuntimeConfig` materializa descriptores al admitir un run nuevo.
+
+`AgentRequest` acepta `access`, `artifacts`, `instructions: 'role'|'none'` y `nativeCommand?: { id; args? }`. Se conservan requests programáticos built-in sin los tres campos mediante defaults compatibles; roles nuevos los requieren explícitos. Con comando nativo el prompt puede ser vacío, pero no contener texto adicional; `instructions` debe ser `none`, sin binding OpenSpec. Los IDs siguen los patrones de C2; ningún argumento contiene NUL. `instructions: none` no agrega instrucciones de rol. Los permisos efectivos gobiernan herramientas, políticas de CLI y OpenSpec independientemente del texto.
+
+No se añade `descriptor.compact`: los tres pipelines compactos son protocolos de producto built-in, no plantillas intercambiables. Roles nuevos usan el bucle libre con los mismos guardrails, límites de salida/contexto, contabilización nullable y presupuestos. Sus modelos/esfuerzo son explícitos; C2 no introduce escalada automática para un rol nuevo ni reduce gates de calidad.
+
+Kimi renderiza una skill instalada mediante `.kimi-code/specrails/run-skill.mjs --render-only`, una operación sin inferencia que devuelve `{ prompt }`, y ejecuta ese texto por el transporte Kimi existente con sus políticas `read`/`write` (incluido ACP cuando corresponda). El runner nunca sustituye el control de permisos. Los IDs simples nombran skills; `specrails:<x>` corresponde a `specrails-<x>` y `opsx:ff|apply|verify` a las tres skills OpenSpec respectivas. Otros IDs con namespace o skills no instaladas fallan `native_command_unsupported`. Claude/Gemini reciben `/<id> <args>` y Codex `$<id> <args>`; OpenAI-compatible rechaza comandos nativos antes de inferencia.
+
+`capabilities.openRoles: 1` se anuncia al completar C2; engine permanece 1, workflow 7, instrucciones 10 y catálogo de piezas vacío. El schema se empareja con D1b. La aceptación de C2 exige argv/fingerprints legados intactos, matriz de permisos/comandos y `npm run ci`.
+
 | Término | Significado |
 |---|---|
 | **Definición** | Documento JSON que describe un grafo ejecutable (sección 2). La crea Desktop (o el usuario a través de Desktop) y la ejecuta Core. |

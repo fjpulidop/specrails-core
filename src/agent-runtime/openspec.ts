@@ -5,7 +5,7 @@ import { appendFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFile
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { AgentRole, CliProvider } from './executor-types.js'
+import { BUILTIN_ROLE_POLICY, isBuiltinRole, type AgentRole, type CliProvider, type RoleDescriptor, type AgentAccess, type ArtifactAccess, type OpenSpecSkill } from './executor-types.js'
 import { z } from 'zod'
 
 export const OPENSPEC_VERSION = '1.4.1'
@@ -19,6 +19,19 @@ export interface OpenSpecRoleContext {
   skillPath: string
   skillHash: string
   role: AgentRole
+  access?: AgentAccess
+  artifacts?: ArtifactAccess
+  openspecSkill?: OpenSpecSkill
+}
+/** Saved built-in contexts retain their original shape; new roles carry explicit policy. */
+export function openSpecPolicy(context: OpenSpecRoleContext): { access: AgentAccess; artifacts: ArtifactAccess } {
+  const legacy = isBuiltinRole(context.role) ? BUILTIN_ROLE_POLICY[context.role] : undefined
+  return { access: context.access ?? legacy?.access ?? 'read', artifacts: context.artifacts ?? legacy?.artifacts ?? 'none' }
+}
+export function openSpecSkill(context: OpenSpecRoleContext): OpenSpecSkill {
+  const skill = context.openspecSkill ?? (isBuiltinRole(context.role) ? ROLE_SKILLS[context.role] : undefined)
+  if (!skill) throw new Error('Role has no declared OpenSpec skill')
+  return skill
 }
 export interface OpenSpecStatus {
   changeRoot: string
@@ -61,7 +74,7 @@ function readProgress(context: OpenSpecRoleContext): { notice: string; record: P
   }
 }
 function writeProgress(context: OpenSpecRoleContext, input: unknown): { notice: string; record: ProgressRecord } {
-  if (context.role !== 'developer') throw new Error('Only the developer may write implementation progress')
+  if (openSpecPolicy(context).artifacts === 'none') throw new Error('Role cannot write implementation progress')
   const progress = IMPLEMENTATION_PROGRESS_SCHEMA.parse(input)
   const record: ProgressRecord = { schemaVersion: 1, root: realpathSync(context.root), change: context.change, updatedAt: new Date().toISOString(), progress }
   const content = JSON.stringify(record)
@@ -145,10 +158,15 @@ export function prepareOpenSpec(root: string, change: string, directory: string)
   identity.projectConfig = existsSync(config) ? hash(readFileSync(config, 'utf8')) : 'absent'
   return { cli, skillRoot, identity }
 }
-export function roleOpenSpecContext(prepared: ReturnType<typeof prepareOpenSpec>, root: string, change: string, directory: string, role: AgentRole, provider: CliProvider): OpenSpecRoleContext {
+export function roleOpenSpecContext(prepared: ReturnType<typeof prepareOpenSpec>, root: string, change: string, directory: string, roleOrDescriptor: AgentRole | RoleDescriptor, provider: CliProvider): OpenSpecRoleContext {
+  const role = typeof roleOrDescriptor === 'string' ? roleOrDescriptor : roleOrDescriptor.id
+  const descriptor = typeof roleOrDescriptor === 'string' ? undefined : roleOrDescriptor
+  const skill = descriptor?.openspecSkill ?? (isBuiltinRole(role) ? ROLE_SKILLS[role] : undefined)
+  if (!skill) throw new Error('Role has no declared OpenSpec skill')
   return { root, change, stateDirectory: directory, cli: prepared.cli, role,
-    skillPath: path.join(prepared.skillRoot, provider, ROLE_SKILLS[role], 'SKILL.md'),
-    skillHash: prepared.identity[`${provider}/${ROLE_SKILLS[role]}`]!,
+    skillPath: path.join(prepared.skillRoot, provider, skill, 'SKILL.md'),
+    skillHash: prepared.identity[`${provider}/${skill}`]!,
+    ...(isBuiltinRole(role) ? {} : { access: descriptor!.access, artifacts: descriptor!.artifacts, openspecSkill: skill }),
   }
 }
 /** OpenSpec uses cwd paths; Windows may report a different case or short-name
@@ -186,17 +204,17 @@ export class OpenSpecTools {
       // Both official apply and verify start with these read-only CLI queries.
       // Execute them as part of the agent's tool request and return their actual
       // outputs, so loading a skill cannot omit its required planning context.
-      const planning = this.context.role === 'architect' ? undefined : {
+      const planning = openSpecSkill(this.context) === 'openspec-ff-change' ? undefined : {
         status: await this.status(),
         apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']),
       }
       if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact: 'apply', via: 'load_skill' })
-      result = { name: ROLE_SKILLS[this.context.role], source: this.context.skillPath, version: OPENSPEC_VERSION, content,
+      result = { name: openSpecSkill(this.context), source: this.context.skillPath, version: OPENSPEC_VERSION, content,
         ...(planning ? { planning, next: 'The official status and instructions apply queries have executed for this request. Read every planning.apply.contextFiles path, then perform the remaining role skill steps. This is planning context, not proof that implementation or review is complete.' } : {}),
-        ...(this.context.role !== 'architect' ? { savedProgress: readProgress(this.context) } : {}),
+        ...(openSpecSkill(this.context) !== 'openspec-ff-change' ? { savedProgress: readProgress(this.context) } : {}),
       }
     } else if (action === 'new') {
-      if (this.context.role !== 'architect') throw new Error('Only the architect can create a change')
+      if (openSpecPolicy(this.context).artifacts !== 'all') throw new Error('Role cannot create a change')
       const target = artifactPath(this.context.root, `openspec/changes/${this.context.change}`)
       result = existsSync(target) ? await this.status() : await this.call(['new', 'change', this.context.change, '--json'])
       await this.status()
@@ -209,16 +227,16 @@ export class OpenSpecTools {
       result = await this.call(['instructions', input.artifact!, '--change', this.context.change, '--json'])
     } else if (action === 'validate') result = await this.validate()
     else if (action === 'write_artifact') {
-      if (this.context.role === 'reviewer') throw new Error('Reviewer cannot write artifacts')
+      if (openSpecPolicy(this.context).artifacts === 'none') throw new Error(this.context.role === 'reviewer' ? 'Reviewer cannot write artifacts' : 'Role cannot write artifacts')
       const status = await this.status()
       if (!input.path?.endsWith('.md') || typeof input.content !== 'string' || Buffer.byteLength(input.content) > 256 * 1024) throw new Error('Invalid artifact content')
-      if (this.context.role === 'developer' && input.path !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
+      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' && input.path !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
       if (!['proposal.md', 'design.md', 'tasks.md'].includes(input.path) && !/^specs\/[a-z0-9-]+\/spec\.md$/.test(input.path)) throw new Error('Not a spec-driven artifact')
       const artifact = input.path.startsWith('specs/') ? 'specs' : input.path.replace('.md', '')
       if (!['ready', 'done'].includes(status.artifacts.find(item => item.id === artifact)?.status ?? '')) throw new Error('OpenSpec dependencies are incomplete for this artifact')
-      if (!history.some(item => item.action === 'instructions' && item.artifact === (this.context.role === 'developer' ? 'apply' : artifact))) throw new Error('Read OpenSpec instructions before writing this artifact')
+      if (!history.some(item => item.action === 'instructions' && item.artifact === (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' ? 'apply' : artifact))) throw new Error('Read OpenSpec instructions before writing this artifact')
       const target = artifactPath(status.changeRoot, input.path)
-      if (this.context.role === 'developer') {
+      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes') {
         const normalize = (text: string): string => text.replace(/^(\s*-\s+)\[[ x]\]/gm, '$1[ ]')
         if (normalize(readFileSync(target, 'utf8')) !== normalize(input.content)) throw new Error('Developer may change only task checkboxes')
       }
@@ -240,9 +258,9 @@ export class OpenSpecTools {
   participationCursor(): number { return this.participationEvents().length }
   assertParticipation(after = 0): void {
     const rows = this.participationEvents().slice(after)
-    const artifact = this.context.role === 'architect' ? 'tasks' : 'apply'
+    const artifact = openSpecSkill(this.context) === 'openspec-ff-change' ? 'tasks' : 'apply'
     const missing = [!rows.some(row => row.action === 'load_skill') ? 'load_skill' : '', !rows.some(row => row.action === 'instructions' && row.artifact === artifact) ? `instructions ${artifact}` : ''].filter(Boolean)
-    if (missing.length) throw new OpenSpecParticipationError(`Required OpenSpec role workflow was not executed: ${this.context.role} must execute ${ROLE_SKILLS[this.context.role]} (missing ${missing.join(', ')})`)
+    if (missing.length) throw new OpenSpecParticipationError(`Required OpenSpec role workflow was not executed: ${this.context.role} must execute ${openSpecSkill(this.context)} (missing ${missing.join(', ')})`)
   }
   async assertReady(): Promise<OpenSpecApply> {
     const status = await this.status()
@@ -274,7 +292,9 @@ export const OPENSPEC_TOOL_DEFINITION = { type: 'function', function: { name: 'o
   },
 } } } } }
 export function openSpecPrompt(context: OpenSpecRoleContext): string {
-  return `\n## Official OpenSpec workflow binding\nExecute ${ROLE_SKILLS[context.role]} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
+  if (!isBuiltinRole(context.role)) return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. Load action=load_skill using openspec_workflow and follow the pinned official skill. Use scoped tools for status, instructions, validation and permitted artifact writes. Workspace access: ${openSpecPolicy(context).access}; artifacts: ${openSpecPolicy(context).artifacts}. Read required artifact instructions before writing. Never archive or coordinate another role.\n`
+
+  return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
 }
 export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: string): { command: string; args: string[] } {
   const file = path.join(directory, 'openspec-context.json')
@@ -285,6 +305,8 @@ export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: str
 /** A repairable protocol omission, distinct from invalid artifacts or failed verification. */
 export class OpenSpecParticipationError extends Error {}
 export function openSpecRepairPrompt(context: OpenSpecRoleContext): string {
-  return `The previous ${context.role} result cannot be accepted because you omitted the required official OpenSpec workflow. Do not merely resend the JSON. Continue this same role with the work already available. Load ${ROLE_SKILLS[context.role]} using the scoped workflow tool (action=load_skill), consult status and instructions ${context.role === 'architect' ? 'tasks' : 'apply'}, and execute the complete returned skill procedure against the current artifacts and code. Reconcile your previous conclusions with that procedure; correct your report if necessary. Do not rerun the implementation or the host verification commands. ${context.role === 'reviewer' ? 'Stay read-only; do not modify code or artifacts.' : 'Keep already-correct work and respect the same frozen scope.'} Finish with the originally requested JSON report.
+  if (!isBuiltinRole(context.role)) return `Continue the same ${context.role} turn. Load ${openSpecSkill(context)} and execute its official scoped workflow, including instructions ${openSpecSkill(context) === 'openspec-ff-change' ? 'tasks' : 'apply'}. Respect workspace access ${openSpecPolicy(context).access} and artifact permission ${openSpecPolicy(context).artifacts}. Keep already-correct work. Return the originally requested result without starting another role.\n`
+
+  return `The previous ${context.role} result cannot be accepted because you omitted the required official OpenSpec workflow. Do not merely resend the JSON. Continue this same role with the work already available. Load ${openSpecSkill(context)} using the scoped workflow tool (action=load_skill), consult status and instructions ${context.role === 'architect' ? 'tasks' : 'apply'}, and execute the complete returned skill procedure against the current artifacts and code. Reconcile your previous conclusions with that procedure; correct your report if necessary. Do not rerun the implementation or the host verification commands. ${context.role === 'reviewer' ? 'Stay read-only; do not modify code or artifacts.' : 'Keep already-correct work and respect the same frozen scope.'} Finish with the originally requested JSON report.
 `
 }

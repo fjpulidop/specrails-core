@@ -313,3 +313,11 @@ describe('Claude Opus generation', () => {
     expect(args[args.indexOf('--model') + 1]).toBe('opus')
   })
 })
+
+
+it('preserves every built-in argv byte against the C0 baseline', () => {
+  const baseline = JSON.parse(readFileSync(new URL('./__fixtures__/builtin-cli-invocations.json', import.meta.url), 'utf8')) as { sourceCommit: string; fixtures: Array<{ provider: CliProvider; request: AgentRequest; options: { geminiPolicyFile?: string; kimiAgentFile?: string }; invocation: unknown }> }
+  expect(baseline.sourceCommit).toBe('6ab6b3ce')
+  expect(baseline.fixtures).toHaveLength(12)
+  for (const fixture of baseline.fixtures) expect(buildCliInvocation(fixture.provider, fixture.request, fixture.options), `${fixture.provider}/${fixture.request.role}`).toEqual(fixture.invocation)
+})
