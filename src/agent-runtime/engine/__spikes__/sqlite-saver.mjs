@@ -1,9 +1,10 @@
 // C1 experiment only. This file is not a production saver or package export.
 import { DatabaseSync } from 'node:sqlite'
-import { chmodSync, mkdirSync, openSync, closeSync } from 'node:fs'
+import { chmodSync, mkdirSync, openSync, closeSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { BaseCheckpointSaver, copyCheckpoint, WRITES_IDX_MAP } from '@langchain/langgraph-checkpoint'
+import { privatePathEvidence } from './private-directory.mjs'
 
 const configOf = row => ({ configurable: { thread_id: row.thread_id, checkpoint_ns: row.checkpoint_ns, checkpoint_id: row.checkpoint_id } })
 
@@ -12,9 +13,11 @@ export class SpikeSqliteSaver extends BaseCheckpointSaver {
   constructor(filename, { fault = () => {}, observe = () => {} } = {}) {
     super()
     mkdirSync(path.dirname(filename), { recursive: true, mode: 0o700 })
+    const created = !existsSync(filename)
     const fd = openSync(filename, 'a', 0o600)
     closeSync(fd)
     if (process.platform !== 'win32') chmodSync(filename, 0o600)
+    else if (created) privatePathEvidence(filename, { protect: true })
     this.db = new DatabaseSync(filename)
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS checkpoints (
