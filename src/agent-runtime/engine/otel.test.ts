@@ -3,7 +3,7 @@ import { createServer } from 'node:http'
 import { once } from 'node:events'
 import type { AddressInfo } from 'node:net'
 import { createEngineTelemetry } from './otel.js'
-import { traceIdFor } from './events.js'
+import { projectDurableEvent, traceIdFor } from './events.js'
 import type { DurableEngineEvent } from './contracts.js'
 
 afterEach(() => vi.unstubAllEnvs())
@@ -38,6 +38,10 @@ describe('optional OTLP event spans', () => {
       const spans = JSON.parse(requests[0].body).resourceSpans[0].scopeSpans[0].spans
       expect(spans).toHaveLength(2)
       expect(spans[0]).toMatchObject({ traceId: traceIdFor('run'), spanId: expect.stringMatching(/^[0-9a-f]{16}$/), kind: 1, startTimeUnixNano: '1790380800000000000', endTimeUnixNano: '1790380800000000000' })
+      for (const [index, span] of spans.entries()) {
+        const projected = projectDurableEvent(event(index + 1)).event
+        expect(projected).toMatchObject({ traceId: span.traceId, spanId: span.spanId })
+      }
       expect(spans[0].spanId).not.toBe(spans[1].spanId)
     } finally { await telemetry.close(); await new Promise<void>(resolve => server.close(() => resolve())) }
   })

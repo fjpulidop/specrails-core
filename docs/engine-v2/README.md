@@ -7,6 +7,7 @@ Core executes immutable workflow definitions through LangGraph with a SQLite run
 - [Piece catalog](pieces.md)
 - [Extending the engine](extending.md)
 - [Recovery, forks and steering](recovery.md)
+- [Observation and trace correlation](observation.md)
 - [Desktop integration contract](desktop-integration.md)
 - [Legacy runtime and configuration](../agent-runtime.md)
 - [Measured platform experiments](spikes/README.md)

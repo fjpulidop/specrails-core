@@ -1,3 +1,12 @@
+## Recorded trace correlation — 27 September 2026
+
+JSONL workflow events now expose the same stable per-event span ID as optional
+OTLP export, through one shared identity function. Replay identity and untrusted
+payload override tests pass; the real local collector proves JSONL/export parity.
+Seven event/telemetry tests passed, and typecheck passed. The observation guide
+states point-event timing and best-effort export semantics explicitly. This does
+not claim collector delivery or production rollout evidence.
+
 ## Integration CI follow-up — 27 September 2026, 00:51 CEST
 
 Local CI started at production revision 06d563c5 and finished successfully:

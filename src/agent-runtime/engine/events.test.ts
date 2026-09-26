@@ -24,3 +24,11 @@ it('bounds hostile log strings before serializing without malformed JSON lines',
   expect(JSON.parse(line).text).toContain('[output truncated]')
   expect(() => boundedJsonLine({ text: 'value' }, 2)).toThrow()
 })
+
+it('keeps span correlation stable across replay and independent of untrusted payload fields', () => {
+  const event: DurableEngineEvent = { sequence: 7, runId: 'run', type: 'step_started', timestamp: 'now', payload: { traceId: 'spoofed', spanId: 'spoofed' } }
+  const projected = projectDurableEvent(event).event
+  expect(projected).toMatchObject({ traceId: expect.stringMatching(/^[0-9a-f]{32}$/), spanId: expect.stringMatching(/^[0-9a-f]{16}$/) })
+  expect(projectDurableEvent({ ...event, payload: {} }).event).toEqual(projected)
+  expect(projectDurableEvent({ ...event, sequence: 8 }).event).not.toEqual(projected)
+})

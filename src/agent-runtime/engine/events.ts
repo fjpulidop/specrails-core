@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 import { EngineError, type DurableEngineEvent, type JsonObject, type JsonValue, type TransientEngineEvent } from './contracts.js'
 
 export const MAX_EVENT_CHARACTERS = 1_000_000
+export const spanIdFor = (runId: string, sequence: number): string => createHash('sha256').update(`${runId}:${sequence}`).digest('hex').slice(0, 16)
 export const traceIdFor = (runId: string): string => createHash('sha256').update(runId).digest('hex').slice(0, 32)
 
 /** Bound log strings without dropping lifecycle identity or inventing usage. */
@@ -27,7 +28,7 @@ export function projectDurableEvent(event: DurableEngineEvent): JsonObject {
     kind: 'role-context', payload: event.payload,
   }
   return { type: 'workflow-event', event: {
-    ...payload, id: `${event.runId}:${event.sequence}`, sequence: event.sequence, runId: event.runId, traceId: traceIdFor(event.runId),
+    ...payload, id: `${event.runId}:${event.sequence}`, sequence: event.sequence, runId: event.runId, traceId: traceIdFor(event.runId), spanId: spanIdFor(event.runId, event.sequence),
     type: event.type, timestamp: event.timestamp,
     ...(event.nodePath ? { nodePath: event.nodePath, stepId: event.nodePath } : {}),
     ...(event.scopeId ? { scopeId: event.scopeId } : {}), ...(event.branchId ? { branch: event.branchId } : {}),

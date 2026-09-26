@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto'
 import { EngineError, type DurableEngineEvent, type JsonObject } from './contracts.js'
-import { traceIdFor } from './events.js'
+import { spanIdFor, traceIdFor } from './events.js'
 
 export interface EngineTelemetry {
   observe(event: DurableEngineEvent): void
@@ -13,7 +12,6 @@ interface TelemetryOptions {
   timeoutMs?: number
   maxQueue?: number
 }
-const hash = (value: string) => createHash('sha256').update(value).digest('hex')
 
 /** Explicitly enabled OTLP/HTTP observer. Lifecycle metadata only; never a source of execution truth. */
 export function createEngineTelemetry(options: TelemetryOptions = {}): EngineTelemetry | undefined {
@@ -87,7 +85,7 @@ export function createEngineTelemetry(options: TelemetryOptions = {}): EngineTel
           ...(event.attemptId ? { 'specrails.attempt.id': event.attemptId } : {}), ...(event.branchId ? { 'specrails.branch.id': event.branchId } : {}),
         }).map(([key, value]) => ({ key, value: { stringValue: value.slice(0, 512) } }))
         // Event spans are points in durable history, so no provider duration is inferred from them.
-        queue.push({ traceId: traceIdFor(event.runId), spanId: hash(`${event.runId}:${event.sequence}`).slice(0, 16), name: event.type.slice(0, 128), kind: 1,
+        queue.push({ traceId: traceIdFor(event.runId), spanId: spanIdFor(event.runId, event.sequence), name: event.type.slice(0, 128), kind: 1,
           startTimeUnixNano: nano, endTimeUnixNano: nano, attributes: [...attributes, { key: 'specrails.event.sequence', value: { intValue: String(event.sequence) } }],
           status: { code: /_(failed|interrupted|blocked)$/.test(event.type) ? 2 : 0 },
         })
