@@ -16,10 +16,12 @@ npm run build          # src/ → dist/
 ```bash
 npm test               # build + typecheck + vitest
 npm run test:coverage  # vitest with v8 coverage (thresholds enforced)
-npm run ci             # everything CI runs locally
+npm run ci             # complete production quality suite
 ```
 
 Tests live next to their subject as `*.test.ts`. `src/installer/__tests__/reserved-paths.test.ts` is the contract for what the installer must never touch. CI runs the suite on Ubuntu and macOS × Node 20.19.0/22/24, plus a partitioned Windows run.
+
+Engine v2 decision experiments are separate from the production suite: after building, use Node exactly 22.22.3 and run `npm run test:engine-spikes`. The directly executable prototypes are not shipped or included in production coverage. See [their acceptance criteria](docs/engine-v2/spikes/README.md) for the required platform/package evidence; they do not change Core's supported Node minimum.
 
 To try an install against a scratch repository:
 

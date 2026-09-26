@@ -13,6 +13,7 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 - A checksum-verified actionlint binary validates workflow syntax, expressions and action inputs (shellcheck is not included).
 - A checksum-verified Gitleaks binary scans Git history with redacted output.
 - On Node 24 on each OS, `scripts/verify-package.mjs` packs the built package, checks its file inventory, installs the tarball into an isolated temporary consumer with lifecycle scripts disabled, and executes both published CLI entry points. It materializes/assembles all four providers and runs the assembled pipeline helper against four frozen fixture scopes. No global install, real project registry, provider login or model call is used.
+- C1 adds a separate `engine-spikes` matrix on Linux x64, macOS arm64 (`macos-15`) and Windows x64, using Desktop's exact Node **22.22.3**. It runs the [engine decision probes](engine-v2/spikes/README.md), checks that prototypes stay out of the package, and exercises the real npm tarball on that Node. This lane does not repeat coverage or replace the supported Node/OS matrix. Evidence is retained for 14 days even on failure; a green local probe does not substitute for all platform artifacts or paired Desktop assembly acceptance. Runner architectures follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) and are asserted in the job.
 
 The Linux package smoke uploads `core-package` for 14 days, containing the `.tgz` and `release-manifest.json` (package/version, Git SHA and SHA-512 integrity). The manifest is only written after the consumer smoke succeeds.
 
@@ -24,6 +25,8 @@ npm run test:scripts       # hermetic release and CI partition regressions
 npm run check:package      # build and consumer smoke; prints its temporary artifact directory
 # To choose where the verified tarball is kept:
 node scripts/verify-package.mjs /absolute/path/to/temporary-package-output
+# C1 experiments only, after build, using Node exactly 22.22.3:
+npm run test:engine-spikes -- --output /absolute/path/to/engine-spike-evidence
 ```
 
 To reproduce a Windows test partition locally, run `node scripts/ci-tests.mjs runtime-1` (or `runtime-2`, `runtime-3`, `general`). Add `--list-only` to a runtime partition to verify its inventory without executing tests.

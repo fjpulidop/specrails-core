@@ -1,9 +1,9 @@
 ## ADDED Requirements
 
 ### Requirement: Checkpoint and terminal evidence commit atomically
-Each v2 run SHALL persist checkpoints and ledger in one `run.sqlite` database with WAL, FULL synchronous writes, foreign keys and busy timeout. A node's committed checkpoint and terminal attempt/evidence/usage updates SHALL share an atomic transaction; a durable completed node SHALL not replay after a process crash.
+Each v2 run SHALL persist checkpoints and ledger in one `run.sqlite` database with WAL, FULL synchronous writes, foreign keys and busy timeout. A node's durable LangGraph pending writes and terminal attempt/evidence/usage updates SHALL share an atomic transaction. The aggregate checkpoint can be written subsequently; recovery SHALL use the committed pending writes so a durable completed node does not replay after a process crash.
 
-#### Scenario: Crash occurs between checkpoint and ledger writes
+#### Scenario: Crash occurs between durable node-result and ledger writes
 - **WHEN** the process is killed at a tested boundary between those writes
 - **THEN** recovery observes both committed records or neither and never contradictory completion
 
