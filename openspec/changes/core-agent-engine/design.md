@@ -41,7 +41,7 @@ The compiler uses static/conditional edges, retry policies, interrupts, subgraph
 
 ### 4. SQLite is selected; its binding and transaction integration are gated
 
-Each v2 run stores checkpoints and evidence in `run.sqlite` with WAL, FULL synchronous writes, foreign keys and a busy timeout. One execution lease protects run ownership. The terminal node evidence and checkpoint must commit together, and persisted events must be emitted after commit. This is a behavioral requirement, not an assumption that a LangGraph callback automatically shares a transaction.
+Each v2 run stores checkpoints and evidence in `run.sqlite` with WAL, FULL synchronous writes, foreign keys and a busy timeout. One execution lease protects run ownership. The terminal node evidence and durable LangGraph pending writes must commit together, and persisted events must be emitted after that commit. The aggregated snapshot can follow: recovery must consume committed pending writes rather than replay completed nodes. This is a behavioral requirement, not an assumption that a LangGraph callback automatically shares a transaction.
 
 C1 compares `node:sqlite` on Desktop's Node 22.22.3 with the supported LangGraph SQLite adapter/native binding, including actual packed/assembled artifacts. The preferred candidate is evaluated against 200-node crash/recovery, WAL, permissions, latency and Linux/macOS/Windows acceptance. A production Node minimum change requires an accepted decision. File fallback is considered only if both bindings fail and its weaker atomicity is made explicit before changing this contract.
 
@@ -82,3 +82,7 @@ Existing typecheck, script tests, coverage and package checks remain release gat
 ## Open Questions
 
 C1 must resolve the SQLite binding, exact atomic checkpoint/ledger integration, supported subgraph interrupt/fork APIs and post-commit stream mapping. Before C3 the contract must also resolve initial definition hash calculation, private `$lastOutcome`/`$item` scope, verification's own write effect and terminal receipt ordering. Before C6 it must define safe shared-worktree fan-out semantics. These are implementation gates; neither passing OpenSpec validation nor creating a report file proves them resolved.
+
+### C1 local findings (2026-09-26; final platform gate pending)
+
+Real `putWrites` transactions preserve 200 completed fixture nodes across one SIGKILL per boundary. The candidate atomically records pending writes and terminal fixture evidence; `put` materializes the next aggregate checkpoint separately. Production attempt identity, event sequence and concurrent visit semantics are still C3 design work. Streaming updates can precede commit, and `streamEvents` node-end does so in the measured fixture, therefore choose writer/custom progress plus post-commit ledger lifecycle. Nested recursion limits do not enforce the global definition visit budget. `updateState` can seed a new child thread from inspected internal state, but an entire parent/branch fork requires explicit namespace/history copying design. These findings do not yet accept a binding or change the supported Node minimum.
