@@ -34,8 +34,8 @@ tasks. Preserve already accepted foundation work.
 | Core CI | `codex/ci-engine-optimization`, `/private/tmp/specrails-core-ci-engine` | [388](https://github.com/fjpulidop/specrails-core/pull/388) |
 | Desktop CI/release | `codex/ci-engine-optimization`, `/private/tmp/specrails-desktop-ci-engine` | [707](https://github.com/fjpulidop/specrails-desktop/pull/707) |
 | Web rollout notes | `docs/core-engine-rollout`, `/private/tmp/specrails-web-engine-docs` | [218](https://github.com/fjpulidop/specrails-web/pull/218) |
-| Integrated Core WIP | `feat/core-engine-v2`, `/private/tmp/specrails-core-engine-v2` | Draft checkpoint PR; see branch |
-| Integrated Desktop WIP | `feat/core-engine-desktop-v2`, `/private/tmp/specrails-desktop-engine` | Draft checkpoint PR; see branch |
+| Integrated Core WIP | `feat/core-engine-v2`, `/private/tmp/specrails-core-engine-v2` | [389](https://github.com/fjpulidop/specrails-core/pull/389) |
+| Integrated Desktop WIP | `feat/core-engine-desktop-v2`, `/private/tmp/specrails-desktop-engine` | [708](https://github.com/fjpulidop/specrails-desktop/pull/708) |
 
 Foundation and CI PRs are ready for review. Integration PRs remain drafts. Every
 created PR is attached to the Codex task. Temporary checkouts may disappear after
@@ -184,3 +184,11 @@ Important completed decisions:
   with normal escalation. Sandbox `gh` authentication failure is not reliable.
 - No recurring automation was created. Resume when the user has quota, from this
   checkpoint and the pushed integration branches, preserving the complete goal.
+
+## Saved checkpoint references
+
+Core source commit: `9ae02add`; Desktop source commit: `4c84e95c`. Both pushed.
+Final checkpoint verification: Core typecheck/build pass and focused tests 48/48;
+Desktop full typecheck and architecture pass. The working trees were clean after
+source commits. Later documentation-only commits add these cross-references.
+Read `CHECKPOINT-C3-C7-C8.md` in Core for detailed persistence/fork notes.
