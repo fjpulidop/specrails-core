@@ -153,3 +153,13 @@ that receipt still returns `run_exists`; no existing directory is overwritten.
 Desktop preserves published children after transport/materialization failure and
 retries with the same request ID, comparing every existing frozen host file before
 completing missing files. This does not reexecute a node or alter the source.
+
+Construction is also recoverable before publication. A private SQLite write
+transaction, held across construction, excludes concurrent builders without a
+PID/timeout lease; the OS releases it on process death. A separate flushed intent
+records each empty allocation's device, inode and birth time before its atomic
+rename into the frozen run/artifact roots. An identical request may discard only
+those unpublished allocations and reconstruct the cut. Changed ownership or
+request identity fails closed. Published receipts are checked before cleanup, so
+neither a completed child nor a replacement directory can be reclaimed. The
+additive `forkIdempotency: 1` capability advertises this host retry contract.

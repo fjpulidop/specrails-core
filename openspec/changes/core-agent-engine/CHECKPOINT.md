@@ -1,5 +1,20 @@
 # Checkpoint — 26 September 2026
 
+## Fork construction recovery — 26 September 2026, 23:45 CEST
+
+- Added advertised `forkIdempotency: 1` and durable allocation recovery before
+  publication. SQLite construction exclusion releases on process death; a flushed
+  independent manifest proves directory ownership before cleanup. Published
+  receipts and foreign/replaced paths are preserved. No provider is rerun while
+  constructing a historical cut.
+- Node 22.22.3 typecheck/build passed. Focused CLI/fork/allocation regression:
+  **3 suites / 20 tests passed**, 64.77s. Includes real CLI SIGKILL after initial
+  allocation, before publication and after publication; a killed implementation
+  fork after allocating its change directory; immutable source bytes; completed
+  architect preservation; concurrency and changed-directory refusal.
+- These are focused local gates. Full cross-platform CI remains required; C1
+  integration still awaits the explicit local-merge approval described below.
+
 ## CI continuation — 26 September 2026, 22:25 CEST
 
 Run 36268127165 (37a46681) completed: all general/runtime matrix jobs and all three installed-package recovery jobs passed. Windows C1 spikes remain failing while local C1 integration awaits explicit approval after auto-review rejection. Coverage failed two late-fork integration cases at their explicit 40-second POSIX ceiling (not a coverage threshold failure). Raised only these multi-workflow fork test ceilings, plus their related incomplete-journal case, to 120 seconds on POSIX; Windows remains 180 seconds. Assertions and coverage thresholds are unchanged. Focused fork regression: 6/6 passed in 51.17 seconds. Full CI rerun is still required for this change.

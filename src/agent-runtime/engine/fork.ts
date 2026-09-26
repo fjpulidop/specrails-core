@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, renameSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { RunnableConfig } from '@langchain/core/runnables'
@@ -19,6 +19,7 @@ import type { WorkflowDefinition } from './definition-types.js'
 import { forkImplementationJournal, projectImplementationFork, type ImplementationJournalSnapshot } from './pieces/implementation-journal.js'
 import type { ImplementationBinding } from './pieces/implementation-binding.js'
 import { ensurePrivateDirectory } from './storage/private-path.js'
+import { ForkAllocation } from './storage/fork-allocation.js'
 
 export interface ForkRunOptions {
   fromNodePath: string
@@ -53,7 +54,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
   const source = await RunDatabase.open(path.join(directory, 'run.sqlite'), { readOnly: true })
   let destination: RunDatabase | undefined, runtime: Awaited<ReturnType<typeof composeDefinitionRuntime>> | undefined
   let ledger: RunLedger | undefined, targetRoot: string | undefined, published = false
-  const created: string[] = []
+  let allocation: ForkAllocation | undefined, ownsAllocation = false
   try {
     const sourceRun = source.sqlite.prepare('SELECT * FROM runs').get()!
     if (!sourceRun) throw new EngineError('run_not_found', 'Source run does not exist')
@@ -63,8 +64,9 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     if (context.runId === request.context.runId) throw new EngineError('invalid_arguments', 'Fork requires a different run ID')
     targetRoot = pipelineStateDirectory(context)
     const requestDigest = contentDigest({ sourceRunId: request.context.runId, runId: options.runId, fromNodePath: options.fromNodePath, scopeId: options.scopeId ?? null, visit: options.visit ?? null, state })
-    if (existsSync(targetRoot)) {
-      if (!options.requestId || !existsSync(path.join(targetRoot, 'agent-workflow/run.sqlite'))) throw new EngineError('run_exists', 'Fork refuses to replace an existing run directory')
+    allocation = await ForkAllocation.open(targetRoot, context.artifactRoot, options.requestId, requestDigest)
+    if (existsSync(path.join(targetRoot, 'agent-workflow/run.sqlite'))) {
+      if (!options.requestId) throw new EngineError('run_exists', 'Fork refuses to replace an existing run directory')
       const publishedChild = await RunDatabase.open(path.join(targetRoot, 'agent-workflow/run.sqlite'), { readOnly: true })
       try {
         const row = publishedChild.get('piece_state', { run_id: context.runId, scope_id: 'root', node_path: '', key: 'control:fork-receipt' })
@@ -73,6 +75,8 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
         return receipt.result as { type: 'runtime-forked'; runId: string; forkOf: string; fromNodePath: string; scopeId: string; visit: number; directory: string; context: PipelineContext; revision: number }
       } finally { publishedChild.close() }
     }
+    allocation.recover(); ownsAllocation = true
+    if (existsSync(targetRoot)) throw new EngineError('run_exists', 'Fork refuses to replace an existing run directory')
     const matches = source.sqlite.prepare('SELECT * FROM visits WHERE run_id=? AND node_path=? ORDER BY global_transition').all(sourceRun.run_id, options.fromNodePath)
       .filter(row => (options.scopeId === undefined || row.scope_id === options.scopeId) && (options.visit === undefined || Number(row.local_visit) === options.visit))
     if (matches.length !== 1) throw new EngineError('fork_ambiguous', 'Fork must identify exactly one visit; include scopeId and visit when needed')
@@ -80,7 +84,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     const checkpointRows = source.sqlite.prepare('SELECT thread_id,checkpoint_ns,checkpoint_id FROM checkpoints WHERE thread_id=? AND checkpoint_id=?').all(sourceRun.checkpoint_thread_id, from.checkpoint_id)
     if (checkpointRows.length !== 1) throw new EngineError('fork_checkpoint_missing', 'The target visit does not identify exactly one public checkpoint')
     const targetConfig: RunnableConfig = { configurable: { thread_id: checkpointRows[0].thread_id, checkpoint_ns: checkpointRows[0].checkpoint_ns, checkpoint_id: checkpointRows[0].checkpoint_id } }
-    mkdirSync(path.dirname(targetRoot), { recursive: true, mode: 0o700 }); mkdirSync(targetRoot, { mode: 0o700 }); created.push(targetRoot)
+    allocation.reserve(targetRoot)
     await ensurePrivateDirectory(targetRoot)
     const staging = path.join(targetRoot, '.fork-' + randomUUID()), finalDirectory = path.join(targetRoot, 'agent-workflow')
     destination = await RunDatabase.open(path.join(staging, 'run.sqlite'), { create: true })
@@ -101,10 +105,9 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       const results = destination.sqlite.prepare('SELECT a.output_json FROM attempts a JOIN visits v ON a.visit_id=v.visit_id WHERE a.scope_id=? AND a.output_json IS NOT NULL ORDER BY v.global_transition DESC,a.attempt DESC').all(childScope)
       const snapshot = results.map(result => (JSON.parse(String(result.output_json)) as PieceResult).childUpdate?.journal).find(value => value !== undefined) as unknown as ImplementationJournalSnapshot | undefined
       if (snapshot) {
-        if (target.directory !== targetRoot) created.push(target.directory)
-        created.push(changeDirectory)
+        if (target.directory !== targetRoot) allocation.reserve(target.directory)
         await ensurePrivateDirectory(target.directory)
-        forkImplementationJournal(snapshot, binding, target)
+        forkImplementationJournal(snapshot, binding, target, () => allocation!.reserve(changeDirectory))
       }
       restored.push({ source: binding, target, row })
     }
@@ -165,13 +168,15 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     await ensurePrivateDirectory(finalDirectory)
     if (existsSync(path.join(finalDirectory, 'run.sqlite'))) throw new EngineError('run_exists', 'Fork database was concurrently created')
     renameSync(path.join(staging, 'run.sqlite'), path.join(finalDirectory, 'run.sqlite'))
-    rmSync(staging, { recursive: true, force: true }); published = true
+    published = true
+    rmSync(staging, { recursive: true, force: true })
     return result
   } finally {
     runtime?.close()
     if (ledger) ledger.lease.release(ledger.token)
     destination?.close(); source.close()
-    if (!published) for (const target of created.reverse()) rmSync(target, { recursive: true, force: true })
+    try { if (!published && ownsAllocation) allocation?.cleanup() }
+    finally { allocation?.close() }
   }
 }
 function ledgerBudgetFromRow(ledger: RunLedger) {

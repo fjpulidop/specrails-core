@@ -1,4 +1,5 @@
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
@@ -96,6 +97,28 @@ it('recovers the same published fork after a lost acknowledgement without changi
   expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(source)
 })
 
+it.each(['after-allocation', 'before-publish', 'after-publish'])('recovers the real fork CLI after SIGKILL %s', async phase => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
+  const config = JSON.parse(readFileSync(new URL('./__fixtures__/acceptance/runtime-config.json', import.meta.url), 'utf8')) as RuntimeConfig
+  await createRun({ ...f, config })
+  const bytes = readFileSync(path.join(f.directory, 'run.sqlite')), context = path.join(f.root, 'context.json')
+  writeFileSync(context, JSON.stringify(f.context))
+  const cli = fileURLToPath(new URL('../../../dist/agent-runtime/cli.js', import.meta.url))
+  const preload = fileURLToPath(new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url))
+  const args = [cli, 'fork', '--context', context, '--from', 'ask', '--run-id', 'crash-child', '--request-id', 'crash-request']
+  const crashed = spawnSync(process.execPath, ['--import', preload, ...args], { encoding: 'utf8', env: { ...process.env, SPECRAILS_FORK_CRASH: phase }, timeout: 90_000 })
+  expect(crashed.error).toBeUndefined()
+  expect(crashed.stderr).toContain(`fork-crash:${phase}`)
+  if (process.platform !== 'win32') expect(crashed.signal).toBe('SIGKILL')
+  else expect(crashed.status).not.toBe(0)
+  const retry = spawnSync(process.execPath, args, { encoding: 'utf8', timeout: 90_000 })
+  expect(retry.status, retry.stderr + retry.stdout).toBe(0)
+  const result = JSON.parse(retry.stdout.trim())
+  expect(result).toMatchObject({ type: 'runtime-forked', runId: 'crash-child', forkOf: 'source' })
+  expect((await resumeRun(result.directory, { registry: f.registry })).state.status).toBe('paused')
+  expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(bytes)
+}, 180_000)
+
 it('preserves completed siblings and a nested child checkpoint when applying a branch-local state patch', async () => {
   const f = fixture({ each: { kind: 'map', params: { over: 'tickets', body: 'body', concurrency: 1 }, ends: { next: 'join' } },
     join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'done', fail: null } }, done }, {
@@ -165,7 +188,18 @@ it('restores the exact incomplete implementation journal and preserves its compl
   expect(original, JSON.stringify(original)).toMatchObject({ completion: { ok: true, verified: true } })
   const directory = definitionRunDirectory(f.context), bytes = readFileSync(path.join(directory, 'run.sqlite'))
   const roles = f.requests.map(request => request.role)
-  const fork = await forkRun(directory, { fromNodePath: 'implement/developer', runId: 'unfinished-fork', registry: f.registry })
+  const preload = fileURLToPath(new URL('./__fixtures__/fork-crash-preload.mjs', import.meta.url))
+  const engine = new URL('../../../dist/agent-runtime/engine/fork.js', import.meta.url).href
+  const executors = new URL('../../../dist/agent-runtime/executors.js', import.meta.url).href
+  const worker = `const { forkRun } = await import(process.argv[1]); const { ExecutorRegistry } = await import(process.argv[2]); await forkRun(process.argv[3], { fromNodePath: 'implement/developer', runId: 'unfinished-fork', requestId: 'implementation-crash', registry: new ExecutorRegistry() })`
+  const crashed = spawnSync(process.execPath, ['--import', preload, '--input-type=module', '-e', worker, engine, executors, directory], {
+    encoding: 'utf8', env: { ...process.env, SPECRAILS_FORK_CRASH: 'after-change' }, timeout: 90_000,
+  })
+  expect(crashed.error).toBeUndefined()
+  expect(crashed.stderr).toContain('fork-crash:after-change')
+  if (process.platform !== 'win32') expect(crashed.signal).toBe('SIGKILL')
+  else expect(crashed.status).not.toBe(0)
+  const fork = await forkRun(directory, { fromNodePath: 'implement/developer', runId: 'unfinished-fork', requestId: 'implementation-crash', registry: f.registry })
   const resumed = await resumeRun(fork.directory, { registry: f.registry })
   expect(resumed, JSON.stringify(resumed)).toMatchObject({ completion: { ok: true, verified: true } })
   expect(f.requests.slice(roles.length).map(request => request.role)).toEqual(['developer', 'reviewer'])

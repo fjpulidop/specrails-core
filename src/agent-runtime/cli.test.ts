@@ -111,6 +111,7 @@ describe('packaged programmatic runtime CLI', () => {
   it('negotiates the runtime API without creating a workflow or contacting providers', async () => {
     const api = await invoke(['api'])
     expect(api.code, api.stderr).toBe(0)
+    expect(api.messages[0]).toMatchObject({ capabilities: { forkIdempotency: 1 } })
     expect(api.messages).toMatchObject([{ type: 'runtime-api', apiVersion: 1, coreVersion: expect.stringMatching(/^\d+\.\d+\.\d+/), runtimeIdentity: { packageIntegrity: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) } }])
     expect(existsSync(pipelineStateDirectory(context))).toBe(false)
   })

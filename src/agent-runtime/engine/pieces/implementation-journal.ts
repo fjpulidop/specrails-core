@@ -73,7 +73,7 @@ export function captureImplementationJournal(binding: ImplementationBinding): Im
 }
 
 /** Restore only checkpoint-owned objects, preserving the source and current repository files. */
-export function forkImplementationJournal(snapshot: ImplementationJournalSnapshot, source: ImplementationBinding, target: ImplementationBinding): void {
+export function forkImplementationJournal(snapshot: ImplementationJournalSnapshot, source: ImplementationBinding, target: ImplementationBinding, reserveChange?: () => void): void {
   validateBinding(source); validateBinding(target)
   const { digest, ...payload } = snapshot
   if (snapshot.schemaVersion !== 1 || snapshot.bindingHash !== contentDigest(source) || digest !== contentDigest(payload)
@@ -105,6 +105,7 @@ export function forkImplementationJournal(snapshot: ImplementationJournalSnapsho
       || typeof baseline.sourceChange !== 'string' || baseline.sourceChange.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(baseline.sourceChange)) fail('Snapshot archive baseline has invalid provenance')
     sourceChange = baseline.sourceChange
   }
+  reserveChange?.()
   const fresh = initializePipeline(target.context, target.change)
   for (const [key, bytes] of files) {
     if (['journal/state.json', 'journal/context.json', 'journal/openspec-archive.json', 'journal/openspec-archive-base.json', 'journal/verification/plan.json'].includes(key)) continue

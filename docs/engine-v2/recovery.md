@@ -8,6 +8,13 @@ An active lease blocks competing execution. After a crash, wait until the lease 
 
 Fork with `runtime fork --context context.json --from nodePath --run-id new-run`. Use `--scope-id` and `--visit` to select ambiguous historical cuts. The source must be inactive and remains unchanged. The child inherits committed history and usage, but not active controls or provider sessions. `--state patch.json` applies an allowed state patch only to the child and invalidates affected certification. Forking before a question creates an inactive running child with no pending question yet; its first resume executes that question and pauses. A fork is not a repository rollback: Desktop owns worktree scope and retained runtime linkage.
 
+Hosts should negotiate `forkIdempotency: 1` and pass a stable `--request-id`.
+After an interrupted construction or lost acknowledgement, retry the identical
+source, child ID, node, scope, visit and patch. Core reconstructs only its own
+unpublished allocations or returns the original published receipt. A live
+builder, different request or replaced directory is rejected. Do not delete a
+child directory to retry: it may already contain a valid, progressed execution.
+
 `runtime cancel --context context.json --request-id stable-id` appends a durable cancellation request without taking the execution lease. The owner stops descendants and settles cancellation. A host may kill a nonresponsive process after its grace period, but must then inspect durable status and recovery requirements. On Windows, forced process termination is not POSIX SIGTERM; use the cooperative cancel command for portable behavior.
 
 Send operator instructions over stdin:
