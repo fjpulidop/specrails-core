@@ -51,8 +51,10 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     // cut them off. Scale the DEFAULT only — an explicit timeout is respected.
     const compact = isBuiltinRole(request.role) && request.instructions === 'role' && resolveAgentLoop(this.provider) === 'compact' && request.openspec !== undefined
     const timeoutMs = request.timeoutMs ?? this.options.defaultTimeoutMs ?? (compact ? 45 * 60_000 : 15 * 60_000)
-    const idleTimeoutMs = this.options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new AgentExecutionError('timeoutMs must be a positive integer', 'invalid_limit')
+    const idleTimeoutMs = request.idleTimeoutMs ?? this.options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
+    for (const value of [timeoutMs, idleTimeoutMs]) {
+      if (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647) throw new AgentExecutionError('Timeouts must be nonnegative timer integers', 'invalid_limit')
+    }
     const env = this.options.env ?? process.env
     const key = this.provider.apiKeyEnv ? env[this.provider.apiKeyEnv] : undefined
     if (this.provider.apiKeyEnv && !key) throw new AgentExecutionError(`Credential environment variable ${this.provider.apiKeyEnv} is not set`, 'missing_credential')
@@ -69,10 +71,11 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     // group role while it is still producing (observed: groups 1–2 verified
     // green, group 3 cut mid-patch, whole run failed). A genuine hang is the
     // idle watchdog's job: no tool call, reply or usage for IDLE_TIMEOUT_MS.
-    let timer = setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs)
-    const resetDeadline = (): void => { clearTimeout(timer); timer = setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs) }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const resetDeadline = (): void => { clearTimeout(timer); timer = timeoutMs > 0 ? setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs) : undefined }
+    resetDeadline()
     let lastActivity = Date.now()
-    const idle = compact ? setInterval(() => { if (Date.now() - lastActivity > idleTimeoutMs) controller.abort(new Error('Agent idle timeout')) }, Math.min(15_000, Math.max(50, Math.floor(idleTimeoutMs / 4)))) : undefined
+    const idle = (compact || request.idleTimeoutMs !== undefined) && idleTimeoutMs > 0 ? setInterval(() => { if (Date.now() - lastActivity > idleTimeoutMs) controller.abort(new Error('Agent idle timeout')) }, Math.min(15_000, Math.max(50, Math.floor(idleTimeoutMs / 4)))) : undefined
     idle?.unref?.()
     const onEvent = request.onEvent || idle ? (event: AgentEvent): void => { lastActivity = Date.now(); request.onEvent?.(event) } : undefined
     const client = new ChatClient({ endpoint, headers, fetch: this.options.fetch ?? globalThis.fetch, signal: controller.signal, model: request.model, maxTokens: request.maxTokens, maxCostUsd: request.maxCostUsd, onEvent, thinking: request.thinking ?? 'off', ...(this.provider.supportsReasoningEffort && request.effort ? { reasoningEffort: request.effort } : {}), effortSupported: this.provider.supportsReasoningEffort === true })

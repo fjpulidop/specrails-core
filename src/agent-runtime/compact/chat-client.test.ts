@@ -49,6 +49,18 @@ describe('readCompletionResponse', () => {
 
 
 describe('ChatClient transient failures', () => {
+  it('does not retry a provider request after its host signal is cancelled', async () => {
+    const controller = new AbortController()
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      controller.abort(new Error('host cancelled'))
+      throw new Error('request aborted')
+    })
+    const client = new ChatClient({ endpoint: new URL('http://localhost/v1/chat/completions'), headers: {}, fetch, signal: controller.signal, model: 'fixture' })
+    await expect(client.complete({ messages: [{ role: 'user', content: 'inspect' }] })).rejects.toMatchObject({ name: 'AbortError' })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(client.responses).toBe(0)
+  }, 1000)
+
   it('retries once after a 5xx and after a network error, then surfaces a persistent failure', async () => {
     const ok = () => new Response(JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }], usage: { prompt_tokens: 1, completion_tokens: 1 } }), { headers: { 'content-type': 'application/json' } })
     let calls = 0

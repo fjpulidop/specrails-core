@@ -1,3 +1,25 @@
+## Invocation timer compatibility — 27 September 2026
+
+The `prompt`, `role-turn` and `decider` pieces accept per-piece invocation and
+idle bounds, including explicit zero for an untimed legacy step. Omission keeps
+inherited defaults. Overrides survive role-response repair and session fallback
+without mutating frozen configuration; workflow budgets and host cancellation
+remain authoritative. OpenAI-compatible calls now honor explicit idle overrides.
+CLI timers reject invalid/overflowing values before spawning.
+
+Cancellation also exposed a provider retry bug: an already-aborted retry delay
+waited three seconds and could send another request. The standard abortable
+Node timer now prevents that retry and releases its signal listener. A regression
+requires exactly one provider call and no accepted response after cancellation.
+
+Validation so far: four adapter/piece/chat suites passed 103 tests; subsequent
+role-timer and generated-doc suites passed 28 tests. Full local CI passed:
+typecheck, build, scripts, 99 suites / 1,237 tests (one platform skip), coverage
+and installed-package run/resume/fork acceptance. Coverage is 87.96% statements,
+80.09% branches, 93.28% functions and 94.03% lines. The test run took 593.27s
+on this local host. Evidence: `/private/tmp/core-timer-ci.log`. No coverage
+thresholds or exclusions changed.
+
 ## Windows module URL correction — 27 September 2026
 
 Remote CI on `60cf9cd8` exposed Windows loader rejection of the native drive

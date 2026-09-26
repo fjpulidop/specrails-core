@@ -118,8 +118,9 @@ export interface AgentRequest {
   /** Local engines: private thinking on/off for this invocation (see RuntimeAgentConfig.thinking). */
   thinking?: 'on' | 'off'
   maxTurns?: number
+  /** Total invocation limit; zero disables this timer without disabling cancellation or run budgets. */
   timeoutMs?: number
-  /** Maximum silence from the provider; independent of the total invocation limit. */
+  /** Maximum silence from the provider; zero disables the idle timer. */
   idleTimeoutMs?: number
   maxTokens?: number
   maxCostUsd?: number
@@ -168,7 +169,7 @@ export function validateAgentRequest(request: AgentRequest): void {
   if (request.model !== undefined && (typeof request.model !== 'string' || !request.model.trim() || request.model.length > 256 || /^-/.test(request.model) || /[\0\r\n]/.test(request.model))) throw new AgentExecutionError('Invalid model identifier', 'invalid_model')
   for (const key of ['maxTurns', 'timeoutMs', 'idleTimeoutMs', 'maxTokens', 'maxCostUsd'] as const) {
     const value = request[key]
-    if (value !== undefined && (!Number.isFinite(value) || value <= 0 || (key !== 'maxCostUsd' && !Number.isSafeInteger(value)))) throw new AgentExecutionError(`Invalid ${key}`, 'invalid_limit')
+    if (value !== undefined && (!Number.isFinite(value) || (value < 0 || (value === 0 && key !== 'timeoutMs' && key !== 'idleTimeoutMs')) || (key !== 'maxCostUsd' && !Number.isSafeInteger(value)))) throw new AgentExecutionError(`Invalid ${key}`, 'invalid_limit')
   }
   if (request.resumeSessionId !== undefined && (typeof request.resumeSessionId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(request.resumeSessionId))) throw new AgentExecutionError('Invalid session identifier', 'invalid_request')
   if (request.outputSchema !== undefined && (!request.outputSchema || typeof request.outputSchema !== 'object' || Array.isArray(request.outputSchema))) throw new AgentExecutionError('Invalid output schema', 'invalid_request')

@@ -31,6 +31,7 @@ A free provider turn without role instructions or OpenSpec binding (`instruction
 - Verification sentinel: the last `VERIFICATION: PASS|FAIL` in the provider text decides `pass`/`fail`; a missing sentinel is `fail` with `reasons: ['missing_sentinel']` in the output.
 - Context: the prompt receives the bounded `$history` (`policies.historyMaxChars`, default 1500) unless `appendHistory: false`, claimed operator steering unless `appendSteering: false`, and the host input when present. `sessionContinuity: 'run'` (default) reuses `$sessions[nodeId]` when the provider supports continuation and the session identity (engine, instructions version, text/command, access, scope, node, provider configuration, repository roots) is unchanged; `session_not_found`/`session_expired`/`session_unsupported` fall back to a fresh session once.
 - Accounting: each physical call is admitted through the durable invocation port before inference (`budget_exhausted` when no bounded headroom remains) and settled with its response memo in one transaction, so a crash or human pause never repeats a billed call.
+- `prompt`, `role-turn` and `decider` accept per-piece invocation/idle timers. Explicit zero timers preserve untimed legacy steps. Omission inherits runtime/provider defaults; host cancellation and workflow duration/cost/token budgets remain active.
 - Writes: `$outputs[nodeId] = { text, sessionId?, sentinel?, reasons?, vars }`, `$vars` from `captureVars` (regex ≤ 200 characters, 50 ms VM timeout, 32,000 input characters), one `$history` entry, `$sessions[nodeId]`, and `$answers` for blocked-question replies. Emits `agent-event` with `role: 'prompt'`.
 
 ### `role-turn`
@@ -169,8 +170,8 @@ Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 np
 | `sentinel` | no | `"verification"` / `"blocked"` / `"none"` |
 | `captureVars` | no | array of object { `name`: string matching `^[A-Za-z][A-Za-z0-9_-]{0,63}$`, `pattern`: string (≤ 200 chars), `group`: integer (0–200) } (required: `name`, `pattern`) (≤ 64 items) |
 | `sessionContinuity` | no | `"run"` / `"none"` |
-| `idleTimeoutMs` | no | integer (1–2147483647) |
-| `timeoutMs` | no | integer (1–2147483647) |
+| `timeoutMs` | no | integer (0–2147483647) |
+| `idleTimeoutMs` | no | integer (0–2147483647) |
 | `appendHistory` | no | boolean |
 | `appendSteering` | no | boolean |
 
@@ -188,6 +189,8 @@ Exactly one of: `text`, `nativeCommand`.
 
 | Parameter | Required | Type |
 | --- | --- | --- |
+| `timeoutMs` | no | integer (0–2147483647) |
+| `idleTimeoutMs` | no | integer (0–2147483647) |
 | `roleId` | yes | string matching `^[a-z][a-z0-9-]{0,63}$` |
 | `prompt` | yes | string (1–32000 chars) |
 | `structuredOutput` | no | object |
@@ -205,6 +208,8 @@ Exactly one of: `text`, `nativeCommand`.
 
 | Parameter | Required | Type |
 | --- | --- | --- |
+| `timeoutMs` | no | integer (0–2147483647) |
+| `idleTimeoutMs` | no | integer (0–2147483647) |
 | `roleId` | yes | string matching `^[a-z][a-z0-9-]{0,63}$` |
 | `goal` | yes | string (1–32000 chars) |
 | `noProgress` | no | integer (1–100000) |

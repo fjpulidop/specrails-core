@@ -102,6 +102,24 @@ describe('reviewed piece catalog and control', () => {
 })
 
 describe('free prompts and declared roles', () => {
+  it.each(['role-turn', 'decider'])('preserves %s timer overrides through structured-response repair', async kind => {
+    const f = fixture((_request, call) => ({ text: call === 1 ? 'malformed' : '{"verdict":"stop","reason":"evidence verified"}', usage: unknownUsage() }))
+    f.deps.config.limits = { timeoutMs: 1000, idleTimeoutMs: 2000 }
+    const params: Record<string, JsonValue> = kind === 'decider' ? { roleId: 'analyst', goal: 'Inspect' } : { roleId: 'analyst', prompt: 'Inspect', structuredOutput: { type: 'object', properties: { verdict: { type: 'string' } }, required: ['verdict'] } }
+    expect(await f.run(kind, { ...params, timeoutMs: 180_000, idleTimeoutMs: 0 })).toMatchObject({ outcome: kind === 'decider' ? 'stop' : 'next' })
+    expect(f.requests).toHaveLength(2)
+    for (const request of f.requests) expect(request).toMatchObject({ timeoutMs: 180_000, idleTimeoutMs: 0, access: 'read' })
+    expect(f.deps.config.limits).toEqual({ timeoutMs: 1000, idleTimeoutMs: 2000 })
+  })
+
+  it('freezes explicit zero timers instead of inheriting invocation limits', async () => {
+    const f = fixture()
+    f.deps.config.limits = { timeoutMs: 1000, idleTimeoutMs: 1000 }
+    await f.run('prompt', { engine: { provider: 'fixture' }, text: 'inspect', access: 'read', timeoutMs: 0, idleTimeoutMs: 0 })
+    expect(f.requests[0]).toMatchObject({ timeoutMs: 0, idleTimeoutMs: 0 })
+    expect(f.pieces.validateParams('prompt', { engine: { provider: 'fixture' }, text: 'inspect', access: 'read', timeoutMs: -1 }, '')).not.toEqual([])
+  })
+
   it('passes explicit free policy, native arguments and actual unknown usage', async () => {
     const f = fixture(() => ({ text: 'CHANGE: feature-x\nVERIFICATION: PASS\nVERIFICATION: FAIL', usage: unknownUsage(), sessionId: 'session-1' }))
     const result = await f.run('prompt', { engine: { provider: 'fixture', model: 'base', effort: 'low' }, nativeCommand: { id: 'opsx:ff', args: 'user $(literal)' }, access: 'write', sentinel: 'verification', captureVars: [{ name: 'changeId', pattern: 'CHANGE: ([a-z-]+)' }] })

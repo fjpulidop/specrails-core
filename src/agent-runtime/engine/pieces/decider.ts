@@ -2,7 +2,7 @@ import { resolveRoleDescriptor } from '../../config.js'
 import { EngineError, type JsonObject, type Piece } from '../contracts.js'
 import type { PieceDependencyProvider } from './ports.js'
 import { executeRoleTurn } from './role-turn.js'
-import { boundedText, historyEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
+import { boundedText, historyEntry, idSchema, paramsSchema, invocationTimers, positiveInteger, stringSchema, text } from './shared.js'
 
 /** Desktop's evidence-oriented decision policy, adapted to Core's declared role protocol. */
 export function deciderPrompt(goal: string, history: string[], specs: string[]): string {
@@ -24,14 +24,14 @@ const outputSchema = paramsSchema({ verdict: { enum: ['continue', 'stop'] }, rea
 
 export function deciderPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'decider', paramsSchema: paramsSchema({ roleId: idSchema, goal: { ...stringSchema, minLength: 1 }, noProgress: { ...positiveInteger, maximum: 100_000 } }, ['roleId', 'goal']), outcomes: ['continue', 'stop', 'failed'], effect: 'read', requiresAI: true },
+    descriptor: { kind: 'decider', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, goal: { ...stringSchema, minLength: 1 }, noProgress: { ...positiveInteger, maximum: 100_000 } }, ['roleId', 'goal']), outcomes: ['continue', 'stop', 'failed'], effect: 'read', requiresAI: true },
     async execute(params, context) {
       const deps = bindings()
       const roleId = text(params.roleId)
       if (resolveRoleDescriptor(deps.config, roleId).access !== 'read') throw new EngineError('invalid_role_access', 'The decider must use a read-only role')
       const history = boundedText(context.state.$history.map(entry => `[${entry.nodePath}] ${entry.text}`).join('\n'), deps.policies?.historyMaxChars ?? 1500)
       const specs = deps.context.specs.map(spec => boundedText(JSON.stringify({ id: spec.id, title: spec.title, description: spec.description, acceptanceCriteria: spec.acceptanceCriteria }), 4000))
-      const result = await executeRoleTurn(deps, { roleId, prompt: deciderPrompt(text(params.goal), [history], specs), structuredOutput: outputSchema, sessionContinuity: 'none' }, context)
+      const result = await executeRoleTurn(deps, { roleId, prompt: deciderPrompt(text(params.goal), [history], specs), structuredOutput: outputSchema, sessionContinuity: 'none', ...(params.timeoutMs === undefined ? {} : { timeoutMs: params.timeoutMs }), ...(params.idleTimeoutMs === undefined ? {} : { idleTimeoutMs: params.idleTimeoutMs }) }, context)
       if (result.outcome !== 'next') return { ...result, outcome: 'failed' }
       const structured = (result.output as JsonObject).structured as { verdict: 'continue' | 'stop'; reason: string }
       const candidateHash = deps.executionSnapshot(context).candidate?.hash ?? null

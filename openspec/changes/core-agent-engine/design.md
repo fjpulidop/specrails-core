@@ -90,3 +90,15 @@ Real `putWrites` transactions preserve 200 completed fixture nodes across one SI
 ### C3 decisions and complete initiative scope (2026-09-26)
 
 The user reaffirmed the complete C0–C10 / D0–D8 implementation and asked to optimize Core/LangGraph cost and quality. The [C3 protocol](c3-protocol.md) resolves publication, public task identity, scoped reducers, terminal putWrites atomicity, verification ordering, full-history fork, cancellation fencing and bounded steering. It assigns independent compiler and checkpoint files, reuses existing provider/context/routing/verification/convergence policies, and requires measurement of physical invocation cost and quality. It does not reduce the requested scope to the initial preparation PRs; release, telemetry, parity and platform gates remain explicit evidence requirements.
+
+### Compatibility decision: explicit invocation timers (27 September 2026)
+
+Legacy Desktop `aiStepTimeoutMinutes: 0` means no per-step deadline. The v2
+`prompt`, `role-turn` and `decider` pieces therefore accept explicit zero `timeoutMs` and `idleTimeoutMs`; omission
+retains existing inherited defaults. CLI and OpenAI-compatible adapters honor
+zero without replacing it with a default or scheduling an immediate timer.
+Cancellation and workflow-wide budget signals remain authoritative. Positive
+idle overrides are honored by HTTP invocations as well as CLI invocations.
+Per-piece role limits flow through session fallback and structured-response repair
+without mutating the frozen runtime configuration. This additive request/piece contract does not change runtime configuration
+limits or disable run budgets, and does not itself claim legacy graph parity.

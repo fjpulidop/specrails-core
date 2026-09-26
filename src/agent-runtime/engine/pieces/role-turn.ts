@@ -7,13 +7,13 @@ import { createRoleInvoker } from '../../graph/roles.js'
 import { roleInstructions } from '../../prompts.js'
 import { EngineError, type JsonObject, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { boundedText, historyEntry, idSchema, json, paramsSchema, stringSchema, text } from './shared.js'
+import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
@@ -49,7 +49,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const task = text(params.prompt) + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
   const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
-    structured: schema !== undefined, outputSchema: schema }, (output, _text) => {
+    structured: schema !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, _text) => {
     if (validate && !validate(output)) throw new Error('Invalid structured role response: ' + ajv.errorsText(validate.errors))
     return output
   })

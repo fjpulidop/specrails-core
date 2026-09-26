@@ -4,7 +4,7 @@ import { ROLE_INSTRUCTIONS_VERSION } from '../../prompts.js'
 import { contentDigest } from '../canonical-json.js'
 import { EngineError, type EngineAnswer, type JsonObject, type Piece, type PieceExecutionContext } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { answerEntry, boundedText, captures, captureSchema, historyEntry, json, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
+import { answerEntry, boundedText, captures, captureSchema, historyEntry, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const sessionFailures = new Set(['session_not_found', 'session_expired', 'session_unsupported'])
 interface PromptResponse extends AgentResult { verification?: 'pass' | 'fail'; blockedQuestion?: string }
@@ -12,7 +12,7 @@ const engineSchema = paramsSchema({ provider: { type: 'string', minLength: 1, ma
 const promptSchema: JsonObject = {
   ...paramsSchema({ engine: engineSchema, text: { ...stringSchema, minLength: 1 }, nativeCommand: paramsSchema({ id: { type: 'string', pattern: '^[a-z][a-z0-9:_-]{0,63}$' }, args: stringSchema }, ['id']),
     access: { enum: ['read', 'write'] }, sentinel: { enum: ['verification', 'blocked', 'none'] }, captureVars: captureSchema,
-    sessionContinuity: { enum: ['run', 'none'] }, idleTimeoutMs: positiveInteger, timeoutMs: positiveInteger, appendHistory: { type: 'boolean' }, appendSteering: { type: 'boolean' },
+    sessionContinuity: { enum: ['run', 'none'] }, ...invocationTimers, appendHistory: { type: 'boolean' }, appendSteering: { type: 'boolean' },
   }, ['engine', 'access']),
   oneOf: [{ properties: { text: true }, required: ['text'] }, { properties: { nativeCommand: true }, required: ['nativeCommand'] }],
 }

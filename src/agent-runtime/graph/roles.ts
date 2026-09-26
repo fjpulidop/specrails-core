@@ -31,6 +31,9 @@ export interface InvokeOptions {
   /** Run this invocation on another configured engine (the fixer) with the matching stance; sessions never carry across engines. */
   agentOverride?: RuntimeAgentConfig
   stance?: 'fixer'
+  /** Per-piece invocation bounds; explicit zero disables only that timer. */
+  timeoutMs?: number
+  idleTimeoutMs?: number
 }
 export type InvokeOutcome<T> =
   | { ok: true; value: T; text: string; result: AgentResult }
@@ -78,7 +81,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     try { deps.onAgentEvent?.(role, shaped) } catch { /* Observer cannot replay agent effects. */ }
   }
   const note = (role: AgentEventRole, text: string): void => { try { deps.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
-  const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: { kind?: InvocationKind; resumeSessionId?: string; outputSchema?: Record<string, unknown>; fallbackPrompt?: string; agentOverride?: RuntimeAgentConfig; stance?: 'fixer' }): Promise<AgentResult> => {
+  const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: Omit<InvokeOptions, 'prompt'>): Promise<AgentResult> => {
     const directory = deps.openspec?.[role]?.stateDirectory ?? path.join(pipelineStateDirectory(context), 'agent-workflow')
     const saved = deps.roleState?.read() ?? readRoleState(directory)
     const persist = (): void => deps.roleState ? deps.roleState.write(saved) : writeRoleState(directory, saved)
@@ -115,7 +118,8 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       const result = await registry.execute(selected.provider, {
         role, access: descriptor.access, artifacts: descriptor.artifacts, instructions: 'role', prompt: fullPrompt, openspec: deps.openspec?.[role] ? { ...deps.openspec[role], ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
         model: selected.model, effort: selected.effort, ...(selected.thinking ? { thinking: selected.thinking } : {}), maxTurns: selected.maxTurns, signal: step.signal,
-        timeoutMs: config.limits?.timeoutMs,
+        timeoutMs: extra.timeoutMs ?? config.limits?.timeoutMs,
+        idleTimeoutMs: extra.idleTimeoutMs ?? config.limits?.idleTimeoutMs,
         maxTokens: budget.maxTokens, maxCostUsd: budget.maxCostUsd,
         ...(config.guardrails ? { guardrails: config.guardrails } : {}),
         ...(extra.stance ? { stance: extra.stance } : {}),
@@ -141,6 +145,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
   }
 
   return async <T>(role: AgentRole, step: WorkflowStepContext, options: InvokeOptions, accept: Accept<T>): Promise<InvokeOutcome<T>> => {
+    const timers = { timeoutMs: options.timeoutMs, idleTimeoutMs: options.idleTimeoutMs }
     const structured = options.structured === true
     const workflow = deps.openspec?.[role] ? new OpenSpecTools(deps.openspec[role]) : undefined
     const cursor = workflow?.participationCursor() ?? 0
@@ -160,14 +165,14 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       if (options.resumeSessionId && options.fallbackPrompt) {
         // A correction pass continues the role's own session: the work it did and
         // the reasons behind it are already in context.
-        try { result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance }) }
+        try { result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance }) }
         catch (error) {
           if (!(error instanceof AgentExecutionError) || !SESSION_FALLBACK_CODES.has(error.code)) throw error
           note(role, `Previous ${role} session is unavailable; starting a fresh ${role} turn with the same instructions.`)
-          result = await execute(role, step, options.fallbackPrompt, structured, { kind: 'session-fallback', outputSchema: options.outputSchema, agentOverride: options.agentOverride, stance: options.stance })
+          result = await execute(role, step, options.fallbackPrompt, structured, { ...timers, kind: 'session-fallback', outputSchema: options.outputSchema, agentOverride: options.agentOverride, stance: options.stance })
         }
       } else {
-        result = await execute(role, step, options.prompt, structured, { kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance })
+        result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance })
       }
       let problem: string, omittedWorkflow = false
       try { return evaluate(result) }
@@ -185,7 +190,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
         : `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
       const repaired = await execute(role, step,
         result.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,
-        structured, { kind: 'repair', resumeSessionId: result.sessionId, outputSchema: options.outputSchema,
+        structured, { ...timers, kind: 'repair', resumeSessionId: result.sessionId, outputSchema: options.outputSchema,
           fallbackPrompt: (options.fallbackPrompt ?? options.prompt) + '\nPrevious response (bounded):\n' + result.text.slice(-32_000) + '\n' + repair,
         })
       try { return evaluate(repaired) }
