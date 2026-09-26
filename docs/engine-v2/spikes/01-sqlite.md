@@ -1,6 +1,6 @@
 # SQLite binding and packaging
 
-Status: local candidate A passed; three-platform and paired assembly acceptance pending.
+Status: candidate A accepted after all three platform, private-storage, packed-package and paired Desktop assembly gates passed; see [the exact evidence](README.md#accepted-evidence-2026-09-26).
 
 Question: can `node:sqlite` on Desktop's Node 22.22.3 provide the public `BaseCheckpointSaver` contract and atomic graph evidence without a native npm module? If it fails a required guarantee, compare `@langchain/langgraph-checkpoint-sqlite`/`better-sqlite3` against the same harness before selecting a binding.
 
@@ -18,14 +18,14 @@ The prototype must use the serializer supplied by checkpoint 1.1.5, test get/lis
 
 Environment: macOS arm64, Node 22.22.3, SQLite 3.51.3, LangGraph 1.4.14, checkpoint 1.1.5. The measured 200-boundary run retained exactly 200 completed nodes and 200 executions; pre-commit crashes left neither terminal evidence nor a durable result. WAL was active; database/directory modes were 0600/0700. An initial full probe measured mean `put` 0.301 ms over 202 calls (maximum 2.117 ms), below the 5 ms criterion. These are fixture measurements, not an engine performance promise; the JSON artifact records subsequent runs and source identity.
 
-The executable fixture is excluded from TypeScript production compilation and the npm tarball. CI adds a real packed-package install/exercise on the same exact Node after the probes. This confirms current package compatibility; it does not claim a v2 engine has been shipped. Desktop assembly still needs separately attached evidence.
+The executable fixture is excluded from TypeScript production compilation and the npm tarball. CI passed a real packed-package install/exercise and the paired Desktop source assembly on the same exact Node after the probes. This confirms current package compatibility; it does not claim a v2 engine has been shipped.
 
 The paired Desktop smoke on Node 22.22.3 against the original Core `dist` also passed: 12 fixture calls; 120 tokens before approval, 24 tokens during the approval continuation and 0 on terminal resume. Missing billing remained unknown and host Git state remained immutable. This is evidence for the existing legacy Core/Desktop subprocess pairing; it is not evidence that a packaged or assembled v2 engine works.
 
 The real Desktop source assembler subsequently passed locally on the same Node using pinned Desktop `70c9e8a4a7fbc26b89ed5ac724aed97dfcc27d9f`. It installed Core's locked production closure, exercised the staged workflow and pinned OpenSpec, and returned runtime identity 6.0.1 / workflow 7 / instructions 10. The resulting `source-bundle.json` SHA-256 was `6909973ebc00dbc9a45280ee2dad36e90199b7aa8bf5bafa8a2829833827985c`; the Core lock SHA-256 was `b24797c564bf404a5a5a3e1a87ba50b2a79252e1876c9751302724d38c1f235b`. The assembly artifact also records exact assembler/package-input hashes. This fulfills the local source-assembly probe; CI must establish the equivalent result on the other platforms. No registry lock or release version was changed, and the experimental saver is not shipped.
 
-## Decision and remaining gates
+## Accepted decision and production responsibilities
 
-Prefer candidate A provisionally: it passes the local checkpoint API, durability and latency requirements without a native npm dependency. Do not raise `engines.node`, drop Node 20 or add a production saver yet. The proposed future engine minimum is `>=22.13.0` only if the remaining decision gate accepts A. Candidate B remains the fallback if a required platform, package or guarantee fails; no comparative performance claim is made without measuring it.
+Select candidate A (`node:sqlite`) for C3 with minimum Node `>=22.22.3`, the exact tested version. It passed checkpoint API, durability, latency and packaging on macOS arm64, Linux x64 and Windows x64 without a native npm dependency. Candidate B did not need measurement because A met every criterion; no comparative performance claim is made. This experiment PR itself preserves the existing production minimum.
 
-Linux x64 and Windows x64 CI artifacts, macOS CI confirmation, Desktop assembly and Windows private-directory ACL evidence remain required. CI now exercises the pinned Desktop assembler and records source-bundle/lock hashes; the spike protects its disposable Windows directory with current-user/SYSTEM ACLs and inspects the actual database file, since POSIX mode bits on Windows do not prove access restrictions. The fixture ledger has no production leases, receipts, repeated visits, attempt identifiers or event sequence: C3 must design/test those before adopting this boundary. No transaction may remain open during provider work or asynchronous serialization. C1 is not complete solely because this local probe passes.
+The [accepted CI artifacts](README.md#accepted-evidence-2026-09-26) verify the protected Windows directory and SQLite file ownership/ACL, as well as POSIX modes. They include identical source and assembly hashes across all platforms. The fixture ledger has no production leases, receipts, repeated visits, attempt identifiers or event sequence: C3 must design and test those around this boundary. No transaction may remain open during provider work or asynchronous serialization.

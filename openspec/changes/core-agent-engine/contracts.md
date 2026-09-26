@@ -297,6 +297,8 @@ Termina el run: `completion.ok = outcome === 'success'`; `completion.verified = 
 
 ## 6. Almacenamiento: `run.sqlite`
 
+**Decisión C1 aceptada (2026-09-26):** `node:sqlite` y mínimo del motor v2 Node `>=22.22.3`. El [run 36230546712](https://github.com/fjpulidop/specrails-core/actions/runs/36230546712) pasó macOS arm64, Linux x64 y Windows x64, privacidad, paquetes reales y ensamblado Desktop. Los hashes y medidas exactos están en `docs/engine-v2/spikes/README.md`. No se infiere compatibilidad con versiones anteriores de Node 22. El cambio de mínimo se aplica en C3, no en la PR experimental C1.
+
 Ruta: `<backlogRoot>/.specrails/pipeline/<runId>/run.sqlite` *(propuesto)*. Apertura con `PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;` y permisos 0600 (directorio 0700, como hoy `cli.ts:170`). Un único proceso escritor por run (tabla `lease`). Binding SQLite según el spike C1: preferente `node:sqlite` (`DatabaseSync`, disponible sin flag en el Node 22.22.3 que Desktop empaqueta, `.github/workflows/desktop-release.yml:26`), alternativa `better-sqlite3` vía `@langchain/langgraph-checkpoint-sqlite`.
 
 Tablas del checkpointer (mismo esquema que `@langchain/langgraph-checkpoint-sqlite`, para poder intercambiar el binding): `checkpoints(thread_id, checkpoint_ns, checkpoint_id, parent_checkpoint_id, type, checkpoint BLOB, metadata BLOB, PRIMARY KEY(thread_id, checkpoint_ns, checkpoint_id))`, `writes(thread_id, checkpoint_ns, checkpoint_id, task_id, idx, channel, type, value BLOB, PRIMARY KEY(thread_id, checkpoint_ns, checkpoint_id, task_id, idx))`.

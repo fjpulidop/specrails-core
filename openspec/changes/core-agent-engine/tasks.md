@@ -16,12 +16,12 @@ Independent experiment branch/PR; no production engine implementation or Node mi
 
 - [x] 2.1 Write exit criteria first in `docs/engine-v2/spikes/01-sqlite.md`, `02-subgraphs.md`, `03-streaming.md`, including exact versions/platforms and pending evidence.
 - [x] 2.2 Prototype candidate SQLite checkpoint/ledger integration with real LangGraph serialization and checkpoint APIs, preserving run transaction ownership and portable process handling.
-- [ ] 2.3 Measure 200-node kill/recovery boundaries, WAL, permission policy, put latency and actual packed/assembled runtime behavior; compare the alternative binding when the preferred candidate fails or lacks required guarantees.
+- [x] 2.3 Measure 200-node kill/recovery boundaries, WAL, permission policy, put latency and actual packed/assembled runtime behavior; compare the alternative binding when the preferred candidate fails or lacks required guarantees.
 - [x] 2.4 Probe nested interrupts/resume, `Send`, branch namespaces/history, internal checkpoint fork, deferred join, classified retries and subgraph streams using executable fixture tests.
 - [x] 2.5 Compare updates/custom/writer/streamEvents with current JSONL on fixture execution; measure latency/volume and prove which lifecycle signals occur after durable commit.
 - [x] 2.6 Add reproducible `engine-spikes` CI evidence on macOS arm64, Windows x64 and Linux x64 with Node 22.22.3; preserve coverage, platform/package checks and evidence artifacts.
 - [x] 2.7 Record accepted binding/Node implications, supported graph APIs and event mapping, or explicitly retain pending decisions when evidence is incomplete; update contract/design/plan with limitations.
-- [ ] 2.8 Run `npm run ci` and all spike jobs, attach exact results/commit/platform metadata to the C1 PR; keep C3 gated until all required evidence passes.
+- [x] 2.8 Run `npm run ci` and all spike jobs, attach exact results/commit/platform metadata to the C1 PR; keep C3 gated until all required evidence passes.
 
 ## 3. C2 — Open roles and explicit executor permissions
 
