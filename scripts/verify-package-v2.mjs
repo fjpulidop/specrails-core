@@ -12,7 +12,7 @@ import { run } from './release-utils.mjs'
 export const ENGINE_SDK_EXPORTS = ['createRun', 'resumeRun', 'signalRun', 'cancelRun', 'definitionRunDirectory', 'forkRun', 'statusRun',
   'preflightDefinition', 'configuredRoles', 'validateWorkflowDefinition', 'workflowDefinitionSchema', 'definitionVersion', 'canonicalJson',
   'validationPieceRegistry', 'PieceRegistry', 'compileWorkflowDefinition', 'describeDefinition', 'PIECE_KINDS', 'EngineError']
-export const NODE_KIND_COUNT = 16
+export const NODE_KIND_COUNT = 17
 
 /** Run one CLI entry and parse its JSON lines; stdout must contain nothing else. */
 export function cliJson(entry, args, options) {

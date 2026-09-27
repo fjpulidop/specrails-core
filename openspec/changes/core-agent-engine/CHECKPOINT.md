@@ -11,7 +11,12 @@ reopen without duplicate increments, mapped scope isolation, and a routed overfl
 that proves companion values remain unchanged; 11 API/CLI catalog cases; generated
 catalog and examples; typecheck and build. The initial wider acceptance run found
 one obsolete sixteen-kind assertion, corrected and rerun successfully. Full
-coverage is running; the prior full result below predates this piece.
+coverage passes on 5a77a868: 100 suites, 1,270 tests and one existing Windows-only
+omission in 582.38s. Statements 88.04%, branches 80.24%, functions 93.43% and
+lines 94.09%, with unchanged thresholds. Installed-package acceptance initially
+found a second obsolete sixteen-kind expectation in verify-package-v2.mjs; after
+updating it to seventeen, the installed CLI run/resume/fork and all package
+checks pass. This result predates the subsequent guarded-decider work.
 
 ## Decider human-pause parity — 27 September 2026
 
