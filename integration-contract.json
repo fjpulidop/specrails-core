@@ -303,7 +303,7 @@
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 2
+      "nodeKindsVersion": 3
     },
     "nodeKinds": [
       "prompt",
@@ -318,6 +318,7 @@
       "approval",
       "question",
       "gate",
+      "assign",
       "component",
       "map",
       "implementation",

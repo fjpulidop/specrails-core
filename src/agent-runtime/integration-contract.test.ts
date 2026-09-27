@@ -33,7 +33,7 @@ describe('Desktop integration contract', () => {
 
   it('advertises the real engine v2 catalog: contract, runtime api and workflows list agree with the validation registry', async () => {
     const registry = validationPieceRegistry(), kinds = registry.kinds()
-    expect(kinds).toHaveLength(16)
+    expect(kinds).toHaveLength(17)
     expect(kinds).toEqual(registry.catalog().map(piece => piece.kind))
     expect(kinds.some(kind => /test|fixture|fake/.test(kind))).toBe(false)
     expect(contract.agentRuntime.engine).toEqual({ version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: NODE_KINDS_VERSION })

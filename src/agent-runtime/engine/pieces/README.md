@@ -96,3 +96,11 @@ resume of the original must detect those changes and reverify them.
 Focused tests cover real native/legacy parity, approval replay, immutable fork
 cuts, branch bindings, candidate isolation, Quick SDD, actual command evidence,
 provider accounting, bounded captures and the published example definitions.
+
+## Scoped control variables
+
+The non-AI assign piece sets JSON values and increments initialized safe integer
+counters. It produces one atomic vars update through the existing terminal
+commit; it never writes a parallel state store. Invalid or overlapping updates
+fail before commit, and map scopes do not share mutable variable objects.
+This supports bounded workflow controls without multiplying provider nodes.

@@ -1,3 +1,18 @@
+## Scoped assignment prerequisite — 27 September 2026
+
+Catalog version 3 adds the non-AI `assign` piece (17 kinds). Set JSON values and
+increment existing safe integers through one fenced piece result. Invalid names,
+overlap, missing counters and overflow cannot partially modify scoped state.
+The decision is recorded in COMPATIBILITY-STATE-DECISION.md. This is a prerequisite
+for bounded legacy conversion, not a claim that conversion is complete.
+
+Validation: 18 assignment unit cases; 17 durable runtime cases including pause
+reopen without duplicate increments, mapped scope isolation, and a routed overflow
+that proves companion values remain unchanged; 11 API/CLI catalog cases; generated
+catalog and examples; typecheck and build. The initial wider acceptance run found
+one obsolete sixteen-kind assertion, corrected and rerun successfully. Full
+coverage is running; the prior full result below predates this piece.
+
 ## Decider human-pause parity — 27 September 2026
 
 The legacy conversion audit found that Core repaired an explicit blocked

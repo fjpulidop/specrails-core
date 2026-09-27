@@ -2,7 +2,7 @@
 
 A piece is a node kind the engine knows how to execute. The catalog is closed: `createPieceRegistry(dependencies)` (`src/agent-runtime/engine/pieces/index.ts`) binds the reviewed pieces to one execution, and `validationPieceRegistry()` returns the same descriptors and parameter validators without initializing providers, a journal or a project store. A definition selects kinds from this catalog by name; it cannot register code, callbacks or expressions that execute JavaScript.
 
-`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 2 with 16 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
+`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 3 with 17 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
 
 ## Descriptor model
 
@@ -58,6 +58,21 @@ Evaluates `expr` (1–4096 characters) with the closed expression grammar in `sr
 
 - Outcomes: `true`, `false`. An evaluation error yields `false` with `output: { error }` and `completion.reasons: ['condition_error:<nodePath>']`.
 - Effect: read. Writes only `$outputs[nodeId]`.
+
+### `assign`
+
+Updates scoped workflow variables without AI calls or external effects. Provide
+`set` with named JSON values, `increment` with signed integer deltas, or both.
+An increment requires an existing safe integer; initialize counters explicitly.
+Variable names follow capture-variable rules. The combined update is limited
+to 64 distinct names. Set/increment overlap, missing or noninteger counters and
+overflow fail before any update is returned.
+
+- Outcomes: `next`, `failed`; effect: read (repository access), no AI or project-store access.
+- Writes: one atomic `$vars` update and `$outputs[nodeId] = { vars }`.
+- Resume retains a completed assignment instead of incrementing it again. Map
+  branches keep their own variables; their assignments do not mutate siblings
+  or the parent. All control visits consume the normal transition budget.
 
 ### `verify`
 
@@ -150,7 +165,7 @@ Terminates the current body. `completion.ok` is `outcome === 'success'`; `comple
 ## Descriptor reference (generated)
 
 <!-- piece-catalog:generated:start -->
-Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 2, 16 kinds, in registration order.
+Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 3, 17 kinds, in registration order.
 Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts`.
 
 ### Descriptor: `prompt`
@@ -356,6 +371,21 @@ Exactly one of: `argv`, `commandLine`.
 | Parameter | Required | Type |
 | --- | --- | --- |
 | `reason` | yes | string (1–32000 chars) |
+
+### Descriptor: `assign`
+
+| Field | Value |
+| --- | --- |
+| Effect | `read` |
+| Requires AI | no |
+| Store access | `none` |
+| Declared outcomes | `next`, `failed` |
+| Additional parameters | rejected |
+
+| Parameter | Required | Type |
+| --- | --- | --- |
+| `set` | no | object |
+| `increment` | no | object of integer (-9007199254740991–9007199254740991) |
 
 ### Descriptor: `component`
 

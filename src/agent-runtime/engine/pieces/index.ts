@@ -8,6 +8,7 @@ import { promptPiece } from './prompt.js'
 import { roleTurnPiece } from './role-turn.js'
 import { shellPiece } from './shell.js'
 import { verifyPiece } from './verify.js'
+import { assignPiece } from './assign.js'
 
 export type { PieceDependencies, PieceStatePort } from './ports.js'
 
@@ -23,5 +24,5 @@ export function validationPieceRegistry(): PieceRegistry {
 
 function registry(bindings: PieceDependencyProvider): PieceRegistry {
   return new PieceRegistry([promptPiece(bindings), roleTurnPiece(bindings), deciderPiece(bindings), verifyPiece(bindings), shellPiece(bindings),
-    ...openSpecPieces(bindings), ...controlPieces(bindings), ...compositionPieces()])
+    ...openSpecPieces(bindings), ...controlPieces(bindings), assignPiece(), ...compositionPieces()])
 }

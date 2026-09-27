@@ -5,9 +5,12 @@ export const stringSchema = { type: 'string', maxLength: 32_000 } satisfies Json
 export const idSchema = { type: 'string', pattern: '^[a-z][a-z0-9-]{0,63}$' } satisfies JsonObject
 export const positiveInteger = { type: 'integer', minimum: 1, maximum: 2_147_483_647 } satisfies JsonObject
 export const invocationTimers = { timeoutMs: { ...positiveInteger, minimum: 0 }, idleTimeoutMs: { ...positiveInteger, minimum: 0 } } satisfies JsonObject
+export const variableNameSchema = {
+  type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{0,63}$', not: { enum: ['__proto__', 'prototype', 'constructor'] },
+} satisfies JsonObject
 export const captureSchema = { type: 'array', maxItems: 64, items: {
   type: 'object', additionalProperties: false, required: ['name', 'pattern'], properties: {
-    name: { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{0,63}$', not: { enum: ['__proto__', 'prototype', 'constructor'] } },
+    name: variableNameSchema,
     pattern: { type: 'string', maxLength: 200 }, group: { type: 'integer', minimum: 0, maximum: 200 },
   },
 } } satisfies JsonObject

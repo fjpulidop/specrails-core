@@ -239,6 +239,7 @@ export const workflowDefinitionSchema = {
             "role-turn",
             "decider",
             "condition",
+            "assign",
             "verify",
             "shell",
             "openspec-validate",

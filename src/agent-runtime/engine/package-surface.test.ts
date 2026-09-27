@@ -63,19 +63,19 @@ describe('package exports and files', () => {
   it('exports every documented engine SDK name from the engine subpath', () => {
     for (const name of ENGINE_SDK_EXPORTS) expect(engine[name], name).toBeDefined()
     expect(Object.keys(engine).filter(name => !ENGINE_SDK_EXPORTS.includes(name as typeof ENGINE_SDK_EXPORTS[number]))).toEqual([])
-    expect(engine.PIECE_KINDS).toHaveLength(16)
+    expect(engine.PIECE_KINDS).toHaveLength(17)
     expect(new engine.EngineError('run_not_found', 'missing').code).toBe('run_not_found')
     expect(engine.workflowDefinitionSchema).toBe(workflowDefinitionSchema)
   })
 })
 
 describe('runtime workflows catalog', () => {
-  it('lists exactly the sixteen production node kinds with no test-only piece', async () => {
+  it('lists exactly the seventeen production node kinds with no test-only piece', async () => {
     const listed = await workflowsList()
     expect(listed).toMatchObject({ type: 'runtime-workflows', nodeKindsVersion: NODE_KINDS_VERSION, builtins: [{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: false }] })
     expect(listed.definitionSchema).toEqual(workflowDefinitionSchema)
     const kinds = (listed.nodeKinds as Array<Record<string, unknown>>).map(descriptor => descriptor.kind)
-    expect(kinds).toHaveLength(16)
+    expect(kinds).toHaveLength(17)
     expect([...kinds].sort()).toEqual([...PIECE_KINDS].sort())
     expect(kinds.filter(kind => /fixture|test|spike|mock|fake/i.test(String(kind)))).toEqual([])
     for (const descriptor of listed.nodeKinds as Array<Record<string, unknown>>) {

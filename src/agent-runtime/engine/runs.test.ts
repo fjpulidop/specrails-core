@@ -36,6 +36,21 @@ function fixture(nodes: Record<string, DefinitionNode> = { done }, extra: Partia
   return { root, context, config, definition: published.definition, registry, requests, directory: definitionRunDirectory(context) }
 }
 
+it('routes an invalid assignment without committing its companion changes', async () => {
+  const f = fixture({
+    initialize: { kind: 'assign', params: { set: { retained: 'original', counter: Number.MAX_SAFE_INTEGER } }, ends: { next: 'overflow', failed: null } },
+    overflow: { kind: 'assign', params: { set: { retained: 'incorrect' }, increment: { counter: 1 } }, ends: { next: 'unexpected', failed: 'check' } },
+    check: { kind: 'condition', params: { expr: '$vars.retained == "original" && $vars.counter == 9007199254740991' }, ends: { true: 'done', false: 'unexpected' } },
+    unexpected: { kind: 'end', params: { outcome: 'failure' }, ends: {} }, done,
+  })
+  const result = await createRun(f)
+  expect(result.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(0)
+  const full = await statusRun(f.directory, false)
+  expect(full.state.scopes.find(scope => scope.nodePath === 'overflow')).toMatchObject({ status: 'failed' })
+  expect(full.state.scopes.some(scope => scope.nodePath === 'unexpected')).toBe(false)
+})
+
 it('executes a published graph and status remains read-only with no implementation journal', async () => {
   const f = fixture(), events: unknown[] = []
   const result = await createRun({ ...f, onEvent: value => events.push(value) })
@@ -112,6 +127,43 @@ it('enforces global visits on a cycle and leaves an inspectable failure', async 
   const result = await createRun(f)
   expect(result.state.status).toBe('failed')
   expect(result).toMatchObject({ error: { code: 'recursion_limit' } })
+})
+
+it('retains scoped counters across restart without replaying a committed assignment', async () => {
+  const f = fixture({
+    initialize: { kind: 'assign', params: { set: { iteration: 0, failed: false } }, ends: { next: 'increment', failed: null } },
+    increment: { kind: 'assign', params: { increment: { iteration: 1 } }, ends: { next: 'ask', failed: null } },
+    ask: { kind: 'question', params: { text: 'Continue this iteration?' }, ends: { next: 'check' } },
+    check: { kind: 'condition', params: { expr: '$vars.iteration == 1 && $vars.failed == false' }, ends: { true: 'done', false: 'bad' } },
+    done, bad: { kind: 'end', params: { outcome: 'failure' }, ends: {} },
+  })
+  const paused = await createRun(f)
+  expect(paused.state.status).toBe('paused')
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Continue' } } })
+  expect(resumed.completion).toMatchObject({ ok: true })
+  expect(resumed.efficiencySummary.invocations.total).toBe(0)
+  expect(f.requests).toEqual([])
+})
+
+it('isolates assigned variables in mapped scopes from their siblings and parent', async () => {
+  const bad: DefinitionNode = { kind: 'end', params: { outcome: 'failure' }, ends: {} }
+  const f = fixture({
+    initialize: { kind: 'assign', params: { set: { counter: 7 } }, ends: { next: 'branches', failed: null } },
+    branches: { kind: 'map', params: { over: 'tickets', body: 'counter', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'check', fail: 'bad' } },
+    check: { kind: 'condition', params: { expr: '$vars.counter == 7' }, ends: { true: 'done', false: 'bad' } },
+    done, bad,
+  }, { components: { counter: { entry: 'initialize', nodes: {
+    initialize: { kind: 'assign', params: { set: { counter: 0 } }, ends: { next: 'increment', failed: null } },
+    increment: { kind: 'assign', params: { increment: { counter: 1 } }, ends: { next: 'check', failed: null } },
+    check: { kind: 'condition', params: { expr: '$vars.counter == 1' }, ends: { true: 'done', false: 'bad' } },
+    done, bad,
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  const result = await createRun(f)
+  expect(result.completion).toMatchObject({ ok: true })
+  expect(result.efficiencySummary.invocations.total).toBe(0)
+  expect(f.requests).toEqual([])
 })
 
 it('intersects provider budgets and persists billed usage exactly once', async () => {

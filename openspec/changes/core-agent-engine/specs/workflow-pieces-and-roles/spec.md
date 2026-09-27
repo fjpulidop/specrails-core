@@ -61,3 +61,18 @@ A decider SHALL recognize an explicit structured blocked verdict or a LOOP_BLOCK
 #### Scenario: A human pause follows a no-progress observation
 - **WHEN** the decider waits for a human response
 - **THEN** the prior candidate identity and no-progress count are preserved without advancing them or certifying completion
+
+### Requirement: Scoped workflow assignments are explicit and bounded
+Core SHALL provide a non-AI assign piece that returns one atomic update to scoped workflow variables. It SHALL support setting JSON values and incrementing existing safe integers without executable expressions, provider calls or external side effects. Invalid names, overlapping operations, noninteger counters and overflow SHALL fail before any variable is changed.
+
+#### Scenario: A retry allowance survives a human pause
+- **WHEN** a workflow increments a phase counter, pauses and resumes
+- **THEN** its committed counter remains available and is not incremented again by replay of that completed assignment
+
+#### Scenario: One counter in an assignment is invalid
+- **WHEN** a multi-variable update includes an absent or invalid counter
+- **THEN** no partial variable update is committed
+
+#### Scenario: Parallel branches use the same variable name
+- **WHEN** scoped branches assign their own counters
+- **THEN** neither branch mutates another branch's input state

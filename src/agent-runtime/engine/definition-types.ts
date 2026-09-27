@@ -1,6 +1,6 @@
 import type { EngineEffect, JsonObject, WorkflowBudget } from './contracts.js'
 
-export const PIECE_KINDS = ['prompt', 'role-turn', 'decider', 'condition', 'verify', 'shell',
+export const PIECE_KINDS = ['prompt', 'role-turn', 'decider', 'condition', 'assign', 'verify', 'shell',
   'openspec-validate', 'openspec-archive', 'approval', 'question', 'gate', 'map', 'join',
   'component', 'implementation', 'end'] as const
 export type PieceKind = typeof PIECE_KINDS[number]
