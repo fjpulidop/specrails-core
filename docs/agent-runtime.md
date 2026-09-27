@@ -76,7 +76,7 @@ For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provi
 
 The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
 
-The [integration contract](../integration-contract.json) uses schema 5.1 and describes the current engine: API 1, workflow 7 and role instructions 10. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. Engine metadata identifies engine 1, an empty piece catalog and the non-deprecated `specrails-implementation` built-in at version 7. This metadata does not enable JSON workflow definitions or the planned v2 engine.
+The [integration contract](../integration-contract.json) retains schema 5.1, API 1, legacy workflow 7 and role instructions 10. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
@@ -500,6 +500,17 @@ node bin/specrails-core.mjs runtime evaluate --output /tmp/specrails-efficiency-
 Five fixed cases cover static Tetris-like logic, a local feature, a cross-repository contract, verification correction and review correction. Each independent oracle must accept its reference implementation and reject deliberately defective variants. Full and optimized modes use fresh repositories/sessions and identical acceptance gates. The fixed long-context correction must shrink at least 40% without extra invocations. Reports record task, oracle, repository, configuration and runtime identities, failures, sample variation and independent acceptance.
 
 Offline tokens and zero fixture cost are synthetic. The initial offline run accepted 5/5 cases in both modes and reduced its fixed correction prompt from 4,774 to 1,777 bytes (62.8%). It did not demonstrate lower monetary cost or faster real-provider execution. Repeat after implementation changes; the report records the tested package identity.
+
+The definition corpus uses the same independent behavioral oracles for native
+implementation and implementation nested in a component. After building, run
+`node scripts/evaluate-definition-corpus.mjs implementation OUTPUT` and
+`node scripts/evaluate-definition-corpus.mjs implementation-component OUTPUT`
+with distinct output directories. CI runs these definitions in parallel on Linux;
+the platform matrix separately covers runtime and installed-package behavior.
+Each definition must accept all five cases in both context modes, including
+verification repair, review repair and a two-repository contract. A missing,
+duplicated or failed observation fails the gate. Reports preserve failures and
+runtime identity; offline results never establish monetary savings.
 
 Real evaluation is opt-in only: `runtime evaluate --real --config EXPLICIT_MODELS.json --max-cost-usd BUDGET --output OUTPUT`. Select all models and authorize the aggregate spend first. Unsupported spend limits prevent launch; incomplete billing stops further calls. The report distinguishes same-model from configured routing experiments and evaluates the descriptive target of 20% lower aggregate cost per independently accepted output. Small samples and uncontrolled provider caches do not establish universal quality or savings.
 

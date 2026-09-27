@@ -11,7 +11,7 @@ import { configuredRoles } from './preflight.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { validationPieceRegistry } from './pieces/index.js'
 import type { DefinitionNode, WorkflowDefinitionDraft } from './definition-types.js'
-import { createRun, definitionRunDirectory, resumeRun } from './runs.js'
+import { createRun, definitionRunDirectory, resumeRun, signalRun } from './runs.js'
 import { forkRun } from './fork.js'
 import { RunDatabase } from './checkpoint/database.js'
 import { RunLease } from './checkpoint/lease.js'
@@ -74,6 +74,30 @@ it('rejects an active source lease and ambiguous visits without leaving a destin
   finally { lease.release(token); db.close() }
   expect(existsSync(path.join(f.context.backlogRoot, '.specrails/pipeline/rejected'))).toBe(false)
   await expect(forkRun(f.directory, { fromNodePath: 'missing', runId: 'rejected', registry: f.registry })).rejects.toMatchObject({ code: 'fork_ambiguous' })
+})
+
+it('isolates pending steering across an idempotent public fork and consumes each run message once', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'inspect' } }, inspect: prompt('Inspect files', 'done'), done })
+  const original = await createRun(f)
+  await signalRun(f.directory, 'SOURCE-ONLY instruction', 'source-note')
+  const sourceBytes = readFileSync(path.join(f.directory, 'run.sqlite'))
+  const options = { fromNodePath: 'ask', runId: 'steered-child', requestId: 'fork-steering', registry: f.registry }
+  const child = await forkRun(f.directory, options)
+  const receipt = await signalRun(child.directory, 'CHILD-ONLY instruction', 'child-note')
+  expect(await forkRun(f.directory, options)).toEqual(child)
+  expect(await signalRun(child.directory, 'CHILD-ONLY instruction', 'child-note')).toEqual(receipt)
+  const paused = await resumeRun(child.directory, { registry: f.registry })
+  const completed = await resumeRun(child.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Yes' } } })
+  expect(completed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(1)
+  expect(f.requests[0].prompt).toContain('CHILD-ONLY instruction')
+  expect(f.requests[0].prompt).not.toContain('SOURCE-ONLY instruction')
+  expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(sourceBytes)
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [original.state.pendingInterrupts[0].id]: { answer: 'Yes' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  expect(f.requests[1].prompt).toContain('SOURCE-ONLY instruction')
+  expect(f.requests[1].prompt).not.toContain('CHILD-ONLY instruction')
 })
 
 it('recovers the same published fork after a lost acknowledgement without changing either journal', async () => {

@@ -20,9 +20,9 @@ it('keeps published reference definitions in the offline corpus with actual cata
   }
 })
 
-it('executes the native implementation through frozen independent behavioral oracles without paid AI', async () => {
+it.each(DEFINITION_EVALUATION_CORPUS)('executes $id through frozen independent behavioral oracles without paid AI', async definition => {
   const directory = await output()
-  const report = await runEvaluation({ output: directory, definition: DEFINITION_EVALUATION_CORPUS[0], caseIds: ['local-tested-feature'] })
+  const report = await runEvaluation({ output: directory, definition, caseIds: ['local-tested-feature'] })
   expect(report.stopReason, JSON.stringify(report.observations)).toBeNull()
   expect(report).toMatchObject({ mode: 'offline', isDefinitionEvaluation: true, allCasesAccepted: true, acceptedCases: 2, reportedSpendUsd: 0, monetaryConclusion: 'inconclusive' })
   expect(report.observations).toHaveLength(2)

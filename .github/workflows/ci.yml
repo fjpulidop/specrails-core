@@ -170,6 +170,36 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  definition-evaluation:
+    name: Offline definition corpus (${{ matrix.definition }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        definition: [implementation, implementation-component]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 22.22.3
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Execute all independent behavioral oracles without paid providers
+        env:
+          DEFINITION_ID: ${{ matrix.definition }}
+        run: node scripts/evaluate-definition-corpus.mjs "$DEFINITION_ID" definition-evaluation-results
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: definition-evaluation-${{ matrix.definition }}
+          path: definition-evaluation-results/
+          if-no-files-found: error
+          retention-days: 14
+
   engine-spikes:
     name: Engine spikes (${{ matrix.os }})
     strategy:

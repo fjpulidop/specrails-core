@@ -63,7 +63,7 @@ function fixtureRegistry(test: EvaluationCase, context: PipelineContext, onPromp
         if (request.role === 'developer' || request.role === 'fixer') {
           developers++
           for (const repo of context.repositories) writeFileSync(path.join(repo.path, 'implementation.cjs'), test.correction && developers === 1 ? test.defects[0]! : test.solution)
-          writeFileSync(path.join(context.artifactRoot, 'openspec/changes/evaluation-change/tasks.md'), '## 1. Implementation\n- [x] 1.1 Implement and test the requested behavior\n')
+          await tools.execute({ action: 'write_artifact', path: 'tasks.md', content: '## 1. Implementation\n- [x] 1.1 Implement and test the requested behavior\n' })
           output = { summary: 'Implemented fixture behavior', files: ['implementation.cjs'], tests: [], verification: 'Core executes the frozen checks', incomplete: [] }
         } else {
           reviews++

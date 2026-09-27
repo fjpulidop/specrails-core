@@ -29,6 +29,19 @@ test('missing, extra or duplicated selected tests fail closed', () => {
   assert.throws(() => partitionTests(inventory, 0))
   assert.throws(() => partitionTests(inventory.slice(0, 1)))
 })
+test('the full offline definition corpus runs in parallel with retained failure evidence', () => {
+  const ci = yaml(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
+  const job = ci.jobs['definition-evaluation']
+  const ids = ['implementation', 'implementation-component'].map(name =>
+    JSON.parse(readFileSync(new URL(`../src/agent-runtime/engine/__fixtures__/${name}.json`, import.meta.url), 'utf8')).id)
+  assert.deepEqual(job.strategy.matrix.definition, ids)
+  assert.equal(job.strategy['fail-fast'], false)
+  assert.equal(job.steps.some(step => step.run === 'npm run build'), true)
+  assert.equal(job.steps.some(step => step.run?.startsWith('node scripts/evaluate-definition-corpus.mjs')), true)
+  const artifact = job.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))
+  assert.equal(artifact.if, 'always()')
+  assert.equal(artifact.with['if-no-files-found'], 'error')
+})
 test('CI retains all OS/Node combinations and the main push release gate without duplicate branch push runs', () => {
   const ci = yaml(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
   assert.deepEqual(ci.on.push.branches, ['main'])
