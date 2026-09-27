@@ -1,3 +1,13 @@
+## Full catalog 5 coverage — 27 September 2026, 05:11 CEST
+
+Complete coverage at source `04ea4663` passed: 102 suites, 1,282 tests and one
+existing Windows-only skip, in 636.82 seconds. Coverage: statements 88.09%,
+branches 80.34%, functions 93.39%, lines 94.14%. No threshold changed.
+Typecheck/build and installed-package run/resume/fork already passed for this
+same source. Desktop's conversion corpus now uses one actual Core SDK process
+for all 48 structural validations (519ms instead of roughly 20s of repeated CLI
+startup); actual workflow run/resume remains exercised separately through CLI.
+
 ## Continuation validation — 27 September 2026, catalog 5
 
 Added explicit archived-target compatibility to the pinned OpenSpec validation
