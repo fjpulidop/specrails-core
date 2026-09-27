@@ -18,11 +18,13 @@
           "id": "opsx:ff",
           "args": "{{run.changeId}}"
         },
-        "access": "write"
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "validate",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "validate": {
@@ -46,11 +48,13 @@
           "id": "opsx:apply",
           "args": "{{run.changeId}}"
         },
-        "access": "write"
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "check",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "check": {
@@ -101,5 +105,5 @@
       "ends": {}
     }
   },
-  "version": "7753bfa668f2ccabfcea83c1fbe52fe40883788e8a288ef57cd4ca168ed71c8b"
+  "version": "883ccb470eabea1d8228a4ad1f3cc4a513d64372e1a2027c79bcfe2432f392bf"
 }

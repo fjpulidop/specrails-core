@@ -7,12 +7,12 @@ import { pipelineStateDirectory, validatePipelineContext } from '../../../pipeli
 import type { AgentRequest, RuntimeConfig } from '../../executor-types.js'
 import { ExecutorRegistry } from '../../executors.js'
 import { resolveOpenSpecCli, runOpenSpec } from '../../openspec.js'
-import { createRun, definitionRunDirectory } from '../runs.js'
+import { createRun, definitionRunDirectory, resumeRun } from '../runs.js'
 import { RunDatabase } from '../checkpoint/database.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
-it('runs Quick SDD through native prompts, real pinned validation/archive and final host verification without a legacy journal', async () => {
+it.each([undefined, 'opsx:ff', 'opsx:apply'])('runs Quick SDD with a human block at %s through pinned validation/archive and host verification', async blockedCommand => {
   const root = mkdtempSync(path.join(tmpdir(), 'quick sdd ')); roots.push(root)
   const repository = path.join(root, 'repository'), backlog = path.join(root, 'backlog')
   mkdirSync(repository); mkdirSync(backlog); execFileSync('git', ['init', '-q', repository])
@@ -20,11 +20,17 @@ it('runs Quick SDD through native prompts, real pinned validation/archive and fi
   const context = validatePipelineContext({ schemaVersion: 1, runId: 'quick', backlogRoot: backlog, artifactRoot: repository, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: repository }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Return two', description: 'value.cjs returns two' }] })
   const role = { provider: 'fixture' }, config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: role, developer: role, reviewer: role }, verification: [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'if(require("./value.cjs")!==2)process.exit(1);console.log("verified actual value")'] }] }
   const change = 'quick-change', active = path.join(repository, 'openspec/changes', change), requests: AgentRequest[] = []
+  let blocked = false
   const registry = new ExecutorRegistry().register('fixture', { async execute(request) {
     requests.push(request)
     expect(request.nativeCommand?.args).toContain(change)
     expect(request).toMatchObject({ access: 'write', instructions: 'none', artifacts: 'none' })
     expect(request.openspec).toBeUndefined()
+    if (!blocked && request.nativeCommand?.id === blockedCommand) {
+      blocked = true
+      return { text: 'LOOP_BLOCKED: Confirm the requested value?', usage: { inputTokens: 2, outputTokens: 1, costUsd: null } }
+    }
+    if (blocked && request.nativeCommand?.id === blockedCommand) expect(request.nativeCommand?.args).toContain('Return two')
     if (request.nativeCommand?.id === 'opsx:ff') {
       await runOpenSpec(resolveOpenSpecCli(), repository, ['new', 'change', change, '--json'])
       mkdirSync(path.join(active, 'specs/value'), { recursive: true })
@@ -42,15 +48,23 @@ it('runs Quick SDD through native prompts, real pinned validation/archive and fi
     return { text: 'Completed native skill', usage: { inputTokens: 10, outputTokens: 5, costUsd: null } }
   } })
   const definition = JSON.parse(readFileSync(new URL('../__fixtures__/quick-sdd.json', import.meta.url), 'utf8'))
-  const result = await createRun({ context, config, definition, registry, change })
+  let result = await createRun({ context, config, definition, registry, change })
+  if (blockedCommand) {
+    expect(result.state.status).toBe('paused')
+    expect(readFileSync(path.join(repository, 'value.cjs'), 'utf8')).toBe('module.exports = 1\n')
+    result = await resumeRun(definitionRunDirectory(context), { registry,
+      answers: { [result.state.pendingInterrupts[0].id]: { answer: 'Return two' } } })
+  }
   expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
-  expect(requests).toHaveLength(2)
+  expect(requests.map(request => request.nativeCommand?.id)).toEqual(blockedCommand === 'opsx:ff'
+    ? ['opsx:ff', 'opsx:ff', 'opsx:apply'] : blockedCommand === 'opsx:apply'
+      ? ['opsx:ff', 'opsx:apply', 'opsx:apply'] : ['opsx:ff', 'opsx:apply'])
   expect(existsSync(active)).toBe(false)
   expect(readdirSync(path.join(repository, 'openspec/changes/archive')).filter(name => name.endsWith('-' + change))).toHaveLength(1)
   expect(existsSync(path.join(pipelineStateDirectory(context), 'state.json'))).toBe(false)
   const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'))
   try {
-    expect(database.sqlite.prepare('SELECT count(*) count FROM invocations').get()?.count).toBe(2)
+    expect(database.sqlite.prepare('SELECT count(*) count FROM invocations').get()?.count).toBe(blockedCommand ? 3 : 2)
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path IN ('check','verify') AND status='succeeded'").get()?.count).toBe(2)
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path='archive' AND status='succeeded'").get()?.count).toBe(1)
   } finally { database.close() }

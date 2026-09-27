@@ -15,11 +15,13 @@
           "provider": "fixture"
         },
         "text": "Inspect the project and report your findings.",
-        "access": "read"
+        "access": "read",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "done",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "done": {
@@ -37,5 +39,5 @@
       "ends": {}
     }
   },
-  "version": "cf93567154b74e166a95e67fb2f05e1b671f15eba3ac497d7bad6344498c1748"
+  "version": "9b23d4bd46222996bed3d7485bafc06694add66ef7986825e04f9dc9da9bc211"
 }

@@ -1,3 +1,19 @@
+## Native workflow human pauses — 27 September 2026
+
+Quick SDD and Freestyle reference prompts explicitly select the blocked sentinel.
+Without it, a provider LOOP_BLOCKED reply was treated as ordinary output; Quick
+SDD then failed validation instead of exposing the question. The opt-in prompt
+contract is unchanged. Reference definition hashes and documentation are updated.
+The Quick SDD integration fixture now covers no pause, preparation pause and
+implementation pause using the real pinned OpenSpec lifecycle and host checks.
+It verifies exact native-command order, one additional invocation for the human
+continuation, forwarded answer text, one archive and no legacy journal. Eight
+Quick SDD/documentation tests passed; the final answer-forwarding assertion passed
+all three Quick SDD cases, and typecheck passed. Desktop factories are aligned and passed 12 factory/catalog/real-pair tests
+(70.14s), including blocked Quick SDD and Freestyle through the actual bridge.
+Desktop source bf7d5292 independently passed full local coverage and remote
+CI 36282050665 before this focused human-continuation follow-up.
+
 ## Full offline corpus and fork steering — 27 September 2026
 
 Both reference definitions now pass all five independent cases in full and

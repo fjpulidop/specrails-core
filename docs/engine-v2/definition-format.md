@@ -26,11 +26,13 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
           "provider": "fixture"
         },
         "text": "Inspect the project and report your findings.",
-        "access": "read"
+        "access": "read",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "done",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "done": {
@@ -48,7 +50,7 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       "ends": {}
     }
   },
-  "version": "cf93567154b74e166a95e67fb2f05e1b671f15eba3ac497d7bad6344498c1748"
+  "version": "9b23d4bd46222996bed3d7485bafc06694add66ef7986825e04f9dc9da9bc211"
 }
 ```
 
@@ -75,11 +77,13 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
           "id": "opsx:ff",
           "args": "{{run.changeId}}"
         },
-        "access": "write"
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "validate",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "validate": {
@@ -103,11 +107,13 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
           "id": "opsx:apply",
           "args": "{{run.changeId}}"
         },
-        "access": "write"
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "check",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "check": {
@@ -158,7 +164,7 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       "ends": {}
     }
   },
-  "version": "7753bfa668f2ccabfcea83c1fbe52fe40883788e8a288ef57cd4ca168ed71c8b"
+  "version": "883ccb470eabea1d8228a4ad1f3cc4a513d64372e1a2027c79bcfe2432f392bf"
 }
 ```
 
