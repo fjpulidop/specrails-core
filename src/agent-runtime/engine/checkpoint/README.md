@@ -19,3 +19,11 @@ A started invocation with no settlement makes aggregate usage unknown while reta
 Build before running `vitest run src/agent-runtime/engine/checkpoint`, because the killed-child fixtures exercise the compiled production adapters. Tests cover five real process-death boundaries, rollback and conflicting replay, epoch fencing, shared reservations/unknown usage, typed checkpoint history, interrupted writes, immutable root/nested forks, completed siblings and historical accounting. The compiler's separate SQLite integration tests cover production node admission and graph coordination together.
 
 Only an explicit `result.verified` from an admitted `verify` or `implementation` piece can install certification, matching the current candidate and a valid full receipt with actual commands and no unverified repositories. Invalid/scoped receipts remain evidence; `verified: null` explicitly invalidates certification.
+
+On resume, `settleAbandonedInvocations` runs under the newly acquired writer lease.
+It closes unsettled physical calls from older epochs as `interrupted`, atomically
+with null usage/duration/tool counts and one durable efficiency event per call.
+Unreported budget reservations remain reserved; no bound becomes billed usage.
+Current-epoch calls and inherited fork history are untouched. This accounting
+settlement never grants recovery permission for an uncertain write or changes a
+piece's committed response memo. Late writers remain fenced.

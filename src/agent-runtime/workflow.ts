@@ -373,7 +373,7 @@ export async function runWorkflow<S extends Record<string, unknown>>(options: Ru
           },
           reportInvocation: async invocation => {
             validateUsage(invocation.usage)
-            if (!Number.isFinite(invocation.durationMs) || invocation.durationMs < 0 || !Number.isSafeInteger(invocation.toolCalls) || invocation.toolCalls < 0) throw new TypeError('Invalid invocation measurement')
+            if (typeof invocation.durationMs !== 'number' || !Number.isFinite(invocation.durationMs) || invocation.durationMs < 0 || typeof invocation.toolCalls !== 'number' || !Number.isSafeInteger(invocation.toolCalls) || invocation.toolCalls < 0) throw new TypeError('Invalid invocation measurement')
             if (invocation.invocationId && history.invocations?.some(item => item.invocationId === invocation.invocationId)) return
             ;(history.invocations ??= []).push(clone(invocation))
             if (invocation.invocationId) history.pendingInvocations = history.pendingInvocations?.filter(item => item.invocationId !== invocation.invocationId)

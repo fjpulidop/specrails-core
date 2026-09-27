@@ -338,36 +338,68 @@ export class RunLedger {
   settleInvocation(frame: AttemptFrame, rawInvocation: ProviderInvocation & { invocationId: string }, memo?: { key: string; value: JsonValue }): void {
     this.db.transaction('invocation-settled', () => {
       this.assertFrame(frame)
-      const invocation = { ...rawInvocation, usage: { ...rawInvocation.usage, costUsd: rawInvocation.usage.costUsd ?? null,
-        inputTokens: rawInvocation.usage.inputTokens ?? null, outputTokens: rawInvocation.usage.outputTokens ?? null } }
-      const row = this.db.get('invocations', { invocation_id: invocation.invocationId })
-      if (!row || row.attempt_id !== frame.attemptId) throw new EngineError('invocation_mismatch', 'Invocation must belong to its physical attempt')
-      const serialized = canonicalJson(invocation)
-      if (row.status !== 'running') {
-        if (row.result_json !== serialized) throw new EngineError('invocation_conflict', 'Invocation settlement cannot change')
-        return
-      }
-      for (const value of [invocation.durationMs, invocation.toolCalls, ...Object.values(invocation.usage)]) if (value !== null && value !== undefined && (!Number.isFinite(value) || value < 0)) throw new EngineError('invalid_usage', 'Invocation usage must be non-negative or unknown')
-      const usage = invocation.usage, budget = this.db.get('budget', { run_id: this.runId })!, at = new Date(this.now()).toISOString()
-      this.db.put('invocations', { ...row, status: invocation.status, ended_at: at, duration_ms: invocation.durationMs,
-        tool_calls: invocation.toolCalls, usage_json: canonicalJson(usage), result_json: serialized })
-      const reservation = this.db.get('reservations', { reservation_id: invocation.invocationId })
-      // Settlement with missing usage does not prove the unused reservation is free.
-      // Retain only the unreported dimensions, without relabeling a bound as billed usage.
-      if (reservation && (usage.costUsd === null || usage.inputTokens === null || usage.outputTokens === null)) {
-        this.db.put('reservations', { ...reservation,
-          max_cost_usd: usage.costUsd === null ? reservation.max_cost_usd : 0,
-          max_tokens: usage.inputTokens === null || usage.outputTokens === null
-            ? reservation.max_tokens === null ? null : Math.max(0, Number(reservation.max_tokens) - (usage.inputTokens ?? 0) - (usage.outputTokens ?? 0)) : 0 })
-      } else this.db.delete('reservations', { reservation_id: invocation.invocationId })
-      this.db.put('budget', { ...budget, known_cost_usd: Number(budget.known_cost_usd) + (usage.costUsd ?? 0),
-        known_tokens: Number(budget.known_tokens) + (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-        input_tokens: Number(budget.input_tokens) + (usage.inputTokens ?? 0), output_tokens: Number(budget.output_tokens) + (usage.outputTokens ?? 0),
-        cost_unknown: budget.cost_unknown || usage.costUsd === null ? 1 : 0, input_unknown: budget.input_unknown || usage.inputTokens === null ? 1 : 0,
-        output_unknown: budget.output_unknown || usage.outputTokens === null ? 1 : 0, duration_ms: Number(budget.duration_ms) + invocation.durationMs })
-      if (memo) this.storePieceState(frame, memo.key, memo.value)
-      this.event(frame, 'efficiency_updated', { ...invocation, startedAt: String(row.started_at), finishedAt: at } as unknown as JsonValue)
+      this.commitInvocation(frame, rawInvocation, memo)
     })
+  }
+
+  /** Only a new fenced owner can close calls abandoned by an earlier executor.
+   * Keep unknown usage reservations: a lost response does not prove zero spend.
+   * This records accounting, never authorizes replay of an uncertain write. */
+  settleAbandonedInvocations(): number {
+    return this.db.transaction('invocations-interrupted', () => {
+      this.lease.assert(this.token)
+      const rows = this.db.sqlite.prepare(`SELECT i.*, a.frame_json FROM invocations i
+        JOIN attempts a ON a.attempt_id=i.attempt_id
+        WHERE i.run_id=? AND i.status='running' AND a.lease_epoch<? AND i.inherited=0`)
+        .all(this.runId, this.token.epoch)
+      for (const row of rows) {
+        this.commitInvocation(JSON.parse(String(row.frame_json)) as AttemptFrame, {
+          invocationId: String(row.invocation_id), ordinal: Number(row.ordinal), provider: String(row.provider),
+          ...(row.model === null ? {} : { model: String(row.model) }),
+          ...(row.kind === null ? {} : { kind: String(row.kind) as ProviderInvocation['kind'] }),
+          ...(row.prompt_bytes === null ? {} : { promptBytes: Number(row.prompt_bytes) }),
+          ...(row.context_bytes === null ? {} : { contextBytes: Number(row.context_bytes) }),
+          status: 'interrupted', durationMs: null, toolCalls: null,
+          usage: { costUsd: null, inputTokens: null, outputTokens: null,
+            uncachedInputTokens: null, cacheReadInputTokens: null, cacheWriteInputTokens: null },
+        })
+      }
+      return rows.length
+    })
+  }
+
+  /** Caller owns the transaction and has checked either the current frame or
+   * exclusive recovery ownership of the earlier epoch. */
+  private commitInvocation(frame: AttemptFrame, rawInvocation: ProviderInvocation & { invocationId: string }, memo?: { key: string; value: JsonValue }): void {
+    const invocation = { ...rawInvocation, usage: { ...rawInvocation.usage, costUsd: rawInvocation.usage.costUsd ?? null,
+      inputTokens: rawInvocation.usage.inputTokens ?? null, outputTokens: rawInvocation.usage.outputTokens ?? null } }
+    const row = this.db.get('invocations', { invocation_id: invocation.invocationId })
+    if (!row || row.attempt_id !== frame.attemptId) throw new EngineError('invocation_mismatch', 'Invocation must belong to its physical attempt')
+    const serialized = canonicalJson(invocation)
+    if (row.status !== 'running') {
+      if (row.result_json !== serialized) throw new EngineError('invocation_conflict', 'Invocation settlement cannot change')
+      return
+    }
+    for (const value of [invocation.durationMs, invocation.toolCalls, ...Object.values(invocation.usage)]) if (value !== null && value !== undefined && (!Number.isFinite(value) || value < 0)) throw new EngineError('invalid_usage', 'Invocation usage must be non-negative or unknown')
+    const usage = invocation.usage, budget = this.db.get('budget', { run_id: this.runId })!, at = new Date(this.now()).toISOString()
+    this.db.put('invocations', { ...row, status: invocation.status, ended_at: at, duration_ms: invocation.durationMs,
+      tool_calls: invocation.toolCalls, usage_json: canonicalJson(usage), result_json: serialized })
+    const reservation = this.db.get('reservations', { reservation_id: invocation.invocationId })
+    // Settlement with missing usage does not prove the unused reservation is free.
+    // Retain only the unreported dimensions, without relabeling a bound as billed usage.
+    if (reservation && (usage.costUsd === null || usage.inputTokens === null || usage.outputTokens === null)) {
+      this.db.put('reservations', { ...reservation,
+        max_cost_usd: usage.costUsd === null ? reservation.max_cost_usd : 0,
+        max_tokens: usage.inputTokens === null || usage.outputTokens === null
+          ? reservation.max_tokens === null ? null : Math.max(0, Number(reservation.max_tokens) - (usage.inputTokens ?? 0) - (usage.outputTokens ?? 0)) : 0 })
+    } else this.db.delete('reservations', { reservation_id: invocation.invocationId })
+    this.db.put('budget', { ...budget, known_cost_usd: Number(budget.known_cost_usd) + (usage.costUsd ?? 0),
+      known_tokens: Number(budget.known_tokens) + (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
+      input_tokens: Number(budget.input_tokens) + (usage.inputTokens ?? 0), output_tokens: Number(budget.output_tokens) + (usage.outputTokens ?? 0),
+      cost_unknown: budget.cost_unknown || usage.costUsd === null ? 1 : 0, input_unknown: budget.input_unknown || usage.inputTokens === null ? 1 : 0,
+      output_unknown: budget.output_unknown || usage.outputTokens === null ? 1 : 0, duration_ms: Number(budget.duration_ms) + (invocation.durationMs ?? 0) })
+    if (memo) this.storePieceState(frame, memo.key, memo.value)
+    this.event(frame, 'efficiency_updated', { ...invocation, startedAt: String(row.started_at), finishedAt: at } as unknown as JsonValue)
   }
 
   readPieceState(frame: AttemptFrame, key: string): JsonValue | undefined {

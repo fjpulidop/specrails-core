@@ -103,6 +103,39 @@ describe('durable checkpoint and ledger boundary', () => {
     expect(next.events().filter(event => event.type === 'lease_recovered')).toHaveLength(1)
   })
 
+  it('settles abandoned calls once under the new lease without inventing usage or authorizing writes', async () => {
+    let now = Date.now()
+    const { db, ledger, lease } = await fixture({ maxTokens: 20, now: () => now })
+    const input = admission('write-task', 'write', { effect: 'write' }), frame = ledger.enter(input)
+    ledger.startInvocation(frame, { invocationId: 'lost-response', provider: 'fixture', model: 'requested', promptBytes: 12 }, { maxTokens: 10 })
+    expect(ledger.settleAbandonedInvocations()).toBe(0)
+    now += 60_001
+    const next = new RunLedger(db, lease.acquire('replacement'), { maxTransitions: 10, now: () => now })
+    expect(() => ledger.settleAbandonedInvocations()).toThrow('expired or was replaced')
+    db.sqlite.exec("CREATE TRIGGER reject_lost_call BEFORE INSERT ON events WHEN NEW.type='efficiency_updated' BEGIN SELECT RAISE(ABORT,'reject lost call'); END")
+    expect(() => next.settleAbandonedInvocations()).toThrow('reject lost call')
+    expect(db.get('invocations', { invocation_id: 'lost-response' })?.status).toBe('running')
+    expect(next.usage()).toMatchObject({ invocations: 0 })
+    db.sqlite.exec('DROP TRIGGER reject_lost_call')
+    expect(next.settleAbandonedInvocations()).toBe(1)
+    const row = db.get('invocations', { invocation_id: 'lost-response' })!
+    expect(JSON.parse(String(row.result_json))).toMatchObject({ status: 'interrupted', provider: 'fixture', model: 'requested',
+      ordinal: 1, promptBytes: 12, durationMs: null, toolCalls: null, usage: { costUsd: null, inputTokens: null, outputTokens: null } })
+    expect(next.usage()).toMatchObject({ invocations: 1, costUsd: null, inputTokens: null, outputTokens: null })
+    expect(db.get('reservations', { reservation_id: 'lost-response' })?.max_tokens).toBe(10)
+    expect(() => next.enter(input)).toThrow('explicit recovery')
+    expect(next.settleAbandonedInvocations()).toBe(0)
+    expect(next.events().filter(event => event.type === 'efficiency_updated')).toHaveLength(1)
+    next.authorizeRecovery(frame.attemptId)
+    const retry = next.enter(input)
+    next.startInvocation(retry, { invocationId: 'new-response', provider: 'fixture' }, { maxTokens: 10 })
+    expect(next.settleAbandonedInvocations()).toBe(0)
+    expect(db.get('invocations', { invocation_id: 'new-response' })?.status).toBe('running')
+    expect(() => ledger.settleInvocation(frame, { invocationId: 'lost-response', provider: 'fixture', status: 'succeeded',
+      durationMs: 1, toolCalls: 0, usage: { costUsd: 0, inputTokens: 1, outputTokens: 1 } })).toThrow('expired or was replaced')
+    db.checkIntegrity()
+  })
+
   it('shares role sessions only within an ancestor scope while preserving the actual attempt fence', async () => {
     const { ledger } = await fixture(), scope = { id: 'implementation-one', nodePathPrefix: 'implement/' }
     const developer = ledger.enter(admission('developer', 'implement/developer', { scope }))

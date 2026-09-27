@@ -125,6 +125,7 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
   }, 250)
   controlTimer.unref()
   try {
+    ledger.settleAbandonedInvocations()
     stream.send(describeDefinition(runId, admitted.definition))
     runtime = await composeDefinitionRuntime(database, ledger, admitted, stream, controller.signal)
     const { graph, saver, deps } = runtime

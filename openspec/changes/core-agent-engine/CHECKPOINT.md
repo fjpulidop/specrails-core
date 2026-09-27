@@ -1,3 +1,22 @@
+## Interrupted physical invocation accounting — 27 September 2026
+
+Actual paired Desktop host/Core SIGKILL tests found a lost-response accounting gap:
+resuming read/write attempts completed the workflow but left the abandoned
+physical invocation running forever and absent from Desktop spending. Core now
+settles calls from older lease epochs under the new fenced owner, with unknown
+usage/duration/tool counts and one durable efficiency event. Existing unreported
+budget reservations remain reserved. Current-epoch calls and inherited history
+are not touched; write recovery authorization remains a separate gate.
+The settlement and event are atomic, including rollback and retry after a failed
+event insert. A late original owner cannot overwrite the interruption.
+
+Focused validation: 35 checkpoint/efficiency/run tests, 23 checkpoint/inbox tests
+(including the additional rollback assertion), and 48 legacy-workflow/fork tests
+pass. Typecheck and build pass. The real Desktop manager now passes all three
+read/write/human-pause SIGKILL scenarios (100.36s) with two physical invocations,
+null missing usage, exact frozen-config continuation and idempotent event replay.
+Complete Core coverage is running; do not treat the focused evidence as that gate.
+
 ## Remote corpus acceptance — 27 September 2026
 
 CI 36281822034 on 2cdedae3 completed: all jobs passed except the known C1 Windows
