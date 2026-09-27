@@ -8,10 +8,10 @@ function freezeData<T>(value: T): T {
 }
 
 /**
- * Version of the published piece catalog. Bump it only when a descriptor's kind,
- * outcomes, effect or params schema changes incompatibly; hosts pin definitions to it.
+ * Version of the published piece catalog and observable piece behavior. Bump
+ * when either changes; retained runtime packages preserve earlier semantics.
  */
-export const NODE_KINDS_VERSION = 1
+export const NODE_KINDS_VERSION = 2
 
 /** Immutable bindings supplied by Core's composition root; user definitions cannot register code. */
 export class PieceRegistry {

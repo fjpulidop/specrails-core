@@ -13,8 +13,14 @@ tests pass, including closing/reopening the run and accounting for exactly two
 physical calls (one decision, one subsequent prompt), with unknown billing
 preserved. Typecheck and build pass. A real Desktop bridge/CLI Freestyle case
 also passes, proving a later decider visit remains a fresh decision and the
-human answer reaches its next prompt. Full Core coverage is running; prior
-full coverage below predates this correction.
+human answer reaches its next prompt. Full Core coverage on 733dfe82 passes: 99 suites, 1,249 tests and one existing
+Windows-only omission, 589.06s. Coverage is 87.98% statements, 80.18% branches,
+93.33% functions and 94.04% lines with unchanged thresholds. All eight Desktop
+factory cases pass (109.79s). A catalog version 2 follow-up explicitly identifies
+the changed decider behavior. Its 22 API/CLI/catalog/documentation acceptance
+tests pass, along with typecheck/build and 26 script tests. This preserves
+the existing sixteen kinds and transition labels; frozen older packages keep
+their original behavior.
 
 ## Interrupted physical invocation accounting — 27 September 2026
 

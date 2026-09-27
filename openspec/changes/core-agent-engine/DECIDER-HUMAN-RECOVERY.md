@@ -13,3 +13,6 @@ interrupt so resume reuses that response and its physical invocation accounting.
 Malformed responses without a blocked marker still receive exactly one repair.
 A human pause does not advance or erase the previous no-progress observation.
 This is an additive parser/pause correction, not legacy migration completion.
+
+The published catalog advances to nodeKindsVersion 2 to identify this behavior
+change. No new public outcome label, piece kind or definition format is added.
