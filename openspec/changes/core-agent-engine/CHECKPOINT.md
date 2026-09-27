@@ -1,3 +1,11 @@
+## Remote corpus acceptance — 27 September 2026
+
+CI 36281822034 on 2cdedae3 completed: all jobs passed except the known C1 Windows
+private-directory spike. Both complete offline corpus jobs, coverage, all
+OS/Node runtime partitions and installed recovery/package jobs passed. The
+subsequent native-pause change has the focused evidence below and is not included
+in that historical CI result.
+
 ## Native workflow human pauses — 27 September 2026
 
 Quick SDD and Freestyle reference prompts explicitly select the blocked sentinel.
