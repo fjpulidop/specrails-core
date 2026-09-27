@@ -1,5 +1,6 @@
 import { resolveRoleDescriptor } from '../../config.js'
 import { EngineError, type JsonObject, type Piece, type PieceResult } from '../contracts.js'
+import { parseExpression } from '../expressions.js'
 import type { PieceDependencyProvider } from './ports.js'
 import { executeRoleTurn } from './role-turn.js'
 import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, positiveInteger, stringSchema, text } from './shared.js'
@@ -24,11 +25,12 @@ const outputSchema = paramsSchema({ verdict: { enum: ['continue', 'stop', 'block
 
 export function deciderPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'decider', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, goal: { ...stringSchema, minLength: 1 }, noProgress: { ...positiveInteger, maximum: 100_000 } }, ['roleId', 'goal']), outcomes: ['continue', 'stop', 'failed'], effect: 'read', requiresAI: true },
+    descriptor: { kind: 'decider', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, goal: { ...stringSchema, minLength: 1 }, continueWhen: { type: 'string', minLength: 1, maxLength: 4096 }, noProgress: { ...positiveInteger, maximum: 100_000 } }, ['roleId', 'goal']), outcomes: ['continue', 'stop', 'failed'], effect: 'read', requiresAI: true },
     async execute(params, context): Promise<PieceResult> {
       const deps = bindings()
       const roleId = text(params.roleId)
       if (resolveRoleDescriptor(deps.config, roleId).access !== 'read') throw new EngineError('invalid_role_access', 'The decider must use a read-only role')
+      const continueRequired = typeof params.continueWhen === 'string' && Boolean(parseExpression(params.continueWhen).evaluate(context.state))
       const history = boundedText(context.state.$history.map(entry => `[${entry.nodePath}] ${entry.text}`).join('\n'), deps.policies?.historyMaxChars ?? 1500)
       const specs = deps.context.specs.map(spec => boundedText(JSON.stringify({ id: spec.id, title: spec.title, description: spec.description, acceptanceCriteria: spec.acceptanceCriteria }), 4000))
       const memo = deps.memo(context)
@@ -53,12 +55,16 @@ export function deciderPiece(bindings: PieceDependencyProvider): Piece {
           candidateHash: previous?.candidateHash ?? null, continueCount: previous?.continueCount ?? 0 },
           answers: [answerEntry(context, response)], history: [historyEntry(context, `Human decision requested: ${structured.reason}\nHuman answer:\n${JSON.stringify(response)}`)] }
       }
-      const continueCount = structured.verdict === 'continue' && candidateHash !== null ? previous?.verdict === 'continue' && previous.candidateHash === candidateHash ? (previous.continueCount ?? 0) + 1 : 1 : 0
+      // Apply mandatory work before the no-progress observation. Routing a stop
+      // through a later condition would reset the decider's retained history.
+      const overridden = continueRequired && structured.verdict === 'stop'
+      const verdict = overridden ? 'continue' : structured.verdict
+      const reason = overridden ? boundedText('Required workflow work remains; continue before completion. ' + structured.reason, 4000) : structured.reason
+      const continueCount = verdict === 'continue' && candidateHash !== null ? previous?.verdict === 'continue' && previous.candidateHash === candidateHash ? (previous.continueCount ?? 0) + 1 : 1 : 0
       const limit = (params.noProgress as number | undefined) ?? deps.policies?.noProgress
       const stalled = limit !== undefined && continueCount >= limit
-      const verdict = structured.verdict
-      return { ...result, outcome: stalled ? 'failed' : verdict, output: { verdict, reason: structured.reason, candidateHash, continueCount, ...(stalled ? { stalled: true } : {}) },
-        history: [historyEntry(context, `${verdict}: ${structured.reason}${stalled ? ' (no progress)' : ''}`)],
+      return { ...result, outcome: stalled ? 'failed' : verdict, output: { verdict, reason, candidateHash, continueCount, ...(overridden ? { proposedVerdict: structured.verdict, requiredContinue: true } : {}), ...(stalled ? { stalled: true } : {}) },
+        history: [historyEntry(context, `${verdict}: ${reason}${stalled ? ' (no progress)' : ''}`)],
         ...(stalled ? { status: 'failed' as const, error: { code: 'no_progress', message: 'The candidate did not change across the allowed continue decisions' }, completion: { ok: false, verified: false, reasons: ['no_progress'] } } : {}) }
     },
   }

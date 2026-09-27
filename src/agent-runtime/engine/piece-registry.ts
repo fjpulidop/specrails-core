@@ -11,7 +11,7 @@ function freezeData<T>(value: T): T {
  * Version of the published piece catalog and observable piece behavior. Bump
  * when either changes; retained runtime packages preserve earlier semantics.
  */
-export const NODE_KINDS_VERSION = 3
+export const NODE_KINDS_VERSION = 4
 
 /** Immutable bindings supplied by Core's composition root; user definitions cannot register code. */
 export class PieceRegistry {

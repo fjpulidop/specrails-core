@@ -2,7 +2,7 @@
 
 A piece is a node kind the engine knows how to execute. The catalog is closed: `createPieceRegistry(dependencies)` (`src/agent-runtime/engine/pieces/index.ts`) binds the reviewed pieces to one execution, and `validationPieceRegistry()` returns the same descriptors and parameter validators without initializing providers, a journal or a project store. A definition selects kinds from this catalog by name; it cannot register code, callbacks or expressions that execute JavaScript.
 
-`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 3 with 17 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
+`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 4 with 17 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
 
 ## Descriptor model
 
@@ -48,9 +48,10 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop' | 'blocked', reason }` as structured output with no session continuity.
 
 - Outcomes: `continue`, `stop`, `failed`.
+- Required work: optional `continueWhen` uses the same bounded expression grammar as a condition, for example `$vars.failedPass == true`. A true guard changes a valid stop proposal into continue before no-progress accounting. The decision still invokes its provider; output preserves `proposedVerdict: "stop"` and `requiredContinue: true`. Clearing the flag permits a later stop. Invalid expressions are rejected at publication, and the guard never replaces a blocked human question.
 - Human decision: a structured `blocked` verdict or `LOOP_BLOCKED: <question>` pauses with a question. Resume reuses the saved decision, records the answer and follows `continue` without another provider call. The answer enters history for the next step. A human pause preserves the prior no-progress observation; it cannot certify completion. Other malformed responses still receive one repair.
 - No-progress: consecutive `continue` verdicts with an unchanged candidate hash are counted; when the count reaches `params.noProgress ?? policies.noProgress` the engine emits `failed` with `stalled: true`, preserves the original `continue` verdict in the output, and records `completion: { ok: false, reasons: ['no_progress'] }`. If neither value is declared, no stall limit applies.
-- Writes: `$outputs[nodeId] = { verdict, reason, candidateHash, continueCount, stalled? }` and one `$history` entry.
+- Writes: `$outputs[nodeId] = { verdict, reason, candidateHash, continueCount, stalled?, proposedVerdict?, requiredContinue? }` and one `$history` entry.
 
 ### `condition`
 
@@ -165,7 +166,7 @@ Terminates the current body. `completion.ok` is `outcome === 'success'`; `comple
 ## Descriptor reference (generated)
 
 <!-- piece-catalog:generated:start -->
-Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 3, 17 kinds, in registration order.
+Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 4, 17 kinds, in registration order.
 Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts`.
 
 ### Descriptor: `prompt`
@@ -229,6 +230,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `idleTimeoutMs` | no | integer (0–2147483647) |
 | `roleId` | yes | string matching `^[a-z][a-z0-9-]{0,63}$` |
 | `goal` | yes | string (1–32000 chars) |
+| `continueWhen` | no | string (1–4096 chars) |
 | `noProgress` | no | integer (1–100000) |
 
 ### Descriptor: `verify`

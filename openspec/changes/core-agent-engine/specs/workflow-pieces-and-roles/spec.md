@@ -76,3 +76,14 @@ Core SHALL provide a non-AI assign piece that returns one atomic update to scope
 #### Scenario: Parallel branches use the same variable name
 - **WHEN** scoped branches assign their own counters
 - **THEN** neither branch mutates another branch's input state
+
+### Requirement: Required work prevents a premature decision stop
+A decider SHALL accept an optional bounded continueWhen expression over scoped state. When it evaluates true, a valid stop proposal SHALL become a continue decision before no-progress accounting. The provider invocation SHALL still occur and its proposal SHALL remain identifiable in output. Publication SHALL reject invalid expressions. A blocked human decision SHALL retain its existing pause and continuation behavior.
+
+#### Scenario: A required phase has failed
+- **WHEN** continueWhen observes the retained failure flag and the provider proposes stop
+- **THEN** the workflow continues without erasing the obligation and unchanged candidates still reach the no-progress limit
+
+#### Scenario: The failed obligation is repaired
+- **WHEN** a later visit observes a cleared failure flag
+- **THEN** the decider may accept a valid stop proposal

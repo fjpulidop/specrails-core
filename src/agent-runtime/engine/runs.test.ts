@@ -51,6 +51,27 @@ it('routes an invalid assignment without committing its companion changes', asyn
   expect(full.state.scopes.some(scope => scope.nodePath === 'unexpected')).toBe(false)
 })
 
+it('retains required work over a pause and permits stopping only after that obligation clears', async () => {
+  const f = fixture({
+    initialize: { kind: 'assign', params: { set: { failedPass: true } }, ends: { next: 'ask', failed: null } },
+    ask: { kind: 'question', params: { text: 'Continue recovery?' }, ends: { next: 'decide' } },
+    decide: { kind: 'decider', params: { roleId: 'observer', goal: 'Finish', continueWhen: '$vars.failedPass == true', noProgress: 2 }, ends: { continue: 'repair', stop: 'done', failed: null } },
+    repair: { kind: 'assign', params: { set: { failedPass: false } }, ends: { next: 'decide', failed: null } }, done,
+  }, { roles: ['observer'] }, { roles: { observer: { provider: 'fixture', access: 'read', artifacts: 'none' } } })
+  f.registry.register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: '{"verdict":"stop","reason":"Model claims completion"}', usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun(f)
+  expect(paused.state.status).toBe('paused')
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Continue' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  expect(resumed.efficiencySummary.invocations.total).toBe(2)
+  const full = await statusRun(f.directory, false)
+  expect(full.state.scopes.find(scope => scope.nodePath === 'repair')).toMatchObject({ status: 'succeeded' })
+})
+
 it('executes a published graph and status remains read-only with no implementation journal', async () => {
   const f = fixture(), events: unknown[] = []
   const result = await createRun({ ...f, onEvent: value => events.push(value) })

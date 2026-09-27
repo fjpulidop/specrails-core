@@ -1,3 +1,18 @@
+## Required work before decider stop — 27 September 2026
+
+Catalog version 4 adds optional continueWhen to the decider. A true bounded
+state expression turns a valid stop proposal into continue before no-progress
+accounting, preserving the proposal in output and retaining the physical call.
+Blocked human questions remain unchanged; clearing the obligation permits a
+later stop. Publication rejects invalid expressions. See DECIDER-REQUIRED-WORK.md.
+
+Validation: 29 piece cases, 30 definition/runtime cases, 22 API/CLI/package-surface
+and documentation cases, typecheck/build and 26 script tests pass. Actual durable
+resume proves a retained failure flag forces a second decision only after the
+repair clears it, with exactly two recorded provider calls. The full 1,270-test
+coverage result below is the immediately preceding assignment baseline; it is
+not presented as full coverage of this subsequent guard addition.
+
 ## Scoped assignment prerequisite — 27 September 2026
 
 Catalog version 3 adds the non-AI `assign` piece (17 kinds). Set JSON values and

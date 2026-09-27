@@ -4,6 +4,7 @@ import { workflowDefinitionSchema } from './definition-schema.js'
 import type { WorkflowDefinitionDraft } from './definition-types.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { PieceRegistry } from './piece-registry.js'
+import { validationPieceRegistry } from './pieces/index.js'
 import type { Piece } from './contracts.js'
 
 const piece = (kind: string, outcomes: string[], effect: 'read' | 'write' = 'read'): Piece => ({
@@ -19,6 +20,17 @@ const draft = (): WorkflowDefinitionDraft => ({ schemaVersion: 1, id: 'sample', 
 function codes(value: unknown): string[] { const result = validateWorkflowDefinition(value, registry); return result.ok ? [] : result.errors.map(error => error.code) }
 
 describe('definition admission', () => {
+  it('validates a decider continuation guard before admitting its definition', () => {
+    const value = draft()
+    value.roles = ['observer']
+    value.nodes.check = { kind: 'decider', params: { roleId: 'observer', goal: 'Complete the work', continueWhen: '$vars.failedPass == true' }, ends: { continue: 'done', stop: 'done', failed: null } }
+    const roles = { observer: { access: 'read' as const } }
+    expect(validateWorkflowDefinition(value, validationPieceRegistry(), roles).ok).toBe(true)
+    value.nodes.check.params.continueWhen = 'process.exit()'
+    const rejected = validateWorkflowDefinition(value, validationPieceRegistry(), roles)
+    expect(rejected.ok).toBe(false)
+    if (!rejected.ok) expect(rejected.errors.map(error => error.code)).toContain('invalid_expression')
+  })
   it('publishes a raw draft, roundtrips its hash and preserves absence of defaults', () => {
     const result = validateWorkflowDefinition(draft(), registry)
     expect(result.ok).toBe(true)

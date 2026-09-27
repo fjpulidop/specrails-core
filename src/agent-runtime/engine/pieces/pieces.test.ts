@@ -135,7 +135,7 @@ describe('free prompts and declared roles', () => {
     const f = fixture(() => ({ text: 'LOOP_BLOCKED: Confirm scope?', usage: unknownUsage() }))
     f.execution.state.$outputs.node = { verdict: 'continue', candidateHash: 'previous-candidate', continueCount: 2 }
     f.execution.interrupt = () => 'Proceed'
-    expect(await f.run('decider', { roleId: 'analyst', goal: 'Inspect', noProgress: 2 })).toMatchObject({
+    expect(await f.run('decider', { roleId: 'analyst', goal: 'Inspect', noProgress: 2, continueWhen: 'true' })).toMatchObject({
       outcome: 'continue', output: { candidateHash: 'previous-candidate', continueCount: 2, blocked: true },
     })
   })
@@ -232,6 +232,24 @@ describe('free prompts and declared roles', () => {
     expect(second).toMatchObject({ outcome: 'failed', status: 'failed', output: { verdict: 'continue', stalled: true }, completion: { ok: false, reasons: ['no_progress'] } })
     expect(f.requests[0].prompt).toContain('not proof on its own')
     expect(f.requests[0].prompt).toContain('Tests must pass')
+  })
+  it('keeps required work ahead of a stop proposal and retains no-progress accounting', async () => {
+    const f = fixture(() => ({ text: '{"verdict":"stop","reason":"Model claims completion"}', usage: unknownUsage() }))
+    f.execution.state.$vars.failedPass = true
+    const params = { roleId: 'analyst', goal: 'finish', continueWhen: '$vars.failedPass == true', noProgress: 2 }
+    const first = await f.run('decider', params)
+    expect(first).toMatchObject({ outcome: 'continue', output: { verdict: 'continue', proposedVerdict: 'stop', requiredContinue: true, continueCount: 1 } })
+    f.execution.state.$outputs.node = first.output!
+    expect(await f.run('decider', params)).toMatchObject({ outcome: 'failed', output: { continueCount: 2, stalled: true }, completion: { ok: false, reasons: ['no_progress'] } })
+    expect(f.requests).toHaveLength(2)
+    f.execution.state.$vars.failedPass = false
+    expect(await f.run('decider', params)).toMatchObject({ outcome: 'stop', output: { verdict: 'stop', continueCount: 0 } })
+    expect(f.requests).toHaveLength(3)
+  })
+  it('rejects an unsafe decision guard before a physical provider invocation', async () => {
+    const f = fixture()
+    await expect(f.run('decider', { roleId: 'analyst', goal: 'finish', continueWhen: 'process.exit()' })).rejects.toMatchObject({ code: 'invalid_expression' })
+    expect(f.requests).toHaveLength(0)
   })
 })
 

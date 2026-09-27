@@ -84,6 +84,7 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
         try {
           validateInterpolations(node.params)
           if (node.kind === 'condition' && typeof node.params.expr === 'string') parseExpression(node.params.expr)
+          if (node.kind === 'decider' && typeof node.params.continueWhen === 'string') parseExpression(node.params.continueWhen)
           if (Array.isArray(node.params.captureVars)) for (const capture of node.params.captureVars) {
             if (capture && typeof capture === 'object' && !Array.isArray(capture) && typeof capture.pattern === 'string') boundedPattern(capture.pattern)
           }
