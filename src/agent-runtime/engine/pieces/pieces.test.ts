@@ -102,6 +102,23 @@ describe('reviewed piece catalog and control', () => {
 })
 
 describe('free prompts and declared roles', () => {
+  it.each(['LOOP_BLOCKED: Which repository?', '{"verdict":"blocked","reason":"Which repository?"}'])('retains a blocked decider response across its human pause: %s', async response => {
+    const f = fixture(() => ({ text: response, usage: unknownUsage() }))
+    const params = { roleId: 'analyst', goal: 'Complete the selected scope' }
+    await expect(f.run('decider', params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    expect(f.invocations).toHaveLength(1)
+    f.execution.interrupt = request => {
+      expect(request).toMatchObject({ kind: 'question', prompt: 'Which repository?', attemptId: 'attempt' })
+      return { answer: 'Billing repository only' }
+    }
+    const resumed = await f.run('decider', params)
+    expect(resumed).toMatchObject({ outcome: 'continue', answers: [{ value: { answer: 'Billing repository only' } }] })
+    expect(JSON.stringify(resumed.history)).toContain('Billing repository only')
+    expect(f.requests).toHaveLength(1)
+    expect(f.invocations).toHaveLength(1)
+  })
+
   it('pauses a blocked verification turn before accepting its success sentinel', async () => {
     const f = fixture((_request, call) => ({ text: call === 1 ? 'VERIFICATION: PASS\nLOOP_BLOCKED: Which scope?' : 'VERIFICATION: PASS', usage: unknownUsage() }))
     const params = { engine: { provider: 'fixture' }, text: 'Verify the selected scope', access: 'read', sentinel: 'verification' }
@@ -112,6 +129,15 @@ describe('free prompts and declared roles', () => {
     expect(resumed).toMatchObject({ outcome: 'pass', answers: [{ value: 'Billing only' }] })
     expect(f.requests).toHaveLength(2)
     expect(f.requests[1].prompt).toContain('Billing only')
+  })
+
+  it('preserves previous no-progress evidence while a decider waits for a human', async () => {
+    const f = fixture(() => ({ text: 'LOOP_BLOCKED: Confirm scope?', usage: unknownUsage() }))
+    f.execution.state.$outputs.node = { verdict: 'continue', candidateHash: 'previous-candidate', continueCount: 2 }
+    f.execution.interrupt = () => 'Proceed'
+    expect(await f.run('decider', { roleId: 'analyst', goal: 'Inspect', noProgress: 2 })).toMatchObject({
+      outcome: 'continue', output: { candidateHash: 'previous-candidate', continueCount: 2, blocked: true },
+    })
   })
 
   it.each(['role-turn', 'decider'])('preserves %s timer overrides through structured-response repair', async kind => {

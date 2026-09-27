@@ -26,7 +26,10 @@ in one transaction before raising a human interrupt. Resume consumes that result
 before sending a continuation. Up to 32 human continuations are admitted in one
 visit, with every physical call charged to the same durable budget. The decider
 uses actual evidence, declared obligations and no-progress limits; stopping
-without proof never marks verification successful.
+without proof never marks verification successful. A blocked decider saves its
+read-only result before asking a human; answering resumes the continue branch
+without calling that decision again, and records the answer in history.
+Malformed non-question output keeps the existing single-repair policy.
 
 Captures and expression regexes use a constant VM script, 50 ms timeout, 200
 pattern characters and at most 32,000 input characters. User input supplies only

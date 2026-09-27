@@ -81,6 +81,32 @@ it('rejects an answer for the wrong interrupt without altering its pending quest
   expect((await statusRun(f.directory)).state.pendingInterrupts).toHaveLength(1)
 })
 
+it('reopens a blocked decider and forwards the answer without another decision or duplicate accounting', async () => {
+  const f = fixture({
+    decide: { kind: 'decider', params: { roleId: 'observer', goal: 'Choose the required scope' }, ends: { continue: 'inspect', stop: 'done', failed: null } },
+    inspect: prompt, done,
+  }, { roles: ['observer'] }, { roles: { observer: { provider: 'fixture', access: 'read', artifacts: 'none' } } })
+  const requests: AgentRequest[] = []
+  const registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    requests.push(request)
+    return { text: 'LOOP_BLOCKED: Which module?', usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun({ ...f, registry })
+  expect(paused.state.status).toBe('paused')
+  expect(paused.efficiencySummary.invocations.total).toBe(1)
+  const restarted = new ExecutorRegistry().register('fixture', { async execute(request) {
+    expect(request.role).toBe('prompt')
+    requests.push(request)
+    return { text: 'Inspected billing', usage: { inputTokens: 4, outputTokens: 2, costUsd: null } }
+  } })
+  const resumed = await resumeRun(f.directory, { registry: restarted, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Billing only' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(requests).toHaveLength(2)
+  expect(requests[1].prompt).toContain('Billing only')
+  expect(resumed.efficiencySummary.invocations.total).toBe(2)
+  expect(resumed.state.usage).toMatchObject({ inputTokens: 7, outputTokens: 4, costUsd: null })
+})
+
 it('enforces global visits on a cycle and leaves an inspectable failure', async () => {
   const f = fixture({ cycle: { kind: 'condition', params: { expr: 'true == true' }, ends: { true: 'cycle', false: 'done' } }, done }, { maxTransitions: 3 })
   const result = await createRun(f)

@@ -50,3 +50,14 @@ The published catalog SHALL enumerate each implemented piece's parameter schema,
 - **WHEN** the implementation becomes available
 - **THEN** registry, catalog, integration contract, parameter validation, tests and documentation agree on its descriptor
 
+
+### Requirement: Blocked decisions retain their human continuation
+A decider SHALL recognize an explicit structured blocked verdict or a LOOP_BLOCKED question without treating that question as malformed output. It SHALL persist the read-only decision before interrupting and resume its continue outcome with the human answer recorded, without another provider invocation for that decision. Other malformed responses SHALL retain the bounded single-repair policy.
+
+#### Scenario: A decider asks which repository to inspect
+- **WHEN** the run is reopened and the pending question is answered
+- **THEN** the saved decision is reused, the next step receives the answer in history and physical invocation usage is not counted twice
+
+#### Scenario: A human pause follows a no-progress observation
+- **WHEN** the decider waits for a human response
+- **THEN** the prior candidate identity and no-progress count are preserved without advancing them or certifying completion

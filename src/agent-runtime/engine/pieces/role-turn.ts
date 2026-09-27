@@ -25,7 +25,9 @@ export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
 }
 
 /** One invocation path for configured roles, including routing and exactly one repair. */
-export async function executeRoleTurn(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> {
+export async function executeRoleTurn(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext, options: {
+  normalizeStructuredOutput?: (output: Record<string, unknown> | undefined, text: string) => Record<string, unknown> | undefined
+} = {}): Promise<PieceResult> {
   const roleId = text(params.roleId), descriptor = resolveRoleDescriptor(deps.config, roleId)
   const schema = params.structuredOutput as JsonObject | undefined
   const validate = schema ? ajv.compile(schema) : undefined
@@ -49,9 +51,10 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const task = text(params.prompt) + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
   const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
-    structured: schema !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, _text) => {
-    if (validate && !validate(output)) throw new Error('Invalid structured role response: ' + ajv.errorsText(validate.errors))
-    return output
+    structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
+    const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output
+    if (validate && !validate(normalized)) throw new Error('Invalid structured role response: ' + ajv.errorsText(validate.errors))
+    return normalized
   })
   if (!result.ok) {
     if (result.code) throw new AgentExecutionError(result.error, result.code)

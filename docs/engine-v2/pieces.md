@@ -45,9 +45,10 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 
 ### `decider`
 
-Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop', reason }` as structured output with no session continuity.
+Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop' | 'blocked', reason }` as structured output with no session continuity.
 
 - Outcomes: `continue`, `stop`, `failed`.
+- Human decision: a structured `blocked` verdict or `LOOP_BLOCKED: <question>` pauses with a question. Resume reuses the saved decision, records the answer and follows `continue` without another provider call. The answer enters history for the next step. A human pause preserves the prior no-progress observation; it cannot certify completion. Other malformed responses still receive one repair.
 - No-progress: consecutive `continue` verdicts with an unchanged candidate hash are counted; when the count reaches `params.noProgress ?? policies.noProgress` the engine emits `failed` with `stalled: true`, preserves the original `continue` verdict in the output, and records `completion: { ok: false, reasons: ['no_progress'] }`. If neither value is declared, no stall limit applies.
 - Writes: `$outputs[nodeId] = { verdict, reason, candidateHash, continueCount, stalled? }` and one `$history` entry.
 

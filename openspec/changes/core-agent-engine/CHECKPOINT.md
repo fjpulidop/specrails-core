@@ -1,3 +1,21 @@
+## Decider human-pause parity — 27 September 2026
+
+The legacy conversion audit found that Core repaired an explicit blocked
+question as malformed structured output. The corrected decider accepts a
+structured blocked verdict or LOOP_BLOCKED line, retains the result before its
+human interrupt and resumes on continue without repeating that provider call.
+The answer reaches the following step through history. Ordinary malformed
+responses retain exactly one repair; read-only policy and prior no-progress
+observations remain intact. See DECIDER-HUMAN-RECOVERY.md.
+
+Before correction both new pause regressions failed. Afterwards 41 piece/runtime
+tests pass, including closing/reopening the run and accounting for exactly two
+physical calls (one decision, one subsequent prompt), with unknown billing
+preserved. Typecheck and build pass. A real Desktop bridge/CLI Freestyle case
+also passes, proving a later decider visit remains a fresh decision and the
+human answer reaches its next prompt. Full Core coverage is running; prior
+full coverage below predates this correction.
+
 ## Interrupted physical invocation accounting — 27 September 2026
 
 Actual paired Desktop host/Core SIGKILL tests found a lost-response accounting gap:
