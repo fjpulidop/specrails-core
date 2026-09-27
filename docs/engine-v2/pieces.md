@@ -2,7 +2,7 @@
 
 A piece is a node kind the engine knows how to execute. The catalog is closed: `createPieceRegistry(dependencies)` (`src/agent-runtime/engine/pieces/index.ts`) binds the reviewed pieces to one execution, and `validationPieceRegistry()` returns the same descriptors and parameter validators without initializing providers, a journal or a project store. A definition selects kinds from this catalog by name; it cannot register code, callbacks or expressions that execute JavaScript.
 
-`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 4 with 17 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
+`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 5 with 17 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
 
 ## Descriptor model
 
@@ -99,13 +99,15 @@ Runs Core's pinned OpenSpec CLI with `validate <change> --strict --json` in the 
 
 - Outcomes: `pass` when the CLI exited successfully and reports the change valid, `fail` when it reports it invalid, `failed` on infrastructure errors. An unparsable or incomplete report raises `openspec_invalid_output`.
 - Effect: read. Writes the parsed report to `$outputs[nodeId]`.
+- Optional `allowArchived: true` accepts an exact already archived target only when no active change exists. It reports `{ change, archived: relativePath, skipped: true }`; it does not create verification evidence. Archive lookup rejects symlink traversal. Optional `repositoryId` must equal the frozen artifact repository or execution fails with `artifact_scope_mismatch`.
 
 ### `openspec-archive`
 
 Archives a change with the pinned CLI through Core's recoverable write set, prepared in a scoped adapter directory and published only after every preimage check. If the candidate hash changes while the archive is being prepared the piece fails with `candidate_changed`.
 
-- Outcomes: `next`, `failed`.
+- Outcomes: `next`, `failed`. A CLI business failure reports `openspec_command_failed` with its positive `exitCode` and bounded stdout so a workflow can distinguish a bounded repair from infrastructure failure.
 - Effect: write. Writes `$outputs[nodeId] = { change, archived: true }` and one `$history` entry.
+- The optional `allowArchived` and `repositoryId` parameters have the same scope and lookup rules as validation. An already archived target returns `next` with `{ change, archived: relativePath, skipped: true }`, without re-archiving or manufacturing a receipt. Strict behavior remains the default.
 
 ### `approval`
 
@@ -166,7 +168,7 @@ Terminates the current body. `completion.ok` is `outcome === 'success'`; `comple
 ## Descriptor reference (generated)
 
 <!-- piece-catalog:generated:start -->
-Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 4, 17 kinds, in registration order.
+Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 5, 17 kinds, in registration order.
 Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts`.
 
 ### Descriptor: `prompt`
@@ -286,6 +288,8 @@ Exactly one of: `argv`, `commandLine`.
 | Parameter | Required | Type |
 | --- | --- | --- |
 | `change` | yes | string (1–128 chars) |
+| `allowArchived` | no | boolean |
+| `repositoryId` | no | string (1–128 chars) |
 
 ### Descriptor: `openspec-archive`
 
@@ -300,6 +304,8 @@ Exactly one of: `argv`, `commandLine`.
 | Parameter | Required | Type |
 | --- | --- | --- |
 | `change` | yes | string (1–128 chars) |
+| `allowArchived` | no | boolean |
+| `repositoryId` | no | string (1–128 chars) |
 
 ### Descriptor: `condition`
 

@@ -11,6 +11,20 @@ import { assertProposalInScope, withScopeDefault } from '../change-scope.js'
 
 export const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
+/** Historical target lookup, not an archive or verification receipt. */
+export function archivedOpenSpecChange(context: PipelineContext, change: string): string | undefined {
+  if (!SLUG.test(change) || change.length > 64) throw new Error('Invalid OpenSpec change identifier')
+  if (existsSync(artifactPath(context.artifactRoot, 'openspec/changes/' + change))) return undefined
+  const relative = 'openspec/changes/archive', directory = artifactPath(context.artifactRoot, relative)
+  if (!existsSync(directory)) return undefined
+  const candidate = readdirSync(directory, { withFileTypes: true }).filter(entry => entry.isDirectory() &&
+    (entry.name === change || /^\d{4}-\d{2}-\d{2}-/.test(entry.name) && entry.name.slice(11) === change))
+    .sort((left, right) => left.name.localeCompare(right.name, 'en'))[0]
+  if (!candidate) return undefined
+  artifactPath(context.artifactRoot, relative + '/' + candidate.name)
+  return relative + '/' + candidate.name
+}
+
 export function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a structured JSON object from agent')
   return value as Record<string, unknown>

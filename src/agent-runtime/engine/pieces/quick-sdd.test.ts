@@ -9,8 +9,15 @@ import { ExecutorRegistry } from '../../executors.js'
 import { resolveOpenSpecCli, runOpenSpec } from '../../openspec.js'
 import { createRun, definitionRunDirectory, resumeRun } from '../runs.js'
 import { RunDatabase } from '../checkpoint/database.js'
+import { validateWorkflowDefinition } from '../definition-validator.js'
+import { validationPieceRegistry } from './index.js'
 
 const roots: string[] = []
+function publish(value: unknown) {
+  const result = validateWorkflowDefinition(value, validationPieceRegistry())
+  if (!result.ok) throw new Error(JSON.stringify(result.errors))
+  return result.definition
+}
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
 it.each([undefined, 'opsx:ff', 'opsx:apply'])('runs Quick SDD with a human block at %s through pinned validation/archive and host verification', async blockedCommand => {
   const root = mkdtempSync(path.join(tmpdir(), 'quick sdd ')); roots.push(root)
@@ -68,4 +75,28 @@ it.each([undefined, 'opsx:ff', 'opsx:apply'])('runs Quick SDD with a human block
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path IN ('check','verify') AND status='succeeded'").get()?.count).toBe(2)
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path='archive' AND status='succeeded'").get()?.count).toBe(1)
   } finally { database.close() }
+  if (blockedCommand === undefined) {
+    const replay = await createRun({ context: { ...context, runId: 'quick-archived' }, config, registry, change,
+      definition: publish({ schemaVersion: 1, id: 'archived-check', title: 'Archived target', journal: 'ledger-only', change: 'none', roles: [], entry: 'validate', maxTransitions: 8,
+        nodes: {
+          validate: { kind: 'openspec-validate', params: { change, allowArchived: true }, ends: { pass: 'archive', fail: null, failed: null } },
+          archive: { kind: 'openspec-archive', params: { change, allowArchived: true }, ends: { next: 'verify', failed: null } },
+          verify: { kind: 'verify', params: { commands: 'configured' }, ends: { pass: 'done', fail: null, failed: null } },
+          done: { kind: 'end', params: { outcome: 'success', requiresVerified: true }, ends: {} },
+        },
+      }),
+    })
+    expect(replay).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
+    expect(requests).toHaveLength(2)
+    expect(readdirSync(path.join(repository, 'openspec/changes/archive')).filter(name => name.endsWith('-' + change))).toHaveLength(1)
+    const strict = await createRun({ context: { ...context, runId: 'quick-strict' }, config, registry, change,
+      definition: publish({ schemaVersion: 1, id: 'strict-archived', title: 'Strict target', journal: 'ledger-only', change: 'none', roles: [], entry: 'validate', maxTransitions: 2,
+        nodes: {
+          validate: { kind: 'openspec-validate', params: { change }, ends: { pass: 'done', fail: null, failed: null } },
+          done: { kind: 'end', params: { outcome: 'success' }, ends: {} },
+        },
+      }),
+    })
+    expect(strict.state.status).toBe('failed')
+  }
 }, 45_000)

@@ -1,3 +1,20 @@
+## Continuation validation — 27 September 2026, catalog 5
+
+Added explicit archived-target compatibility to the pinned OpenSpec validation
+and archive pieces. Active targets take precedence, exact archived directories
+are scoped without symlink traversal, and an explicit repository binding must
+match the frozen artifact repository. Skipping an already archived target does
+not manufacture verification evidence. Positive archive CLI exit codes remain
+available for bounded business-error recovery; infrastructure errors propagate.
+
+Validation: 44 focused CLI/piece/Quick SDD/archive-state tests passed, plus 3
+archive error-contract tests. Typecheck, build and installed-package acceptance
+passed (actual v2 run, resume and fork). Desktop's uncommitted converter passed
+7 real-CLI scenarios against this build, including Quick SDD with one artifact
+repair. The last complete Core coverage baseline remains the 1,270-pass run at
+5a77a868; no complete coverage result is claimed for catalog 5 yet. C1 integration
+still awaits the separately requested authorization; no merges/releases occurred.
+
 ## Required work before decider stop — 27 September 2026
 
 Catalog version 4 adds optional continueWhen to the decider. A true bounded

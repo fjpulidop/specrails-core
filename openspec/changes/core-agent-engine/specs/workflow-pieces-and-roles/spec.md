@@ -87,3 +87,14 @@ A decider SHALL accept an optional bounded continueWhen expression over scoped s
 #### Scenario: The failed obligation is repaired
 - **WHEN** a later visit observes a cleared failure flag
 - **THEN** the decider may accept a valid stop proposal
+
+### Requirement: Historical OpenSpec targets are explicit compatibility skips
+OpenSpec validation and archive pieces SHALL accept optional allowArchived. When enabled, an absent active target with an exact real archived directory inside the frozen artifact root SHALL produce an explicit skipped result without claiming validation or verification evidence. An active target SHALL always take precedence, and symlink paths SHALL remain forbidden. An optional repositoryId assertion SHALL reject a different artifact repository before running a command.
+
+#### Scenario: A converted lifecycle encounters its already archived target
+- **WHEN** allowArchived is enabled and the exact target is already archived
+- **THEN** the piece proceeds without recreating or archiving it again, and successful delivery still requires current host verification
+
+#### Scenario: An active target shares an archived name
+- **WHEN** an active change exists
+- **THEN** the normal pinned OpenSpec operation runs instead of trusting the historical directory

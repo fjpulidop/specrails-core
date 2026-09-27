@@ -254,6 +254,11 @@ describe('free prompts and declared roles', () => {
 })
 
 describe('real commands and journal-independent verification', () => {
+  it.each(['openspec-validate', 'openspec-archive'])('rejects a mismatched artifact repository before %s can inspect or change files', async kind => {
+    const f = fixture()
+    await expect(f.run(kind, { change: 'valid-change', repositoryId: 'other', allowArchived: true })).rejects.toMatchObject({ code: 'artifact_scope_mismatch' })
+    expect(f.requests).toHaveLength(0)
+  })
   it('runs structured argv, captures text and preserves literal metacharacters', async () => {
     const f = fixture()
     const result = await f.run('shell', { repositoryId: 'repo', argv: [process.execPath, '-e', 'console.log(process.argv[1]);console.log("VALUE: answer")', '$(literal); a b'], captureVars: [{ name: 'value', pattern: 'VALUE: ([a-z]+)' }] })

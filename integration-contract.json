@@ -303,7 +303,7 @@
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 4
+      "nodeKindsVersion": 5
     },
     "nodeKinds": [
       "prompt",
