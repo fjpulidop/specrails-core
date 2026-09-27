@@ -6,6 +6,8 @@ A paused run normally has no lease. Answer a question with `runtime resume --con
 
 An active lease blocks competing execution. After a crash, wait until the lease expires. Expiry alone does not authorize repeating an uncertain write: inspect `state.recoverableSteps`, review the worktree and pass the exact returned `attemptId` to `--recover`. Already committed effects are reused. Explicit recovery may repeat an effect whose external result was not committed; the engine does not claim exactly-once external shell or provider side effects in that uncertainty window.
 
+When a new owner resumes after losing an executor, Core settles its abandoned physical calls as `interrupted`. Their usage, provider duration and tool counts remain unknown; the durable accounting event is emitted once. Unreported budget reservations stay reserved. This records the lost call without granting permission to repeat a write, and inherited fork calls emit no new charges.
+
 Fork with `runtime fork --context context.json --from nodePath --run-id new-run`. Use `--scope-id` and `--visit` to select ambiguous historical cuts. The source must be inactive and remains unchanged. The child inherits committed history and usage, but not active controls or provider sessions. `--state patch.json` applies an allowed state patch only to the child and invalidates affected certification. Forking before a question creates an inactive running child with no pending question yet; its first resume executes that question and pauses. A fork is not a repository rollback: Desktop owns worktree scope and retained runtime linkage.
 
 Hosts should negotiate `forkIdempotency: 1` and pass a stable `--request-id`.

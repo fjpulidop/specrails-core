@@ -15,7 +15,15 @@ Focused validation: 35 checkpoint/efficiency/run tests, 23 checkpoint/inbox test
 pass. Typecheck and build pass. The real Desktop manager now passes all three
 read/write/human-pause SIGKILL scenarios (100.36s) with two physical invocations,
 null missing usage, exact frozen-config continuation and idempotent event replay.
-Complete Core coverage is running; do not treat the focused evidence as that gate.
+Complete Core coverage now passes on 34289858: 99 suites, 1,245 tests and one
+existing Windows-only skip, 600.33 seconds. Coverage remains above the original
+gates: statements 87.97%, branches 80.15%, functions 93.28%, lines 94.05%.
+Typecheck, 26 script tests and installed-package CLI/API/run/resume/fork acceptance
+also pass. The first sandbox run passed 1,242 cases but its three HTTP fixtures
+failed with listen EPERM; the complete successful rerun allowed local sockets.
+The between-node Desktop process-crash follow-up also passes with one provider
+call, proving completed work is not repeated. Desktop pins this correction in
+its three-platform paired lane. No release or merge has occurred.
 
 ## Remote corpus acceptance — 27 September 2026
 
