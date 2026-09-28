@@ -280,3 +280,49 @@ it('routes an unchanged decider limit to failure rather than a successful stop e
   expect(full.state.scopes.some(scope => scope.nodePath === 'done')).toBe(false)
   expect(full.state.scopes.find(scope => scope.nodePath === 'decide')).toMatchObject({ status: 'failed', output: { verdict: 'continue', stalled: true } })
 })
+
+it.each([['any-ok', 'succeeded'], ['collect', 'succeeded'], ['all-ok', 'failed']] as const)('applies join %s to durable mixed branch results', async (reduce, status) => {
+  const bad: DefinitionNode = { kind: 'end', params: { outcome: 'failure' }, ends: {} }
+  const f = fixture({
+    branches: { kind: 'map', params: { over: 'tickets', body: 'branch', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce }, ends: { next: 'done', fail: 'bad' } },
+    done, bad,
+  }, { components: { branch: { entry: 'check', nodes: {
+    // The first ticket's branch succeeds and the second fails.
+    check: { kind: 'condition', params: { expr: '$item.index == 0' }, ends: { true: 'ok', false: 'no' } },
+    ok: { kind: 'end', params: { outcome: 'success' }, ends: {} },
+    no: { kind: 'end', params: { outcome: 'failure' }, ends: {} },
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  const result = await createRun(f)
+  expect(result.state.status, JSON.stringify(result.state)).toBe(status)
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    // Both branches ran to their own terminal node exactly once.
+    expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path LIKE 'branches/%check' AND status='succeeded'").get()?.count).toBe(2)
+  } finally { database.close() }
+})
+
+it('pauses concurrent mapped branches on their own questions and resumes both without repeating work', async () => {
+  const f = fixture({
+    branches: { kind: 'map', params: { over: 'tickets', body: 'branch', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'done', fail: null } },
+    done,
+  }, { components: { branch: { entry: 'inspect', nodes: {
+    inspect: { ...prompt, ends: { next: 'ask', failed: null } },
+    ask: { kind: 'question', params: { text: 'Keep this ticket?' }, ends: { next: 'finish' } },
+    finish: done,
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  const first = await createRun(f)
+  expect(first.state.status).toBe('paused')
+  expect(first.state.pendingInterrupts).toHaveLength(2)
+  expect(new Set(first.state.pendingInterrupts.map(item => item.nodePath)).size).toBe(1)
+  expect(f.requests).toHaveLength(2)
+  const answers = Object.fromEntries(first.state.pendingInterrupts.map(item => [item.id, { answer: 'Keep' }]))
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers })
+  expect(resumed.state.status, JSON.stringify(resumed.state)).toBe('succeeded')
+  expect(resumed.state.pendingInterrupts).toEqual([])
+  // Each branch's provider call happened once, before its pause.
+  expect(f.requests).toHaveLength(2)
+})

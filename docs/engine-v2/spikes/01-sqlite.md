@@ -4,7 +4,7 @@ Status: candidate A accepted after all three platform, private-storage, packed-p
 
 Question: can `node:sqlite` on Desktop's Node 22.22.3 provide the public `BaseCheckpointSaver` contract and atomic graph evidence without a native npm module? If it fails a required guarantee, compare `@langchain/langgraph-checkpoint-sqlite`/`better-sqlite3` against the same harness before selecting a binding.
 
-Exit criteria: macOS arm64, Linux x64 and Windows x64 each execute a 200-node real LangGraph graph, kill its child process at every committed node boundary and resume without lost or repeated completed nodes. Kill between pending-write and ledger statements must roll back both. WAL must be active; POSIX files/directories must be 0600/0700 (Windows permission representation is recorded separately). Median and p90 checkpoint `put` must each be below 5 ms; mean and maximum are recorded evidence (criterion revised 28 September 2026, see below). The real npm package and paired Desktop assembly must work with the target Node. No production `engines.node` change occurs until all evidence is accepted.
+Exit criteria: macOS arm64, Linux x64 and Windows x64 each execute a 200-node real LangGraph graph, kill its child process at every committed node boundary and resume without lost or repeated completed nodes. Kill between pending-write and ledger statements must roll back both. WAL must be active; POSIX files/directories must be 0600/0700 (Windows permission representation is recorded separately). On macOS and Linux, median and p90 checkpoint `put` must each be below 5 ms; on Windows, latency is recorded evidence only. Mean and maximum are always recorded (criterion revised 28 September 2026, see below). The real npm package and paired Desktop assembly must work with the target Node. No production `engines.node` change occurs until all evidence is accepted.
 
 The prototype must use the serializer supplied by checkpoint 1.1.5, test get/list/put/putWrites/deleteThread behavior and observe actual graph persistence calls. A transaction over unrelated test tables is insufficient. Transactions must not span provider execution or stream waits.
 
@@ -41,3 +41,11 @@ requires the median and the nearest-rank p90 to be below 5 ms on every platform.
 The same bound still catches a systematic slowdown of the typical checkpoint;
 mean and maximum remain in the evidence JSON. No durability, permission or
 packaging criterion changed.
+
+A later run of the same code on the Windows hosted runner measured a 16.71 ms
+median, while an earlier one passed below 5 ms. Windows fsync latency on shared
+runners varies by more than an order of magnitude, so no fixed bound is a
+reliable signal there. With the owner's approval, Windows latency is now
+`informational`: it is recorded in the evidence (`latencyGate`), and Windows is
+still gated by durability (200/200 boundaries), private-storage ACLs and
+packaging. macOS and Linux keep the enforced median/p90 < 5 ms gate.
