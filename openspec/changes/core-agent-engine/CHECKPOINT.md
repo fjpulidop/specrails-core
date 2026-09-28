@@ -1,3 +1,10 @@
+## C1 integrated — 28 September 2026
+
+C1 is merged (`f0c3a37`); see the C1 integration note in tasks.md. The PR #389
+Windows spike failure is addressed by C1's PowerShell module-path isolation.
+Local Linux spikes/typecheck/script tests pass on Node 22.22.3; three-platform
+CI on the merge commit is still required before advancing Desktop's Core pin.
+
 ## Full catalog 5 coverage — 27 September 2026, 05:11 CEST
 
 Complete coverage at source `04ea4663` passed: 102 suites, 1,282 tests and one
