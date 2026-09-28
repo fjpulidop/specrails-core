@@ -59,7 +59,7 @@ Depends on C3. Detailed checklist: [C4](reference/core-agent-engine-tasks-core.m
 - [x] 5.1 Implement prompt with native commands, identity-bound sessions, sentinels, bounded capture and classified retries.
 - [x] 5.2 Implement portable bounded shell, evidence mode, pinned OpenSpec validation/archive and a pure condition parser without eval.
 - [x] 5.3 Implement approval/question/gate/end according to the validated interruption/terminal protocol.
-- [ ] 5.4 Add Quick SDD fixture parity, repair, blocked-question and per-node crash tests; publish the nine implemented basic descriptors.
+- [x] 5.4 Add Quick SDD fixture parity, repair, blocked-question and per-node crash tests; publish the nine implemented basic descriptors.
 - [ ] 5.5 Run `npm run ci` and robustness, update contract/docs and coordinate D1/D2/D5 acceptance against the published Core release.
 
 ## 6. C5 — Agent pieces and loop policies
@@ -153,3 +153,22 @@ Production `storage/private-path.ts` already scrubs the variable. Local Linux
 x64 evidence on Node 22.22.3: typecheck, 24 script tests and all engine spikes
 (200/200 SQLite boundaries, subgraphs, streaming) passed. Windows/macOS evidence
 for the merge commit needs a CI run on it and is not claimed here. No release.
+
+## C4 Quick SDD reference completion — 28 September 2026
+
+Task 5.4 closed. The reference `quick-sdd.json` now matches its checklist with a
+*bounded* repair, per the D8 decision that repair must not depend on `$attempts`:
+`init` sets `artifactRepairs` to 0, and a failed `validate` routes through
+`repair-guard` (`$vars.artifactRepairs < 1`) and `repair-count` back to `work`
+exactly once, otherwise to `failed`. In-process tests cover success, a human
+block at `opsx:ff` and at `opsx:apply` (resume with the answer), one successful
+repair and an exhausted repair that fails without a third call.
+`quick-sdd-crash.test.ts` SIGKILLs the real CLI after committing each of the
+seven work nodes. A deterministic local provider is used through a test-only
+preload; SQLite, pinned OpenSpec and host verification are real. After the real
+lease expires, each run resumes to a verified success with exactly one `opsx:ff`
+and one `opsx:apply` call. A kill during `apply` requires explicit `--recover`;
+the provider call already recorded durably is settled from its record, not
+repeated. The CLI catalog (version 5) advertises all nine basic descriptors.
+The installed-package robustness check also runs this suite against the tarball.
+Local: typecheck, focused suites 5/5 and 8/8.

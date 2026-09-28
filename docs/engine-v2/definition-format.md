@@ -56,6 +56,8 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
 
 ## Quick Sdd
 
+An invalid first preparation gets exactly one repair: `init` sets `artifactRepairs` to 0, and a failed `validate` passes through `repair-guard`/`repair-count` back to `work` once. A second invalid preparation ends in `failed` without another provider call.
+
 ```json
 {
   "schemaVersion": 1,
@@ -63,10 +65,22 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
   "title": "Quick Sdd",
   "journal": "ledger-only",
   "change": "new",
-  "entry": "work",
+  "entry": "init",
   "maxTransitions": 100,
   "roles": [],
   "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "artifactRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
+    },
     "work": {
       "kind": "prompt",
       "params": {
@@ -93,7 +107,7 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       },
       "ends": {
         "pass": "apply",
-        "fail": "failed",
+        "fail": "repair-guard",
         "failed": "failed"
       }
     },
@@ -162,9 +176,31 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
         "outcome": "failure"
       },
       "ends": {}
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.artifactRepairs < 1"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "artifactRepairs": 1
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
     }
   },
-  "version": "883ccb470eabea1d8228a4ad1f3cc4a513d64372e1a2027c79bcfe2432f392bf"
+  "version": "a6bd20e682ad6b47f8a9c09379512e26afe3dfdd78b3c40703e355de7e5eb804"
 }
 ```
 
