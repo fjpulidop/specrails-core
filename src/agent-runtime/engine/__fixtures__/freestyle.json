@@ -4,30 +4,77 @@
   "title": "Freestyle",
   "journal": "ledger-only",
   "change": "none",
-  "entry": "work",
+  "entry": "implement",
   "maxTransitions": 100,
-  "roles": [],
+  "roles": [
+    "loop-decider"
+  ],
+  "policies": {
+    "failFast": 2,
+    "noProgress": 2
+  },
   "nodes": {
-    "work": {
+    "implement": {
       "kind": "prompt",
       "params": {
+        "access": "write",
         "engine": {
           "provider": "fixture"
         },
-        "text": "Inspect the project and report your findings.",
-        "access": "read",
-        "sentinel": "blocked"
+        "sentinel": "blocked",
+        "text": "Implement the requested change and report what you changed."
       },
       "ends": {
-        "next": "done",
+        "blocked": "failed",
         "failed": "failed",
-        "blocked": "failed"
+        "next": "verify"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "fail": "fix",
+        "failed": "failed",
+        "pass": "decide"
+      }
+    },
+    "decide": {
+      "kind": "decider",
+      "params": {
+        "goal": "Stop only when the host checks pass and every acceptance criterion is implemented.",
+        "noProgress": 2,
+        "roleId": "loop-decider"
+      },
+      "ends": {
+        "continue": "fix",
+        "failed": "failed",
+        "stop": "done"
+      }
+    },
+    "fix": {
+      "kind": "prompt",
+      "params": {
+        "access": "write",
+        "engine": {
+          "provider": "fixture"
+        },
+        "sentinel": "blocked",
+        "text": "Repair the reported failures and the remaining acceptance criteria."
+      },
+      "ends": {
+        "blocked": "failed",
+        "failed": "failed",
+        "next": "verify"
       }
     },
     "done": {
       "kind": "end",
       "params": {
-        "outcome": "success"
+        "outcome": "success",
+        "requiresVerified": true
       },
       "ends": {}
     },
@@ -39,5 +86,5 @@
       "ends": {}
     }
   },
-  "version": "9b23d4bd46222996bed3d7485bafc06694add66ef7986825e04f9dc9da9bc211"
+  "version": "f209b867e47af660e14d57bf967d4d542ec5de8c3316f1ee5770314807a09cbb"
 }

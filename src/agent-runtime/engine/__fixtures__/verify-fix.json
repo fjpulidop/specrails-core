@@ -4,12 +4,22 @@
   "title": "Verify Fix",
   "journal": "ledger-only",
   "change": "none",
-  "entry": "verify",
+  "entry": "init",
   "maxTransitions": 100,
-  "roles": [
-    "developer"
-  ],
+  "roles": [],
   "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "repairs": 0
+        }
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
     "verify": {
       "kind": "verify",
       "params": {
@@ -17,19 +27,46 @@
       },
       "ends": {
         "pass": "done",
-        "fail": "fix",
+        "fail": "repair-guard",
+        "failed": "failed"
+      }
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.repairs < 2"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "repairs": 1
+        }
+      },
+      "ends": {
+        "next": "fix",
         "failed": "failed"
       }
     },
     "fix": {
-      "kind": "role-turn",
+      "kind": "prompt",
       "params": {
-        "roleId": "developer",
-        "prompt": "Repair the actual verification failures, preserving the accepted scope."
+        "engine": {
+          "provider": "fixture"
+        },
+        "text": "Repair the actual verification failures, preserving the accepted scope.",
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "verify",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "done": {
@@ -48,5 +85,5 @@
       "ends": {}
     }
   },
-  "version": "470a81ee0ecd22e41b4bacbe3c48fe9e05a48799c15f4b77cc36443d177a281e"
+  "version": "0dbb75de1c191af62c0d5ac7a69abeac66089b5449834a33ec0458fed87a1476"
 }

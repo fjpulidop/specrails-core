@@ -16,7 +16,8 @@ import { validationPieceRegistry } from './pieces/index.js'
 const docsRoot = new URL('../../../docs/engine-v2/', import.meta.url)
 const fixturesRoot = new URL('./__fixtures__/', import.meta.url)
 /** The role catalog the fixtures test uses; docs examples may only reference these roles. */
-const roles = { architect: { access: 'read' }, developer: { access: 'write' }, reviewer: { access: 'read' } } as const
+// `loop-decider` is the read-only custom decision role Desktop binds for loops.
+const roles = { architect: { access: 'read' }, developer: { access: 'write' }, reviewer: { access: 'read' }, 'loop-decider': { access: 'read' } } as const
 export const CATALOG_START = '<!-- piece-catalog:generated:start -->'
 export const CATALOG_END = '<!-- piece-catalog:generated:end -->'
 const REGENERATE = 'SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts'

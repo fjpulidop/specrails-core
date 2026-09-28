@@ -68,7 +68,7 @@ Depends on C4.
 
 - [x] 6.1 Implement role-turn, decider/no-progress and verify using existing invocation/verification policies and real receipts.
 - [x] 6.2 Implement fail-fast, session continuity, bounded history and later-write verification invalidation with failure-path tests.
-- [ ] 6.3 Add Freestyle and verify-fix reference definitions plus rule parity/robustness tests; update contract/docs and run `npm run ci`.
+- [x] 6.3 Add Freestyle and verify-fix reference definitions plus rule parity/robustness tests; update contract/docs and run `npm run ci`.
 
 ## 7. C6 — Implementation composition and fan-out
 
@@ -172,3 +172,32 @@ the provider call already recorded durably is settled from its record, not
 repeated. The CLI catalog (version 5) advertises all nine basic descriptors.
 The installed-package robustness check also runs this suite against the tarball.
 Local: typecheck, focused suites 5/5 and 8/8.
+
+## C5 reference loops — 28 September 2026
+
+Task 6.3 closed. Neither reference fixture was executed before, and both were
+wrong for real use:
+- `freestyle.json` was a single read prompt. It now has the checklist shape of
+  Desktop's fix loop: write, then host `verify`, then a read-only `loop-decider`
+  decision, returning to `fix` on a failed check or a continue verdict, with
+  `failFast` and `noProgress` policies.
+- `verify-fix.json` repaired through the built-in `developer` role, which is an
+  OpenSpec implementation role that requires `openspec-apply-change`, so it could
+  not run outside an OpenSpec change. It also cycled until `maxTransitions`
+  (about 50 expensive calls) when a repair never fixed the check. It now repairs
+  with a write `prompt`, at most twice, through `init`/`repair-guard`/`repair-count`.
+
+The built-in `reviewer` is likewise an OpenSpec verification role, so loop
+decisions use a custom read-only role, as Desktop binds `loop-decider`. The docs
+fixture catalog now declares it. `pieces/reference-loops.test.ts` executes both
+definitions with deterministic providers and real host checks, SQLite, decisions
+and policies:
+- Freestyle: success; a failed host check that a model's PASS text cannot bypass;
+  a continue verdict; the no-progress stop without success (bounded well below
+  `maxTransitions`); fail-fast after consecutive provider failures; a human
+  question resumed with the answer.
+- verify-fix: already passing with no AI call; one repair; stopping after
+  exactly two unsuccessful repairs.
+
+The per-rule mapping to Desktop's legacy engine (contract section 11) is
+exercised end to end by Desktop's paired compatibility suite.
