@@ -4,7 +4,7 @@ Status: candidate A accepted after all three platform, private-storage, packed-p
 
 Question: can `node:sqlite` on Desktop's Node 22.22.3 provide the public `BaseCheckpointSaver` contract and atomic graph evidence without a native npm module? If it fails a required guarantee, compare `@langchain/langgraph-checkpoint-sqlite`/`better-sqlite3` against the same harness before selecting a binding.
 
-Exit criteria: macOS arm64, Linux x64 and Windows x64 each execute a 200-node real LangGraph graph, kill its child process at every committed node boundary and resume without lost or repeated completed nodes. Kill between pending-write and ledger statements must roll back both. WAL must be active; POSIX files/directories must be 0600/0700 (Windows permission representation is recorded separately). Mean checkpoint `put` must be below 5 ms. The real npm package and paired Desktop assembly must work with the target Node. No production `engines.node` change occurs until all evidence is accepted.
+Exit criteria: macOS arm64, Linux x64 and Windows x64 each execute a 200-node real LangGraph graph, kill its child process at every committed node boundary and resume without lost or repeated completed nodes. Kill between pending-write and ledger statements must roll back both. WAL must be active; POSIX files/directories must be 0600/0700 (Windows permission representation is recorded separately). Median and p90 checkpoint `put` must each be below 5 ms; mean and maximum are recorded evidence (criterion revised 28 September 2026, see below). The real npm package and paired Desktop assembly must work with the target Node. No production `engines.node` change occurs until all evidence is accepted.
 
 The prototype must use the serializer supplied by checkpoint 1.1.5, test get/list/put/putWrites/deleteThread behavior and observe actual graph persistence calls. A transaction over unrelated test tables is insufficient. Transactions must not span provider execution or stream waits.
 
@@ -29,3 +29,15 @@ The real Desktop source assembler subsequently passed locally on the same Node u
 Select candidate A (`node:sqlite`) for C3 with minimum Node `>=22.22.3`, the exact tested version. It passed checkpoint API, durability, latency and packaging on macOS arm64, Linux x64 and Windows x64 without a native npm dependency. Candidate B did not need measurement because A met every criterion; no comparative performance claim is made. This experiment PR itself preserves the existing production minimum.
 
 The [accepted CI artifacts](README.md#accepted-evidence-2026-09-26) verify the protected Windows directory and SQLite file ownership/ACL, as well as POSIX modes. They include identical source and assembly hashes across all platforms. The fixture ledger has no production leases, receipts, repeated visits, attempt identifiers or event sequence: C3 must design and test those around this boundary. No transaction may remain open during provider work or asynchronous serialization.
+
+## Latency criterion revision — 28 September 2026
+
+The original gate compared the mean `put` with 5 ms. Under `synchronous=FULL` each
+`put` fsyncs, so on hosted Windows runners the mean mostly measures a few slow
+shared-disk flushes: the accepted run measured 4.164 ms, and two later runs of
+unchanged spike code measured 9.92 ms and 6.92 ms while every durability check
+passed (macOS 0.28 ms, Linux 0.72 ms). With the owner's approval the gate now
+requires the median and the nearest-rank p90 to be below 5 ms on every platform.
+The same bound still catches a systematic slowdown of the typical checkpoint;
+mean and maximum remain in the evidence JSON. No durability, permission or
+packaging criterion changed.
