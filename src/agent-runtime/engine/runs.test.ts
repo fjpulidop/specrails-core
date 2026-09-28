@@ -6,6 +6,7 @@ import { afterEach, expect, it } from 'vitest'
 import { validatePipelineContext } from '../../pipeline/pipeline-state.js'
 import type { AgentRequest, RuntimeConfig } from '../executor-types.js'
 import { ExecutorRegistry } from '../executors.js'
+import { AgentExecutionError } from '../executor-types.js'
 import { configuredRoles } from './preflight.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { validationPieceRegistry } from './pieces/index.js'
@@ -325,4 +326,31 @@ it('pauses concurrent mapped branches on their own questions and resumes both wi
   expect(resumed.state.pendingInterrupts).toEqual([])
   // Each branch's provider call happened once, before its pause.
   expect(f.requests).toHaveLength(2)
+})
+
+it('delivers steering at most once when the claiming attempt fails and is retried', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Start?' }, ends: { next: 'inspect' } },
+    inspect: { ...prompt, retry: { maxAttempts: 2, backoffMs: 0, retryOn: ['provider_request_error'] } }, done })
+  let calls = 0
+  f.registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    if (++calls === 1) throw new AgentExecutionError('Transient provider failure', 'provider_request_error')
+    return { text: 'Inspected', usage: { inputTokens: 3, outputTokens: 2, costUsd: 0.01 } }
+  } })
+  const paused = await createRun(f)
+  await signalRun(f.directory, 'Focus on the parser', 'retry-steering')
+  const result = await resumeRun(f.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Start' } } })
+  expect(result.state.status, JSON.stringify(result.state)).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  // The failed attempt consumed the message; the retry is a new physical attempt
+  // and does not receive the same operator instruction a second time.
+  expect(f.requests[0].prompt).toContain('Focus on the parser')
+  expect(f.requests[1].prompt).not.toContain('Focus on the parser')
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  let attempts: Array<{ attempt_id: string; status: string }>
+  try { attempts = database.sqlite.prepare("SELECT attempt_id, status FROM attempts WHERE node_path='inspect' ORDER BY rowid").all() as typeof attempts }
+  finally { database.close() }
+  expect(attempts.map(attempt => attempt.status)).toEqual(['failed', 'succeeded'])
+  const status = await statusRun(f.directory)
+  expect(status.state.steering).toMatchObject({ pending: 0, consumed: 1, receipts: [{ id: 'retry-steering', status: 'consumed', consumedAttemptId: attempts[0].attempt_id }] })
 })

@@ -93,7 +93,7 @@ Depends on C3 plus the consuming prompt/role pieces.
 
 - [x] 9.1 Implement bounded signal ingestion and serialized inbox writes without acquiring or bypassing the execution lease.
 - [x] 9.2 Consume steering atomically at attempt boundaries, render the operator section and expose receipt/consumption state.
-- [ ] 9.3 Test recovery/invalidation/fork idempotence and missing-run errors; advertise steeringInbox, update contract/docs and run `npm run ci` with D7 pairing.
+- [x] 9.3 Test recovery/invalidation/fork idempotence and missing-run errors; advertise steeringInbox, update contract/docs and run `npm run ci` with D7 pairing.
 
 ## 10. C9 — Engine documentation and cross-repository integration
 
@@ -230,3 +230,22 @@ Local full `npm run ci` on Node 22.22.3 at `193df2f`:
   stale package metadata, an environment issue only.
 
 Engine spikes on Linux: median put 0.86 ms, p90 1.26 ms (enforced gate).
+
+## C8 steering acceptance — 28 September 2026
+
+Task 9.3 closed after an audit, with the one untested documented rule added.
+- **Already covered:**
+  - `steering/inbox.test.ts`: admission rollback, human-pause continuation
+    reusing the claimed attempt, size limits, missing-run errors, durable
+    cancellation, no copy into forks, read-only previews.
+  - `fork.test.ts`: idempotent public fork with isolated pending steering.
+  - `runs.test.ts`: once-only claim and delivery to open roles.
+- **Added:** "a new retry does not consume them again". A message claimed by an
+  attempt that fails with a retryable provider error is not re-delivered to the
+  retry, and its receipt names the consuming failed attempt (`runs.test.ts`).
+- **`steeringInbox`:** advertised by `runtime api`.
+- **D7 pairing:** Desktop `agent-runtime-steering-paired.test.ts` drives
+  `runAgentRuntimeControl` against the real CLI. An idempotent retry returns the
+  same receipt, the same identity with changed text is refused, and the prompt
+  receives the instruction exactly once. It runs in Desktop's required paired
+  job. Local full `npm run ci` evidence is recorded under C6 above.
