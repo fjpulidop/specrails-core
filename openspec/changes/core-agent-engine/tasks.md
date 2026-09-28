@@ -76,8 +76,8 @@ Depends on C5 and accepted C1 nested-graph evidence.
 
 - [x] 7.1 Reuse the existing implementation nodes in a dedicated subgraph with journal ownership and resume validation intact.
 - [x] 7.2 Specify safe fan-out effects over shared repositories; implement map/join/component with bounded shared concurrency, nested paths and branch checkpoints.
-- [ ] 7.3 Add implementation receipt/acceptance parity over the existing evaluation corpus, internal fork, nested interrupt and all join policy tests.
-- [ ] 7.4 Advertise fanOut only when complete; expand robustness, run `npm run ci`, update contract/docs and pair Implement/Batch acceptance with D5.
+- [x] 7.3 Add implementation receipt/acceptance parity over the existing evaluation corpus, internal fork, nested interrupt and all join policy tests.
+- [x] 7.4 Advertise fanOut only when complete; expand robustness, run `npm run ci`, update contract/docs and pair Implement/Batch acceptance with D5.
 
 ## 8. C7 — Project store, evaluation and traces
 
@@ -201,3 +201,32 @@ and policies:
 
 The per-rule mapping to Desktop's legacy engine (contract section 11) is
 exercised end to end by Desktop's paired compatibility suite.
+
+## C6 acceptance audit — 28 September 2026
+
+Tasks 7.3 and 7.4 closed after an audit against current tests; they were
+already largely covered, and two durable gaps were added.
+- **Receipt/acceptance parity:** the offline definition corpus (both reference
+  implementation definitions, full and optimized, 20/20 accepted cases) runs as
+  its own CI jobs.
+- **Internal fork:** `fork.test.ts` covers historical cuts, branch-local patches
+  with nested child checkpoints, inherited implementation evidence and journal
+  restore.
+- **Nested interrupts:** covered in `checkpoint.test.ts` and `compiler.test.ts`,
+  and `runs.test.ts` now adds concurrent mapped branches that each raise a
+  question and resume together without repeating provider calls.
+- **Join policies:** `collect`, `all-ok` and `any-ok` were previously tested only
+  at compiler level with an in-memory saver; `runs.test.ts` now covers them over
+  mixed branch results on real SQLite.
+- **fanOut:** advertised by `runtime api`. Implement/Batch acceptance is paired
+  with Desktop D5 through Desktop's real-Core factory suites, which pass on
+  Linux, macOS and Windows (Desktop #708 run 36413014024).
+
+Local full `npm run ci` on Node 22.22.3 at `193df2f`:
+- typecheck, and 24 script tests;
+- coverage: 104 files, 1,306 passed, 1 existing Windows-only skip; statements
+  88.09%, branches 80.44%, functions 93.39%, lines 94.14% → 94.13%;
+- `check:package`: passed with a clean npm cache. The default local cache held
+  stale package metadata, an environment issue only.
+
+Engine spikes on Linux: median put 0.86 ms, p90 1.26 ms (enforced gate).
