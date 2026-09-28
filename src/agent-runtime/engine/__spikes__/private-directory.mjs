@@ -11,7 +11,11 @@ export function privatePathEvidence(target, { protect = false } = {}) {
     return { mechanism: 'posix-mode', mode }
   }
   const script = fileURLToPath(new URL('./private-directory.ps1', import.meta.url))
-  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Target', target, '-Mode', protect ? 'protect' : 'inspect'], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
+  // GitHub's pwsh 7 shell supplies modules incompatible with Windows PowerShell 5.
+  // Let the child initialize its own standard module path; preserve other inputs.
+  const env = { ...process.env }
+  for (const key of Object.keys(env)) if (key.toLowerCase() === 'psmodulepath') delete env[key]
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', script, '-Target', target, '-Mode', protect ? 'protect' : 'inspect'], { encoding: 'utf8', timeout: 30_000, windowsHide: true, env })
   if (result.error) throw result.error
   assert.equal(result.status, 0, result.stderr)
   const acl = JSON.parse(result.stdout.trim())

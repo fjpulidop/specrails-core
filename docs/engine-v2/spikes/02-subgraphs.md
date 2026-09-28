@@ -1,6 +1,6 @@
 # Nested graphs, fan-out and interrupts
 
-Status: executable local API probes passed; cross-platform acceptance pending.
+Status: executable API probes passed on all three required platforms; [evidence accepted](README.md#accepted-evidence-2026-09-26).
 
 Questions: on LangGraph 1.4.14 and checkpoint 1.1.5, prove the exact APIs for nested `interrupt`/`Command({ resume })`, concurrent `Send` branch interruption, branch namespaces and history, `updateState` on internal checkpoints for fork, `Command.PARENT`, deferred join, classified retry and `subgraphs: true` streams. Record whether recursion limits count nested node visits globally.
 
@@ -26,4 +26,4 @@ Use the proven primitives, with explicit compiler metadata mapping task namespac
 
 `updateState` is a viable state-seeding primitive. It does **not** automatically duplicate a full parent graph, pending branches or historical checkpoint lineage into a new run. C3/C6 must define and test that copy/remapping operation before claiming complete immutable nested fork. The prototype demonstrates only isolated child-state fork and verifies source immutability.
 
-The schema's depth-three rule is an engine constraint, not a discovered LangGraph maximum. The two-branch probe does not establish production fan-out scheduling, shared-worktree write safety, lease behavior or budget allocation. These remain production design/robustness work. CI must repeat this probe on Linux x64 and Windows x64 before C1 acceptance.
+The schema's depth-three rule is an engine constraint, not a discovered LangGraph maximum. The two-branch probe does not establish production fan-out scheduling, shared-worktree write safety, lease behavior or budget allocation. These remain production design/robustness work. The [accepted CI run](README.md#accepted-evidence-2026-09-26) repeated all probes successfully on macOS arm64, Linux x64 and Windows x64.
