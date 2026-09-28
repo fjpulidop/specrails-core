@@ -391,6 +391,17 @@ describe('pipeline final admission regressions', () => {
     expect(verificationInvocation('node.exe', ['-e', 'process.exit(0)'], 'C:/repo', 'win32', {})).toEqual({ command: 'node.exe', args: ['-e', 'process.exit(0)'] })
     expect(verificationInvocation('npm', ['test'], '/repo', 'linux', {})).toEqual({ command: 'npm', args: ['test'] })
   })
+
+  it('passes an explicit Windows shell line to cmd verbatim', () => {
+    const line = '"C:\\Program Files\\node.exe" -e "process.exit(require(\'./v.cjs\')===2?0:1)"'
+    expect(verificationInvocation('C:\\Windows\\system32\\cmd.exe', ['/d', '/s', '/c', line], 'C:/repo', 'win32', {})).toEqual({
+      command: 'C:\\Windows\\system32\\cmd.exe', args: ['/d', '/s', '/c', '"' + line + '"'], windowsVerbatimArguments: true,
+    })
+    expect(verificationInvocation('cmd.exe', ['/d', '/s', '/c', 'echo a & echo b'], 'C:/repo', 'win32', {})).toMatchObject({ args: ['/d', '/s', '/c', '"echo a & echo b"'], windowsVerbatimArguments: true })
+    // Anything other than the exact shell-line form keeps structured argv.
+    expect(verificationInvocation('cmd.exe', ['/c', 'dir'], 'C:/repo', 'win32', {})).toEqual({ command: 'cmd.exe', args: ['/c', 'dir'] })
+    expect(verificationInvocation('/bin/sh', ['-c', 'echo "a"'], '/repo', 'linux', {})).toEqual({ command: '/bin/sh', args: ['-c', 'echo "a"'] })
+  })
 })
 
 

@@ -1,6 +1,6 @@
 # Streaming and committed JSONL lifecycle
 
-Status: local measurements require a hybrid adapter; cross-platform acceptance pending.
+Status: the hybrid adapter decision is supported by all three platform probes; [evidence accepted](README.md#accepted-evidence-2026-09-26).
 
 Question: do `streamMode: ['updates', 'custom']`, writer and `streamEvents` expose enough information to reproduce existing graph, agent, verification, span and workflow events after the transaction that gives them authority?
 
@@ -32,4 +32,4 @@ The candidate's post-commit observer emitted exactly six terminal events and ver
 | `span` | `streamEvents` timing as observation, correlated with committed attempt identity; a chain-end is not a completion acknowledgement |
 | `runtime-status`, `runtime-result` | Committed run state read after required pending writes/checkpoints settle |
 
-Choose the hybrid adapter. Even `durability:'sync'` does not make raw update or chain-end delivery a universal post-commit callback. The delayed saver proves a valid counterexample rather than depending on a timing accident in the natural run. C3 must implement durable event sequencing, idempotent attempt/invocation projection, output caps and recovery replay; this spike only proves the ordering boundary. Linux/Windows runs and the full implementation pairing evidence remain pending acceptance gates.
+Choose the hybrid adapter. Even `durability:'sync'` does not make raw update or chain-end delivery a universal post-commit callback. The delayed saver proves a valid counterexample rather than depending on a timing accident in the natural run. C3 must implement durable event sequencing, idempotent attempt/invocation projection, output caps and recovery replay; this spike proves the ordering boundary. The [accepted CI run](README.md#accepted-evidence-2026-09-26) passed all three platforms and the pinned Desktop assembly; production implementation parity remains a later integration gate.
