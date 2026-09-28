@@ -48,7 +48,7 @@ Depends on accepted C1 and C2. Contract questions are resolved in [c3-protocol.m
 - [x] 4.6 Implement create/resume/status/fork/cancel and explicit interrupted-write recovery with frozen request identity.
 - [x] 4.7 Implement shared budget enforcement and committed/bounded event projection with per-run monotonic sequence.
 - [x] 4.8 Add CLI definition/catalog/validation/fork/status operations and truthful capabilities, schema exports and contract parity.
-- [ ] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
+- [x] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
 
 C3 compiler evidence, 2026-09-26: strict draft/published hashing, semantic validation, bounded JSON/history, state reducers, classified retries, actual task metadata, component interruption, Send/deferred joins and all join policies pass focused tests. `compiler-sqlite.test.ts` runs the real compiler with RunLedger, SqliteRunSaver and DefinitionExecution: three branches obey local AI concurrency 1 under global 2; a branch question survives DB close/reopen and lease replacement; completed siblings execute once, join settles once, only root completion ends the run, and no attempt remains running. Integrated local check on Node 22.22.3: `npx vitest run src/agent-runtime/engine` passed 14 files / 103 tests in 3.68 seconds; `npm run typecheck` exited 0 and OpenSpec strict validation reported zero issues. Global C3 remains incomplete until CLI/fork/cancel/package/platform acceptance and full CI pass.
 
@@ -59,7 +59,7 @@ Depends on C3. Detailed checklist: [C4](reference/core-agent-engine-tasks-core.m
 - [x] 5.1 Implement prompt with native commands, identity-bound sessions, sentinels, bounded capture and classified retries.
 - [x] 5.2 Implement portable bounded shell, evidence mode, pinned OpenSpec validation/archive and a pure condition parser without eval.
 - [x] 5.3 Implement approval/question/gate/end according to the validated interruption/terminal protocol.
-- [ ] 5.4 Add Quick SDD fixture parity, repair, blocked-question and per-node crash tests; publish the nine implemented basic descriptors.
+- [x] 5.4 Add Quick SDD fixture parity, repair, blocked-question and per-node crash tests; publish the nine implemented basic descriptors.
 - [ ] 5.5 Run `npm run ci` and robustness, update contract/docs and coordinate D1/D2/D5 acceptance against the published Core release.
 
 ## 6. C5 — Agent pieces and loop policies
@@ -68,7 +68,7 @@ Depends on C4.
 
 - [x] 6.1 Implement role-turn, decider/no-progress and verify using existing invocation/verification policies and real receipts.
 - [x] 6.2 Implement fail-fast, session continuity, bounded history and later-write verification invalidation with failure-path tests.
-- [ ] 6.3 Add Freestyle and verify-fix reference definitions plus rule parity/robustness tests; update contract/docs and run `npm run ci`.
+- [x] 6.3 Add Freestyle and verify-fix reference definitions plus rule parity/robustness tests; update contract/docs and run `npm run ci`.
 
 ## 7. C6 — Implementation composition and fan-out
 
@@ -76,8 +76,8 @@ Depends on C5 and accepted C1 nested-graph evidence.
 
 - [x] 7.1 Reuse the existing implementation nodes in a dedicated subgraph with journal ownership and resume validation intact.
 - [x] 7.2 Specify safe fan-out effects over shared repositories; implement map/join/component with bounded shared concurrency, nested paths and branch checkpoints.
-- [ ] 7.3 Add implementation receipt/acceptance parity over the existing evaluation corpus, internal fork, nested interrupt and all join policy tests.
-- [ ] 7.4 Advertise fanOut only when complete; expand robustness, run `npm run ci`, update contract/docs and pair Implement/Batch acceptance with D5.
+- [x] 7.3 Add implementation receipt/acceptance parity over the existing evaluation corpus, internal fork, nested interrupt and all join policy tests.
+- [x] 7.4 Advertise fanOut only when complete; expand robustness, run `npm run ci`, update contract/docs and pair Implement/Batch acceptance with D5.
 
 ## 8. C7 — Project store, evaluation and traces
 
@@ -85,7 +85,7 @@ Depends on C6.
 
 - [x] 8.1 Implement per-project SQLite store namespaces and declared read/write permissions with cross-project isolation and deletion tests.
 - [x] 8.2 Extend offline evaluation to definitions and reference corpus; add optional OpenTelemetry export with fake collector tests and documented configuration.
-- [ ] 8.3 Update contract/docs, run definition evaluation and `npm run ci`, and record actual parity/trace evidence.
+- [x] 8.3 Update contract/docs, run definition evaluation and `npm run ci`, and record actual parity/trace evidence.
 
 ## 9. C8 — Durable steering inbox
 
@@ -93,7 +93,7 @@ Depends on C3 plus the consuming prompt/role pieces.
 
 - [x] 9.1 Implement bounded signal ingestion and serialized inbox writes without acquiring or bypassing the execution lease.
 - [x] 9.2 Consume steering atomically at attempt boundaries, render the operator section and expose receipt/consumption state.
-- [ ] 9.3 Test recovery/invalidation/fork idempotence and missing-run errors; advertise steeringInbox, update contract/docs and run `npm run ci` with D7 pairing.
+- [x] 9.3 Test recovery/invalidation/fork idempotence and missing-run errors; advertise steeringInbox, update contract/docs and run `npm run ci` with D7 pairing.
 
 ## 10. C9 — Engine documentation and cross-repository integration
 
@@ -153,3 +153,131 @@ Production `storage/private-path.ts` already scrubs the variable. Local Linux
 x64 evidence on Node 22.22.3: typecheck, 24 script tests and all engine spikes
 (200/200 SQLite boundaries, subgraphs, streaming) passed. Windows/macOS evidence
 for the merge commit needs a CI run on it and is not claimed here. No release.
+
+## C4 Quick SDD reference completion — 28 September 2026
+
+Task 5.4 closed. The reference `quick-sdd.json` now matches its checklist with a
+*bounded* repair, per the D8 decision that repair must not depend on `$attempts`:
+`init` sets `artifactRepairs` to 0, and a failed `validate` routes through
+`repair-guard` (`$vars.artifactRepairs < 1`) and `repair-count` back to `work`
+exactly once, otherwise to `failed`. In-process tests cover success, a human
+block at `opsx:ff` and at `opsx:apply` (resume with the answer), one successful
+repair and an exhausted repair that fails without a third call.
+`quick-sdd-crash.test.ts` SIGKILLs the real CLI after committing each of the
+seven work nodes. A deterministic local provider is used through a test-only
+preload; SQLite, pinned OpenSpec and host verification are real. After the real
+lease expires, each run resumes to a verified success with exactly one `opsx:ff`
+and one `opsx:apply` call. A kill during `apply` requires explicit `--recover`;
+the provider call already recorded durably is settled from its record, not
+repeated. The CLI catalog (version 5) advertises all nine basic descriptors.
+The installed-package robustness check also runs this suite against the tarball.
+Local: typecheck, focused suites 5/5 and 8/8.
+
+## C5 reference loops — 28 September 2026
+
+Task 6.3 closed. Neither reference fixture was executed before, and both were
+wrong for real use:
+- `freestyle.json` was a single read prompt. It now has the checklist shape of
+  Desktop's fix loop: write, then host `verify`, then a read-only `loop-decider`
+  decision, returning to `fix` on a failed check or a continue verdict, with
+  `failFast` and `noProgress` policies.
+- `verify-fix.json` repaired through the built-in `developer` role, which is an
+  OpenSpec implementation role that requires `openspec-apply-change`, so it could
+  not run outside an OpenSpec change. It also cycled until `maxTransitions`
+  (about 50 expensive calls) when a repair never fixed the check. It now repairs
+  with a write `prompt`, at most twice, through `init`/`repair-guard`/`repair-count`.
+
+The built-in `reviewer` is likewise an OpenSpec verification role, so loop
+decisions use a custom read-only role, as Desktop binds `loop-decider`. The docs
+fixture catalog now declares it. `pieces/reference-loops.test.ts` executes both
+definitions with deterministic providers and real host checks, SQLite, decisions
+and policies:
+- Freestyle: success; a failed host check that a model's PASS text cannot bypass;
+  a continue verdict; the no-progress stop without success (bounded well below
+  `maxTransitions`); fail-fast after consecutive provider failures; a human
+  question resumed with the answer.
+- verify-fix: already passing with no AI call; one repair; stopping after
+  exactly two unsuccessful repairs.
+
+The per-rule mapping to Desktop's legacy engine (contract section 11) is
+exercised end to end by Desktop's paired compatibility suite.
+
+## C6 acceptance audit — 28 September 2026
+
+Tasks 7.3 and 7.4 closed after an audit against current tests; they were
+already largely covered, and two durable gaps were added.
+- **Receipt/acceptance parity:** the offline definition corpus (both reference
+  implementation definitions, full and optimized, 20/20 accepted cases) runs as
+  its own CI jobs.
+- **Internal fork:** `fork.test.ts` covers historical cuts, branch-local patches
+  with nested child checkpoints, inherited implementation evidence and journal
+  restore.
+- **Nested interrupts:** covered in `checkpoint.test.ts` and `compiler.test.ts`,
+  and `runs.test.ts` now adds concurrent mapped branches that each raise a
+  question and resume together without repeating provider calls.
+- **Join policies:** `collect`, `all-ok` and `any-ok` were previously tested only
+  at compiler level with an in-memory saver; `runs.test.ts` now covers them over
+  mixed branch results on real SQLite.
+- **fanOut:** advertised by `runtime api`. Implement/Batch acceptance is paired
+  with Desktop D5 through Desktop's real-Core factory suites, which pass on
+  Linux, macOS and Windows (Desktop #708 run 36413014024).
+
+Local full `npm run ci` on Node 22.22.3 at `193df2f`:
+- typecheck, and 24 script tests;
+- coverage: 104 files, 1,306 passed, 1 existing Windows-only skip; statements
+  88.09%, branches 80.44%, functions 93.39%, lines 94.14% → 94.13%;
+- `check:package`: passed with a clean npm cache. The default local cache held
+  stale package metadata, an environment issue only.
+
+Engine spikes on Linux: median put 0.86 ms, p90 1.26 ms (enforced gate).
+
+## C8 steering acceptance — 28 September 2026
+
+Task 9.3 closed after an audit, with the one untested documented rule added.
+- **Already covered:**
+  - `steering/inbox.test.ts`: admission rollback, human-pause continuation
+    reusing the claimed attempt, size limits, missing-run errors, durable
+    cancellation, no copy into forks, read-only previews.
+  - `fork.test.ts`: idempotent public fork with isolated pending steering.
+  - `runs.test.ts`: once-only claim and delivery to open roles.
+- **Added:** "a new retry does not consume them again". A message claimed by an
+  attempt that fails with a retryable provider error is not re-delivered to the
+  retry, and its receipt names the consuming failed attempt (`runs.test.ts`).
+- **`steeringInbox`:** advertised by `runtime api`.
+- **D7 pairing:** Desktop `agent-runtime-steering-paired.test.ts` drives
+  `runAgentRuntimeControl` against the real CLI. An idempotent retry returns the
+  same receipt, the same identity with changed text is refused, and the prompt
+  receives the instruction exactly once. It runs in Desktop's required paired
+  job. Local full `npm run ci` evidence is recorded under C6 above.
+
+## C7 evaluation and trace evidence — 28 September 2026
+
+Task 8.3 closed with local evidence (Linux, Node 22.22.3, `193df2f` plus tests):
+- `evaluate-definition-corpus.mjs implementation` and `... implementation-component`:
+  10 independent offline acceptances each, 20/20 across full and optimized
+  modes. The script itself states that monetary savings are unproven. The same
+  gate runs as two CI jobs.
+- Trace export: `otel.test.ts` against a local OTLP collector, and evaluation
+  suites, 7/7. Full `npm run ci` is recorded under C6 above.
+- Docs: `engine-v2/observation.md` now links the offline evaluation and the
+  opt-in paid mode.
+
+**Not done:** a real paid-provider evaluation (`runtime evaluate --real`)
+requires explicit model selection and an authorized budget. No cost or quality
+improvement is claimed.
+
+## C3 platform acceptance — 28 September 2026
+
+Task 4.9 closed on remote evidence. CI run 36411283765 on `feat/core-engine-v2`
+at `0c1cb80` passed all 23 jobs:
+- `test` on Linux/macOS/Windows with Node 22.22.3 and 24, including the three
+  Windows runtime partitions and the general partition;
+- coverage and typecheck/build;
+- installed-package engine recovery on Linux/macOS/Windows (packed tarball run,
+  resume and fork);
+- engine spikes on all three platforms;
+- both offline definition corpora;
+- workflow lint and secret scan.
+
+The CLI fixtures and the full robustness matrix run inside these jobs. Task
+5.5 stays open: it requires acceptance against a *published* Core release.

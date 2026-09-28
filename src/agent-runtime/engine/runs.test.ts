@@ -6,6 +6,7 @@ import { afterEach, expect, it } from 'vitest'
 import { validatePipelineContext } from '../../pipeline/pipeline-state.js'
 import type { AgentRequest, RuntimeConfig } from '../executor-types.js'
 import { ExecutorRegistry } from '../executors.js'
+import { AgentExecutionError } from '../executor-types.js'
 import { configuredRoles } from './preflight.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { validationPieceRegistry } from './pieces/index.js'
@@ -279,4 +280,77 @@ it('routes an unchanged decider limit to failure rather than a successful stop e
   const full = await statusRun(f.directory, false)
   expect(full.state.scopes.some(scope => scope.nodePath === 'done')).toBe(false)
   expect(full.state.scopes.find(scope => scope.nodePath === 'decide')).toMatchObject({ status: 'failed', output: { verdict: 'continue', stalled: true } })
+})
+
+it.each([['any-ok', 'succeeded'], ['collect', 'succeeded'], ['all-ok', 'failed']] as const)('applies join %s to durable mixed branch results', async (reduce, status) => {
+  const bad: DefinitionNode = { kind: 'end', params: { outcome: 'failure' }, ends: {} }
+  const f = fixture({
+    branches: { kind: 'map', params: { over: 'tickets', body: 'branch', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce }, ends: { next: 'done', fail: 'bad' } },
+    done, bad,
+  }, { components: { branch: { entry: 'check', nodes: {
+    // The first ticket's branch succeeds and the second fails.
+    check: { kind: 'condition', params: { expr: '$item.index == 0' }, ends: { true: 'ok', false: 'no' } },
+    ok: { kind: 'end', params: { outcome: 'success' }, ends: {} },
+    no: { kind: 'end', params: { outcome: 'failure' }, ends: {} },
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  const result = await createRun(f)
+  expect(result.state.status, JSON.stringify(result.state)).toBe(status)
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    // Both branches ran to their own terminal node exactly once.
+    expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path LIKE 'branches/%check' AND status='succeeded'").get()?.count).toBe(2)
+  } finally { database.close() }
+})
+
+it('pauses concurrent mapped branches on their own questions and resumes both without repeating work', async () => {
+  const f = fixture({
+    branches: { kind: 'map', params: { over: 'tickets', body: 'branch', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'done', fail: null } },
+    done,
+  }, { components: { branch: { entry: 'inspect', nodes: {
+    inspect: { ...prompt, ends: { next: 'ask', failed: null } },
+    ask: { kind: 'question', params: { text: 'Keep this ticket?' }, ends: { next: 'finish' } },
+    finish: done,
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  const first = await createRun(f)
+  expect(first.state.status).toBe('paused')
+  expect(first.state.pendingInterrupts).toHaveLength(2)
+  expect(new Set(first.state.pendingInterrupts.map(item => item.nodePath)).size).toBe(1)
+  expect(f.requests).toHaveLength(2)
+  const answers = Object.fromEntries(first.state.pendingInterrupts.map(item => [item.id, { answer: 'Keep' }]))
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers })
+  expect(resumed.state.status, JSON.stringify(resumed.state)).toBe('succeeded')
+  expect(resumed.state.pendingInterrupts).toEqual([])
+  // Each branch's provider call happened once, before its pause.
+  expect(f.requests).toHaveLength(2)
+})
+
+it('delivers steering at most once when the claiming attempt fails and is retried', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Start?' }, ends: { next: 'inspect' } },
+    inspect: { ...prompt, retry: { maxAttempts: 2, backoffMs: 0, retryOn: ['provider_request_error'] } }, done })
+  let calls = 0
+  f.registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    if (++calls === 1) throw new AgentExecutionError('Transient provider failure', 'provider_request_error')
+    return { text: 'Inspected', usage: { inputTokens: 3, outputTokens: 2, costUsd: 0.01 } }
+  } })
+  const paused = await createRun(f)
+  await signalRun(f.directory, 'Focus on the parser', 'retry-steering')
+  const result = await resumeRun(f.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Start' } } })
+  expect(result.state.status, JSON.stringify(result.state)).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  // The failed attempt consumed the message; the retry is a new physical attempt
+  // and does not receive the same operator instruction a second time.
+  expect(f.requests[0].prompt).toContain('Focus on the parser')
+  expect(f.requests[1].prompt).not.toContain('Focus on the parser')
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  let attempts: Array<{ attempt_id: string; status: string }>
+  try { attempts = database.sqlite.prepare("SELECT attempt_id, status FROM attempts WHERE node_path='inspect' ORDER BY rowid").all() as typeof attempts }
+  finally { database.close() }
+  expect(attempts.map(attempt => attempt.status)).toEqual(['failed', 'succeeded'])
+  const status = await statusRun(f.directory)
+  expect(status.state.steering).toMatchObject({ pending: 0, consumed: 1, receipts: [{ id: 'retry-steering', status: 'consumed', consumedAttemptId: attempts[0].attempt_id }] })
 })

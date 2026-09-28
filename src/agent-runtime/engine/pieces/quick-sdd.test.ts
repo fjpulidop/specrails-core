@@ -100,3 +100,41 @@ it.each([undefined, 'opsx:ff', 'opsx:apply'])('runs Quick SDD with a human block
     expect(strict.state.status).toBe('failed')
   }
 }, 45_000)
+
+it.each([true, false])('repairs invalid artifacts once through the bounded preparation retry (repairable: %s)', async repairable => {
+  const root = mkdtempSync(path.join(tmpdir(), 'quick sdd repair ')); roots.push(root)
+  const repository = path.join(root, 'repository'), backlog = path.join(root, 'backlog')
+  mkdirSync(repository); mkdirSync(backlog); execFileSync('git', ['init', '-q', repository])
+  writeFileSync(path.join(repository, 'value.cjs'), 'module.exports = 1\n')
+  const context = validatePipelineContext({ schemaVersion: 1, runId: 'repair', backlogRoot: backlog, artifactRoot: repository, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: repository }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Return two', description: 'value.cjs returns two' }] })
+  const role = { provider: 'fixture' }, config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: role, developer: role, reviewer: role }, verification: [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'if(require("./value.cjs")!==2)process.exit(1)'] }] }
+  const change = 'repair-change', active = path.join(repository, 'openspec/changes', change), commands: Array<string | undefined> = []
+  const valid = '## ADDED Requirements\n### Requirement: Return two\nThe function SHALL return two.\n#### Scenario: Load the function\n- **WHEN** value.cjs is loaded\n- **THEN** its value is two\n'
+  const registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    commands.push(request.nativeCommand?.id)
+    if (request.nativeCommand?.id === 'opsx:ff') {
+      const preparations = commands.filter(command => command === 'opsx:ff').length
+      if (!existsSync(active)) await runOpenSpec(resolveOpenSpecCli(), repository, ['new', 'change', change, '--json'])
+      mkdirSync(path.join(active, 'specs/value'), { recursive: true })
+      writeFileSync(path.join(active, 'proposal.md'), '## Why\nReturn the required value.\n## What Changes\nUpdate value.cjs.\n## Capabilities\n### New Capabilities\n- value: Return two.\n## Impact\nOne function.\n')
+      writeFileSync(path.join(active, 'tasks.md'), '- [ ] 1. Update and verify the function\n')
+      // The first preparation is invalid; the repair is valid only when repairable.
+      writeFileSync(path.join(active, 'specs/value/spec.md'), preparations > 1 && repairable ? valid : 'Not a delta specification')
+    } else {
+      writeFileSync(path.join(repository, 'value.cjs'), 'module.exports = 2\n')
+      writeFileSync(path.join(active, 'tasks.md'), '- [x] 1. Update and verify the function\n')
+    }
+    return { text: 'Completed native skill', usage: { inputTokens: 10, outputTokens: 5, costUsd: null } }
+  } })
+  const definition = JSON.parse(readFileSync(new URL('../__fixtures__/quick-sdd.json', import.meta.url), 'utf8'))
+  const result = await createRun({ context, config, definition, registry, change })
+  if (repairable) {
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
+    expect(commands).toEqual(['opsx:ff', 'opsx:ff', 'opsx:apply'])
+  } else {
+    // One repair only: a second invalid preparation fails without another call.
+    expect(result.state.status).toBe('failed')
+    expect(commands).toEqual(['opsx:ff', 'opsx:ff'])
+    expect(readFileSync(path.join(repository, 'value.cjs'), 'utf8')).toBe('module.exports = 1\n')
+  }
+}, 45_000)

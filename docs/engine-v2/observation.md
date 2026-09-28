@@ -30,3 +30,12 @@ identifiers in the UI.
 `engine/otel.test.ts` runs a local HTTP collector and compares its received IDs
 with the JSONL projection, including duplicate-event suppression and bounded
 failure handling. No paid provider or external collector is required.
+
+## Offline evaluation
+
+Reference definitions are evaluated offline with
+`node scripts/evaluate-definition-corpus.mjs <implementation|implementation-component> <output>`.
+The script runs full and optimized modes over the accepted corpus. The paid
+`runtime evaluate --real` mode is opt-in, with an explicit model and budget; see
+[Reproducible evaluation](../agent-runtime.md#reproducible-evaluation). Offline
+acceptance does not establish monetary savings or quality.

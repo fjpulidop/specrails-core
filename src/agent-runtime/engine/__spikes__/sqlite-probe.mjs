@@ -80,12 +80,18 @@ export async function sqliteProbe(directory, count = 200) {
   let timing
   try {
     await linearGraph(timed, count).invoke({}, { configurable: { thread_id: 'timing' }, durability: 'sync', recursionLimit: count + 5 })
+    // Hosted Windows runners vary their fsync latency by more than an order of
+    // magnitude between runs of identical code, so there the numbers are recorded
+    // evidence only; durability, permissions and packaging still gate Windows.
+    const latencyGate = process.platform === 'win32' ? 'informational' : 'enforced'
     timing = { putCount: timed.putMs.length, medianPutMs: percentile(timed.putMs, 0.5), p90PutMs: percentile(timed.putMs, 0.9),
-      meanPutMs: mean(timed.putMs), maxPutMs: Math.max(...timed.putMs), meanPendingWriteMs: mean(timed.writeMs) }
-    // Median and p90 gate the typical checkpoint cost; mean and max stay recorded
-    // evidence because a handful of slow shared-runner fsyncs dominate the mean.
-    assert.ok(timing.medianPutMs < 5, `Median put exceeded 5ms: ${timing.medianPutMs}`)
-    assert.ok(timing.p90PutMs < 5, `p90 put exceeded 5ms: ${timing.p90PutMs}`)
+      meanPutMs: mean(timed.putMs), maxPutMs: Math.max(...timed.putMs), meanPendingWriteMs: mean(timed.writeMs), latencyGate }
+    if (latencyGate === 'enforced') {
+      // Median and p90 gate the typical checkpoint cost; mean and max stay recorded
+      // evidence because a handful of slow shared-runner fsyncs dominate the mean.
+      assert.ok(timing.medianPutMs < 5, `Median put exceeded 5ms: ${timing.medianPutMs}`)
+      assert.ok(timing.p90PutMs < 5, `p90 put exceeded 5ms: ${timing.p90PutMs}`)
+    }
   } finally { timed.close() }
 
   const conformance = new SpikeSqliteSaver(path.join(directory, 'conformance', 'run.sqlite'))

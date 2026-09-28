@@ -104,7 +104,7 @@ export function verifyPackage(root, outputDir) {
       // The harness stays in the checkout; every tested runtime process loads
       // the installed tarball, including the external fault-injection preload.
       run(process.execPath, [path.join(root, 'node_modules/vitest/vitest.mjs'), 'run',
-        'src/agent-runtime/engine/robustness.test.ts', '--reporter=default', '--reporter=json',
+        'src/agent-runtime/engine/robustness.test.ts', 'src/agent-runtime/engine/quick-sdd-crash.test.ts', '--reporter=default', '--reporter=json',
         `--outputFile.json=${path.join(outputDir, 'engine-robustness.json')}`], {
         cwd: root, timeout: 600_000,
         env: { ...env, SPECRAILS_ENGINE_CLI: path.join(installed, 'dist/agent-runtime/cli.js') },

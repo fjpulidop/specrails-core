@@ -8,6 +8,8 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
 
 ## Freestyle
 
+The legacy fix loop: write, host verification, then a read-only `loop-decider` decision. A failed check or a continue verdict goes to `fix`; the decider's no-progress limit and `failFast` bound the loop, and success requires verified host evidence. Loops decide with a custom read-only role because the built-in reviewer is an OpenSpec verification role.
+
 ```json
 {
   "schemaVersion": 1,
@@ -15,30 +17,77 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
   "title": "Freestyle",
   "journal": "ledger-only",
   "change": "none",
-  "entry": "work",
+  "entry": "implement",
   "maxTransitions": 100,
-  "roles": [],
+  "roles": [
+    "loop-decider"
+  ],
+  "policies": {
+    "failFast": 2,
+    "noProgress": 2
+  },
   "nodes": {
-    "work": {
+    "implement": {
       "kind": "prompt",
       "params": {
+        "access": "write",
         "engine": {
           "provider": "fixture"
         },
-        "text": "Inspect the project and report your findings.",
-        "access": "read",
-        "sentinel": "blocked"
+        "sentinel": "blocked",
+        "text": "Implement the requested change and report what you changed."
       },
       "ends": {
-        "next": "done",
+        "blocked": "failed",
         "failed": "failed",
-        "blocked": "failed"
+        "next": "verify"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "fail": "fix",
+        "failed": "failed",
+        "pass": "decide"
+      }
+    },
+    "decide": {
+      "kind": "decider",
+      "params": {
+        "goal": "Stop only when the host checks pass and every acceptance criterion is implemented.",
+        "noProgress": 2,
+        "roleId": "loop-decider"
+      },
+      "ends": {
+        "continue": "fix",
+        "failed": "failed",
+        "stop": "done"
+      }
+    },
+    "fix": {
+      "kind": "prompt",
+      "params": {
+        "access": "write",
+        "engine": {
+          "provider": "fixture"
+        },
+        "sentinel": "blocked",
+        "text": "Repair the reported failures and the remaining acceptance criteria."
+      },
+      "ends": {
+        "blocked": "failed",
+        "failed": "failed",
+        "next": "verify"
       }
     },
     "done": {
       "kind": "end",
       "params": {
-        "outcome": "success"
+        "outcome": "success",
+        "requiresVerified": true
       },
       "ends": {}
     },
@@ -50,11 +99,13 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       "ends": {}
     }
   },
-  "version": "9b23d4bd46222996bed3d7485bafc06694add66ef7986825e04f9dc9da9bc211"
+  "version": "f209b867e47af660e14d57bf967d4d542ec5de8c3316f1ee5770314807a09cbb"
 }
 ```
 
 ## Quick Sdd
+
+An invalid first preparation gets exactly one repair: `init` sets `artifactRepairs` to 0, and a failed `validate` passes through `repair-guard`/`repair-count` back to `work` once. A second invalid preparation ends in `failed` without another provider call.
 
 ```json
 {
@@ -63,10 +114,22 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
   "title": "Quick Sdd",
   "journal": "ledger-only",
   "change": "new",
-  "entry": "work",
+  "entry": "init",
   "maxTransitions": 100,
   "roles": [],
   "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "artifactRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
+    },
     "work": {
       "kind": "prompt",
       "params": {
@@ -93,7 +156,7 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       },
       "ends": {
         "pass": "apply",
-        "fail": "failed",
+        "fail": "repair-guard",
         "failed": "failed"
       }
     },
@@ -162,13 +225,37 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
         "outcome": "failure"
       },
       "ends": {}
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.artifactRepairs < 1"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "artifactRepairs": 1
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
     }
   },
-  "version": "883ccb470eabea1d8228a4ad1f3cc4a513d64372e1a2027c79bcfe2432f392bf"
+  "version": "a6bd20e682ad6b47f8a9c09379512e26afe3dfdd78b3c40703e355de7e5eb804"
 }
 ```
 
 ## Verify Fix
+
+Runs the configured host checks and repairs real failures with a write prompt, at most twice (`init`, `repair-guard`, `repair-count`), instead of cycling until `maxTransitions`.
 
 ```json
 {
@@ -177,12 +264,22 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
   "title": "Verify Fix",
   "journal": "ledger-only",
   "change": "none",
-  "entry": "verify",
+  "entry": "init",
   "maxTransitions": 100,
-  "roles": [
-    "developer"
-  ],
+  "roles": [],
   "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "repairs": 0
+        }
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
     "verify": {
       "kind": "verify",
       "params": {
@@ -190,19 +287,46 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       },
       "ends": {
         "pass": "done",
-        "fail": "fix",
+        "fail": "repair-guard",
+        "failed": "failed"
+      }
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.repairs < 2"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "repairs": 1
+        }
+      },
+      "ends": {
+        "next": "fix",
         "failed": "failed"
       }
     },
     "fix": {
-      "kind": "role-turn",
+      "kind": "prompt",
       "params": {
-        "roleId": "developer",
-        "prompt": "Repair the actual verification failures, preserving the accepted scope."
+        "engine": {
+          "provider": "fixture"
+        },
+        "text": "Repair the actual verification failures, preserving the accepted scope.",
+        "access": "write",
+        "sentinel": "blocked"
       },
       "ends": {
         "next": "verify",
-        "failed": "failed"
+        "failed": "failed",
+        "blocked": "failed"
       }
     },
     "done": {
@@ -221,7 +345,7 @@ The examples below are exact regression fixtures. The `fixture` provider is a te
       "ends": {}
     }
   },
-  "version": "470a81ee0ecd22e41b4bacbe3c48fe9e05a48799c15f4b77cc36443d177a281e"
+  "version": "0dbb75de1c191af62c0d5ac7a69abeac66089b5449834a33ec0458fed87a1476"
 }
 ```
 

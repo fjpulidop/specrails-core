@@ -10,7 +10,7 @@ On Windows the spike creates a protected ACL for its disposable directory contai
 
 | Question | Report | Acceptance |
 | --- | --- | --- |
-| SQLite binding and real graph persistence | [01-sqlite.md](01-sqlite.md) | Every boundary of 200 nodes survives a killed process; actual graph pending writes and ledger stay atomic; WAL/private permissions; median and p90 checkpoint put below 5 ms; packed/assembled runtime on three platforms |
+| SQLite binding and real graph persistence | [01-sqlite.md](01-sqlite.md) | Every boundary of 200 nodes survives a killed process; actual graph pending writes and ledger stay atomic; WAL/private permissions; median and p90 checkpoint put below 5 ms on macOS/Linux (Windows latency recorded only); packed/assembled runtime on three platforms |
 | Nested graph APIs | [02-subgraphs.md](02-subgraphs.md) | Executable probes of interrupt/resume, fan-out, namespaces/history, internal fork, deferred join, retry, subgraph streams and transition limits |
 | Post-commit event source | [03-streaming.md](03-streaming.md) | Measured fixture event timing and volume, comparison of streaming and committed ledger lifecycle, explicit mapping/decision |
 
