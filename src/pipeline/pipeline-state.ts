@@ -790,6 +790,12 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
  */
 export function verificationInvocation(command: string, args: string[], cwd: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
   if (platform !== 'win32') return { command, args }
+  // An explicit shell line (`cmd /d /s /c <line>`) is already cmd syntax. Node's
+  // default quoting would escape its inner quotes with backslashes, which cmd does
+  // not understand. Pass it verbatim: /s strips exactly the outer quotes we add.
+  if (/(^|[\\/])cmd(\.exe)?$/i.test(command) && args.length === 4 && args[0].toLowerCase() === '/d' && args[1].toLowerCase() === '/s' && args[2].toLowerCase() === '/c') {
+    return { command, args: ['/d', '/s', '/c', '"' + args[3] + '"'], windowsVerbatimArguments: true }
+  }
   let resolved = command
   if (!/\.(cmd|bat|exe|com)$/i.test(command)) {
     const pathValue = Object.entries(env).find(([key]) => key.toLowerCase() === 'path')?.[1] ?? ''
