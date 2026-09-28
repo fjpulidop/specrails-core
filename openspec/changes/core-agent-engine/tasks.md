@@ -85,7 +85,7 @@ Depends on C6.
 
 - [x] 8.1 Implement per-project SQLite store namespaces and declared read/write permissions with cross-project isolation and deletion tests.
 - [x] 8.2 Extend offline evaluation to definitions and reference corpus; add optional OpenTelemetry export with fake collector tests and documented configuration.
-- [ ] 8.3 Update contract/docs, run definition evaluation and `npm run ci`, and record actual parity/trace evidence.
+- [x] 8.3 Update contract/docs, run definition evaluation and `npm run ci`, and record actual parity/trace evidence.
 
 ## 9. C8 — Durable steering inbox
 
@@ -249,3 +249,19 @@ Task 9.3 closed after an audit, with the one untested documented rule added.
   same receipt, the same identity with changed text is refused, and the prompt
   receives the instruction exactly once. It runs in Desktop's required paired
   job. Local full `npm run ci` evidence is recorded under C6 above.
+
+## C7 evaluation and trace evidence — 28 September 2026
+
+Task 8.3 closed with local evidence (Linux, Node 22.22.3, `193df2f` plus tests):
+- `evaluate-definition-corpus.mjs implementation` and `... implementation-component`:
+  10 independent offline acceptances each, 20/20 across full and optimized
+  modes. The script itself states that monetary savings are unproven. The same
+  gate runs as two CI jobs.
+- Trace export: `otel.test.ts` against a local OTLP collector, and evaluation
+  suites, 7/7. Full `npm run ci` is recorded under C6 above.
+- Docs: `engine-v2/observation.md` now links the offline evaluation and the
+  opt-in paid mode.
+
+**Not done:** a real paid-provider evaluation (`runtime evaluate --real`)
+requires explicit model selection and an authorized budget. No cost or quality
+improvement is claimed.
