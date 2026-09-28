@@ -97,6 +97,10 @@ function invocationUsage(state: WorkflowState, priorCount: number) {
   return { costUsd: sum('costUsd'), inputTokens: sum('inputTokens'), outputTokens: sum('outputTokens') }
 }
 
+/** Engines this package can launch: the legacy built-in pipeline (1) and workflow definitions (2).
+ * Core 7 advertises [2] so hosts refuse unconverted legacy loops before admission. */
+export const RUNTIME_ENGINES: readonly number[] = [1, 2]
+
 export async function runRuntimeCommand(flags: Record<string, string | boolean>, positionals: string[], emit: (value: unknown) => void = value => process.stdout.write(JSON.stringify(value) + '\n')): Promise<number> {
   const command = flags.help === true ? 'help' : positionals[0] ?? 'help'
   if (isDefinitionCommand(flags, command)) return runDefinitionCommand(flags, positionals, emit)
@@ -144,7 +148,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
   if (command === 'api') {
     // Engine v2 fields come from the same validation registry that admits definitions; test-only pieces are never registered there.
     emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION],
-      engineVersion: 2, nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().kinds(),
+      engineVersion: 2, engines: RUNTIME_ENGINES, nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().kinds(),
       capabilities: { openRoles: 1, scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1,
         engineV2: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0

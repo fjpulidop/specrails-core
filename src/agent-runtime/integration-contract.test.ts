@@ -47,6 +47,9 @@ describe('Desktop integration contract', () => {
     const api = messages[0] as { apiVersion: number; workflowVersions: string[]; engineVersion: number; nodeKindsVersion: number; nodeKinds: string[]; capabilities: Record<string, unknown> }
     expect(api).toMatchObject({ apiVersion: RUNTIME_API_VERSION, workflowVersions: [CORE_WORKFLOW_VERSION], engineVersion: contract.agentRuntime.engine.version, nodeKindsVersion: NODE_KINDS_VERSION })
     expect(api.nodeKinds).toEqual(contract.agentRuntime.nodeKinds)
+    // Hosts refuse legacy launches when engine 1 is absent; Core 6 still runs both.
+    expect((api as unknown as { engines: number[] }).engines).toEqual(contract.agentRuntime.engines)
+    expect(contract.agentRuntime.engines).toEqual([1, 2])
     for (const name of ENGINE_V2_CAPABILITIES) expect(api.capabilities[name]).toBe(1)
     // Desktop's loader accepts only safe integers >= 1 for every capability value.
     expect(Object.values(api.capabilities).every(value => Number.isSafeInteger(value) && (value as number) >= 1)).toBe(true)

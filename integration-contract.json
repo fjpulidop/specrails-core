@@ -251,7 +251,7 @@
       "cancel"
     ],
     "cliPresentationOperations": ["help"],
-    "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion, runtimeIdentity, workflowVersions, engineVersion, nodeKindsVersion, nodeKinds, capabilities, guardrails}; does not invoke providers",
+    "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion, runtimeIdentity, workflowVersions, engineVersion, engines, nodeKindsVersion, nodeKinds, capabilities, guardrails}; does not invoke providers",
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
     "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed",
@@ -300,6 +300,7 @@
     "documentation": "docs/agent-runtime.md",
     "instructionsVersion": "10",
     "workflowVersion": "7",
+    "engines": [1, 2],
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
