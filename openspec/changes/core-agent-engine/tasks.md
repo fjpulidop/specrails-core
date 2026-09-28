@@ -48,7 +48,7 @@ Depends on accepted C1 and C2. Contract questions are resolved in [c3-protocol.m
 - [x] 4.6 Implement create/resume/status/fork/cancel and explicit interrupted-write recovery with frozen request identity.
 - [x] 4.7 Implement shared budget enforcement and committed/bounded event projection with per-run monotonic sequence.
 - [x] 4.8 Add CLI definition/catalog/validation/fork/status operations and truthful capabilities, schema exports and contract parity.
-- [ ] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
+- [x] 4.9 Run CLI fixtures, full robustness matrix and `npm run ci` across all required platforms; include packed runtime verification before declaring C3 complete.
 
 C3 compiler evidence, 2026-09-26: strict draft/published hashing, semantic validation, bounded JSON/history, state reducers, classified retries, actual task metadata, component interruption, Send/deferred joins and all join policies pass focused tests. `compiler-sqlite.test.ts` runs the real compiler with RunLedger, SqliteRunSaver and DefinitionExecution: three branches obey local AI concurrency 1 under global 2; a branch question survives DB close/reopen and lease replacement; completed siblings execute once, join settles once, only root completion ends the run, and no attempt remains running. Integrated local check on Node 22.22.3: `npx vitest run src/agent-runtime/engine` passed 14 files / 103 tests in 3.68 seconds; `npm run typecheck` exited 0 and OpenSpec strict validation reported zero issues. Global C3 remains incomplete until CLI/fork/cancel/package/platform acceptance and full CI pass.
 
@@ -265,3 +265,19 @@ Task 8.3 closed with local evidence (Linux, Node 22.22.3, `193df2f` plus tests):
 **Not done:** a real paid-provider evaluation (`runtime evaluate --real`)
 requires explicit model selection and an authorized budget. No cost or quality
 improvement is claimed.
+
+## C3 platform acceptance — 28 September 2026
+
+Task 4.9 closed on remote evidence. CI run 36411283765 on `feat/core-engine-v2`
+at `0c1cb80` passed all 23 jobs:
+- `test` on Linux/macOS/Windows with Node 22.22.3 and 24, including the three
+  Windows runtime partitions and the general partition;
+- coverage and typecheck/build;
+- installed-package engine recovery on Linux/macOS/Windows (packed tarball run,
+  resume and fork);
+- engine spikes on all three platforms;
+- both offline definition corpora;
+- workflow lint and secret scan.
+
+The CLI fixtures and the full robustness matrix run inside these jobs. Task
+5.5 stays open: it requires acceptance against a *published* Core release.
