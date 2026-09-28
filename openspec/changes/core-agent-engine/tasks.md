@@ -281,3 +281,14 @@ at `0c1cb80` passed all 23 jobs:
 
 The CLI fixtures and the full robustness matrix run inside these jobs. Task
 5.5 stays open: it requires acceptance against a *published* Core release.
+
+## Engine advertisement for Core 7 — 28 September 2026
+
+Owner decision: approved the Desktop proposal
+(`specrails-desktop/openspec/changes/core-agent-engine/CORE7-COMPATIBILITY-PROPOSAL.md`).
+`runtime api` now emits `engines: [1, 2]`, and `integration-contract.json`
+mirrors it as `agentRuntime.engines` (additive; `schemaVersion` stays `5.1`).
+Contract test: `integration-contract.test.ts`. Docs: `docs/agent-runtime.md`.
+Task 11.3 must change the value to `[2]` together with the engine-1 removal.
+Desktop refuses legacy launches with `legacy_engine_unavailable` when `1` is
+absent, and derives `[1, 2]` / `[1]` for Cores that predate the field.
