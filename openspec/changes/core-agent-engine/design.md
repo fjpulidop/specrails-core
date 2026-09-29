@@ -63,6 +63,12 @@ Existing typecheck, script tests, coverage and package checks remain release gat
 
 ## Risks / Trade-offs
 
+### C2 role policy and native commands
+
+C2 is based on reviewed C0 and independent of C1 storage experiments. Role descriptors separate workspace access from artifact permissions; lossless validation preserves saved config while new admission materializes built-in descriptors. Requests from existing programmatic integrations receive built-in defaults. Custom roles require explicit permissions, optional scoped OpenSpec skills and a free guarded loop; the undocumented `descriptor.compact` sketch is deliberately omitted to avoid assigning a reviewer protocol to an arbitrary role. Existing model/effort policy, reuse and quality gates remain authoritative.
+
+Kimi native commands use a render-only mode in its managed skill runner, then the existing permission-enforcing executor. This avoids bypassing ACP/agent-file restrictions while sharing native skill expansion and Windows process handling. Missing or unsupported skills fail before inference. Generic role identity includes effective permissions and skill so a changed policy cannot reuse an old session. The legacy prompt and graph identities remain 7/10.
+
 - [Checkpoint callback timing can violate atomicity] → Test crashes at real graph/ledger boundaries and do not start C3 until the transaction design is demonstrated.
 - [Native ABI, Windows paths or Node minimum changes break packaging] → Test the actual packed artifact and Desktop assembly on all three required platforms; record architecture, Node version and commit.
 - [Subgraph namespaces and fork semantics differ from sketches] → C1 tests exact LangGraph 1.4.14 APIs and updates the contract before compiler implementation.
