@@ -433,3 +433,7 @@ C1 passed all three required platforms on tested merge72323bf9 (head e1e25589), 
 - C8 follows the source task's 20,000-character envelope, explicitly measured as UTF-16 code units with an additional 80,000-byte UTF-8 ceiling. Queue bounds are 128 pending messages/512 KiB; durable sequence orders equal-timestamp messages.
 - Optional OTLP JSON export is disabled unless configured, contains lifecycle identifiers only and is bounded best effort. It cannot alter the ledger or cause effect replay.
 - Offline definition evaluation reuses the original behavioral corpus and independent defect-detecting oracles. Passing a graph alone does not count as accepted output. The first full native sample accepted 10/10 outputs with no extra invocations; it exposed a developer/fixer session regression before final efficiency acceptance, which is being measured again after the scoped-session correction. No paid monetary savings are inferred from synthetic fixture usage.
+
+### CI optimization decision — 2026-09-26
+
+The user explicitly requested lower Actions, release and test wall time without weakening coverage. The Linux/Node 24 coverage job now supplies the matching full matrix lane and the exact verified release tarball. This removes one duplicate full run and one duplicate dependency/build setup. Other OS/Node combinations, Windows partition inventory checks, coverage thresholds, release admission and artifact integrity remain enforced. Reuse existing trusted release artifacts; never replace them with an unverified rebuild in a credentialed publish job.
