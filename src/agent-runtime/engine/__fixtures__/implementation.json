@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "id": "implementation",
+  "title": "Verified implementation",
+  "journal": "implementation",
+  "change": "new",
+  "entry": "implement",
+  "maxTransitions": 100,
+  "roles": [
+    "architect",
+    "developer",
+    "reviewer"
+  ],
+  "nodes": {
+    "implement": {
+      "kind": "implementation",
+      "params": {
+        "approvalBeforeArchive": false
+      },
+      "ends": {
+        "next": "done",
+        "rejected": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "e1aea44e144c42fe39ab782e9ce2df6e2253163ee3a1e503a966c2d99aaf45c4"
+}

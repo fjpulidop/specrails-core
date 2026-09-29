@@ -1,9 +1,10 @@
+import { isDeepStrictEqual } from 'node:util'
 import { validateGuardrailSettings } from './guardrails.js'
 import { readFileSync } from 'node:fs'
-import type { RuntimeAgentConfig, AgentRole, RuntimeConfig, RuntimeProviderConfig } from './executor-types.js'
+import { BUILTIN_ROLES, BUILTIN_ROLE_POLICY, ROLE_ID, isBuiltinRole, type RuntimeRoleConfig, type RoleDescriptor, type RuntimeAgentConfig, type RuntimeConfig, type RuntimeProviderConfig } from './executor-types.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewAspect } from './graph/review-policy.js'
 
-const ROLES: AgentRole[] = ['architect', 'developer', 'reviewer']
+const ROLES = [...BUILTIN_ROLES]
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 function fail(field: string, why: string): never { throw new Error(`Invalid runtime config ${field}: ${why}`) }
 function object(value: unknown, field: string): Record<string, unknown> {
@@ -50,7 +51,7 @@ function score(value: unknown, field: string, floor: number): number {
 }
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'fixer', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'roles', 'fixer', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
   if (config.enabled !== undefined && typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
@@ -106,6 +107,26 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     return structuredClone(agent) as unknown as RuntimeAgentConfig
   }
   const agents = Object.fromEntries(ROLES.map(role => [role, validateAgent(rawAgents[role], `agents.${role}`)])) as RuntimeConfig['agents']
+  let roles: RuntimeConfig['roles']
+  if (config.roles !== undefined) {
+    const raw = object(config.roles, 'roles')
+    roles = {}
+    for (const [id, value] of Object.entries(raw)) {
+      if (!ROLE_ID.test(id) || id === 'fixer') fail(`roles.${id}`, 'expected a role id; fixer is reserved')
+      const descriptor = object(value, `roles.${id}`)
+      const { access, artifacts, prompt, openspecSkill, ...assignment } = descriptor
+      const selected = validateAgent(assignment, `roles.${id}`)
+      choices(access, ['read', 'write'], `roles.${id}.access`)
+      choices(artifacts, ['none', 'tasks-checkboxes', 'all'], `roles.${id}.artifacts`)
+      if (prompt !== undefined && string(prompt, `roles.${id}.prompt`).length > 20000) fail(`roles.${id}.prompt`, 'maximum 20000 characters')
+      if (openspecSkill !== undefined) choices(openspecSkill, ['openspec-ff-change', 'openspec-apply-change', 'openspec-verify-change'], `roles.${id}.openspecSkill`)
+      if (isBuiltinRole(id)) {
+        const policy = BUILTIN_ROLE_POLICY[id]
+        if (access !== policy.access || artifacts !== policy.artifacts || openspecSkill !== policy.openspecSkill || prompt !== undefined || !isDeepStrictEqual(selected, agents[id])) fail(`roles.${id}`, 'built-in descriptors must match their implicit assignment and policy')
+      }
+      roles[id] = { ...selected, access, artifacts, ...(prompt === undefined ? {} : { prompt }), ...(openspecSkill === undefined ? {} : { openspecSkill }) } as RuntimeRoleConfig
+    }
+  }
   // The optional fixer: the engine correction rounds run on (verify failure or
   // review rejection); absent ⇒ the developer corrects its own work.
   const fixer = config.fixer === undefined ? undefined : validateAgent(config.fixer, 'fixer')
@@ -193,15 +214,16 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
   let rolePrompts: RuntimeConfig['rolePrompts']
   if (config.rolePrompts !== undefined) {
     const raw = object(config.rolePrompts, 'rolePrompts')
-    keys(raw, [...ROLES, 'fixer'], 'rolePrompts')
+    keys(raw, [...ROLES, 'fixer', ...Object.keys(roles ?? {})], 'rolePrompts')
     rolePrompts = {}
     for (const [role, value] of Object.entries(raw)) {
       const text = string(value, `rolePrompts.${role}`)
       if (text.length > 20000) fail(`rolePrompts.${role}`, 'maximum 20000 characters')
-      rolePrompts[role as AgentRole | 'fixer'] = text
+      rolePrompts[role] = text
     }
   }
   return { schemaVersion: 1, enabled: true, providers, agents, verification,
+    ...(roles === undefined ? {} : { roles }),
     ...(config.efficiency === undefined ? {} : { efficiency: structuredClone(config.efficiency) as RuntimeConfig['efficiency'] }),
     ...(rolePrompts === undefined ? {} : { rolePrompts }),
     ...(config.limits === undefined ? {} : { limits: { ...config.limits as RuntimeConfig['limits'] } }),
@@ -219,9 +241,19 @@ export function loadRuntimeConfig(file: string, options?: { registeredProviderId
 /** New admissions normalize once; validation of a saved document is lossless. */
 export function normalizeRuntimeConfig(input: unknown, options?: { registeredProviderIds?: string[] }): RuntimeConfig {
   const config = JSON.parse(JSON.stringify(validateRuntimeConfig(input, options))) as RuntimeConfig
+  config.roles = Object.fromEntries(roleIds(config).map(id => { const { id: _id, ...descriptor } = resolveRoleDescriptor(config, id); return [id, descriptor] }))
   config.efficiency = {
     schemaVersion: 1, contextMode: 'incremental', reviewMode: 'incremental', planning: 'proportional', acceptDeveloperChecks: true,
     ...config.efficiency, verification: { maxConcurrency: 1, ...config.efficiency?.verification },
   }
   return config
+}
+
+/** Built-ins stay ordered and custom roles are declared data, never inferred from a prompt. */
+export function roleIds(config: RuntimeConfig): string[] { return [...new Set([...BUILTIN_ROLES, ...Object.keys(config.roles ?? {})])] }
+export function resolveRoleDescriptor(config: RuntimeConfig, id: string): RoleDescriptor {
+  if (isBuiltinRole(id)) return { ...config.agents[id], ...BUILTIN_ROLE_POLICY[id], id }
+  const role = Object.hasOwn(config.roles ?? {}, id) ? config.roles![id] : undefined
+  if (!role) throw new Error(`Unknown runtime role '${id}'`)
+  return { ...role, ...(config.rolePrompts?.[id] === undefined ? {} : { prompt: config.rolePrompts[id] }), id }
 }

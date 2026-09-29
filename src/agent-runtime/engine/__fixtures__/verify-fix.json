@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "id": "verify-fix",
+  "title": "Verify Fix",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "init",
+  "maxTransitions": 100,
+  "roles": [],
+  "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "repairs": 0
+        }
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "repair-guard",
+        "failed": "failed"
+      }
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.repairs < 2"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "repairs": 1
+        }
+      },
+      "ends": {
+        "next": "fix",
+        "failed": "failed"
+      }
+    },
+    "fix": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "text": "Repair the actual verification failures, preserving the accepted scope.",
+        "access": "write",
+        "sentinel": "blocked"
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed",
+        "blocked": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "0dbb75de1c191af62c0d5ac7a69abeac66089b5449834a33ec0458fed87a1476"
+}

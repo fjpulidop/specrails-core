@@ -157,3 +157,25 @@ describe('official OpenSpec CLI and confined role tools', () => {
     } finally { await client.close() }
   }, 60000)
 })
+
+
+describe('declared OpenSpec artifact permissions', () => {
+  it.each(['none', 'tasks-checkboxes', 'all'] as const)('enforces %s independently of role name and source access', async artifacts => {
+    await author()
+    const tools = new OpenSpecTools({ ...architect.context, role: 'security-reviewer', access: 'read', artifacts, openspecSkill: 'openspec-ff-change' })
+    await tools.execute({ action: 'load_skill' })
+    await tools.execute({ action: 'instructions', artifact: 'proposal' })
+    const proposal = { action: 'write_artifact' as const, path: 'proposal.md', content: readFileSync(path.join(root, 'openspec/changes/medical-alert/proposal.md'), 'utf8') + '\nExtra detail.\n' }
+    if (artifacts === 'all') await expect(tools.execute(proposal)).resolves.toHaveProperty('written')
+    else await expect(tools.execute(proposal)).rejects.toThrow()
+    await tools.execute({ action: 'instructions', artifact: artifacts === 'tasks-checkboxes' ? 'apply' : 'tasks' })
+    const tasks = readFileSync(path.join(root, 'openspec/changes/medical-alert/tasks.md'), 'utf8')
+    const update = { action: 'write_artifact' as const, path: 'tasks.md', content: tasks.replace('[ ]', '[x]') }
+    if (artifacts === 'none') await expect(tools.execute(update)).rejects.toThrow()
+    else await expect(tools.execute(update)).resolves.toHaveProperty('written')
+    if (artifacts === 'tasks-checkboxes') await expect(tools.execute({ ...update, content: update.content + '\nChanged requirement.\n' })).rejects.toThrow('checkboxes')
+    const progress = { action: 'write_progress' as const, progress: { summary: 'Reviewed files', completedTasks: [], nextTasks: [], checks: [], blockers: [] } }
+    if (artifacts === 'none') await expect(tools.execute(progress)).rejects.toThrow()
+    else await expect(tools.execute(progress)).resolves.toHaveProperty('record')
+  }, 60000)
+})

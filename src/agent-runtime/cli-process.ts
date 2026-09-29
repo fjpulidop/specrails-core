@@ -61,6 +61,9 @@ export function cliProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.
 }
 export const runCliProcess: CliProcessRunner = async (raw, options) => {
   if (options.signal?.aborted) throw new AgentExecutionError('Agent cancelled', 'aborted')
+  for (const value of [options.timeoutMs, options.idleTimeoutMs]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647)) throw new AgentExecutionError('Invalid process timeout', 'invalid_limit')
+  }
   const env = cliProcessEnvironment(options.env ?? process.env)
   const invocation = process.platform === 'win32' && raw.command === 'kimi' ? windowsKimiInvocation(raw, { env }) : raw
   return new Promise<CliProcessResult>((resolve, reject) => {
@@ -80,11 +83,11 @@ export const runCliProcess: CliProcessRunner = async (raw, options) => {
     }
     const fail = (error: Error): void => { failure ??= error; terminate() }
     const abort = (): void => fail(new AgentExecutionError('Agent cancelled', 'aborted'))
-    const timer = setTimeout(() => fail(new AgentExecutionError(`Agent reached the total execution limit (${options.timeoutMs} ms)`, 'timeout')), options.timeoutMs)
+    const timer = options.timeoutMs > 0 ? setTimeout(() => fail(new AgentExecutionError(`Agent reached the total execution limit (${options.timeoutMs} ms)`, 'timeout')), options.timeoutMs) : undefined
     let idleTimer: ReturnType<typeof setTimeout> | undefined
     const activity = (): void => {
       if (idleTimer) clearTimeout(idleTimer)
-      if (options.idleTimeoutMs !== undefined && !failure) idleTimer = setTimeout(() => fail(new AgentExecutionError(`Agent produced no output for ${options.idleTimeoutMs} ms (idle timeout)`, 'idle_timeout')), options.idleTimeoutMs)
+      if (options.idleTimeoutMs !== undefined && options.idleTimeoutMs > 0 && !failure) idleTimer = setTimeout(() => fail(new AgentExecutionError(`Agent produced no output for ${options.idleTimeoutMs} ms (idle timeout)`, 'idle_timeout')), options.idleTimeoutMs)
     }
     activity()
     options.signal?.addEventListener('abort', abort, { once: true })

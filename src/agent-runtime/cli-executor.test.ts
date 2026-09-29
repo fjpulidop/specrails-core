@@ -287,6 +287,18 @@ describe('portable child process transport', () => {
     const output = await runCliProcess({ command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'], stdin: input.prompt + '\n¡hola! 日本語' }, { cwd: input.cwd, timeoutMs: 5000 })
     expect(output).toMatchObject({ exitCode: 0, stdout: input.prompt + '\n¡hola! 日本語' })
   })
+  it('keeps explicitly untimed children alive until completion or cancellation', async () => {
+    const input = request()
+    const completed = await runCliProcess({ command: process.execPath, args: ['-e', "setTimeout(() => process.stdout.write('done'), 40)"] }, { cwd: input.cwd, timeoutMs: 0, idleTimeoutMs: 0 })
+    expect(completed).toMatchObject({ exitCode: 0, stdout: 'done' })
+    const controller = new AbortController()
+    const pending = runCliProcess({ command: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }, { cwd: input.cwd, timeoutMs: 0, idleTimeoutMs: 0, signal: controller.signal })
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'aborted' })
+  })
+  it.each([-1, 0.5, NaN, Infinity, 2_147_483_648])('rejects invalid timer %s before launching a child', async timeoutMs => {
+    await expect(runCliProcess({ command: 'must-not-launch', args: [] }, { cwd: request().cwd, timeoutMs })).rejects.toMatchObject({ code: 'invalid_limit' })
+  })
   it('waits for a hung owned child to terminate on timeout and cancellation', async () => {
     const input = request(), invocation = { command: process.execPath, args: ['-e', 'setInterval(()=>{},1000)'] }
     await expect(runCliProcess(invocation, { cwd: input.cwd, timeoutMs: 30 })).rejects.toMatchObject({ code: 'timeout' })
@@ -312,4 +324,12 @@ describe('Claude Opus generation', () => {
     const args = buildCliInvocation('codex', request({ model: 'opus' })).args
     expect(args[args.indexOf('--model') + 1]).toBe('opus')
   })
+})
+
+
+it('preserves every built-in argv byte against the C0 baseline', () => {
+  const baseline = JSON.parse(readFileSync(new URL('./__fixtures__/builtin-cli-invocations.json', import.meta.url), 'utf8')) as { sourceCommit: string; fixtures: Array<{ provider: CliProvider; request: AgentRequest; options: { geminiPolicyFile?: string; kimiAgentFile?: string }; invocation: unknown }> }
+  expect(baseline.sourceCommit).toBe('6ab6b3ce')
+  expect(baseline.fixtures).toHaveLength(12)
+  for (const fixture of baseline.fixtures) expect(buildCliInvocation(fixture.provider, fixture.request, fixture.options), `${fixture.provider}/${fixture.request.role}`).toEqual(fixture.invocation)
 })

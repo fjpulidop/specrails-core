@@ -1,11 +1,21 @@
 import { describe, it, expect } from 'vitest'
-import { roleInstructions, rolePromptDefaults } from './prompts.js'
-import type { AgentRole } from './executor-types.js'
+import { correctionInstructions, roleInstructions, rolePromptDefaults } from './prompts.js'
+import type { BuiltinAgentRole } from './executor-types.js'
 import type { PipelineContext } from '../pipeline/pipeline-state.js'
 const context = { artifactRoot: '/repo', repositories: [{ id: 'app', name: 'App', path: '/repo' }], specs: [{ title: 'A feature', description: 'Implement the requested feature', acceptanceCriteria: ['Works'], repositoryIds: ['app'] }] } as PipelineContext
 
 describe('editable role definitions', () => {
-  it.each<AgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
+  it('focuses correction feedback without losing application failures or the complete evidence reference', () => {
+    const feedback = { verification: { valid: false, commands: [{ repositoryId: 'app', command: 'node', args: ['test.cjs'], exitCode: 1,
+      evidenceId: 'check-1', output: 'AssertionError: expected 2, actual 1\n    at solve (/repo/source.cjs:42:7)\n    at run (node:internal/modules/loader:10:3)\n    at node:internal/main/run_main_module:17:1' }] } }
+    const legacy = correctionInstructions('developer', feedback)
+    const focused = correctionInstructions('developer', feedback, { focusedEvidence: true })
+    expect(legacy).toContain('node:internal/modules/loader')
+    expect(focused).not.toContain('node:internal/')
+    for (const value of ['expected 2, actual 1', '/repo/source.cjs:42:7', 'check-1', 'read_verification_evidence', 'same JSON summary', 'unchanged permissions and obligations']) expect(focused).toContain(value)
+    expect(feedback.verification.commands[0].output).toContain('node:internal/modules/loader')
+  })
+  it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
     expect(roleInstructions(role, context, 'change')).toContain(defaults[role])
     const prompt = roleInstructions(role, context, 'change', { definition: 'My custom definition', verification: [{ repositoryId: 'app', command: 'npm', args: ['test'] }], criteria: [{ specId: 'ticket', criterionIndex: 0, requirement: 'Works' }] })

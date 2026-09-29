@@ -5,11 +5,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { isMain } from './release-utils.mjs'
 
-export const RUNTIME_FILES = ['src/agent-runtime/core-host.test.ts', 'src/agent-runtime/compact-runtime.test.ts']
+export const RUNTIME_FILES = ['src/agent-runtime/core-host.test.ts', 'src/agent-runtime/compact-runtime.test.ts',
+  'src/agent-runtime/engine/fork.test.ts', 'src/agent-runtime/engine/implementation-compiler.test.ts']
 export const RUNTIME_PARTS = 3
 
 // Keep parameterized cases declared on one line together. Distribute each
-// file independently so every runner gets a share of both expensive suites.
+// file independently so every runner gets a share of the expensive suites.
 export function partitionTests(tests, count = RUNTIME_PARTS) {
   assert.ok(Number.isInteger(count) && count > 0, 'Invalid partition count')
   assert.ok(tests.length > 0, 'Runtime test inventory is empty')
@@ -60,7 +61,7 @@ export function runPartition(partition, { listOnly = false } = {}) {
       return JSON.parse(readFileSync(output, 'utf8'))
     }
     const inventory = collect(RUNTIME_FILES, 'all')
-    assert.equal(new Set(inventory.map(test => test.file)).size, RUNTIME_FILES.length, 'Both runtime suites must be collected')
+    assert.equal(new Set(inventory.map(test => test.file)).size, RUNTIME_FILES.length, 'All runtime suites must be collected')
     const selected = partitionTests(inventory)[Number(partition.slice(-1)) - 1]
     const filters = [...new Set(selected.map(test => `${path.relative(process.cwd(), test.file).split(path.sep).join('/')}:${test.location.line}`))]
     // Validate the runner's interpretation as well as our partition algorithm:

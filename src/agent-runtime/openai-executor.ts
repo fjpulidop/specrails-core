@@ -1,7 +1,7 @@
 import { readVerificationEvidence } from '../pipeline/pipeline-state.js'
 import { assertEffortSupported, unknownCapabilities } from './capabilities.js'
 import { OpenSpecTools, OPENSPEC_TOOL_DEFINITION, openSpecPrompt } from './openspec.js'
-import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentEvent, type AgentResult, type RuntimeProviderConfig } from './executor-types.js'
+import { AgentExecutionError, unknownUsage, normalizeAgentRequest, isBuiltinRole, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentEvent, type AgentResult, type RuntimeProviderConfig } from './executor-types.js'
 import { WorkspaceTools } from './workspace-tools.js'
 import { ChatClient, record, type ChatMessage } from './compact/chat-client.js'
 import { DEFAULT_CONTEXT_WINDOW_TOKENS, runToolLoop } from './compact/guarded-loop.js'
@@ -34,12 +34,13 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     if (limits.maxCostUsd !== undefined) throw new AgentExecutionError('A strict USD cap requires an executor with a native spending limit; OpenAI-compatible endpoints do not provide one. Use a token cap or an executor with native cost enforcement.', 'cost_limit_unsupported')
   }
   async execute(request: AgentRequest): Promise<AgentResult> {
-    validateAgentRequest(request)
+    request = normalizeAgentRequest(request)
+    if (request.nativeCommand) throw new AgentExecutionError('OpenAI-compatible providers do not support native commands', 'native_command_unsupported')
     assertEffortSupported(request, this.capabilities())
     this.validateLimits(request)
     if (!request.model?.trim()) throw new AgentExecutionError('OpenAI-compatible execution requires a model', 'invalid_model')
     const controller = new AbortController()
-    const toolset = new WorkspaceTools(request.cwd, request.allowedRoots, request.role)
+    const toolset = new WorkspaceTools(request.cwd, request.allowedRoots, request.access!)
     const openspec = request.openspec ? new OpenSpecTools(request.openspec, controller.signal) : undefined
     const evidenceScope = request.openspec?.evidenceScope && request.role !== 'architect' ? request.openspec.evidenceScope : undefined
     const definitions = [...toolset.definitions(), ...(openspec ? [OPENSPEC_TOOL_DEFINITION] : []), ...(evidenceScope ? [{ type: 'function', function: { name: 'read_verification_evidence', description: 'Read host verification evidence and source files with opaque IDs and bounded cursors. List to discover IDs.', parameters: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, section: { type: 'string', enum: ['summary', 'stdout', 'stderr', 'source'] }, sourceId: { type: 'string' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } } } } }] : [])]
@@ -48,10 +49,12 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     // The compact pipelines are several bounded model calls per role (the
     // architect alone is ~8); a role budget sized for one agentic call would
     // cut them off. Scale the DEFAULT only — an explicit timeout is respected.
-    const compact = resolveAgentLoop(this.provider) === 'compact' && request.openspec !== undefined
+    const compact = isBuiltinRole(request.role) && request.instructions === 'role' && resolveAgentLoop(this.provider) === 'compact' && request.openspec !== undefined
     const timeoutMs = request.timeoutMs ?? this.options.defaultTimeoutMs ?? (compact ? 45 * 60_000 : 15 * 60_000)
-    const idleTimeoutMs = this.options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
-    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) throw new AgentExecutionError('timeoutMs must be a positive integer', 'invalid_limit')
+    const idleTimeoutMs = request.idleTimeoutMs ?? this.options.idleTimeoutMs ?? IDLE_TIMEOUT_MS
+    for (const value of [timeoutMs, idleTimeoutMs]) {
+      if (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647) throw new AgentExecutionError('Timeouts must be nonnegative timer integers', 'invalid_limit')
+    }
     const env = this.options.env ?? process.env
     const key = this.provider.apiKeyEnv ? env[this.provider.apiKeyEnv] : undefined
     if (this.provider.apiKeyEnv && !key) throw new AgentExecutionError(`Credential environment variable ${this.provider.apiKeyEnv} is not set`, 'missing_credential')
@@ -68,10 +71,11 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     // group role while it is still producing (observed: groups 1–2 verified
     // green, group 3 cut mid-patch, whole run failed). A genuine hang is the
     // idle watchdog's job: no tool call, reply or usage for IDLE_TIMEOUT_MS.
-    let timer = setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs)
-    const resetDeadline = (): void => { clearTimeout(timer); timer = setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs) }
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const resetDeadline = (): void => { clearTimeout(timer); timer = timeoutMs > 0 ? setTimeout(() => controller.abort(new Error('Agent timeout')), timeoutMs) : undefined }
+    resetDeadline()
     let lastActivity = Date.now()
-    const idle = compact ? setInterval(() => { if (Date.now() - lastActivity > idleTimeoutMs) controller.abort(new Error('Agent idle timeout')) }, Math.min(15_000, Math.max(50, Math.floor(idleTimeoutMs / 4)))) : undefined
+    const idle = (compact || request.idleTimeoutMs !== undefined) && idleTimeoutMs > 0 ? setInterval(() => { if (Date.now() - lastActivity > idleTimeoutMs) controller.abort(new Error('Agent idle timeout')) }, Math.min(15_000, Math.max(50, Math.floor(idleTimeoutMs / 4)))) : undefined
     idle?.unref?.()
     const onEvent = request.onEvent || idle ? (event: AgentEvent): void => { lastActivity = Date.now(); request.onEvent?.(event) } : undefined
     const client = new ChatClient({ endpoint, headers, fetch: this.options.fetch ?? globalThis.fetch, signal: controller.signal, model: request.model, maxTokens: request.maxTokens, maxCostUsd: request.maxCostUsd, onEvent, thinking: request.thinking ?? 'off', ...(this.provider.supportsReasoningEffort && request.effort ? { reasoningEffort: request.effort } : {}), effortSupported: this.provider.supportsReasoningEffort === true })
@@ -81,13 +85,13 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     try {
       // Compact pipelines need the official workflow to drive; a plain role task
       // without an OpenSpec binding runs the guarded loop instead.
-      if (resolveAgentLoop(this.provider) === 'compact' && openspec) {
+      if (compact && openspec) {
         compactMode = true
         const compact: CompactEnv = { client, request, inputs: extractPromptInputs(request.prompt), toolset, openspec, contextWindowTokens, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), resetDeadline, signal: controller.signal, onEvent, guardrails: request.guardrails, stance: request.stance }
         return request.role === 'architect' ? await runCompactArchitect(compact) : request.role === 'developer' ? await runCompactDeveloper(compact) : await runCompactReviewer(compact)
       }
       const messages: ChatMessage[] = [
-        { role: 'system', content: `You execute one ${request.role} task. Use only the provided workspace tools. Allowed roots: ${JSON.stringify(toolset.roots)}. Working directory: ${toolset.cwd}. Return the complete requested final result. Do not coordinate another workflow. Execute only the assigned role and its supplied OpenSpec workflow.` },
+        ...(request.instructions === 'none' ? [] : [{ role: 'system' as const, content: `You execute one ${request.role} task. Use only the provided workspace tools. Allowed roots: ${JSON.stringify(toolset.roots)}. Working directory: ${toolset.cwd}. Return the complete requested final result. Do not coordinate another workflow. Execute only the assigned role and its supplied OpenSpec workflow.` }]),
         { role: 'user', content: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt },
       ]
       const { text } = await runToolLoop({

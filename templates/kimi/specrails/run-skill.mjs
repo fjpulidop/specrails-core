@@ -231,6 +231,7 @@ export function parseRunnerArgs(argv) {
     attachmentPaths: [],
     extraPrompt: undefined,
     plainPromptStdin: false,
+    renderOnly: false,
   }
   let positionalArgs
   const seenSingleValueFlags = new Set()
@@ -251,8 +252,14 @@ export function parseRunnerArgs(argv) {
       parsed.sessionId = value
       continue
     }
+    if (token === '--render-only') {
+      if (parsed.renderOnly) throw new RunnerUsageError('--render-only may be supplied once')
+      parsed.renderOnly = true
+      continue
+    }
     if (token === PLAIN_PROMPT_STDIN_FLAG) {
-      if (parsed.plainPromptStdin) {
+      if (parsed.renderOnly && parsed.plainPromptStdin) throw new RunnerUsageError('--render-only requires a skill')
+  if (parsed.plainPromptStdin) {
         throw new RunnerUsageError(
           `${PLAIN_PROMPT_STDIN_FLAG} may be supplied once`,
         )
@@ -301,6 +308,7 @@ export function parseRunnerArgs(argv) {
     parsed.rawArgs = positionalArgs
   }
 
+  if (parsed.renderOnly && parsed.plainPromptStdin) throw new RunnerUsageError('--render-only requires a skill')
   if (parsed.plainPromptStdin) {
     for (const flag of ['--skill', '--args', '--prompt', '--attachment']) {
       if (
@@ -594,6 +602,12 @@ export async function runSkillCli(argv, dependencies = {}) {
   }
   const scriptPath = dependencies.scriptPath ?? process.argv[1]
   const providerRoot = resolveProviderRoot(scriptPath)
+  if (parsedArgs.renderOnly) {
+    const { prompt } = prepareSkillLaunch({ ...parsedArgs, providerRoot }, dependencies)
+    assertManagedPrompt(prompt)
+    ;(dependencies.writeStdout ?? (text => process.stdout.write(text)))(JSON.stringify({ prompt }) + '\n')
+    return 0
+  }
   if (parsedArgs.plainPromptStdin) {
     const readStdin =
       dependencies.readStdin ??

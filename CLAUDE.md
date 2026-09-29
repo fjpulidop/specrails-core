@@ -23,8 +23,8 @@ src/installer/
 src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
 src/shared/                   helpers shared by the CLIs (argument parsing)
-templates/                    sr-* roles, implement/batch-implement/retry, provider settings, Kimi runner
-integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.0)
+templates/                    sr-* roles, implement/retry, provider settings, Kimi runner
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.1)
 ```
 
 ## Commands

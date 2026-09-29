@@ -1,0 +1,143 @@
+{
+  "schemaVersion": 1,
+  "id": "quick-sdd",
+  "title": "Quick Sdd",
+  "journal": "ledger-only",
+  "change": "new",
+  "entry": "init",
+  "maxTransitions": 100,
+  "roles": [],
+  "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "artifactRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
+    },
+    "work": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "nativeCommand": {
+          "id": "opsx:ff",
+          "args": "{{run.changeId}}"
+        },
+        "access": "write",
+        "sentinel": "blocked"
+      },
+      "ends": {
+        "next": "validate",
+        "failed": "failed",
+        "blocked": "failed"
+      }
+    },
+    "validate": {
+      "kind": "openspec-validate",
+      "params": {
+        "change": "{{run.changeId}}"
+      },
+      "ends": {
+        "pass": "apply",
+        "fail": "repair-guard",
+        "failed": "failed"
+      }
+    },
+    "apply": {
+      "kind": "prompt",
+      "params": {
+        "engine": {
+          "provider": "fixture"
+        },
+        "nativeCommand": {
+          "id": "opsx:apply",
+          "args": "{{run.changeId}}"
+        },
+        "access": "write",
+        "sentinel": "blocked"
+      },
+      "ends": {
+        "next": "check",
+        "failed": "failed",
+        "blocked": "failed"
+      }
+    },
+    "check": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "archive",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "archive": {
+      "kind": "openspec-archive",
+      "params": {
+        "change": "{{run.changeId}}"
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.artifactRepairs < 1"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "artifactRepairs": 1
+        }
+      },
+      "ends": {
+        "next": "work",
+        "failed": "failed"
+      }
+    }
+  },
+  "version": "a6bd20e682ad6b47f8a9c09379512e26afe3dfdd78b3c40703e355de7e5eb804"
+}

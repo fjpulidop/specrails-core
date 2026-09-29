@@ -18,10 +18,10 @@ export interface ProviderInvocation {
   provider: string
   /** Requested model; absent means the provider selected its default. */
   model?: string
-  status: 'succeeded' | 'failed'
-  /** Entire executor wall time, including its native tools and process startup. */
-  durationMs: number
-  toolCalls: number
+  status: 'succeeded' | 'failed' | 'interrupted'
+  /** Entire executor wall time; unknown after losing an executor process. */
+  durationMs: number | null
+  toolCalls: number | null
   usage: CacheTokenUsage & { inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
 }
 export const CACHE_TOKEN_KEYS = ['uncachedInputTokens', 'cacheReadInputTokens', 'cacheWriteInputTokens'] as const

@@ -14,6 +14,11 @@ export interface RoleExecutionState {
   sessions: Partial<Record<AgentRole, RoleSession>>
   routes: Partial<Record<AgentRole, { tier: 'base' | 'escalation'; reason: string; attemptId: string }>>
 }
+/** Bound by the engine to one run/scope/node; the legacy adapter remains file-backed. */
+export interface RoleStatePort {
+  read(): RoleExecutionState
+  write(state: RoleExecutionState): void
+}
 /** Host-owned auxiliary state lives under the workflow's existing run lease.
  * A corrupted packet fails explicitly; it is never used as missing context. */
 export function readRoleState(directory: string): RoleExecutionState {

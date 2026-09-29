@@ -1,3 +1,4 @@
+import { setTimeout as delay } from 'node:timers/promises'
 import { AgentExecutionError, type AgentEvent, type AgentUsage } from '../executor-types.js'
 import { sumCacheUsage } from '../efficiency-types.js'
 
@@ -41,7 +42,7 @@ export function patientFetchInit(): Pick<RequestInit, 'dispatcher'> {
 }
 const RETRY_DELAY_MS = 3000
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => { const timer = setTimeout(resolve, ms); signal.addEventListener('abort', () => { clearTimeout(timer); reject(signal.reason) }, { once: true }) })
+  return delay(ms, undefined, { signal })
 }
 interface ChatCompletion { message: Record<string, unknown>; finishReason: unknown }
 interface ChatClientOptions {

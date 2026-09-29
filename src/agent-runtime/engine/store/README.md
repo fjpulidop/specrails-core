@@ -1,0 +1,9 @@
+# Project memory
+
+`SqliteProjectStore.open(backlogRoot)` owns `<backlogRoot>/.specrails/engine-store.sqlite`. It implements the public LangGraph `BaseStore` contract with WAL, FULL synchronization, bounded JSON items, transactional batches, metadata filters, component namespace matching and stable pagination. Its private file/directory rules are shared with run storage. Read-only connections never change permissions. Semantic search and vector indexing fail explicitly because no embedding service is configured.
+
+Composition hands pieces a `ProjectMemory` port from `forAccess`, restricted to their declared `storeAccess` and namespace allowlist. Role turns can access their own `roles/<id>/sessions` metadata and `review/notes`; verification accesses `verification/known-commands`. Other pieces receive no access. Keys bind the candidate, scope, repositories, role descriptor and selected tier or verification plan. Review notes are limited to 4,000 characters and never restore an opaque provider session from another run. Real role-session continuity stays in the run ledger, shared only inside its declared execution scope.
+
+Known commands are observations, not verification receipts. Verification still executes the admitted checks; project memory cannot certify a candidate, skip a required check or charge an invocation. Advisory memory failures are reported as transient spans and do not repeat completed provider effects. Core excludes this exact database and its WAL/SHM sidecars from candidate fingerprints. Forks share the project store but never clone it as run history.
+
+Tests cover project isolation, reopen/deletion, read-only access, atomic rollback, JSON filters, namespace matching and capability confinement. Piece integration tests exercise actual SQLite writes, bounded review-note reads, candidate invalidation and two fresh physical verification executions.

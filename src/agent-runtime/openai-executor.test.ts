@@ -116,6 +116,32 @@ describe('OpenAI-compatible coding executor', () => {
     await expect(pending).rejects.toMatchObject({ code: 'aborted' })
     await expect(new OpenAICompatibleExecutor(provider, { fetch }).execute(request({ timeoutMs: 10 }))).rejects.toMatchObject({ code: 'timeout' })
   })
+  it('supports explicitly untimed requests while preserving host cancellation', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, options) => {
+      await new Promise(resolve => setTimeout(resolve, 30))
+      expect(options!.signal!.aborted).toBe(false)
+      return response({ content: 'done' })
+    })
+    const executor = new OpenAICompatibleExecutor(provider, { fetch, defaultTimeoutMs: 1 })
+    await expect(executor.execute(request({ timeoutMs: 0, idleTimeoutMs: 0 }))).resolves.toMatchObject({ text: 'done' })
+    const hung = vi.fn<typeof globalThis.fetch>(async (_url, options) => new Promise((_resolve, reject) => {
+      const signal = options!.signal!
+      if (signal.aborted) reject(new Error('cancelled'))
+      signal.addEventListener('abort', () => reject(new Error('cancelled')), { once: true })
+    }))
+    const controller = new AbortController()
+    const pending = new OpenAICompatibleExecutor(provider, { fetch: hung }).execute(request({ timeoutMs: 0, idleTimeoutMs: 0, signal: controller.signal }))
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: 'aborted' })
+  })
+  it('enforces an explicit idle bound independently of an untimed HTTP request', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_url, options) => new Promise((_resolve, reject) => {
+      const signal = options!.signal!
+      if (signal.aborted) reject(new Error('idle'))
+      signal.addEventListener('abort', () => reject(new Error('idle')), { once: true })
+    }))
+    await expect(new OpenAICompatibleExecutor(provider, { fetch }).execute(request({ timeoutMs: 0, idleTimeoutMs: 10 }))).rejects.toMatchObject({ code: 'timeout', message: expect.stringContaining('idle timeout') })
+  })
   it('works against a real offline local HTTP endpoint with no key or proprietary SDK', async () => {
     const server = createServer((incoming, outgoing) => {
       expect(incoming.url).toBe('/v1/chat/completions')

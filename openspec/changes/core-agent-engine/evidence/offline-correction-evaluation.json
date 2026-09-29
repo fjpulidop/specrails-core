@@ -1,0 +1,531 @@
+{
+  "schemaVersion": 1,
+  "isDefinitionEvaluation": true,
+  "definitionHash": "e1aea44e144c42fe39ab782e9ce2df6e2253163ee3a1e503a966c2d99aaf45c4",
+  "acceptedCases": 2,
+  "allCasesAccepted": true,
+  "experiment": "same-model",
+  "noExtraInvocations": true,
+  "mode": "offline",
+  "runtimeIdentity": {
+    "packageVersion": "6.0.1",
+    "workflowVersion": "7",
+    "instructionsVersion": "10",
+    "packageIntegrity": "sha256:5b87aadec634073f85a5b2f786590cba0b0b78a3e5df880a8bc0489913170fd0",
+    "apiVersion": 1
+  },
+  "corpusHash": "2cb5d97fb854ed3519e09fb258ba954d902c73856ba375960c447aa54d817d9d",
+  "measurement": "synthetic-fixture-usage; no actual AI savings measured",
+  "monetaryTarget": 0.2,
+  "monetaryConclusion": "inconclusive",
+  "groups": {
+    "full": {
+      "samples": 1,
+      "independentlyAccepted": 1,
+      "costPerAcceptedUsd": null,
+      "medianActiveDurationMs": 12287,
+      "minActiveDurationMs": 12287,
+      "maxActiveDurationMs": 12287,
+      "standardDeviationMs": 0
+    },
+    "optimized": {
+      "samples": 1,
+      "independentlyAccepted": 1,
+      "costPerAcceptedUsd": null,
+      "medianActiveDurationMs": 12290,
+      "minActiveDurationMs": 12290,
+      "maxActiveDurationMs": 12290,
+      "standardDeviationMs": 0
+    }
+  },
+  "noObservedQualityDrop": true,
+  "promptPairs": [
+    {
+      "caseId": "verification-correction",
+      "repeat": 0,
+      "fullBytes": 2879,
+      "optimizedBytes": 1595,
+      "reduction": 0.4459881903438694
+    }
+  ],
+  "correctionPromptTargetMet": true,
+  "sampleLimitations": "Small descriptive paired sample; does not establish a universal quality or savings guarantee.",
+  "stopReason": null,
+  "reportedSpendUsd": 0,
+  "observations": [
+    {
+      "caseId": "verification-correction",
+      "repeat": 0,
+      "mode": "full",
+      "order": [
+        "full",
+        "optimized"
+      ],
+      "taskHash": "94b467a0625e7fae15e58274b5051092a707ed9fb818a49343af503dd4e817e3",
+      "oracleHash": "ee5c913c4465978916409478b96229b45d0faa7b984575dbbfc676e762f5e0d2",
+      "repositories": [
+        {
+          "id": "math",
+          "baseSha": "48cc51c805f99d7a9eb1a236d0ff3fa79ba03dc6"
+        }
+      ],
+      "configHash": "3ae2b479fbc50b71941970c4ed51ea1442b3d3130fff9b0f763df69d35e33854",
+      "runtimeIdentity": {
+        "packageVersion": "6.0.1",
+        "workflowVersion": "7",
+        "instructionsVersion": "10",
+        "packageIntegrity": "sha256:5b87aadec634073f85a5b2f786590cba0b0b78a3e5df880a8bc0489913170fd0",
+        "apiVersion": 1
+      },
+      "cacheState": "uncontrolled-provider-cache; fresh workspace and role sessions",
+      "status": "succeeded",
+      "independentAccepted": true,
+      "activeDurationMs": 12287,
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 9,
+          "measuredAttempts": 9,
+          "durationMs": 12181,
+          "agentDurationMs": 5309.749250000001,
+          "providerCalls": 4,
+          "toolCalls": 0,
+          "inputTokens": 7316,
+          "outputTokens": 400,
+          "costUsd": 0,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "implement",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 12039,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "architect",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 3848,
+            "agentDurationMs": 2795.244583,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 1946,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1511,
+            "agentDurationMs": 787.0723340000004,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 2417,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "verify",
+            "attempts": 2,
+            "measuredAttempts": 2,
+            "durationMs": 1985,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "fixer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1629,
+            "agentDurationMs": 816.8969160000006,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 720,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "reviewer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1907,
+            "agentDurationMs": 910.5354169999991,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 2233,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "archive",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 699,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "done",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 60,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          }
+        ]
+      },
+      "invocations": [
+        {
+          "kind": "initial",
+          "promptBytes": 7783,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "initial",
+          "promptBytes": 9669,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "correction",
+          "promptBytes": 2879,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "initial",
+          "promptBytes": 8944,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        }
+      ],
+      "failures": [
+        {
+          "role": "verify",
+          "status": "succeeded",
+          "error": null
+        }
+      ]
+    },
+    {
+      "caseId": "verification-correction",
+      "repeat": 0,
+      "mode": "optimized",
+      "order": [
+        "full",
+        "optimized"
+      ],
+      "taskHash": "94b467a0625e7fae15e58274b5051092a707ed9fb818a49343af503dd4e817e3",
+      "oracleHash": "ee5c913c4465978916409478b96229b45d0faa7b984575dbbfc676e762f5e0d2",
+      "repositories": [
+        {
+          "id": "math",
+          "baseSha": "470012b22dae607adc1fa1c7972ecda99c47eab2"
+        }
+      ],
+      "configHash": "c6a760a82d808d71fac8fcf48385fa95c565935b7cbcd4bc93b10e6e548b5bf2",
+      "runtimeIdentity": {
+        "packageVersion": "6.0.1",
+        "workflowVersion": "7",
+        "instructionsVersion": "10",
+        "packageIntegrity": "sha256:5b87aadec634073f85a5b2f786590cba0b0b78a3e5df880a8bc0489913170fd0",
+        "apiVersion": 1
+      },
+      "cacheState": "uncontrolled-provider-cache; fresh workspace and role sessions",
+      "status": "succeeded",
+      "independentAccepted": true,
+      "activeDurationMs": 12290,
+      "metrics": {
+        "schemaVersion": 1,
+        "total": {
+          "attempts": 9,
+          "measuredAttempts": 9,
+          "durationMs": 12176,
+          "agentDurationMs": 5420.581792000001,
+          "providerCalls": 4,
+          "toolCalls": 0,
+          "inputTokens": 7028,
+          "outputTokens": 400,
+          "costUsd": 0,
+          "uncachedInputTokens": null,
+          "cacheReadInputTokens": null,
+          "cacheWriteInputTokens": null
+        },
+        "phases": [
+          {
+            "stepId": "implement",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 12055,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "architect",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 3976,
+            "agentDurationMs": 2901.115167,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 1969,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "developer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1553,
+            "agentDurationMs": 814.6656670000011,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 2422,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "verify",
+            "attempts": 2,
+            "measuredAttempts": 2,
+            "durationMs": 1936,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "fixer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1654,
+            "agentDurationMs": 827.1340830000008,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 399,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "reviewer",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 1873,
+            "agentDurationMs": 877.666874999999,
+            "providerCalls": 1,
+            "toolCalls": 0,
+            "inputTokens": 2238,
+            "outputTokens": 100,
+            "costUsd": 0,
+            "uncachedInputTokens": null,
+            "cacheReadInputTokens": null,
+            "cacheWriteInputTokens": null,
+            "providers": [
+              "fixture"
+            ],
+            "models": [
+              "fixture"
+            ]
+          },
+          {
+            "stepId": "archive",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 683,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          },
+          {
+            "stepId": "done",
+            "attempts": 1,
+            "measuredAttempts": 1,
+            "durationMs": 58,
+            "agentDurationMs": 0,
+            "providerCalls": 0,
+            "toolCalls": 0,
+            "inputTokens": null,
+            "outputTokens": null,
+            "costUsd": null,
+            "uncachedInputTokens": 0,
+            "cacheReadInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "providers": [],
+            "models": []
+          }
+        ]
+      },
+      "invocations": [
+        {
+          "kind": "initial",
+          "promptBytes": 7875,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "initial",
+          "promptBytes": 9689,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "correction",
+          "promptBytes": 1595,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        },
+        {
+          "kind": "initial",
+          "promptBytes": 8964,
+          "provider": "fixture",
+          "model": "fixture",
+          "status": "succeeded"
+        }
+      ],
+      "failures": [
+        {
+          "role": "verify",
+          "status": "succeeded",
+          "error": null
+        }
+      ]
+    }
+  ]
+}

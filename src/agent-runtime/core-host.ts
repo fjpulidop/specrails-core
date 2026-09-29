@@ -6,25 +6,25 @@ import {
   fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, validatePipelineContext, validateVerificationRequest,
   type PipelineContext,
 } from '../pipeline/pipeline-state.js'
-import { normalizeRuntimeConfig } from './config.js'
+import { normalizeRuntimeConfig, resolveRoleDescriptor, roleIds } from './config.js'
 import { createExecutorRegistry, type ExecutorRegistry } from './executors.js'
 import type { AgentEvent, AgentRole, RuntimeConfig, AgentEventRole } from './executor-types.js'
 import { archive, child, journal, parseAgentObject, SLUG } from './graph/artifacts.js'
 import { coreNodes } from './graph/nodes.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
 import { createRoleInvoker } from './graph/roles.js'
-import { CORE_NODE_ORDER, CoreState, type CoreStateType } from './graph/state.js'
+import { CORE_NODE_ORDER, CoreState, type CoreNodeId, type CoreStateType } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { assertEffortSupported } from './capabilities.js'
 import { runtimePackageIntegrity, type RuntimeIdentity } from './runtime-identity.js'
 import { readWorkflowState, runWorkflow } from './workflow.js'
-import type { JsonValue, WorkflowEvent, WorkflowSpan, WorkflowState } from './workflow-types.js'
+import type { JsonValue, WorkflowDefinition, WorkflowEvent, WorkflowNode, WorkflowSpan, WorkflowState } from './workflow-types.js'
 
 export const RUNTIME_API_VERSION = 1
 export const CORE_WORKFLOW_VERSION = '7'
 export const CORE_PACKAGE_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version
 export function coreRuntimeIdentity(): RuntimeIdentity {
-  return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: 1 }
+  return { packageVersion: CORE_PACKAGE_VERSION, workflowVersion: CORE_WORKFLOW_VERSION, instructionsVersion: String(ROLE_INSTRUCTIONS_VERSION), packageIntegrity: runtimePackageIntegrity(), apiVersion: RUNTIME_API_VERSION }
 }
 export { parseAgentObject }
 
@@ -57,7 +57,7 @@ export async function preflightCoreWorkflow(options: Pick<CoreWorkflowOptions, '
   // is completed by the architect (or left explicitly unverified) at run time.
   if (config.verification.length) validateVerificationRequest(context, { kind: 'scoped', commands: config.verification })
   const registry = options.registry ?? createExecutorRegistry(config)
-  for (const selected of Object.values(config.agents)) {
+  for (const selected of roleIds(config).map(id => resolveRoleDescriptor(config, id))) {
     registry.validateLimits(selected.provider, config.limits ?? {})
     for (const tier of [selected, ...(selected.escalation ? [selected.escalation] : [])]) {
       if (tier.effort !== undefined) assertEffortSupported(tier, await registry.capabilities(selected.provider, tier.model))
@@ -66,9 +66,23 @@ export async function preflightCoreWorkflow(options: Pick<CoreWorkflowOptions, '
   return { context, config, registry }
 }
 
+/** The legacy graph's resume identity; extracting it must never change its fingerprint. */
+export function implementationWorkflowDefinition(
+  nodes: Record<CoreNodeId, WorkflowNode<CoreStateType>>,
+  { attempts, compactDeveloper }: { attempts: number; compactDeveloper: boolean },
+): WorkflowDefinition<CoreStateType> {
+  return {
+    id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, schema: CoreState, entry: 'architect',
+    // The compact developer finishes task groups over developer→verify passes
+    // that do not count as corrections (bounded: +2 passes each).
+    maxTransitions: attempts * 3 + 3 + (compactDeveloper ? attempts * 2 * 2 : 0),
+    nodes: Object.fromEntries(CORE_NODE_ORDER.map(id => [id, nodes[id]])),
+  }
+}
+
 /**
- * Runs the Core implementation graph: architect → developer → verify → review (→ fixer → verify → review on corrections)er → archive,
- * with bounded corrections routed back to the developer, an autonomous investigation pass
+ * Runs the Core implementation graph: architect → developer → verify → reviewer → archive,
+ * with bounded corrections through fixer → verify → reviewer, an autonomous investigation pass
  * before a low-confidence design asks the requester, real verification receipts, acceptance
  * evidence bound to the exact candidate, and an optional approval before archive.
  */
@@ -88,11 +102,11 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
     }
   }
   const prepared = prepareOpenSpec(context.artifactRoot, options.change, directory)
-  const openspec = Object.fromEntries((['architect', 'developer', 'reviewer'] as const).map(role => {
-    const provider = config.providers.find(item => item.id === config.agents[role].provider)
-    return [role, roleOpenSpecContext(prepared, context.artifactRoot, options.change, directory, role, provider?.kind === 'cli' ? provider.cli : 'claude')]
+  const openspec = Object.fromEntries(roleIds(config).filter(role => resolveRoleDescriptor(config, role).openspecSkill).map(role => {
+    const provider = config.providers.find(item => item.id === resolveRoleDescriptor(config, role).provider)
+    return [role, roleOpenSpecContext(prepared, context.artifactRoot, options.change, directory, resolveRoleDescriptor(config, role), provider?.kind === 'cli' ? provider.cli : 'claude')]
   })) as Record<AgentRole, ReturnType<typeof roleOpenSpecContext>>
-  for (const role of ['architect', 'developer', 'reviewer'] as const) await registry.get(config.agents[role].provider).validateOpenSpec?.(openspec[role])
+  for (const role of Object.keys(openspec)) await registry.get(resolveRoleDescriptor(config, role).provider).validateOpenSpec?.(openspec[role])
   const attempts = config.limits?.maxAttempts ?? 3
   const developerProvider = config.providers.find(item => item.id === config.agents.developer.provider)
   const compactDeveloper = developerProvider?.kind === 'openai-compatible' && (developerProvider.agentLoop ?? 'compact') === 'compact'
@@ -137,13 +151,6 @@ export async function runCoreWorkflow(options: CoreWorkflowOptions): Promise<Wor
       if (stepId === 'archive') return inspection.phases.archive.status === 'done'
       return true
     },
-    workflow: {
-      id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, schema: CoreState, entry: 'architect',
-      // The compact (small-model) developer finishes its task groups over
-      // several developer→verify passes that do not count as corrections, so
-      // the transition budget must cover them too (bounded: +2 passes each).
-      maxTransitions: attempts * 3 + 3 + (compactDeveloper ? attempts * 2 * 2 : 0),
-      nodes: Object.fromEntries(CORE_NODE_ORDER.map(id => [id, nodes[id]])),
-    },
+    workflow: implementationWorkflowDefinition(nodes, { attempts, compactDeveloper }),
   })
 }

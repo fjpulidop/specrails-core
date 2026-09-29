@@ -42,7 +42,7 @@ describe('template inventory', () => {
 
   it('ships only the runtime entry points as commands', () => {
     const cmds = readdirSync(path.join(TEMPLATES, 'commands', 'specrails')).sort()
-    expect(cmds).toEqual(['batch-implement.md', 'implement.md', 'retry.md'])
+    expect(cmds).toEqual(['implement.md', 'retry.md'])
   })
 
   it('does not ship a personas directory or enrich/merge-resolve codex skills', () => {

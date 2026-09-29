@@ -2,13 +2,13 @@ import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
 import { assertEffortSupported, cliCapabilities } from './capabilities.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
 import { toolEvent } from './tool-event.js'
-import { openSpecPrompt, writeOpenSpecBridge } from './openspec.js'
+import { openSpecPrompt, openSpecPolicy, writeOpenSpecBridge } from './openspec.js'
 import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { sumCacheUsage, type CacheTokenUsage } from './efficiency-types.js'
 import { normalizeKimiCliModel } from './kimi-model.js'
-import { AgentExecutionError, unknownUsage, validateAgentRequest, type AgentEvent, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type CliProvider } from './executor-types.js'
+import { AgentExecutionError, unknownUsage, normalizeAgentRequest, requestPolicy, isBuiltinRole, type AgentEvent, type AgentExecutor, type AgentLimits, type AgentRequest, type AgentResult, type AgentUsage, type CliProvider } from './executor-types.js'
 import { runCliProcess, type CliInvocation, type CliProcessRunner } from './cli-process.js'
 import { canonicalWorkspace } from './workspace-tools.js'
 import { parseStructuredText } from './openai-executor.js'
@@ -27,22 +27,27 @@ const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
  * developer that cannot run tests iterates blind and fails verification.
  */
 export function buildCliInvocation(provider: CliProvider, request: AgentRequest, options: CliInvocationOptions = {}): CliInvocation {
-  const readOnly = request.role !== 'developer'
+  if (!isBuiltinRole(request.role) || request.access !== undefined || request.nativeCommand) request = normalizeAgentRequest(request)
+  if (request.nativeCommand) {
+    if (provider === 'kimi') throw new AgentExecutionError('Kimi commands require skill rendering before invocation', 'native_command_unsupported')
+    request = { ...request, prompt: renderNativeCommand(provider, request.nativeCommand) }
+  }
+  const readOnly = requestPolicy(request).access === 'read'
   // Pin the product alias; explicit IDs remain reproducible across releases.
   const modelId = provider === 'claude' && request.model === 'opus' ? 'claude-opus-5-5' : request.model
   const model = modelId ? ['--model', modelId] : []
   const extraRoots = request.allowedRoots.filter(root => root !== request.cwd)
   const resume = request.resumeSessionId
   switch (provider) {
-    case 'claude': return { command: 'claude', stdin: request.prompt, args: [
-      '-p', '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 100), ...model,
+    case 'claude': return { command: 'claude', ...(request.nativeCommand ? {} : { stdin: request.prompt }), args: [
+      '-p', ...(request.nativeCommand ? [request.prompt] : []), '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 100), ...model,
       ...(request.effort === undefined ? [] : ['--effort', request.effort]),
       // Project instructions and rules stay visible; the user's global config,
       // memory and plugins never leak into an autonomous role.
       '--setting-sources', 'project,local',
       ...(readOnly
-        ? ['--tools', options.mcpConfigFile ? 'Read,Grep,Glob,ToolSearch' : 'Read,Grep,Glob', '--permission-mode', options.mcpConfigFile ? 'dontAsk' : 'plan', '--strict-mcp-config', ...(options.mcpConfigFile ? ['--allowedTools', 'Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow,mcp__specrails_openspec__read_verification_evidence'] : [])]
-        : ['--tools', 'default', '--disallowedTools', CLAUDE_DEVELOPER_DISALLOWED, '--dangerously-skip-permissions']),
+        ? ['--tools', request.nativeCommand ? 'Read,Grep,Glob,Skill' : options.mcpConfigFile ? 'Read,Grep,Glob,ToolSearch' : 'Read,Grep,Glob', '--permission-mode', options.mcpConfigFile ? 'dontAsk' : 'plan', '--strict-mcp-config', ...(options.mcpConfigFile ? ['--allowedTools', 'Read,Grep,Glob,ToolSearch,mcp__specrails_openspec__workflow,mcp__specrails_openspec__read_verification_evidence'] : [])]
+        : ['--tools', 'default', '--disallowedTools', request.nativeCommand ? 'Agent,Task' : CLAUDE_DEVELOPER_DISALLOWED, '--dangerously-skip-permissions']),
       ...(options.mcpConfigFile ? ['--mcp-config', options.mcpConfigFile] : []),
       ...(request.outputSchema ? ['--json-schema', JSON.stringify(request.outputSchema)] : []),
       ...(request.maxCostUsd === undefined ? [] : ['--max-budget-usd', String(request.maxCostUsd)]),
@@ -65,8 +70,8 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
     }
     case 'gemini': {
       if (readOnly && !options.geminiPolicyFile) throw new AgentExecutionError('Gemini architect/reviewer roles require --admin-policy support for an enforced read-only tool allowlist. Upgrade Gemini CLI or select another provider for this role.', 'provider_capability_unsupported')
-      return { command: 'gemini', stdin: request.prompt, args: [
-        '-p', 'Execute the task supplied on stdin.', '--output-format', 'stream-json', ...model,
+      return { command: 'gemini', ...(request.nativeCommand ? {} : { stdin: request.prompt }), args: [
+        '-p', request.nativeCommand ? request.prompt : 'Execute the task supplied on stdin.', '--output-format', 'stream-json', ...model,
         // Headless Gemini cannot answer shell approvals; the developer runs with
         // auto-approval exactly as the legacy Implement step did.
         ...(readOnly ? ['--approval-mode', 'plan'] : ['--yolo']),
@@ -86,6 +91,27 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
       ] }
     }
   }
+}
+/** Native commands are data rendered for the selected provider; never shell text. */
+export function renderNativeCommand(provider: Exclude<CliProvider, 'kimi'>, command: NonNullable<AgentRequest['nativeCommand']>): string {
+  return (provider === 'codex' ? '$' : '/') + command.id + (command.args ? ' ' + command.args : '')
+}
+export function kimiNativeSkill(id: string): string {
+  const openspec: Record<string, string> = { 'opsx:ff': 'openspec-ff-change', 'opsx:apply': 'openspec-apply-change', 'opsx:verify': 'openspec-verify-change' }
+  const skill = openspec[id] ?? (id.startsWith('specrails:') ? id.replace('specrails:', 'specrails-') : id)
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(skill)) throw new AgentExecutionError('Kimi native command is unsupported', 'native_command_unsupported')
+  return skill
+}
+async function renderKimiRequest(request: AgentRequest, options: CliExecutorOptions): Promise<AgentRequest> {
+  const skill = kimiNativeSkill(request.nativeCommand!.id)
+  const runnerPath = path.join(request.cwd, '.kimi-code', 'specrails', 'run-skill.mjs')
+  if (!existsSync(runnerPath)) throw new AgentExecutionError('Kimi managed skill runner is not installed', 'native_command_unsupported')
+  const result = await (options.runProcess ?? runCliProcess)({ command: process.execPath, args: [runnerPath, '--skill', skill, '--model', request.model ?? 'kimi-for-coding', '--args', request.nativeCommand!.args ?? '', ...(request.resumeSessionId ? ['--session', request.resumeSessionId] : []), '--render-only'] }, { cwd: request.cwd, signal: request.signal, timeoutMs: 10000, env: options.env })
+  if (result.exitCode !== 0) throw new AgentExecutionError('Kimi native skill cannot be rendered', 'native_command_unsupported')
+  let prompt: unknown
+  try { prompt = JSON.parse(result.stdout).prompt } catch { /* Invalid runner output cannot become a provider prompt. */ }
+  if (typeof prompt !== 'string' || !prompt.trim() || prompt.includes('\0') || Buffer.byteLength(prompt) > 1_048_576) throw new AgentExecutionError('Invalid Kimi native skill prompt', 'native_command_unsupported')
+  return { ...request, prompt, nativeCommand: undefined }
 }
 function object(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {} }
 function number(value: unknown): number | null { return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null }
@@ -189,7 +215,7 @@ export class CliExecutor implements AgentExecutor {
   capabilities(model?: string) { return cliCapabilities(this.provider, model, this.options) }
   private readonly capabilityChecks = new Map<string, Promise<void>>()
   async validateOpenSpec(context: import('./openspec.js').OpenSpecRoleContext): Promise<void> {
-    const key = context.role === 'developer' ? 'write' : 'read'
+    const key = openSpecPolicy(context).access
     let checked = this.capabilityChecks.get(key)
     if (!checked) {
       checked = (async () => {
@@ -207,10 +233,11 @@ export class CliExecutor implements AgentExecutor {
     if (limits.maxTokens !== undefined && this.provider === 'kimi') throw new AgentExecutionError('Kimi does not report authoritative token usage. Remove the token cap or select another provider for this role.', 'usage_unavailable')
   }
   async execute(request: AgentRequest): Promise<AgentResult> {
-    validateAgentRequest(request)
+    request = normalizeAgentRequest(request)
     if (request.effort !== undefined) assertEffortSupported(request, await this.capabilities(request.model))
     this.validateLimits(request)
     const scope = canonicalWorkspace(request.cwd, request.allowedRoots)
+    if (this.provider === 'kimi' && request.nativeCommand) request = await renderKimiRequest(request, this.options)
     const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
     let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0, observedSession: string | undefined
@@ -233,14 +260,14 @@ export class CliExecutor implements AgentExecutor {
         }
         if (this.provider === 'kimi') return await executeKimiReadonlyAcp(normalized, { ...this.options, openspecBridge })
       }
-      if (this.provider === 'gemini' && request.role !== 'developer') {
+      if (this.provider === 'gemini' && requestPolicy(request).access === 'read') {
         assertGeminiAdminPolicyAvailable()
         const help = await runner({ command: 'gemini', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })
         if (help.exitCode !== 0 || !help.stdout.includes('--admin-policy')) throw new AgentExecutionError('Gemini architect/reviewer roles require --admin-policy support for an enforced read-only tool allowlist. Upgrade Gemini CLI or select another provider for this role.', 'provider_capability_unsupported')
         geminiPolicyFile = path.join(scratch(), 'readonly.toml')
         writeFileSync(geminiPolicyFile, (openspecBridge ? '[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "workflow"\ndecision = "allow"\npriority = 1000\n\n[[rule]]\nmcpName = "specrails_openspec"\ntoolName = "read_verification_evidence"\ndecision = "allow"\npriority = 1000\n\n' : '') + GEMINI_READONLY_POLICY, { mode: 0o600 })
       }
-      if (this.provider === 'kimi' && request.role !== 'developer') {
+      if (this.provider === 'kimi' && requestPolicy(request).access === 'read') {
         const help = await runner({ command: 'kimi', args: ['--help'] }, { cwd: scope.cwd, signal: request.signal, timeoutMs: 10_000, env: this.options.env })
         if (help.exitCode !== 0) throw new AgentExecutionError('Cannot detect Kimi CLI capabilities', 'provider_capability_unsupported')
         if (!help.stdout.includes('--agent-file')) return await executeKimiReadonlyAcp(request, this.options)

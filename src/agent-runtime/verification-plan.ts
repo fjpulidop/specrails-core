@@ -204,3 +204,13 @@ export function bindPlan(context: PipelineContext, plan: VerificationPlan): void
   }
   bindVerificationPlan(context, plan.planHash, files)
 }
+
+/** Rebind a checkpoint-owned plan to a new run, retaining the exact admitted checks. */
+export function forkVerificationPlan(context: PipelineContext, source: VerificationPlan, sourceContext: PipelineContext): VerificationPlan {
+  const { integrity, ...payload } = source
+  if (integrity !== fingerprint(payload) || source.scopeHash !== fingerprint(sourceContext) || source.runId !== sourceContext.runId
+    || source.planHash !== fingerprint({ policyVersion: 1, scopeHash: source.scopeHash, executionPolicy: source.executionPolicy, entries: source.entries })) throw new Error('Fork verification plan failed its source integrity check')
+  const plan = savePlan(context, source.baseline, source.developer, null, source.executionPolicy)
+  bindPlan(context, plan)
+  return plan
+}

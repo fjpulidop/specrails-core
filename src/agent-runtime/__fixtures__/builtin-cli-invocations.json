@@ -1,0 +1,416 @@
+{
+  "sourceCommit": "6ab6b3ce",
+  "workflowVersion": "7",
+  "instructionsVersion": 10,
+  "fixtures": [
+    {
+      "provider": "claude",
+      "request": {
+        "role": "architect",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "claude",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "100",
+          "--model",
+          "fixture-model",
+          "--setting-sources",
+          "project,local",
+          "--tools",
+          "Read,Grep,Glob",
+          "--permission-mode",
+          "plan",
+          "--strict-mcp-config",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "claude",
+      "request": {
+        "role": "developer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {},
+      "invocation": {
+        "command": "claude",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "100",
+          "--model",
+          "fixture-model",
+          "--setting-sources",
+          "project,local",
+          "--tools",
+          "default",
+          "--disallowedTools",
+          "Agent,Task,Skill",
+          "--dangerously-skip-permissions",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "claude",
+      "request": {
+        "role": "reviewer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "claude",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--max-turns",
+          "100",
+          "--model",
+          "fixture-model",
+          "--setting-sources",
+          "project,local",
+          "--tools",
+          "Read,Grep,Glob",
+          "--permission-mode",
+          "plan",
+          "--strict-mcp-config",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "codex",
+      "request": {
+        "role": "architect",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "codex",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-c",
+          "approval_policy=\"never\"",
+          "--model",
+          "fixture-model",
+          "--sandbox",
+          "read-only",
+          "--add-dir",
+          "/other workspace",
+          "-"
+        ]
+      }
+    },
+    {
+      "provider": "codex",
+      "request": {
+        "role": "developer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {},
+      "invocation": {
+        "command": "codex",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-c",
+          "approval_policy=\"never\"",
+          "--model",
+          "fixture-model",
+          "--sandbox",
+          "workspace-write",
+          "--add-dir",
+          "/other workspace",
+          "-"
+        ]
+      }
+    },
+    {
+      "provider": "codex",
+      "request": {
+        "role": "reviewer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "codex",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "exec",
+          "--json",
+          "--skip-git-repo-check",
+          "-c",
+          "approval_policy=\"never\"",
+          "--model",
+          "fixture-model",
+          "--sandbox",
+          "read-only",
+          "--add-dir",
+          "/other workspace",
+          "-"
+        ]
+      }
+    },
+    {
+      "provider": "gemini",
+      "request": {
+        "role": "architect",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "gemini",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "Execute the task supplied on stdin.",
+          "--output-format",
+          "stream-json",
+          "--model",
+          "fixture-model",
+          "--approval-mode",
+          "plan",
+          "--admin-policy",
+          "/readonly.toml",
+          "--include-directories",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "gemini",
+      "request": {
+        "role": "developer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {},
+      "invocation": {
+        "command": "gemini",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "Execute the task supplied on stdin.",
+          "--output-format",
+          "stream-json",
+          "--model",
+          "fixture-model",
+          "--yolo",
+          "--include-directories",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "gemini",
+      "request": {
+        "role": "reviewer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "gemini",
+        "stdin": "Fixture role instructions",
+        "args": [
+          "-p",
+          "Execute the task supplied on stdin.",
+          "--output-format",
+          "stream-json",
+          "--model",
+          "fixture-model",
+          "--approval-mode",
+          "plan",
+          "--admin-policy",
+          "/readonly.toml",
+          "--include-directories",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "kimi",
+      "request": {
+        "role": "architect",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "kimi",
+        "args": [
+          "-m",
+          "fixture-model",
+          "-p",
+          "Fixture role instructions",
+          "--output-format",
+          "stream-json",
+          "--agent-file",
+          "/readonly.md",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "kimi",
+      "request": {
+        "role": "developer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {},
+      "invocation": {
+        "command": "kimi",
+        "args": [
+          "-m",
+          "fixture-model",
+          "-p",
+          "Fixture role instructions",
+          "--output-format",
+          "stream-json",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    },
+    {
+      "provider": "kimi",
+      "request": {
+        "role": "reviewer",
+        "cwd": "/workspace",
+        "allowedRoots": [
+          "/workspace",
+          "/other workspace"
+        ],
+        "model": "fixture-model",
+        "prompt": "Fixture role instructions"
+      },
+      "options": {
+        "geminiPolicyFile": "/readonly.toml",
+        "kimiAgentFile": "/readonly.md"
+      },
+      "invocation": {
+        "command": "kimi",
+        "args": [
+          "-m",
+          "fixture-model",
+          "-p",
+          "Fixture role instructions",
+          "--output-format",
+          "stream-json",
+          "--agent-file",
+          "/readonly.md",
+          "--add-dir",
+          "/other workspace"
+        ]
+      }
+    }
+  ]
+}

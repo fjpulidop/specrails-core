@@ -26,6 +26,8 @@ export const MAX_DEEPEN_PASSES = 1
 const DEVELOPER_SUMMARY_LIMIT = 32_000
 
 export interface CoreNodeDeps {
+  /** V2 presentation omits framework dispatch frames; original evidence stays complete. */
+  focusedCorrectionEvidence?: boolean
   archiveApproved?: () => boolean
   context: PipelineContext
   config: RuntimeConfig
@@ -230,7 +232,7 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
     kind: visits > 1 ? 'correction' : 'initial',
     ...(fixer ? { agentOverride: fixer } : {}), ...(fixing ? { stance: 'fixer' as const } : {}),
     ...(resumable
-      ? { prompt: correctionInstructions('developer', feedback, { ...(changes ? { changeSet: changes } : {}), developer: state.development }), resumeSessionId: previous.sessionId, fallbackPrompt: full }
+      ? { prompt: correctionInstructions('developer', feedback, { ...(changes ? { changeSet: changes } : {}), developer: state.development, focusedEvidence: deps.focusedCorrectionEvidence && config.efficiency?.contextMode !== 'full' }), resumeSessionId: previous.sessionId, fallbackPrompt: full }
       : { prompt: full }),
     structured: true, lenient: true, outputSchema: DEVELOPER_OUTPUT_SCHEMA,
   }, (output, text, result) => {
@@ -513,7 +515,7 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
       const changes = measuredChange(context, change)
       const prompt = roleInstructions('reviewer', context, change, { definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
       const incremental = config.efficiency?.reviewMode !== 'full' && delta.mode === 'incremental' && state.review?.sessionId
-      const followup = correctionInstructions('reviewer', feedbackFor(state)) + '\nChanges since YOUR previous reviewed candidate:\n' + JSON.stringify(delta.changes)
+      const followup = correctionInstructions('reviewer', feedbackFor(state), { focusedEvidence: deps.focusedCorrectionEvidence && config.efficiency?.contextMode !== 'full' }) + '\nChanges since YOUR previous reviewed candidate:\n' + JSON.stringify(delta.changes)
         + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')
         + '\nRecertify EVERY current acceptance criterion; previous met results are not current evidence:\n' + JSON.stringify(criteria)
         + '\nCurrent developer handoff:\n' + JSON.stringify(state.development)

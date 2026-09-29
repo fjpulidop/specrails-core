@@ -1,0 +1,90 @@
+{
+  "schemaVersion": 1,
+  "id": "freestyle",
+  "title": "Freestyle",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "implement",
+  "maxTransitions": 100,
+  "roles": [
+    "loop-decider"
+  ],
+  "policies": {
+    "failFast": 2,
+    "noProgress": 2
+  },
+  "nodes": {
+    "implement": {
+      "kind": "prompt",
+      "params": {
+        "access": "write",
+        "engine": {
+          "provider": "fixture"
+        },
+        "sentinel": "blocked",
+        "text": "Implement the requested change and report what you changed."
+      },
+      "ends": {
+        "blocked": "failed",
+        "failed": "failed",
+        "next": "verify"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured"
+      },
+      "ends": {
+        "fail": "fix",
+        "failed": "failed",
+        "pass": "decide"
+      }
+    },
+    "decide": {
+      "kind": "decider",
+      "params": {
+        "goal": "Stop only when the host checks pass and every acceptance criterion is implemented.",
+        "noProgress": 2,
+        "roleId": "loop-decider"
+      },
+      "ends": {
+        "continue": "fix",
+        "failed": "failed",
+        "stop": "done"
+      }
+    },
+    "fix": {
+      "kind": "prompt",
+      "params": {
+        "access": "write",
+        "engine": {
+          "provider": "fixture"
+        },
+        "sentinel": "blocked",
+        "text": "Repair the reported failures and the remaining acceptance criteria."
+      },
+      "ends": {
+        "blocked": "failed",
+        "failed": "failed",
+        "next": "verify"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "f209b867e47af660e14d57bf967d4d542ec5de8c3316f1ee5770314807a09cbb"
+}

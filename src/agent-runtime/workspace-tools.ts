@@ -38,7 +38,7 @@ export class WorkspaceTools {
   readonly cwd: string
   readonly roots: string[]
   private readonly rootAliases: { lexical: string; canonical: string }[]
-  constructor(cwd: string, roots: string[], private readonly role: AgentRole) {
+  constructor(cwd: string, roots: string[], private readonly access: 'read' | 'write' | AgentRole) {
     const scope = canonicalWorkspace(cwd, roots)
     this.cwd = scope.cwd
     this.roots = scope.roots
@@ -52,8 +52,8 @@ export class WorkspaceTools {
       definition('read_lines', 'Read numbered lines, up to 500 lines / 48 KiB, from a UTF-8 file up to 1 MiB. Returns a full-file SHA-256 for guarded edits.', { ...file, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } }, ['path']),
       definition('search_text', 'Search literal text recursively in source files. Skips dependencies, build output, metadata, binaries and symlinks. Returns bounded numbered matches and a truncation flag.', { ...file, query: { type: 'string' }, maxResults: { type: 'integer', minimum: 1, maximum: 100 } }, ['path', 'query']),
       definition('get_diff', 'Read the staged and unstaged Git diff against HEAD for one file, up to 48 KiB. Untracked files are identified; use read_lines for their content.', file, ['path']),
-      ...(this.role === 'developer' ? [definition('write_file', 'Create or replace a UTF-8 source file (max 256 KiB). Parent directories are created. Runtime metadata cannot be changed.', { ...file, content: { type: 'string' } }, ['path', 'content'])] : []),
-      ...(this.role === 'developer' ? [definition('apply_patch', 'Atomically replace one exact, unique fragment in a UTF-8 file. Rejects missing or ambiguous matches. Optionally guard against stale reads with expectedHash from read_lines.', { ...file, oldText: { type: 'string', minLength: 1 }, newText: { type: 'string' }, expectedHash: { type: 'string' } }, ['path', 'oldText', 'newText'])] : []),
+      ...((this.access === 'write' || this.access === 'developer') ? [definition('write_file', 'Create or replace a UTF-8 source file (max 256 KiB). Parent directories are created. Runtime metadata cannot be changed.', { ...file, content: { type: 'string' } }, ['path', 'content'])] : []),
+      ...((this.access === 'write' || this.access === 'developer') ? [definition('apply_patch', 'Atomically replace one exact, unique fragment in a UTF-8 file. Rejects missing or ambiguous matches. Optionally guard against stale reads with expectedHash from read_lines.', { ...file, oldText: { type: 'string', minLength: 1 }, newText: { type: 'string' }, expectedHash: { type: 'string' } }, ['path', 'oldText', 'newText'])] : []),
     ]
   }
   private resolve(raw: string, write: boolean): string {
@@ -78,7 +78,7 @@ export class WorkspaceTools {
   execute(name: string, input: unknown): string {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Tool input must be a JSON object')
     const args = input as Record<string, unknown>
-    if (!this.definitions().some(tool => tool.function.name === name)) throw new Error(`Tool '${name}' is unavailable for the ${this.role} role`)
+    if (!this.definitions().some(tool => tool.function.name === name)) throw new Error(`Tool '${name}' is unavailable for the ${this.access} role`)
     const allowed = name === 'write_file' ? ['path', 'content'] : name === 'apply_patch' ? ['path', 'oldText', 'newText', 'expectedHash'] : name === 'read_lines' ? ['path', 'startLine', 'endLine'] : name === 'search_text' ? ['path', 'query', 'maxResults'] : ['path']
     if (Object.keys(args).some(key => !allowed.includes(key)) || typeof args.path !== 'string') throw new Error('Invalid tool arguments')
     const target = this.resolve(args.path, name === 'write_file' || name === 'apply_patch')

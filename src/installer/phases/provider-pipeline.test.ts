@@ -29,11 +29,16 @@ describe('installed provider pipeline fixtures', () => {
     const providerDir = provider === 'kimi' ? '.kimi-code' : '.' + provider
     scaffoldInstallation({ scriptDir, codeRoot: repo, artifactRoot: workspace, provider, providerDir, seedProjectDirs: false })
     const workflow = provider === 'gemini'
-      ? path.join(workspace, providerDir, 'commands', 'specrails', 'batch-implement.toml')
-      : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-batch-implement' : 'batch-implement', 'SKILL.md')
+      ? path.join(workspace, providerDir, 'commands', 'specrails', 'implement.toml')
+      : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-implement' : 'implement', 'SKILL.md')
     const emitted = readFileSync(workflow, 'utf8')
     expect(emitted).toContain('agent-runtime.mjs run --context')
     expect(emitted).toContain('do not delegate these phases yourself')
+    // implement runs several tickets as one aggregate; no batch workflow is rendered.
+    const retiredBatch = provider === 'gemini'
+      ? path.join(workspace, providerDir, 'commands', 'specrails', 'batch-implement.toml')
+      : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-batch-implement' : 'batch-implement')
+    expect(() => readFileSync(retiredBatch)).toThrow()
     if (provider === 'gemini') {
       const role = readFileSync(path.join(workspace, providerDir, 'agents', 'sr-developer.md'), 'utf8')
       const metadata = yaml(role.split('---')[1]!) as { tools: string[] }

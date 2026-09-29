@@ -62,6 +62,13 @@ function harness(input: AgentRequest, options: HarnessOptions = {}): { runProces
   return { runProcess, messages }
 }
 describe('Kimi 0.27 read-only ACP compatibility', () => {
+  it.each([0, 30_000])('preserves explicit invocation and idle limits in ACP (%s ms idle)', async idleTimeoutMs => {
+    const input = request({ timeoutMs: 0, idleTimeoutMs }), fake = harness(input)
+    const runProcess = vi.fn(fake.runProcess)
+    await executeKimiReadonlyAcp(input, { runProcess })
+    expect(runProcess.mock.calls[0][1]).toMatchObject({ timeoutMs: 0, idleTimeoutMs })
+  })
+
   it('negotiates observed 0.27 mode options before prompting and serves scoped source reads', async () => {
     const input = request(), fake = harness(input)
     const result = await executeKimiReadonlyAcp(input, fake)
@@ -134,4 +141,14 @@ describe('Kimi 0.27 read-only ACP compatibility', () => {
     const runProcess: CliProcessRunner = (_invocation, settings) => runCliProcess({ command: process.execPath, args: [fixture] }, settings)
     expect((await executeKimiReadonlyAcp(input, { runProcess })).structured).toEqual({ approved: true })
   })
+})
+
+
+it('enforces explicit read access for a declared role through ACP', async () => {
+  const input = request({ role: 'security-reviewer', access: 'read', artifacts: 'none', instructions: 'role' })
+  const read = harness(input)
+  expect((await executeKimiReadonlyAcp(input, read)).structured).toEqual({ approved: true })
+  const write = harness(input, { operation: 'fs/write_text_file' })
+  await expect(executeKimiReadonlyAcp(input, write)).rejects.toMatchObject({ code: 'tool_policy_violation' })
+  expect(readFileSync(path.join(input.cwd, 'source.ts'), 'utf8')).toContain('value = 42')
 })

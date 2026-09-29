@@ -1,0 +1,621 @@
+## C1 integrated — 28 September 2026
+
+C1 is merged (`f0c3a37`); see the C1 integration note in tasks.md. The PR #389
+Windows spike failure is addressed by C1's PowerShell module-path isolation.
+Local Linux spikes/typecheck/script tests pass on Node 22.22.3; three-platform
+CI on the merge commit is still required before advancing Desktop's Core pin.
+
+## Full catalog 5 coverage — 27 September 2026, 05:11 CEST
+
+Complete coverage at source `04ea4663` passed: 102 suites, 1,282 tests and one
+existing Windows-only skip, in 636.82 seconds. Coverage: statements 88.09%,
+branches 80.34%, functions 93.39%, lines 94.14%. No threshold changed.
+Typecheck/build and installed-package run/resume/fork already passed for this
+same source. Desktop's conversion corpus now uses one actual Core SDK process
+for all 48 structural validations (519ms instead of roughly 20s of repeated CLI
+startup); actual workflow run/resume remains exercised separately through CLI.
+
+## Continuation validation — 27 September 2026, catalog 5
+
+Added explicit archived-target compatibility to the pinned OpenSpec validation
+and archive pieces. Active targets take precedence, exact archived directories
+are scoped without symlink traversal, and an explicit repository binding must
+match the frozen artifact repository. Skipping an already archived target does
+not manufacture verification evidence. Positive archive CLI exit codes remain
+available for bounded business-error recovery; infrastructure errors propagate.
+
+Validation: 44 focused CLI/piece/Quick SDD/archive-state tests passed, plus 3
+archive error-contract tests. Typecheck, build and installed-package acceptance
+passed (actual v2 run, resume and fork). Desktop's uncommitted converter passed
+7 real-CLI scenarios against this build, including Quick SDD with one artifact
+repair. The last complete Core coverage baseline remains the 1,270-pass run at
+5a77a868; no complete coverage result is claimed for catalog 5 yet. C1 integration
+still awaits the separately requested authorization; no merges/releases occurred.
+
+## Required work before decider stop — 27 September 2026
+
+Catalog version 4 adds optional continueWhen to the decider. A true bounded
+state expression turns a valid stop proposal into continue before no-progress
+accounting, preserving the proposal in output and retaining the physical call.
+Blocked human questions remain unchanged; clearing the obligation permits a
+later stop. Publication rejects invalid expressions. See DECIDER-REQUIRED-WORK.md.
+
+Validation: 29 piece cases, 30 definition/runtime cases, 22 API/CLI/package-surface
+and documentation cases, typecheck/build and 26 script tests pass. Actual durable
+resume proves a retained failure flag forces a second decision only after the
+repair clears it, with exactly two recorded provider calls. The full 1,270-test
+coverage result below is the immediately preceding assignment baseline; it is
+not presented as full coverage of this subsequent guard addition.
+
+## Scoped assignment prerequisite — 27 September 2026
+
+Catalog version 3 adds the non-AI `assign` piece (17 kinds). Set JSON values and
+increment existing safe integers through one fenced piece result. Invalid names,
+overlap, missing counters and overflow cannot partially modify scoped state.
+The decision is recorded in COMPATIBILITY-STATE-DECISION.md. This is a prerequisite
+for bounded legacy conversion, not a claim that conversion is complete.
+
+Validation: 18 assignment unit cases; 17 durable runtime cases including pause
+reopen without duplicate increments, mapped scope isolation, and a routed overflow
+that proves companion values remain unchanged; 11 API/CLI catalog cases; generated
+catalog and examples; typecheck and build. The initial wider acceptance run found
+one obsolete sixteen-kind assertion, corrected and rerun successfully. Full
+coverage passes on 5a77a868: 100 suites, 1,270 tests and one existing Windows-only
+omission in 582.38s. Statements 88.04%, branches 80.24%, functions 93.43% and
+lines 94.09%, with unchanged thresholds. Installed-package acceptance initially
+found a second obsolete sixteen-kind expectation in verify-package-v2.mjs; after
+updating it to seventeen, the installed CLI run/resume/fork and all package
+checks pass. This result predates the subsequent guarded-decider work.
+
+## Decider human-pause parity — 27 September 2026
+
+The legacy conversion audit found that Core repaired an explicit blocked
+question as malformed structured output. The corrected decider accepts a
+structured blocked verdict or LOOP_BLOCKED line, retains the result before its
+human interrupt and resumes on continue without repeating that provider call.
+The answer reaches the following step through history. Ordinary malformed
+responses retain exactly one repair; read-only policy and prior no-progress
+observations remain intact. See DECIDER-HUMAN-RECOVERY.md.
+
+Before correction both new pause regressions failed. Afterwards 41 piece/runtime
+tests pass, including closing/reopening the run and accounting for exactly two
+physical calls (one decision, one subsequent prompt), with unknown billing
+preserved. Typecheck and build pass. A real Desktop bridge/CLI Freestyle case
+also passes, proving a later decider visit remains a fresh decision and the
+human answer reaches its next prompt. Full Core coverage on 733dfe82 passes: 99 suites, 1,249 tests and one existing
+Windows-only omission, 589.06s. Coverage is 87.98% statements, 80.18% branches,
+93.33% functions and 94.04% lines with unchanged thresholds. All eight Desktop
+factory cases pass (109.79s). A catalog version 2 follow-up explicitly identifies
+the changed decider behavior. Its 22 API/CLI/catalog/documentation acceptance
+tests pass, along with typecheck/build and 26 script tests. This preserves
+the existing sixteen kinds and transition labels; frozen older packages keep
+their original behavior.
+
+## Interrupted physical invocation accounting — 27 September 2026
+
+Actual paired Desktop host/Core SIGKILL tests found a lost-response accounting gap:
+resuming read/write attempts completed the workflow but left the abandoned
+physical invocation running forever and absent from Desktop spending. Core now
+settles calls from older lease epochs under the new fenced owner, with unknown
+usage/duration/tool counts and one durable efficiency event. Existing unreported
+budget reservations remain reserved. Current-epoch calls and inherited history
+are not touched; write recovery authorization remains a separate gate.
+The settlement and event are atomic, including rollback and retry after a failed
+event insert. A late original owner cannot overwrite the interruption.
+
+Focused validation: 35 checkpoint/efficiency/run tests, 23 checkpoint/inbox tests
+(including the additional rollback assertion), and 48 legacy-workflow/fork tests
+pass. Typecheck and build pass. The real Desktop manager now passes all three
+read/write/human-pause SIGKILL scenarios (100.36s) with two physical invocations,
+null missing usage, exact frozen-config continuation and idempotent event replay.
+Complete Core coverage now passes on 34289858: 99 suites, 1,245 tests and one
+existing Windows-only skip, 600.33 seconds. Coverage remains above the original
+gates: statements 87.97%, branches 80.15%, functions 93.28%, lines 94.05%.
+Typecheck, 26 script tests and installed-package CLI/API/run/resume/fork acceptance
+also pass. The first sandbox run passed 1,242 cases but its three HTTP fixtures
+failed with listen EPERM; the complete successful rerun allowed local sockets.
+The between-node Desktop process-crash follow-up also passes with one provider
+call, proving completed work is not repeated. Desktop pins this correction in
+its three-platform paired lane. No release or merge has occurred.
+
+## Remote corpus acceptance — 27 September 2026
+
+CI 36281822034 on 2cdedae3 completed: all jobs passed except the known C1 Windows
+private-directory spike. Both complete offline corpus jobs, coverage, all
+OS/Node runtime partitions and installed recovery/package jobs passed. The
+subsequent native-pause change has the focused evidence below and is not included
+in that historical CI result.
+
+## Native workflow human pauses — 27 September 2026
+
+Quick SDD and Freestyle reference prompts explicitly select the blocked sentinel.
+Without it, a provider LOOP_BLOCKED reply was treated as ordinary output; Quick
+SDD then failed validation instead of exposing the question. The opt-in prompt
+contract is unchanged. Reference definition hashes and documentation are updated.
+The Quick SDD integration fixture now covers no pause, preparation pause and
+implementation pause using the real pinned OpenSpec lifecycle and host checks.
+It verifies exact native-command order, one additional invocation for the human
+continuation, forwarded answer text, one archive and no legacy journal. Eight
+Quick SDD/documentation tests passed; the final answer-forwarding assertion passed
+all three Quick SDD cases, and typecheck passed. Desktop factories are aligned and passed 12 factory/catalog/real-pair tests
+(70.14s), including blocked Quick SDD and Freestyle through the actual bridge.
+Desktop source bf7d5292 independently passed full local coverage and remote
+CI 36282050665 before this focused human-continuation follow-up.
+
+## Full offline corpus and fork steering — 27 September 2026
+
+Both reference definitions now pass all five independent cases in full and
+optimized mode: 20/20 accepted executions, including two repositories,
+verification repair and review repair. Reports remain explicitly offline with
+zero paid spend and inconclusive monetary savings. The full run exposed an
+actual evaluation-fixture bug: task updates used a fixed evaluation-change path,
+whereas nested implementation owns a distinct change identity. The fixture now
+uses its bound OpenSpec write_artifact tool, including task-checkbox permissions.
+No production identity or oracle was weakened to make the corpus pass.
+
+CI runs the two full corpora as independent Linux matrix jobs with reports retained
+on failure. Platform runtime and installed-package matrices remain intact. The
+gate rejects partial/duplicate cases, failed independent acceptance and misleading
+monetary conclusions. Validation: typecheck/build, 26 script tests, actionlint,
+four definition-evaluation tests and 16 fork/inbox tests pass. Full-corpus reports
+were generated by scripts/evaluate-definition-corpus.mjs after rebuilding.
+
+The public fork regression proves source/child steering isolation, preserved source
+journal bytes, idempotent fork and signal retries, and exactly one provider call
+per resumed run. The previous complete remote CI at 749a6133 (36279918719) passed
+every job except the known C1 Windows private-directory spike: Set-Acl could not
+load Microsoft.PowerShell.Security. C1 integration is still awaiting explicit
+permission; no local merge, PR merge or release has occurred. Current changes
+have focused/full-corpus evidence, not a new full npm run ci claim.
+
+## Compatibility follow-up — 27 September 2026
+
+Kimi's ACP transport now forwards explicit idle bounds, including zero, instead
+of dropping them. Verification prompts also preserve human blocking: a
+`LOOP_BLOCKED` question takes precedence even if that response contains
+`VERIFICATION: PASS`. Resume reuses the recorded response, accepts the selected
+answer and requires the subsequent provider result before completing verification.
+
+Typecheck/build and 45 focused Kimi/piece/documentation tests passed after the
+full-CI timer commit `75e8e975`. The regression proves two total invocations
+across pause/resume, rather than replaying the original blocked invocation.
+No paid model calls were used.
+
+## Invocation timer compatibility — 27 September 2026
+
+The `prompt`, `role-turn` and `decider` pieces accept per-piece invocation and
+idle bounds, including explicit zero for an untimed legacy step. Omission keeps
+inherited defaults. Overrides survive role-response repair and session fallback
+without mutating frozen configuration; workflow budgets and host cancellation
+remain authoritative. OpenAI-compatible calls now honor explicit idle overrides.
+CLI timers reject invalid/overflowing values before spawning.
+
+Cancellation also exposed a provider retry bug: an already-aborted retry delay
+waited three seconds and could send another request. The standard abortable
+Node timer now prevents that retry and releases its signal listener. A regression
+requires exactly one provider call and no accepted response after cancellation.
+
+Validation so far: four adapter/piece/chat suites passed 103 tests; subsequent
+role-timer and generated-doc suites passed 28 tests. Full local CI passed:
+typecheck, build, scripts, 99 suites / 1,237 tests (one platform skip), coverage
+and installed-package run/resume/fork acceptance. Coverage is 87.96% statements,
+80.09% branches, 93.28% functions and 94.03% lines. The test run took 593.27s
+on this local host. Evidence: `/private/tmp/core-timer-ci.log`. No coverage
+thresholds or exclusions changed.
+
+## Windows module URL correction — 27 September 2026
+
+Remote CI on `60cf9cd8` exposed Windows loader rejection of the native drive
+path passed to `node --import` in both fork crash fixtures. Preloads now use
+file URLs, matching the existing dynamic-import arguments; executable and run
+paths remain native paths. The focused fork suite passes all 10 tests locally
+on Node 22.22.3, including real process termination and journal preservation.
+Windows confirmation remains pending the next matrix run. The separate C1
+Windows permissions spike still awaits the explicitly authorized integration.
+
+## No-progress correctness — 27 September 2026
+
+A new real LangGraph/SQLite run regression reproduced a false success: the
+decider emitted `stop` at the no-progress limit and the downstream success end
+overrode its unsuccessful completion. The decider now emits `failed` with
+`no_progress`, preserves the model's `continue` verdict, and follows the authored
+failure route. The success end is never visited in the regression; exactly two
+fixture invocations occur and the retained scoped output records the failure.
+Two affected suites passed 33 tests; build passed. No threshold was changed.
+
+The task ledger also reconciles already-integrated source against the completed
+local full CI and named suites. Implementation checkboxes do not close C1,
+publication, global platform acceptance or actual release/retirement gates.
+
+## Recorded trace correlation — 27 September 2026
+
+JSONL workflow events now expose the same stable per-event span ID as optional
+OTLP export, through one shared identity function. Replay identity and untrusted
+payload override tests pass; the real local collector proves JSONL/export parity.
+Seven event/telemetry tests passed, and typecheck passed. The observation guide
+states point-event timing and best-effort export semantics explicitly. This does
+not claim collector delivery or production rollout evidence.
+
+## Integration CI follow-up — 27 September 2026, 00:51 CEST
+
+Local CI started at production revision 06d563c5 and finished successfully:
+99 suites, 1,223 passed / one platform skip; coverage 87.95% statements, 80%
+branches, 93.24% functions, 94.04% lines; installed package run/resume/fork passed.
+Workflow-only revision 886db4fc landed while that command was running, after its
+script tests. Remote run 36276957318 correctly exposed a stale script assertion
+requiring main-only PRs. Updated that regression to require all PR bases without
+path filters; main-only push and package release assertions remain unchanged.
+Remote installed robustness passed Linux/macOS/Windows. The C1 Windows spike
+still fails on its known ACL issue; pending C1 commits are not integrated and no
+merge authorization is inferred. Other remote suites must rerun after this fix.
+
+## CI branch admission — 27 September 2026, 00:38 CEST
+
+Core pull-request CI now covers integration bases as well as main. The previous
+main-only filter left PR #389 without checks on updates. Main push and explicit
+workflow dispatch remain available; required test/package/platform jobs are
+unchanged. Actionlint validates the workflow. Local full CI on 06d563c5 is running;
+this metadata change does not close the C1 reconciliation or Windows spike gate.
+
+# Checkpoint — 26 September 2026
+
+## Fork construction recovery — 26 September 2026, 23:45 CEST
+
+- Added advertised `forkIdempotency: 1` and durable allocation recovery before
+  publication. SQLite construction exclusion releases on process death; a flushed
+  independent manifest proves directory ownership before cleanup. Published
+  receipts and foreign/replaced paths are preserved. No provider is rerun while
+  constructing a historical cut.
+- Node 22.22.3 typecheck/build passed. Focused CLI/fork/allocation regression:
+  **3 suites / 20 tests passed**, 64.77s. Includes real CLI SIGKILL after initial
+  allocation, before publication and after publication; a killed implementation
+  fork after allocating its change directory; immutable source bytes; completed
+  architect preservation; concurrency and changed-directory refusal.
+- These are focused local gates. Full cross-platform CI remains required; C1
+  integration still awaits the explicit local-merge approval described below.
+
+## CI continuation — 26 September 2026, 22:25 CEST
+
+Run 36268127165 (37a46681) completed: all general/runtime matrix jobs and all three installed-package recovery jobs passed. Windows C1 spikes remain failing while local C1 integration awaits explicit approval after auto-review rejection. Coverage failed two late-fork integration cases at their explicit 40-second POSIX ceiling (not a coverage threshold failure). Raised only these multi-workflow fork test ceilings, plus their related incomplete-journal case, to 120 seconds on POSIX; Windows remains 180 seconds. Assertions and coverage thresholds are unchanged. Focused fork regression: 6/6 passed in 51.17 seconds. Full CI rerun is still required for this change.
+
+
+The user requested a checkpoint because their weekly quota was almost exhausted.
+The original objective remains **the entire plan, not just the foundations**.
+This checkpoint is unfinished implementation, not production acceptance. Do not
+merge, release, check off pending gates, or describe the complete migration as done.
+
+## Codex continuation — 26 September 2026, 20:30 CEST
+
+- Windows general also found an invalid performance assumption in active-duration acceptance: resume was required to complete faster than a fixed 1200ms human pause. Kept the semantic assertions (exactly unchanged duration across pause, resume increment bounded by measured resume wall time, stable terminal duration) and removed only the arbitrary speed assertion.
+- Follow-up CI 36267164838 on e49a4268 passed installed-package recovery on Windows, Linux and macOS. Runtime-3 found another hardcoded 60-second compiler Batch timeout; removed those two overrides so Vitest's existing 180-second Windows / 60-second POSIX policy applies. This failure and its cleanup EPERM follow the timeout; no tests skipped or thresholds lowered.
+- Full-status scoped committed outputs are committed as c5defe25; 12 runtime tests, typecheck and build passed. Desktop consumes them at settlement and packet healing, preserving scope/attempt identities and multiple reviewer verdicts without inventing an aggregate.
+
+- Remote CI run 36265688629 on 4dd75eae completed: coverage/build, all Linux/macOS jobs, and all six Windows runtime partitions passed. Windows general/installed recovery failed because the fault preload used a drive path as an ESM URL; fixed using pathToFileURL. Three test declarations also overrode the Windows timeout with 40 seconds; they now retain the configured 180-second Windows limit. Local focused engine regression: 16/16 pass.
+- Rebalanced the two new expensive engine suites (fork and implementation compiler) across the existing three Windows runtime jobs; no extra runner or removed test. Actual Vitest inventories verified exactly: 46/44/42 of 132 tests, exhaustive and disjoint. Script tests: 24/24. Remote Windows C1 spike ACL failure remains pending integration of the separate C1 branch; local merge was blocked by automatic review and user clarification is still pending. No merge was executed.
+
+This update supersedes the partial-wave findings below only where stated. Work remains in progress; no merge or release occurred.
+
+- CLI acceptance now passes 7/7. Corrected tests to compare the database before their own lease mutation and read historical rows inside a transaction. A fork before a question is inactive/running until its first resume reaches the question.
+- Added the real thirty-node CLI robustness harness. All seven cases passed locally (four SIGKILL boundaries with the real 60-second lease TTL, large output, cooperative cancel, POSIX SIGTERM). Fault injection lives in an external test preload; production execution has no crash environment switch.
+- Installed npm package acceptance and the same robustness harness passed on macOS arm64 / Node 22.22.3. Evidence: `/private/tmp/core-v2-package-acceptance/engine-robustness.json` and release-manifest.json. The new three-platform `engine-robustness` CI job is written and actionlint passes; remote execution is still pending.
+- Core steering status now projects up to 512 receipts, prioritizing pending messages, 240-character previews, total pending/consumed counts and authoritative consuming attempt/time. Signal acceptance returns Core's durable acceptedAt. Five inbox tests and typecheck passed. Paired Desktop consumes this projection rather than writing a second receipt ledger.
+- C9 architecture, definition examples, extension and recovery guides now exist; all four initial docs checks pass with eight complete definitions. Added actual CLI validation of the examples, awaiting the full suite currently running.
+- Full offline definition evaluation passed all 10 observations; independent acceptance true, correction prompt target met, no observed quality drop or extra invocations. Monetary conclusion remains inconclusive. Raw report: `evidence/offline-definition-evaluation.json`.
+- Verified Core changes are saved in `c282a12b` with DCO. Local C1 ancestry integration was rejected by automatic approval review because the handoff prohibits merges; clarification is pending. No merge executed. C1/C2 branch reconciliation and remote CI dispatch remain outstanding.
+- Full Core coverage passed: 98 files, 1215 passed / 1 Windows-only skip, 605.27 seconds; statements 87.89%, branches 79.95%, functions 93.21%, lines 93.99%. This includes actual CLI validation of all eight documentation examples. Thresholds unchanged. C1/C2 ancestry, full paired Desktop/Web work and remote platform gates remain pending.
+- Follow-up D2 transport fix: v2 `runtime-result` now carries authoritative `revision` and `eventCursor`, allowing Desktop to persist the final projection frontier atomically. Build and all seven real CLI acceptance tests passed after this change; the full coverage result above predates this additive field change.
+- Follow-up cancellation fix: retrying an accepted cancellation no longer duplicates `workflow_cancelled` or replaces terminal truth reached before lease acquisition. Run lifecycle tests passed 11/11 and build passed. CI run 36265688629 was dispatched on preceding commit 4dd75eae; it is not acceptance of this later fix.
+
+## Continuation checkpoint — 26 September 2026, 19:55 CEST (Claude Code session)
+
+A second assistant session resumed from this checkpoint, verified every claim
+below against code and tests, planned the remaining work, and started a first
+implementation wave with parallel agents. That wave was cut by the account's
+session limit before any agent finished or verified its work. **Nothing from the
+wave is verified or committed on this branch.** The partial edits are left
+uncommitted in `/private/tmp/specrails-core-engine-v2` and backed up on branch
+`wip/claude-wave1-core` (pushed if the push succeeded; check `git branch -r`).
+Treat them as a head start, not as accepted work: keep what passes, rewrite what
+does not. Read this section first, then the original checkpoint below.
+
+### Verified baseline (HEAD `af7bbcd8`, all commands on macOS arm64, Node 22.22.3)
+
+| Claim | Result |
+| --- | --- |
+| `npm run typecheck`, `npm run build` | pass (exit 0) |
+| Engine suite `vitest run src/agent-runtime/engine` | 26 files, **156/156** pass |
+| `fork.test.ts -t 'exact incomplete implementation'` (the rerun the C3-C7-C8 note asked for) | **passes** (15.3 s) |
+| Full suite `vitest run` (no coverage) | 94 files, **1188 passed / 1 skipped** (Windows-only quoting case); 683 s |
+| `npm run test:scripts` | 24/24 |
+| actionlint on `.github/workflows/*.yml` | 0 findings |
+| `git diff --check origin/main...HEAD` | 7 delta spec files end with an extra blank line (cosmetic) |
+| Coverage / `npm run ci` / `check:package` on this HEAD | **not run** (the wave was going to run them) |
+
+Findings the original checkpoint did not state:
+
+- **Core CI has never run on PR #389.** `ci.yml` triggers only on `push: main`,
+  `pull_request: main` and `workflow_dispatch`; the PR targets `feat/core-engine-c0`.
+  The run IDs cited under "Accepted evidence" belong to other branches. To get
+  evidence for this head: `gh workflow run ci.yml --ref feat/core-engine-v2` (or
+  widen the triggers to feature branches the way Desktop does with `push: ['**']`).
+- Branch ancestry still unreconciled: C1 commits `d2569939`, `e1e25589`, `7ef947df`
+  (spike files + docs) and C2 docs commit `ac48c1a0` are not ancestors of HEAD; the
+  C2 feature `4ad57b54` was applied as a patch. Plan: `git merge origin/feat/core-engine-c1`
+  then cherry-pick `ac48c1a0`, resolving conflicts only in `openspec/` docs.
+- The `engine-spikes` CI job pins Desktop commit `70c9e8a4`, which exists only on
+  Desktop feature branches (D0 is not merged); re-pin once D0 lands.
+- The validation registry advertises exactly these 16 kinds: `prompt, role-turn,
+  decider, verify, shell, openspec-validate, openspec-archive, condition, end,
+  approval, question, gate, component, map, implementation, join`.
+
+### Partial, unverified edits left in the worktree (do not trust without tests)
+
+Typecheck and build pass with these edits. A focused run of
+`cli.test.ts integration-contract.test.ts engine/cli-acceptance.test.ts
+engine/package-surface.test.ts engine/docs-examples.test.ts install-config.test.ts
+legacy-runtime.test.ts core-host.test.ts` gives **120 passed / 7 failed**:
+
+| File | State |
+| --- | --- |
+| `integration-contract.json` | `agentRuntime.engine = { version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: 1 }`, `nodeKinds` = the 16 kinds above. Contract stays `5.1`. |
+| `src/agent-runtime/cli.ts` | `runtime api` now emits `engineVersion: 2`, `nodeKindsVersion`, `nodeKinds`, capabilities `engineV2/workflowDefinitions/fanOut/fork/steeringInbox: 1` (plus the existing ones). Decision: advertise now because Desktop D5 factories and D7 depend on it; the three-platform robustness gate stays a release gate, not an advertising gate. Revert this decision if you disagree, but do it explicitly. |
+| `src/agent-runtime/engine/runs.ts`, `engine/cli.ts` | Frozen request gains `workflow: { id, version, source, definitionHash, engine: 2 }` per contracts.md §9; resume selects the engine from it (legacy when absent). |
+| `src/agent-runtime/engine/execution.ts` | Test-only crash hook: honoured only when `SPECRAILS_ENGINE_TEST_HOOKS=1`; `SPECRAILS_ENGINE_CRASH_AT='<nodePath>:<before|during|after-writes|after-snapshot>'`. Documented in `contracts.md` implementation note. Production ignores both. |
+| `src/agent-runtime/engine/piece-registry.ts` | Small catalog/kinds helper for the contract test. |
+| `src/agent-runtime/cli.test.ts`, `integration-contract.test.ts` | Updated for the advertised surface; passing. |
+| `docs/agent-runtime.md` | Capability table updated. |
+| `scripts/verify-package.mjs` + new `scripts/verify-package-v2.mjs` | Installed-package v2 flow (validate → run to `question` pause → resume `--answer` → fork → status → api → package exports). **`npm run check:package` was not run after this change.** |
+| `src/agent-runtime/engine/__fixtures__/acceptance/{question-flow.json,runtime-config.json}` | Provider-free fixture for the CLI/package tests. |
+| `src/agent-runtime/engine/__fixtures__/robustness/{thirty-node.json,marker.mjs}` | 30-node provider-free definition and shell marker helper for the robustness harness. **`engine/robustness.test.ts` was never written**; the CI job `engine-robustness` was never added. |
+| `src/agent-runtime/engine/cli-acceptance.test.ts` (new) | 3 failures: "rejects resume with a definition and fork under an active lease without touching the run" (both entry points: the run DB byte size changes 319488→327680, i.e. the assertion or the fork-under-lease path touches the DB — investigate WAL checkpointing before changing production code) and "forks a historical cut ... source database byte-identical" (`runtime-status` shape does not match the expected `{ engineVersion: 2, ... }` object — check the compact status fields). |
+| `src/agent-runtime/engine/package-surface.test.ts` (new) | passes. |
+| `src/agent-runtime/engine/docs-examples.test.ts` (new) + `docs/engine-v2/pieces.md` (new) | 4 failures because the other C9 documents were never written: expects `docs/engine-v2/README.md`, `definition-format.md` (with the reference examples incl. `freestyle` and byte-equal copies of the four published fixtures), `recovery.md`, `adding-a-piece.md`, `desktop-integration.md`; `pieces.md` header is stale and the test supports `SPECRAILS_UPDATE_DOCS=1` to regenerate the descriptor catalog. |
+| `openspec/changes/core-agent-engine/contracts.md` | Dated "Implementation note" about capability advertisement, frozen request and test hooks. |
+
+Also pending from that wave (written to a request file, not applied): update
+`src/agent-runtime/engine/README.md` ("capabilities remain disabled" is now
+false) and append a dated clarification to `c3-protocol.md` §"Implementation
+clarifications" that `fork`/`steeringInbox` are advertised.
+
+### Remaining Core work, in order, with acceptance
+
+1. **Robustness harness (C3 gate, CHECKPOINT item 2).** Write
+   `src/agent-runtime/engine/robustness.test.ts` driving the REAL CLI
+   (`dist/agent-runtime/cli.js`) on `__fixtures__/robustness/thirty-node.json`:
+   SIGKILL before effect / during a write piece / after pending writes / after
+   snapshot (resume never repeats a completed node; shell marker files count once;
+   interrupted write requires `--recover` and `status` exposes
+   `state.recoverableSteps`); two-process contention (`lease_held`, exit 1) and
+   expired-lease takeover; SIGTERM cancellation (`cancelled`, resumable, no
+   orphan children) and `cancel --context --request-id`; modified definition on
+   resume (`definition_hash_mismatch`/`resume_incompatible`); >2 MB shell output
+   within the JSONL line bound. Add job `engine-robustness` to `ci.yml`
+   (ubuntu-latest, macos-15, windows-latest, Node 22.22.3, against the packed
+   package via `npm pack` + `SPECRAILS_ENGINE_CLI=<installed cli.js>`), validate
+   with actionlint, dispatch CI on the branch and record the run ID here.
+2. **Package/CLI acceptance (item 3).** Make `cli-acceptance.test.ts` pass, run
+   `npm run check:package` with the new v2 flow, keep the legacy checks and output
+   line format.
+3. **C9 docs (tasks 10.1/10.2).** Write the five missing `docs/engine-v2/*.md`
+   files grounded in the code, make `docs-examples.test.ts` pass, add the legacy
+   banner to `docs/agent-runtime.md`.
+4. **Offline evaluation against final source (item 4).**
+   `node dist/agent-runtime/cli.js runtime evaluate --output <dir> --definition <fixture>`
+   over the fixtures in `engine/__fixtures__/*.json` plus the focused-correction
+   corpus (`/private/tmp/core-engine-v2-focused-correction/` has the previous
+   report); store the JSON under `openspec/changes/core-agent-engine/evidence/`.
+   No paid benchmarks; no invented savings.
+5. **Reconcile ancestry** (merge C1, cherry-pick `ac48c1a0`), trim the 7 EOF blank
+   lines, update `tasks.md` checkboxes only for work with evidence, rewrite the
+   PR #389 body for the final scope. Then `npm run ci` (never lower thresholds).
+
+### Environment notes for this continuation
+
+- Node 22.22.3: `export PATH=/private/tmp/specrails-engine-tools/node-v22.22.3-darwin-arm64/bin:$PATH`.
+- `dist/` was rebuilt at 19:52 with the partial edits.
+- Desktop paired tests resolve Core from `../specrails-core`, which does not
+  exist; export `SPECRAILS_CORE_SOURCE_DIR=/private/tmp/specrails-core-engine-v2`
+  and `SPECRAILS_EFFICIENCY_CORE_ROOT=/private/tmp/specrails-core-engine-v2`
+  when running Desktop suites instead of creating a symlink.
+- Paired Desktop continuation: `openspec/changes/core-agent-engine/CHECKPOINT-GLOBAL.md`
+  in `/private/tmp/specrails-desktop-engine` has the matching section, the shared
+  server API contracts and the Desktop/Web plan.
+
+## User scope and authority
+
+Implement Core engine v2 with LangGraph, all pieces and lifecycle operations;
+Desktop integration and an n8n-style visual editor with drag/drop, connections,
+all configuration options, human interaction, recovery and reusable workflows;
+optimize agent quality/cost, CI, releases and testing; update Core/Desktop/Web
+documentation; solve discovered gaps. Branches and PR creation are authorized.
+The user requested autonomy and no postponed implementation. Actual rollout
+evidence cannot be invented: the two-release legacy retirement gate still needs
+real releases and telemetry. No merge or release has been performed.
+
+The briefing, complete contracts and plan were read in that order. Paired OpenSpec
+artifacts were created, validated and committed before code. Original supplied
+documents were `/Users/javi/Desktop/core-agent-engine{,-contracts,-implementer-brief,-tasks-core,-tasks-desktop}.md`;
+the paired change contains the working contracts, tasks and reference plan.
+Read this checkpoint, the Desktop checkpoint documents, and then the remaining
+tasks. Preserve already accepted foundation work.
+
+## Branches and durable review artifacts
+
+| Work | Branch / local checkout | PR |
+| --- | --- | --- |
+| Core C0 | `feat/core-engine-c0`, `/Users/javi/repos/specrails-core` | [385](https://github.com/fjpulidop/specrails-core/pull/385) |
+| Core C1 SQLite/public LangGraph probes | `feat/core-engine-c1`, `/private/tmp/specrails-core-engine-c1` | [386](https://github.com/fjpulidop/specrails-core/pull/386) |
+| Core C2 open roles | `feat/core-engine-c2`, `/private/tmp/specrails-core-engine-c2` | [387](https://github.com/fjpulidop/specrails-core/pull/387) |
+| Desktop D0 | `feat/core-engine-d0`, `/Users/javi/repos/specrails-desktop` | [706](https://github.com/fjpulidop/specrails-desktop/pull/706) |
+| Core CI | `codex/ci-engine-optimization`, `/private/tmp/specrails-core-ci-engine` | [388](https://github.com/fjpulidop/specrails-core/pull/388) |
+| Desktop CI/release | `codex/ci-engine-optimization`, `/private/tmp/specrails-desktop-ci-engine` | [707](https://github.com/fjpulidop/specrails-desktop/pull/707) |
+| Web rollout notes | `docs/core-engine-rollout`, `/private/tmp/specrails-web-engine-docs` | [218](https://github.com/fjpulidop/specrails-web/pull/218) |
+| Integrated Core WIP | `feat/core-engine-v2`, `/private/tmp/specrails-core-engine-v2` | [389](https://github.com/fjpulidop/specrails-core/pull/389) |
+| Integrated Desktop WIP | `feat/core-engine-desktop-v2`, `/private/tmp/specrails-desktop-engine` | [708](https://github.com/fjpulidop/specrails-desktop/pull/708) |
+
+Foundation and CI PRs are ready for review. Integration PRs remain drafts. Every
+created PR is attached to the Codex task. Temporary checkouts may disappear after
+OS cleanup; use the pushed branches. Preserve unrelated untracked user work in
+the original Web checkout. Do not reset or clean original repositories.
+
+Integration Core started from C0 evidence `11665acb`, merged C1 through
+`29ab492e` in `33257b7b`, and applied the C2 production patch without its OpenSpec
+ancestry. Reconcile the remaining C1 evidence/ancestry (`d2569939`, `e1e25589`,
+`7ef947df`) and C2 (`4ad57b54`, `ac48c1a0`) before final PR stacking. Production
+ACL fixes are already present. Desktop started from D0 `70c9e8a4`. The verified
+CI/release implementation from PR707 `97cfabbb` was copied into integration;
+reconcile its documentation and branch ancestry later, preserving feature edits.
+
+## Accepted evidence
+
+- C0 CI `36227847244`: green; 1,004 tests passed, one existing Windows skip,
+  24 script tests, four package assemblies and frozen journals.
+- C1 final three-platform CI `36230546712`: green on exact Node **22.22.3**,
+  actual Desktop assembly and npm consumer. 200 SIGKILL boundaries per platform.
+  Mean SQLite put: macOS 0.282 ms, Linux 0.721 ms, Windows 4.164 ms (<5 ms).
+  Accepted binding: `node:sqlite`; minimum Node 22.22.3. Full suite 998 passed,
+  one existing skip; scripts 24. This is probe evidence, not production C3 proof.
+- C2: 1,030 tests passed, one existing skip, scripts 24, four packages and the
+  frozen built-in argv goldens. Legacy identities remain workflow **7** and
+  instructions **10**, API **1**, integration schema **5.1**.
+- D0 final CI `36228425753` and Windows parity `36228427506`: green.
+  Server 8,794 passed/8 existing skips, client 4,647 passed, scripts 86.
+- Core CI optimization `36230750772`: all gates green. Removes duplicate
+  Ubuntu/Node24 full lane while retaining coverage and tested release tarball.
+- Desktop CI optimization `36233342790`: all 18 checks green in **4m05s**,
+  versus 15m50s baseline. Server shards 1m43s–2m42s, client 2m18s–3m10s,
+  aggregation 35s/43s. Earlier queued run `36230773446` took 22m52s: retain this
+  distinction; do not promise hosted runner latency. All 94 script tests passed.
+  Exact-SHA trusted frontend reuse includes authenticated missing/expired-asset
+  rebuild once, with no fallback for corruption/API/identity failures.
+- Integrated Core latest focused composition checks: **48/48** across runs,
+  graph description, prompts, role state, open roles and integration contract.
+  Additional compiler suites, pieces, native implementation/QuickSDD/Batch,
+  SQLite crash/store/inbox/lease/fork suites passed during development; their
+  evidence is in agent checkpoint notes and local logs. Not a final full CI run.
+- Offline focused correction evaluation: **2/2 independently accepted**, no
+  extra invocations, prompt **2,879 → 1,595 bytes (44.60% reduction)**, exceeding
+  the 40% target. This does not establish paid monetary savings. Full initial
+  definition corpus was 10/10 before subsequent changes; rerun at final source.
+
+## Implemented Core structure
+
+`src/agent-runtime/engine/` contains strict canonical JSON/hash validation, the
+published schema and actual 16-piece registry, LangGraph compilation, nested
+components/Send maps/deferred joins, isolated state, FIFO effect/AI admission,
+intersected budgets, durable SQLite saver/ledger/leases, fork, cancellation,
+steering inbox, project memory and optional OTLP HTTP telemetry. Provider turns
+reuse the existing invoker with SQLite-scoped session/memo/accounting ports.
+Implementation delegates to the native Core nodes/journal instead of copying
+their business rules. Role settings and native command policy are open (C2).
+
+The CLI supports definition run/validate/catalog, status, resume, fork, signal,
+cancel, invalidate-by-fork and evaluate definitions. Both fatal CLI entry points
+emit JSON. SDK and definition-schema exports are added. **Engine v2 capability is
+still intentionally unadvertised** in `runtime api`/integration engine metadata;
+enable and update parity tests only once integrated/package acceptance is ready.
+
+Important completed decisions:
+
+- Every terminal effect and LangGraph pending write share a SQLite transaction;
+  effects/AI permits are released only after commit. An uncertain write needs
+  explicit recovery. Durable provider usage is charged once by invocation ID.
+- Pending or unreported billing remains unknown; residual reservations retain
+  unknown dimensions rather than releasing spent but unreported headroom.
+- Parent coordinators do not hold child permits. Sessions are shared across
+  developer/fixer within one implementation but isolated across map branches.
+- Forks copy public checkpoint history and preserve completed siblings; only
+  incomplete implementations restore/rebind their exact journal snapshot.
+  Completed implementation evidence stays inherited/read-only. Candidate scope
+  snapshots preserve exact metadata exclusions; actual code changes invalidate
+  inherited certification. `$vars`/`$outputs` patches clear certification.
+- Fork archive only normalizes the exact OpenSpec-generated default Purpose to
+  original provenance; authored Purpose or different requirements still conflict.
+  Original run databases/journals/spec files must remain unchanged.
+- Claimed steering reaches both prompt and role-turn exactly once. Custom role
+  prompts are preserved. A transport with `resumeRequiresFullContext` receives
+  full instructions even when a session ID is supplied. Custom escalation uses
+  the existing single protocol-repair slot, with no added speculative turns.
+- Focused correction removes only Node internal dispatch frames, retaining
+  assertions, actual/expected values, application frames and complete evidence
+  IDs. Legacy prompt/argv defaults remain unchanged.
+- `settlePause()` runs after the graph reaches the idle interrupt barrier;
+  parallel branches cannot leave a paused run marked running.
+- Status is read-only: no filesystem fingerprint, permissions mutation or lease
+  acquisition. It includes pending interruptions, reservations, lease, recovery
+  attempts, durable efficiency summary and active duration excluding human wait.
+  Final create/resume status is projected after releasing the execution lease.
+
+## Required next work (do not silently defer)
+
+1. Read the paired Desktop `CHECKPOINT-D1-D3.md`, `CHECKPOINT-D1B-D5.md` and
+   `CHECKPOINT.md` (D4). Finish their precise pending integration/recovery work.
+   Do not reimplement the already complete visual authoring or role settings.
+2. Add **production** C3 robustness: actual CLI 30-node graph, SIGKILL before,
+   during and after writes; real lease expiration/two-process contention;
+   explicit `--recover`; graceful cancellation and checkpoint behavior; run on
+   Linux/macOS/Windows exact Node22.22.3 with the actual installed npm package.
+   Existing six low-level SIGKILL tests and C1 probes do not replace this gate.
+3. Finish CLI/package acceptance tests for the latest fork/invalidate, structured
+   fatal errors, status/efficiency summary and public engine SDK/schema exports.
+   `scripts/verify-package.mjs` still only exercises legacy workflow; extend it
+   with actual installed v2 execution/resume/fork. No fake capabilities.
+4. Re-run full offline evaluation against final source (including correction
+   target and all independent behavioral oracles). Paid cost claims require real
+   billing; do not run unbounded paid benchmarks or invent savings.
+5. Advertise actual v2 API/integration capability and 16 node kinds, add package
+   compatibility/retained-runtime tests, and complete the frozen request contract.
+   Currently v2 context/config/definition are authoritative in SQLite, while
+   legacy request files remain separate. Verify Desktop's retained host metadata.
+6. Desktop D4 has storage migration/APIs but backend recovery, orphan restart,
+   isolated delivery reattachment and fork routes are not complete. Preserve
+   worktree/settlement ownership and paused runs across restart.
+7. Desktop D5 four factories exist; **eight named starter templates remain**.
+   D6 telemetry/deprecation, D7 full steering UI, D8 migration/retirement and any
+   pending D3 graph/fork visualization require completion/verification.
+8. Complete Core/Desktop guides and Web's eight-language user documentation.
+   Web PR218 currently contains rollout notes only. Complete C9 docs/evaluation
+   and prepare C10/D8 retirement with real rollout gates, not fabricated history.
+9. Run required full Core/Desktop coverage, typecheck, architecture, source map,
+   build/package/provider and native gates; never lower thresholds. Review
+   generated boundary manifests instead of bypassing fixed architecture rules.
+10. Reconcile stacked branches/evidence, rewrite draft PRs for final scope,
+    publish all required implementation PRs and attach them to the task.
+
+## Local execution and continuation
+
+- Exact Node22: `/private/tmp/specrails-engine-tools/node-v22.22.3-darwin-arm64/bin`.
+  Prepend to PATH for Core; its modules are symlinked to the original Core tree.
+- Desktop local shared `better-sqlite3` is built for system Node25.9 ABI141.
+  Use system Node for local Desktop tests; **do not rebuild shared native deps**.
+  CI uses independent exact Node22 trees. Root/client have separate installs.
+- OpenSpec global1.2 is stale. Use
+  `/Users/javi/repos/specrails-core/node_modules/.bin/openspec` (1.4.1).
+- actionlint: `/private/tmp/specrails-engine-tools/actionlint/actionlint -shellcheck=`.
+- Useful local logs: `/private/tmp/core-v2-composition-tests.log`,
+  `/private/tmp/core-v2-checkpoint-{typecheck,build}.log`,
+  `/private/tmp/desktop-engine-checkpoint-typecheck.log`,
+  `/private/tmp/core-engine-v2-focused-correction/evaluation.json`.
+- Sandbox may block Git metadata/network; authorized branch/PR operations work
+  with normal escalation. Sandbox `gh` authentication failure is not reliable.
+- No recurring automation was created. Resume when the user has quota, from this
+  checkpoint and the pushed integration branches, preserving the complete goal.
+
+## Saved checkpoint references
+
+Core source commit: `9ae02add`; Desktop source commit: `4c84e95c`. Both pushed.
+Final checkpoint verification: Core typecheck/build pass and focused tests 48/48;
+Desktop full typecheck and architecture pass. The working trees were clean after
+source commits. Later documentation-only commits add these cross-references.
+Read `CHECKPOINT-C3-C7-C8.md` in Core for detailed persistence/fork notes.
+
+## Fork acknowledgement recovery — 26 September 2026, 23:03 CEST
+
+Added optional fork request idempotency backed by a durable child receipt. Repeated
+identical requests return the original receipt without changing source/child DBs;
+different cuts/patches/IDs still reject an existing destination. The receipt is
+committed before publication and remains stable after child progress. Core fork
+suite passed 7 tests (53.19s), typecheck and build passed. Desktop's paired CLI test
+also reproduced a post-publication host-file failure and repaired it on retry
+without replacing either Core database (34 paired bridge/recovery tests passed).
+This is groundwork for the pending Desktop fork endpoint/ownership transfer.

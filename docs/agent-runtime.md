@@ -1,5 +1,9 @@
 # Programmatic agent runtime
 
+For immutable definitions, composition, forks and steering, see the
+[engine v2 guide](engine-v2/README.md). The built-in implementation workflow
+described here remains available through its retained runtime identity.
+
 Core executes implementation as a local TypeScript workflow:
 
 ```text
@@ -13,11 +17,11 @@ The workflow is a [LangGraph](https://docs.langchain.com/oss/javascript/langgrap
 
 The developer role has the same autonomy the legacy Implement step had: it edits files and runs commands inside its CLI's own sandbox (Claude `--tools default --dangerously-skip-permissions` with nested agents and skills disallowed, Codex `workspace-write`, Gemini `--yolo`, Kimi ACP auto mode), so it can run the project's tests before handing off. The architect reads code and authors change artifacts through confined OpenSpec tools; the reviewer stays read-only. Claude roles load only project settings (`--setting-sources project,local`), so `CLAUDE.md` and `.claude/rules` apply while the user's global memory and plugins do not.
 
-This page describes the current source implementation, **runtime API 1**, workflow version 6, checkpoint envelope format 2. An older published Core package can have the same major version and lack this export. Build the paired checkout when developing this feature; do not assume `@latest` contains unreleased changes.
+This page describes the current source implementation, **runtime API 1**, workflow version 7, checkpoint envelope format 2. An older published Core package can have the same major version and lack this export. Build the paired checkout when developing this feature; do not assume `@latest` contains unreleased changes.
 
 ## Requirements and ownership
 
-- Node.js **20.19.0+** and Git on macOS, Linux or Windows. Individual provider CLIs may require a newer Node release.
+- Node.js **22.22.3+** and Git on macOS, Linux or Windows. Individual provider CLIs may require a newer Node release.
 - Installed and authenticated Claude, Codex, Gemini or Kimi CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
 - A frozen execution context and a new change name. Verification commands are optional: configured commands run as given, the architect proposes the project's own checks for repositories that have none, and a repository with no automated check is admitted and recorded as unverified in the receipt.
 - `ownership.git: "host"`. The runtime implements and archives; its caller owns worktrees, commits, pushes, pull requests and backlog delivery. It rejects Core-owned Git delivery rather than reporting success while shipping remains pending.
@@ -70,7 +74,40 @@ To use the local endpoint, set the desired role to `{"provider":"local","model":
 
 For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provider configuration and set that variable in the process launching Core. Omit `apiKeyEnv` when no key is required. URLs cannot contain credentials, query parameters or fragments. Verification commands inherit process credentials; do not put secrets into their persisted `env` overrides.
 
-The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from the existing [profile v1 schema](../schemas/profile.v1.json); it does not translate legacy profile routing into programmatic phases.
+The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
+
+The [integration contract](../integration-contract.json) retains schema 5.1, API 1, legacy workflow 7 and role instructions 10. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
+
+Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
+
+## Declared roles and explicit permissions
+
+The required `agents` assignments remain architect, developer and reviewer. Add optional roles without changing their built-in prompts, invocation argv or workflow identity:
+
+```json
+{
+  "roles": {
+    "security-reviewer": {
+      "provider": "claude",
+      "access": "read",
+      "artifacts": "none",
+      "prompt": "Inspect the change for security regressions and report concrete evidence."
+    }
+  }
+}
+```
+
+This fragment extends the configuration above. Role IDs match `^[a-z][a-z0-9-]{0,63}$`; `fixer` remains reserved for developer corrections. `access` controls source tools and native CLI policies. `artifacts` controls scoped OpenSpec tools: `all` permits proposal/design/specs/tasks, `tasks-checkboxes` permits only task checkbox changes, and `none` denies writes. Progress records require `all` or `tasks-checkboxes`. Native CLIs retain their own workspace sandbox; artifact permissions are not an operating-system filesystem ACL.
+
+A role can declare `openspecSkill` as `openspec-ff-change`, `openspec-apply-change` or `openspec-verify-change`; absent means no OpenSpec binding. `rolePrompts` can override the prompt of a declared role. Built-ins retain implicit read/all, write/tasks-checkboxes and read/none policies respectively. Explicit built-in descriptors must match their assignment and policy. Validation of saved configuration adds no fields; new-run normalization materializes descriptors without editing the original document.
+
+`resolveRoleDescriptor(config, id)` and `roleInstructions(descriptor, context, change)` are public APIs. Custom roles use the guarded free loop on OpenAI-compatible providers; the compact architect/developer/reviewer pipelines remain specific to those built-in protocols. Existing context limits, read reuse, budgets, nullable accounting, review gates and verification stay in force. Select models and effort explicitly; no new automatic escalation or cheaper-model policy is inferred for custom roles.
+
+Programmatic `AgentRequest` accepts `access`, `artifacts`, `instructions: 'role'|'none'` and optional `nativeCommand: { id, args? }`. Old built-in requests retain compatible defaults; custom requests require explicit policy. A free request receives no appended role instructions. Native requests use an empty `prompt`, `instructions: 'none'` and no OpenSpec binding; arguments are literal data and cannot contain NUL.
+
+Claude/Gemini receive `/<id> <args>` and Codex `$<id> <args>`. Kimi uses its installed managed skill runner in `--render-only` mode to expand the native skill without inference, then the runtime executes that text through its normal read/write policy and ACP fallback. `specrails:<x>` maps to `specrails-<x>`; `opsx:ff`, `opsx:apply` and `opsx:verify` map to the corresponding OpenSpec skills. Simple IDs name installed Kimi skills. Upgrade the managed framework if its runner lacks render-only support. Unknown namespaces, missing skills and OpenAI-compatible native commands fail with `native_command_unsupported` before provider inference.
+
+`runtime api` advertises `openRoles: 1` together with the engine v2 capabilities listed under [Run from the CLI](#run-from-the-cli). Desktop schema/settings support is paired through D1b. Existing frozen runs continue to use their retained runtime package.
 
 ## Run from the CLI
 
@@ -116,7 +153,22 @@ The commands work in macOS shells and PowerShell; quote paths and answers contai
 
 Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
-`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion:"..."}` without invoking providers. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
+`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the seventeen piece kinds registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `component`, `map`, `implementation`, `join`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
+
+| Capability | Meaning |
+| --- | --- |
+| `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal` and `cancel` operate on those runs |
+| `workflowDefinitions: 1` | `runtime workflows list` and `runtime workflows validate --stdin` expose the piece catalog, definition schema and Core-computed definition hash |
+| `openRoles: 1` | Declared roles with explicit access, artifact and instruction policies |
+| `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
+| `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
+| `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
+| `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
+| `efficientRoleExecution: 1`, `reproducibleVerification: 1`, `implementationEfficiencyMetrics: 1`, `compactAgentLoop: 1`, `configurableGuardrails: 1`, `compactOutputBudget: 1`, `roleThinkingControl: 1`, `repositoryScope: 1` | Existing built-in workflow capabilities; unchanged |
+
+`engines` lists the engines this package can launch: `1` is the legacy built-in pipeline (`runtime run` without `--definition`) and `2` is workflow definitions. `integration-contract.json` mirrors it as `agentRuntime.engines`. A Core without engine 1 (planned for Core 7) advertises `[2]`; hosts then refuse a legacy launch before admission with `legacy_engine_unavailable`. Hosts that meet a Core predating the field treat it as `[1, 2]` when `engineV2: 1` is advertised, otherwise `[1]`.
+
+Hosts negotiate on these capability keys, never on the Core major version. Saved runs keep working with the package that created them: the frozen `agent-runtime-request.json` records which engine owns the run, and `resume`/`status` honor that record instead of guessing from the installed package. Hosts can send a JSON configuration through stdin to `runtime validate --stdin` (maximum 2 MiB), avoiding temporary files and platform-specific shell quoting. It is mutually exclusive with `--config`. Use `runtime status --context <file> --compact` for process/UI integration: it retains the run and trace identities, phase status and visits, `pendingApproval`, `pendingQuestion`, usage, the completion verdict and the acceptance summary while omitting accumulated outputs, history and frozen context. Omit `--compact` for full inspection.
 
 ## Verification output and correction limits
 
@@ -142,9 +194,10 @@ State lives below `<backlogRoot>/.specrails/pipeline/<runId>/`:
 | File | Purpose |
 | --- | --- |
 | `state.json` and `receipts/` | Authoritative Core gates, verification and acceptance evidence |
-| `agent-runtime-request.json` | Frozen CLI change name and runtime configuration |
-| `agent-workflow/<runId>/checkpoint.json` | One atomic envelope: the host ledger (attempts, receipts, usage, ordered events, pending interrupts) and the complete LangGraph checkpoint history |
-| `agent-workflow/<runId>/.lease/` | Exclusive runtime process ownership |
+| `agent-runtime-request.json` | Frozen CLI change name, runtime configuration, runtime identity and `workflow: { id, version, source: builtin \| definition, definitionHash, engine: 1 \| 2 }`. Written once with no overwrite by both engines (a fork destination receives its own); `resume`/`status` select the engine from `workflow.engine`, a request without the block is a legacy run, and `definitionHash` is `null` for the built-in workflow whose identity is the checkpoint `workflowFingerprint` |
+| `agent-workflow/<runId>/checkpoint.json` | Legacy engine: one atomic envelope with the host ledger (attempts, receipts, usage, ordered events, pending interrupts) and the complete LangGraph checkpoint history |
+| `agent-workflow/<runId>/.lease/` | Legacy engine: exclusive runtime process ownership |
+| `agent-workflow/run.sqlite` | Engine v2: the frozen definition, config and context, LangGraph checkpoints, ledger, events, leases and steering inbox in one SQLite database |
 
 Resume uses the saved configuration and change. It rejects a different frozen input, Core/instruction identity or workflow definition. Valid completed phases are retained; stale evidence invalidates the affected phase and everything declared after it, and the graph travels back in time to the checkpoint taken right before that phase last ran, so its predecessors' state is exactly what it saw then. The ledger is authoritative for which node runs next: if LangGraph's own position disagrees after a crash, traversal follows the ledger. Once archived, changed evidence requires a new run.
 
@@ -273,7 +326,7 @@ The OpenAI-compatible tool executor exposes scoped listing, literal text search,
 
 ### Efficient development and workspace tools
 
-The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement and batch-implement commands now enter this same runtime.
+The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement command enters this same runtime, for one ticket or several tickets in one aggregate run.
 
 | Tool | Input | Behavior |
 |---|---|---|
@@ -294,7 +347,7 @@ The summary contains `total` and `phases` (architect, developer, verify, reviewe
 - A provider call means one executor invocation; an API invocation can contain multiple model/tool rounds. Tool calls count observed tool-start events, including failed/denied tools. They are not an independently billed token category.
 - Cache counters are subsets of input tokens, not additional tokens. Missing counters or costs remain `null`. No pricing table or estimated discount is applied.
 - Failed calls, fallback sessions, repairs and earlier correction attempts remain included. Polling or resuming without another provider call does not add spend. Run totals are cumulative; `invocationUsage` retains its existing meaning of spend in the latest CLI invocation.
-- The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
+- The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. In engine v2, the next fenced owner closes abandoned calls as interrupted and emits their unknown usage exactly once, retaining unreported budget reservations. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
 - Total execution duration accumulates active workflow time, excluding time parked for human approval between invocations. Phase time includes phase overhead; do not add agent time to phase time. A phase without an end timestamp has unknown duration.
 
 Prompt instructions now have version 6. Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
@@ -309,7 +362,7 @@ The metrics do not themselves establish quality or savings. Compare the legacy e
 
 Architect and reviewer responses are structured metadata. The architect authors real OpenSpec delta artifacts using the official fast-forward skill and CLI instructions. Archive uses the real OpenSpec CLI in a staging copy and publishes its merged main specifications with a durable preimage/write journal; it never replaces main specifications with delta text. The developer may update task checkboxes, but changing approved design, task descriptions or specification content invalidates the gates.
 
-Implementation and batch implementation use this runtime exclusively. Their installed commands are thin entry points; they do not orchestrate provider-native role waves. Profile v1 remains available for other workflows. Desktop stores provider connections globally and role assignments per project; existing connections migrate without discarding endpoints. An admitted run remains bound to its frozen request after settings changes. See the [integration contract](../integration-contract.json) for runtime API and artifact paths, and Desktop's programmatic runtime guide for release pairing and continuation/delivery behavior.
+Implementation uses this runtime exclusively, including multi-ticket aggregate runs; there is no separate batch command. The installed `implement` and `retry` commands are thin entry points; they do not orchestrate provider-native role waves. Profile v1 remains available for other workflows. Desktop stores provider connections globally and role assignments per project; existing connections migrate without discarding endpoints. An admitted run remains bound to its frozen request after settings changes. See the [integration contract](../integration-contract.json) for runtime API and artifact paths, and Desktop's programmatic runtime guide for release pairing and continuation/delivery behavior.
 
 
 ## Official OpenSpec role workflows
@@ -449,6 +502,17 @@ node bin/specrails-core.mjs runtime evaluate --output /tmp/specrails-efficiency-
 Five fixed cases cover static Tetris-like logic, a local feature, a cross-repository contract, verification correction and review correction. Each independent oracle must accept its reference implementation and reject deliberately defective variants. Full and optimized modes use fresh repositories/sessions and identical acceptance gates. The fixed long-context correction must shrink at least 40% without extra invocations. Reports record task, oracle, repository, configuration and runtime identities, failures, sample variation and independent acceptance.
 
 Offline tokens and zero fixture cost are synthetic. The initial offline run accepted 5/5 cases in both modes and reduced its fixed correction prompt from 4,774 to 1,777 bytes (62.8%). It did not demonstrate lower monetary cost or faster real-provider execution. Repeat after implementation changes; the report records the tested package identity.
+
+The definition corpus uses the same independent behavioral oracles for native
+implementation and implementation nested in a component. After building, run
+`node scripts/evaluate-definition-corpus.mjs implementation OUTPUT` and
+`node scripts/evaluate-definition-corpus.mjs implementation-component OUTPUT`
+with distinct output directories. CI runs these definitions in parallel on Linux;
+the platform matrix separately covers runtime and installed-package behavior.
+Each definition must accept all five cases in both context modes, including
+verification repair, review repair and a two-repository contract. A missing,
+duplicated or failed observation fails the gate. Reports preserve failures and
+runtime identity; offline results never establish monetary savings.
 
 Real evaluation is opt-in only: `runtime evaluate --real --config EXPLICIT_MODELS.json --max-cost-usd BUDGET --output OUTPUT`. Select all models and authorize the aggregate spend first. Unsupported spend limits prevent launch; incomplete billing stops further calls. The report distinguishes same-model from configured routing experiments and evaluates the descriptive target of 20% lower aggregate cost per independently accepted output. Small samples and uncontrolled provider caches do not establish universal quality or savings.
 
