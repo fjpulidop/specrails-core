@@ -1,6 +1,7 @@
-import { lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
+import { cpSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -537,6 +538,88 @@ describe('bundled framework — installFramework / ensureCurrentSymlink / assemb
       const ack = JSON.parse(readTextFile(ackPath)) as Record<string, Record<string, string>>
       expect(Object.keys(ack[ws])).toEqual(expect.arrayContaining(['sr-architect']))
       expect(ack[repo]).toBeUndefined() // repo is NOT the key under relocation
+    })
+
+    describe('retired batch-implement workflow is pruned from installed workspaces', () => {
+      const coreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
+      const PROVIDERS = [
+        { provider: 'claude', providerDir: '.claude' },
+        { provider: 'codex', providerDir: '.codex' },
+        { provider: 'gemini', providerDir: '.gemini' },
+        { provider: 'kimi', providerDir: '.kimi-code' },
+      ] as const
+      // Every provider artifact a pre-6.1 Core rendered for batch-implement.
+      function batchArtifacts(ws: string, provider: string, providerDir: string): string[] {
+        const root = path.join(ws, providerDir)
+        if (provider === 'claude') {
+          return [path.join(root, 'commands', 'specrails', 'batch-implement.md'), path.join(root, 'skills', 'sr-batch-implement')]
+        }
+        if (provider === 'codex') return [path.join(root, 'skills', 'batch-implement')]
+        if (provider === 'gemini') return [path.join(root, 'commands', 'specrails', 'batch-implement.toml')]
+        return [path.join(root, 'skills', 'specrails-batch-implement')]
+      }
+      function implementArtifact(ws: string, provider: string, providerDir: string): string {
+        const root = path.join(ws, providerDir)
+        if (provider === 'claude') return path.join(root, 'commands', 'specrails', 'implement.md')
+        if (provider === 'codex') return path.join(root, 'skills', 'implement', 'SKILL.md')
+        if (provider === 'gemini') return path.join(root, 'commands', 'specrails', 'implement.toml')
+        return path.join(root, 'skills', 'specrails-implement', 'SKILL.md')
+      }
+
+      for (const { provider, providerDir } of PROVIDERS) {
+        for (const copyStatics of [false, true]) {
+          it(`${provider} ${copyStatics ? 'in-repo copy' : 'relocated link'}: an update drops batch-implement and keeps reserved paths`, () => {
+            const scriptDir = path.join(tmpDir, 'core')
+            const fwDir = path.join(tmpDir, 'framework')
+            const ws = path.join(tmpDir, 'ws')
+            const repo = path.join(tmpDir, 'repo')
+            // A pre-6.1 package: the real templates plus the retired command,
+            // which was byte-identical to implement.md.
+            cpSync(path.join(coreRoot, 'templates'), path.join(scriptDir, 'templates'), { recursive: true })
+            writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '6.0.0' })}\n`)
+            const retired = path.join(scriptDir, 'templates', 'commands', 'specrails', 'batch-implement.md')
+            writeFileLf(retired, readTextFile(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md')))
+            const assemble = (version: string) => {
+              installFramework({ scriptDir, frameworkDir: fwDir, provider, providerDir, version })
+              // Pre-6.1 Core also generated a Claude `sr-batch-implement` skill from
+              // the command; this Core no longer has that mapping, so seed it the way
+              // the old materialization wrote it.
+              if (provider === 'claude' && version === '6.0.0') {
+                writeFileLf(path.join(fwDir, version, providerDir, 'skills', 'sr-batch-implement', 'SKILL.md'), '---\nname: sr-batch-implement\n---\n')
+              }
+              ensureCurrentSymlink(fwDir, version)
+              assembleProjectWorkspace({ workspace: ws, frameworkDir: fwDir, provider, providerDir, version, codeRoot: repo, scriptDir, copyStatics })
+            }
+
+            assemble('6.0.0')
+            for (const artifact of batchArtifacts(ws, provider, providerDir)) expect(pathExists(artifact), artifact).toBe(true)
+
+            // Desktop-owned reserved regions and an unmanaged user skill.
+            const reserved: Array<[string, string]> = [
+              [path.join(ws, '.specrails', 'profiles', 'team.json'), '{"name":"team"}\n'],
+              [path.join(ws, '.specrails', 'profiles', 'env', 'prod.json'), '{"env":"prod"}\n'],
+            ]
+            if (provider === 'claude' || provider === 'gemini') {
+              reserved.push([path.join(ws, providerDir, 'agents', 'custom-reviewer.md'), '# custom reviewer\n'])
+            }
+            if (provider === 'kimi') {
+              reserved.push([path.join(ws, providerDir, 'skills', 'custom-reviewer', 'SKILL.md'), '# custom role\n'])
+              reserved.push([path.join(ws, providerDir, 'skills', 'my-notes', 'SKILL.md'), '# user skill\n'])
+            }
+            for (const [file, content] of reserved) writeFileLf(file, content)
+
+            // 6.1 no longer ships the command; updating re-assembles the workspace.
+            rmSync(retired)
+            writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '6.1.0' })}\n`)
+            assemble('6.1.0')
+
+            for (const artifact of batchArtifacts(ws, provider, providerDir)) expect(pathExists(artifact), artifact).toBe(false)
+            for (const artifact of batchArtifacts(path.join(fwDir, 'current'), provider, providerDir)) expect(pathExists(artifact), artifact).toBe(false)
+            expect(pathExists(implementArtifact(ws, provider, providerDir))).toBe(true)
+            for (const [file, content] of reserved) expect(readTextFile(file), file).toBe(content)
+          })
+        }
+      }
     })
   })
 })

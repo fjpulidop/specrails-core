@@ -188,11 +188,6 @@ const SKILL_FROM_COMMAND: Record<string, { command: string; description: string 
     description:
       'sr:implement — Full OpenSpec lifecycle with specialized agents: architect designs, developer implements, reviewer validates. Use for implementing frozen specs or feature descriptions.',
   },
-  'sr-batch-implement': {
-    command: 'batch-implement',
-    description:
-      'sr:batch-implement — Run multiple frozen specs as one programmatic agent workflow.',
-  },
 }
 
 /**
@@ -1854,7 +1849,7 @@ function renderInitialAgentsMd(repoRoot: string): string {
     '',
     'Implementation is coordinated by the Specrails programmatic agent runtime.',
     'Use the frozen scope and official OpenSpec workflow supplied for your role.',
-    'Do not start another implement or batch-implement workflow inside a role.',
+    'Do not start another implement workflow inside a role.',
     '',
     '## Repository context',
     '',

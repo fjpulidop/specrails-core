@@ -292,3 +292,29 @@ Contract test: `integration-contract.test.ts`. Docs: `docs/agent-runtime.md`.
 Task 11.3 must change the value to `[2]` together with the engine-1 removal.
 Desktop refuses legacy launches with `legacy_engine_unavailable` when `1` is
 absent, and derives `[1, 2]` / `[1]` for Cores that predate the field.
+
+## Batch command removal — 29 September 2026
+
+Owner decision: remove Batch mode, including the `batch-implement` workflow
+command, in Core 6.1 (not deferred to Core 7). The template was byte-identical
+to `implement.md`, and `implement` already runs several tickets as one
+aggregate context and one runtime invocation.
+
+- Deleted `templates/commands/specrails/batch-implement.md` and the Claude
+  `sr-batch-implement` skill mapping; Codex/Kimi/Gemini renderings came from the
+  template directory and disappear with it.
+- `integration-contract.json` no longer lists `workflows["batch-implement"]` for
+  any provider. `schemaVersion` stays `5.1`; no contract test requires a bump.
+- Updating an installed project prunes the stale files: each version is
+  materialized into a clean framework tree, and re-assembly replaces the linked
+  or copied `commands`/`skills` subtrees and removes framework-owned Kimi
+  `specrails-*` skills. Reserved `.specrails/profiles/**`, `custom-*` roles and
+  unknown user skills survive.
+- Accepted incompatibility: Desktop ≤ 2.57 expects `batch-implement` in the
+  contract and reports this Core as incompatible. Desktop drops that
+  requirement in its paired change.
+
+Evidence: `framework.test.ts` ("retired batch-implement workflow is pruned from
+installed workspaces", all four providers, relocated link and in-repo copy),
+`provider-pipeline.test.ts`, `scaffold.test.ts` (Kimi inventory),
+`template-inventory.test.ts` and `agent-lifecycle.test.ts`.

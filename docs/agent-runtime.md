@@ -326,7 +326,7 @@ The OpenAI-compatible tool executor exposes scoped listing, literal text search,
 
 ### Efficient development and workspace tools
 
-The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement and batch-implement commands now enter this same runtime.
+The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement command enters this same runtime, for one ticket or several tickets in one aggregate run.
 
 | Tool | Input | Behavior |
 |---|---|---|
@@ -362,7 +362,7 @@ The metrics do not themselves establish quality or savings. Compare the legacy e
 
 Architect and reviewer responses are structured metadata. The architect authors real OpenSpec delta artifacts using the official fast-forward skill and CLI instructions. Archive uses the real OpenSpec CLI in a staging copy and publishes its merged main specifications with a durable preimage/write journal; it never replaces main specifications with delta text. The developer may update task checkboxes, but changing approved design, task descriptions or specification content invalidates the gates.
 
-Implementation and batch implementation use this runtime exclusively. Their installed commands are thin entry points; they do not orchestrate provider-native role waves. Profile v1 remains available for other workflows. Desktop stores provider connections globally and role assignments per project; existing connections migrate without discarding endpoints. An admitted run remains bound to its frozen request after settings changes. See the [integration contract](../integration-contract.json) for runtime API and artifact paths, and Desktop's programmatic runtime guide for release pairing and continuation/delivery behavior.
+Implementation uses this runtime exclusively, including multi-ticket aggregate runs; there is no separate batch command. The installed `implement` and `retry` commands are thin entry points; they do not orchestrate provider-native role waves. Profile v1 remains available for other workflows. Desktop stores provider connections globally and role assignments per project; existing connections migrate without discarding endpoints. An admitted run remains bound to its frozen request after settings changes. See the [integration contract](../integration-contract.json) for runtime API and artifact paths, and Desktop's programmatic runtime guide for release pairing and continuation/delivery behavior.
 
 
 ## Official OpenSpec role workflows

@@ -574,7 +574,7 @@ describe('runInit', () => {
       mkdirp(repoRoot)
       mkdirp(binDir)
       await setupFakeScriptDir(scriptDir)
-      for (const command of ['implement', 'batch-implement', 'retry', 'doctor']) {
+      for (const command of ['implement', 'retry', 'doctor']) {
         writeFileLf(
           path.join(scriptDir, 'templates', 'commands', 'specrails', `${command}.md`),
           `/specrails:${command}\n`,
