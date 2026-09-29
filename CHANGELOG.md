@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.1.0](https://github.com/fjpulidop/specrails-core/compare/v6.0.1...v6.1.0) (2026-09-29)
+
+
+### Features
+
+* durable LangGraph definition engine (checkpoint) ([#389](https://github.com/fjpulidop/specrails-core/issues/389)) ([bdac2a3](https://github.com/fjpulidop/specrails-core/commit/bdac2a3e1eb261334ec9f7adae5bac15a501cbeb))
+
 ## [6.0.1](https://github.com/fjpulidop/specrails-core/compare/v6.0.0...v6.0.1) (2026-09-25)
 
 
