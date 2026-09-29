@@ -53,7 +53,7 @@ describe.each(ROLES)('$id role definition', ({ id, skill }) => {
 })
 
 describe('implementation entry points use the programmatic lifecycle', () => {
-  it.each(['implement', 'batch-implement', 'retry'])('%s delegates lifecycle control to the runtime', (name) => {
+  it.each(['implement', 'retry'])('%s delegates lifecycle control to the runtime', (name) => {
     const text = read('commands', 'specrails', `${name}.md`)
     expect(text).toContain('agent-runtime.mjs')
     expect(text).toContain('resume --context')

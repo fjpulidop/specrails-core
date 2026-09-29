@@ -1174,9 +1174,9 @@ describe('Kimi scaffold', () => {
     expect(implement).toContain('agent-runtime.mjs run --context')
     expect(implement).not.toContain('AGENT_MODEL')
     expect(implement).not.toContain('--role-wave-file')
-    const batch = readTextFile(path.join(workflowRoot, 'specrails-batch-implement', 'SKILL.md'))
-    expect(batch).toContain('Multiple tickets share one aggregate context and one runtime invocation')
-    expect(batch).not.toContain('--role-wave-file')
+    // implement owns multi-ticket aggregate runs; no separate batch workflow ships.
+    expect(implement).toContain('Multiple tickets share one aggregate context and one runtime invocation')
+    expect(pathExists(path.join(workflowRoot, 'specrails-batch-implement'))).toBe(false)
 
     const retry = readTextFile(
       path.join(workflowRoot, 'specrails-retry', 'SKILL.md'),

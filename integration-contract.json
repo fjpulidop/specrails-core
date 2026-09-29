@@ -13,7 +13,6 @@
       "initCommand": "init",
       "workflows": {
         "implement": "/specrails:implement",
-        "batch-implement": "/specrails:batch-implement",
         "retry": "/specrails:retry"
       }
     },
@@ -29,7 +28,6 @@
       "initCommand": "init",
       "workflows": {
         "implement": "$implement",
-        "batch-implement": "$batch-implement",
         "retry": "$retry"
       }
     },
@@ -45,7 +43,6 @@
       "initCommand": "init",
       "workflows": {
         "implement": "/specrails:implement",
-        "batch-implement": "/specrails:batch-implement",
         "retry": "/specrails:retry"
       }
     },
@@ -100,7 +97,6 @@
       "initCommand": "init",
       "workflows": {
         "implement": "/skill:specrails-implement",
-        "batch-implement": "/skill:specrails-batch-implement",
         "retry": "/skill:specrails-retry"
       }
     }
