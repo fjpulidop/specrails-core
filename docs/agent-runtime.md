@@ -318,6 +318,10 @@ Each node declares its `effect`, optional retry bounds, its possible successors 
 
 The OpenAI-compatible tool executor exposes scoped listing, literal text search, numbered line reads and a single-file Git diff. Developers additionally have whole-file writing and exact-match patches. It rejects traversal, symlink escapes and protected runtime metadata. It has no model-accessible shell tool; Core owns verification subprocesses, and `get_diff` runs fixed, read-only Git commands with external diff and text conversion disabled. This is a tool policy, not an operating-system sandbox for arbitrary custom executors or external CLIs.
 
+### Code workspace verification
+
+A frozen repository scope names the code workspaces inside its checkout. Verification command cwd must remain inside one of those scopes; repository parents, sibling packages and symlink escapes are rejected before spawning. With several scopes, agent-proposed checks require an explicit cwd per workspace. Desktop expands host checks without cwd across the selected workspaces and records the actual checkout paths.
+
 ### Efficient development and workspace tools
 
 The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement command enters this same runtime, for one ticket or several tickets in one aggregate run.
