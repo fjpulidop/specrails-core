@@ -9,7 +9,7 @@
     "--max-turns",
     "50",
     "--model",
-    "sonnet",
+    "claude-sonnet-5-5",
     "--setting-sources",
     "project,local",
     "--tools",
