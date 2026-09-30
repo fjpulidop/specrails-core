@@ -461,8 +461,8 @@ describe('compact architect task-plan validation', () => {
   })
 })
 
-describe('CLI executors stay byte-identical', () => {
-  it('builds the same Claude architect invocation and prompt as before the compact runtime', async () => {
+describe('CLI executor invocation contract', () => {
+  it('preserves the Claude architect prompt and pins the Sonnet alias to 5.5', async () => {
     const context = { schemaVersion: 1, runId: 'snapshot', backlogRoot: '/workspace', artifactRoot: '/repo/app', artifactRepositoryId: 'app', repositories: [{ id: 'app', name: 'App', path: '/repo/app' }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Snapshot feature', description: 'Keep prompts frozen', acceptanceCriteria: ['Prompt is unchanged'] }] } as PipelineContext
     const openspec: OpenSpecRoleContext = { root: '/repo/app', change: 'snapshot-change', stateDirectory: '/repo/app/.specrails/state', cli: '/opt/openspec.js', skillPath: '/opt/skills/openspec-ff-change/SKILL.md', skillHash: 'abc', role: 'architect' }
     const prompt = openSpecPrompt(openspec) + roleInstructions('architect', context, 'snapshot-change', { verification: [{ repositoryId: 'app', command: 'npm', args: ['test'] }] })

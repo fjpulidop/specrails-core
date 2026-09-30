@@ -69,6 +69,6 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
     if (descriptor.access === 'read') await memory.put(['review', 'notes'], finalKey, { roleId, candidateHash: before?.hash ?? null,
       text: boundedText(result.text, 4000), lastAttemptId: context.frame.attemptId })
   })
-  return { outcome: 'next', output: { text: boundedText(result.text), ...(result.value ? { structured: json(result.value) } : {}) },
+  return { outcome: 'next', output: { candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, text: boundedText(result.text), ...(result.value ? { structured: json(result.value) } : {}) },
     history: [historyEntry(context, result.text)], ...(params.sessionContinuity !== 'none' && session ? { session: { sessionId: session.sessionId, identity: session.identity } } : {}) }
 }

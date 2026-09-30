@@ -25,7 +25,7 @@ export class RunPieceDependencies implements PieceDependencies {
   readonly policies: PieceDependencies['policies']
   constructor(readonly context: PipelineContext, readonly config: RuntimeConfig, readonly registry: ExecutorRegistry,
     private readonly definition: WorkflowDefinition, private readonly ledger: RunLedger, private readonly directory: string,
-    private readonly change?: string, private readonly projectMemory?: SqliteProjectStore) { this.policies = definition.policies }
+    readonly change?: string, private readonly projectMemory?: SqliteProjectStore) { this.policies = definition.policies }
 
   memory(context: PieceExecutionContext): ProjectMemory {
     if (!this.projectMemory) throw new EngineError('memory_unavailable', 'Project memory is not bound to this execution')
@@ -40,11 +40,16 @@ export class RunPieceDependencies implements PieceDependencies {
       .filter(binding => binding.parentRunId === this.context.runId)
   }
 
-  bindImplementation(context: PieceExecutionContext, change: string): ImplementationBinding {
-    const binding = deriveImplementationBinding(this.context, context, change)
-    const previous = this.ledger.readPieceState(context.frame, 'binding:implementation')
+  bindImplementation(context: PieceExecutionContext, change: string, shared = false): ImplementationBinding {
+    const scoped = shared ? { ...context, frame: { ...context.frame, nodePath: context.frame.scope.nodePathPrefix } } : context
+    const binding = deriveImplementationBinding(this.context, scoped, change)
+    if (shared) binding.shared = true
+    const previous = shared ? this.ledger.readScopedPieceState(context.frame, binding.nodePath, 'binding:implementation') : this.ledger.readPieceState(context.frame, 'binding:implementation')
     if (previous !== undefined && contentDigest(previous) !== contentDigest(binding)) throw new EngineError('scope_mismatch', 'Implementation binding changed within a frozen run')
-    if (previous === undefined) this.ledger.writePieceState(context.frame, 'binding:implementation', json(binding))
+    if (previous === undefined) {
+      if (shared) this.ledger.writeScopedPieceState(context.frame, binding.nodePath, 'binding:implementation', json(binding))
+      else this.ledger.writePieceState(context.frame, 'binding:implementation', json(binding))
+    }
     return binding
   }
 
@@ -55,6 +60,7 @@ export class RunPieceDependencies implements PieceDependencies {
       ? readCandidateScope(this.context)
       : inherited ? this.inheritedCandidateScope(inherited)
         : { context: this.context, scopeHash: contentDigest(this.context), artifactExclusions: this.change ? ['openspec/changes/' + this.change] : [] }
+    if (inherited && this.change) base.artifactExclusions = [...new Set([...base.artifactExclusions, 'openspec/changes/' + this.change])]
     const bindings = this.implementationBindings(), repositoryExclusions: Record<string, string[]> = Object.fromEntries(Object.entries(base.repositoryExclusions ?? {}).map(([id, paths]) => [id, [...paths]]))
     for (const binding of bindings) {
       const exclusions = existsSync(path.join(binding.directory, 'state.json')) ? readCandidateScope(binding.context).artifactExclusions : ['openspec/changes/' + binding.change]
@@ -105,6 +111,16 @@ export class RunPieceDependencies implements PieceDependencies {
     return { candidate, verified: snapshot.verified?.candidateHash === hash ? snapshot.verified : null }
   }
 
+  /** Write admission revokes certification; the archive may check its immutable pre-write checkpoint against a real receipt. */
+  verifiedBeforeWrite(context: PieceExecutionContext) {
+    const verified = context.state.$verified
+    if (!verified || verified.candidateHash !== this.fingerprint()) return null
+    const receipt = this.ledger.db.get('receipts', { receipt_id: verified.receiptId })
+    if (!receipt || receipt.run_id !== this.ledger.runId || receipt.valid !== 1 || receipt.candidate_hash !== verified.candidateHash) return null
+    const evidence = JSON.parse(String(receipt.receipt_json)) as { scope?: string }
+    return evidence.scope === 'full' ? verified : null
+  }
+
   /** Only the execution owner proposes protected candidate/receipt channels. */
   finalize(frame: AttemptFrame, result: PieceResult, effect: EngineEffect): PieceResult {
     const hash = this.fingerprint(), snapshot = this.ledger.scopeSnapshot(frame.scope.id)
@@ -117,7 +133,7 @@ export class RunPieceDependencies implements PieceDependencies {
     const node = definitionNodeAt(this.definition, frame.nodePath)
     const kind = node?.kind ?? this.ledger.db.get('visits', { visit_id: frame.visitId })?.kind
     const evidence = receipt?.evidence as { commands?: unknown[]; unverifiedRepositories?: unknown[] } | undefined
-    const certifies = result.verified !== null && ['verify', 'implementation'].includes(String(kind)) && receipt?.valid && receipt.scope === 'full' && !!evidence?.commands?.length && !evidence.unverifiedRepositories?.length
+    const certifies = result.verified !== null && ['verify', 'implementation', 'implementation-step'].includes(String(kind)) && receipt?.valid && receipt.scope === 'full' && !!evidence?.commands?.length && !evidence.unverifiedRepositories?.length
     if (receipt?.valid && receipt.candidateHash !== hash) return { ...result, outcome: 'fail',
       ...(effect === 'write' ? { candidate } : {}), verified: null,
       receipt: { ...receipt, valid: false, evidence: json({ ...(receipt.evidence as Record<string, unknown>), valid: false, reason: 'Candidate changed before terminal commit' }) },
@@ -127,6 +143,18 @@ export class RunPieceDependencies implements PieceDependencies {
       ...(certifies ? { verified: { receiptId: receipt.id, candidateHash: hash, atTransition: frame.transition, revision: candidate.revision } }
         : effect === 'write' || snapshot.verified?.candidateHash !== hash ? { verified: null } : {}),
     }
+  }
+
+  operationState(context: PieceExecutionContext): JsonValue | undefined {
+    return [...this.ledger.scopeSnapshot(context.frame.scope.id).attempts].reverse()
+      .find(attempt => attempt.result?.childUpdate?.operationState !== undefined)?.result?.childUpdate
+  }
+
+  artifactContracts(context: PieceExecutionContext): PieceStatePort {
+    const owner = context.frame.scope.nodePathPrefix
+    const keyOf = (key: string) => 'contract:artifacts:' + key
+    return { get: key => this.ledger.readScopedPieceState(context.frame, owner, keyOf(key)),
+      set: (key, value) => this.ledger.writeScopedPieceState(context.frame, owner, keyOf(key), value) }
   }
 
   memo(context: PieceExecutionContext): PieceStatePort {
@@ -146,7 +174,23 @@ export class RunPieceDependencies implements PieceDependencies {
     }
   }
 
-  stepContext(context: PieceExecutionContext) { return invocationStepContext(this.ledger, this.definition, context) }
+  stepContext(context: PieceExecutionContext) {
+    const step = invocationStepContext(this.ledger, this.definition, context)
+    if (definitionNodeAt(this.definition, context.frame.nodePath)?.kind !== 'implementation-step') return step
+    const phase = (path: string) => {
+      const node = definitionNodeAt(this.definition, path)
+      return node?.kind === 'implementation-step' ? String(node.params.phase) : path
+    }
+    const checkpoint = step.checkpoint
+    return { ...step, checkpoint: { ...checkpoint,
+      nextStep: checkpoint.nextStep ? phase(checkpoint.nextStep) : null,
+      steps: Object.fromEntries(Object.entries(checkpoint.steps).map(([key, value]) => [phase(key), { ...value, id: phase(key) }])),
+      history: checkpoint.history.map(value => ({ ...value, stepId: phase(value.stepId) })),
+      events: checkpoint.events.map(value => ({ ...value, ...(value.stepId ? { stepId: phase(value.stepId) } : {}) })),
+      ...(checkpoint.pendingApproval ? { pendingApproval: { ...checkpoint.pendingApproval, stepId: phase(checkpoint.pendingApproval.stepId) } } : {}),
+      ...(checkpoint.pendingQuestion ? { pendingQuestion: { ...checkpoint.pendingQuestion, stepId: phase(checkpoint.pendingQuestion.stepId) } } : {}),
+    } }
+  }
 
   settleResult(context: PieceExecutionContext, key: string, value: JsonValue, invocation: ProviderInvocation): void {
     if (!invocation.invocationId) throw new EngineError('invocation_mismatch', 'A response memo requires its durable invocation ID')

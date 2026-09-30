@@ -12,6 +12,9 @@ import { RunDatabase } from '../checkpoint/database.js'
 import { validateWorkflowDefinition } from '../definition-validator.js'
 import { validationPieceRegistry } from './index.js'
 
+// These integrations start the real pinned OpenSpec CLI several times.
+// Windows runner process startup uses the same budget as workflow fork tests.
+const integrationTimeout = process.platform === 'win32' ? 180_000 : 45_000
 const roots: string[] = []
 function publish(value: unknown) {
   const result = validateWorkflowDefinition(value, validationPieceRegistry())
@@ -99,7 +102,7 @@ it.each([undefined, 'opsx:ff', 'opsx:apply'])('runs Quick SDD with a human block
     })
     expect(strict.state.status).toBe('failed')
   }
-}, 45_000)
+}, integrationTimeout)
 
 it.each([true, false])('repairs invalid artifacts once through the bounded preparation retry (repairable: %s)', async repairable => {
   const root = mkdtempSync(path.join(tmpdir(), 'quick sdd repair ')); roots.push(root)
@@ -137,4 +140,4 @@ it.each([true, false])('repairs invalid artifacts once through the bounded prepa
     expect(commands).toEqual(['opsx:ff', 'opsx:ff'])
     expect(readFileSync(path.join(repository, 'value.cjs'), 'utf8')).toBe('module.exports = 1\n')
   }
-}, 45_000)
+}, integrationTimeout)

@@ -765,6 +765,7 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
   if (!repo || typeof command.command !== 'string' || !command.command || command.command.includes('\0') || !Array.isArray(command.args) || !command.args.every((arg) => typeof arg === 'string' && !arg.includes('\0'))) fail('Invalid verification command')
   const cwd = command.cwd === undefined ? directory(repositoryWorkingDirectory(repo)) : directory(path.resolve(repo.path, String(command.cwd)))
   if (!within(repo.path, cwd)) fail('Verification cwd escapes selected repository')
+  if (!withinRepositoryScope(repo, path.relative(repo.path, cwd).split(path.sep).join('/'))) fail('Verification cwd escapes selected code workspace')
   const env = command.env === undefined ? undefined : object(command.env)
   if (env && Object.values(env).some((value) => typeof value !== 'string' || value.includes('\0'))) fail('Invalid verification environment')
   const timeoutMs = command.timeoutMs === undefined ? 15 * 60_000 : Number(command.timeoutMs)

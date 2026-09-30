@@ -1,7 +1,7 @@
 {
   "name": "specrails-core",
   "version": "6.1.0",
-  "description": "Agent workflow engine for specrails-desktop: provider-independent installer and programmatic agent runtime for Claude Code, Codex, Gemini CLI and Kimi Code",
+  "description": "Agent workflow engine for specrails-desktop: provider-independent installer and programmatic agent runtime for Claude Code and Codex",
   "type": "module",
   "exports": {
     "./agent-runtime": {

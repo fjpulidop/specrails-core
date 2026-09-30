@@ -316,7 +316,7 @@ describe('Claude Opus generation', () => {
       expect(args[args.indexOf('--model') + 1]).toBe('claude-opus-5-5')
     }
   })
-  it.each(['claude-opus-5-5', 'claude-opus-5', 'sonnet', 'custom-model'])('preserves explicit choice %s', model => {
+  it.each(['claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-sonnet-5', 'custom-model'])('preserves explicit choice %s', model => {
     const args = buildCliInvocation('claude', request({ model })).args
     expect(args[args.indexOf('--model') + 1]).toBe(model)
   })
@@ -332,4 +332,13 @@ it('preserves every built-in argv byte against the C0 baseline', () => {
   expect(baseline.sourceCommit).toBe('6ab6b3ce')
   expect(baseline.fixtures).toHaveLength(12)
   for (const fixture of baseline.fixtures) expect(buildCliInvocation(fixture.provider, fixture.request, fixture.options), `${fixture.provider}/${fixture.request.role}`).toEqual(fixture.invocation)
+})
+
+describe('Claude Sonnet generation', () => {
+  it.each(['architect', 'developer', 'reviewer'] as const)('pins Sonnet 5.5 for %s, including resumed invocations', role => {
+    for (const resumeSessionId of [undefined, 'existing-session']) {
+      const args = buildCliInvocation('claude', request({ role, model: 'sonnet', resumeSessionId })).args
+      expect(args[args.indexOf('--model') + 1]).toBe('claude-sonnet-5-5')
+    }
+  })
 })

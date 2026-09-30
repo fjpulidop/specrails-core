@@ -8,7 +8,7 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 
 - Typecheck/build on the exact supported Node minimum, **20.19.0**.
 - Full Vitest and release-guard tests on **Linux, macOS and Windows**, with **Node 20.19.0, 22 and 24**.
-- Windows distributes the two slow runtime integration suites across three jobs by collected test locations; a fourth job runs every other test file. Parameterized cases stay together. The partition runner checks its selected inventory against Vitest before running, failing if any assigned test is missing or extra. Linux/macOS and coverage run the complete suite without partitioning.
+- Windows distributes the four slow runtime integration suites across three jobs by collected test locations; a fourth job runs every other test file. The general job runs the real CLI recovery suite separately with one worker and one concurrent case, so its thirty-node subprocess trees do not compete with each other or other suites while waiting for the unchanged production lease TTL. Parameterized cases stay together. The partition runner checks its selected inventory against Vitest before running, failing if any assigned test is missing or extra. Linux/macOS and coverage run the complete suite without partitioning.
 - Coverage on Node 24 with the existing configured thresholds (not lowered).
 - A checksum-verified actionlint binary validates workflow syntax, expressions and action inputs (shellcheck is not included).
 - A checksum-verified Gitleaks binary scans Git history with redacted output.

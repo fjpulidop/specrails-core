@@ -27,14 +27,15 @@ export interface ImplementationAdapter {
   initialize(context: PieceExecutionContext): Promise<CoreStateUpdate>
   runNode(id: CoreNodeId, state: CoreStateType, context: PieceExecutionContext): Promise<NodeResult<CoreStateType>>
   snapshot(context: PieceExecutionContext): ImplementationJournalSnapshot
+  consentSnapshot?(context: PieceExecutionContext): string | undefined
   summarize(state: CoreStateType, context: PieceExecutionContext): Promise<PieceResult>
   validateCompleted(id: CoreNodeId, record: StepRecord, checkpoint: WorkflowState, context: PieceExecutionContext): Promise<boolean>
 }
 
 /** Scope the legacy convergence/attempt view without changing durable event attribution. */
-export function implementationStepContext(deps: PieceDependencies, context: PieceExecutionContext, id: CoreNodeId): WorkflowStepContext {
+export function implementationStepContext(deps: PieceDependencies, context: PieceExecutionContext, id: CoreNodeId, independent = false): WorkflowStepContext {
   const original = deps.stepContext(context)
-  const prefix = context.frame.nodePath.slice(0, -id.length)
+  const prefix = independent ? '' : context.frame.nodePath.slice(0, -id.length)
   const local = (value: string): string => value.startsWith(prefix) ? value.slice(prefix.length) : value
   const belongs = (value: string): boolean => (CORE_NODE_ORDER as readonly string[]).includes(value) || (value.startsWith(prefix) && !value.slice(prefix.length).includes('/'))
   const checkpoint = original.checkpoint
@@ -54,7 +55,7 @@ export function implementationStepContext(deps: PieceDependencies, context: Piec
 }
 
 /** Reuse every legacy node and quality gate; this factory never runs the legacy JSON workflow host. */
-export function createImplementationAdapter(deps: PieceDependencies, input: { change: string; params: JsonObject }): ImplementationAdapter {
+export function createImplementationAdapter(deps: PieceDependencies, input: { change: string; params: JsonObject; independent?: boolean; revalidate?: boolean; archiveConsent?: string }): ImplementationAdapter {
   const { change, params } = input
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(change) || change.length > 64) throw new EngineError('invalid_arguments', 'Implementation requires an admitted OpenSpec change')
   const config: RuntimeConfig = { ...deps.config,
@@ -62,7 +63,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
     ...(params.reviewPolicy ? { review: params.reviewPolicy as RuntimeConfig['review'] } : {}) }
   const attempts = (params.attempts as number | undefined) ?? config.limits?.maxAttempts ?? 3
   const bindings = new Map<string, { binding: ImplementationBinding; openspec: Record<AgentRole, OpenSpecRoleContext>; resumeChecked: boolean; archiveConsent?: string }>()
-  const instanceKey = (context: PieceExecutionContext): string => context.frame.scope.id + '/' + context.frame.visitId
+  const instanceKey = (context: PieceExecutionContext): string => input.independent ? context.frame.scope.id : context.frame.scope.id + '/' + context.frame.visitId
   const metadata: CoreNodeDeps = { context: deps.context, config, change, attempts, policy: resolveReviewPolicy(config), openspec: {}, focusedCorrectionEvidence: true,
     invoke: (() => { throw new EngineError('implementation_not_initialized', 'Implementation metadata nodes must run through the durable adapter') }) as RoleInvoker, note() {} }
   const refresh = (binding: ImplementationBinding, context: PieceExecutionContext): void => {
@@ -79,7 +80,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
     schema: CoreState, nodes: coreNodes(metadata), entry: 'architect',
     async initialize(context) {
       context.signal.throwIfAborted()
-      const binding = deps.bindImplementation(context, change)
+      const binding = deps.bindImplementation(context, change, input.independent)
       const pipeline = binding.context
       const state = initializePipeline(pipeline, binding.change)
       refresh(binding, context)
@@ -94,7 +95,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
         return [role, roleOpenSpecContext(prepared, pipeline.artifactRoot, binding.change, directory, descriptor, provider?.kind === 'cli' ? provider.cli : 'claude')]
       }))
       for (const role of Object.keys(openspec)) await deps.registry.get(resolveRoleDescriptor(config, role).provider).validateOpenSpec?.(openspec[role])
-      bindings.set(instanceKey(context), { binding, openspec, resumeChecked: false })
+      bindings.set(instanceKey(context), { binding, openspec, resumeChecked: input.independent === true && input.revalidate === false, archiveConsent: input.archiveConsent })
       if (existsSync(path.join(directory, 'implementation-fork.json'))) {
         const plan = readVerificationPlan(pipeline)
         return { ...(plan ? { plan: expandedPlanCommands(pipeline, plan) } : {}), verifyResult: null, review: null, archived: null, verifyHistory: [] }
@@ -106,7 +107,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
       if (!prepared) throw new EngineError('implementation_not_initialized', 'Initialize this implementation scope before executing its child graph')
       const { binding, openspec } = prepared
       refresh(binding, context)
-      const step = implementationStepContext(deps, context, id)
+      const step = implementationStepContext(deps, context, id, input.independent)
       if (!prepared.resumeChecked && (step.pending || step.checkpoint.events.some(event => event.type === 'workflow_resumed'))) {
         // Collect archive consent first, then revalidate completed verification
         // and review exactly as the legacy host does on explicit resume.
@@ -129,7 +130,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
           }
         }
       }
-      const invoke = createRoleInvoker({ context: binding.context, config, registry: deps.registry, openspec, roleState: deps.roleState(context),
+      const invoke = createRoleInvoker({ context: binding.context, config, registry: deps.registry, openspec, roleState: deps.roleState(context), propagateInterruptions: input.independent,
         onAgentEvent: (role, event) => context.progress({ type: 'agent-event', payload: json({ role, event }) }) })
       const localConfig = { ...config, verification: config.verification.filter(command => binding.context.repositories.some(repository => repository.id === command.repositoryId)) }
       const nodes = coreNodes({ ...metadata, context: binding.context, config: localConfig, change: binding.change, openspec, invoke,
@@ -139,6 +140,7 @@ export function createImplementationAdapter(deps: PieceDependencies, input: { ch
       })
       return nodes[id].run(state, step)
     },
+    consentSnapshot(context) { return bindings.get(instanceKey(context))?.archiveConsent },
     snapshot(context) {
       const prepared = bindings.get(context.frame.scope.id) ?? bindings.get(instanceKey(context))
       if (!prepared) throw new EngineError('implementation_not_initialized', 'Implementation snapshot requires its initialized scope')

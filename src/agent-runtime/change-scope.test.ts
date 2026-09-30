@@ -72,17 +72,34 @@ describe('repository scope in the execution context', () => {
 })
 
 describe('scoped verification', () => {
-  it('runs host commands without cwd in the scope directory, keeps explicit cwd and freezes both in the plan', async () => {
+  it('runs host commands without cwd in the scope directory, keeps an explicit cwd inside the workspace and freezes both in the plan', async () => {
     const scoped = context(['apps/app'])
     initializePipeline(scoped, 'scoped-change')
     const plan = initializeVerificationPlan(scoped, [
       { repositoryId: 'app', command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'] },
-      { repositoryId: 'app', command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'], cwd: '.' },
+      { repositoryId: 'app', command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'], cwd: 'apps/app/src' },
     ], [])
     const commands = expandedPlanCommands(scoped, plan)
-    expect(commands.map(command => command.cwd)).toEqual(['apps/app', '.'])
+    expect(commands.map(command => command.cwd)).toEqual(['apps/app', 'apps/app/src'])
     const receipt = await verifyPipeline(scoped, { kind: 'full', commands })
-    expect(receipt.commands.map(command => command.cwd)).toEqual([path.join(realpathSync(checkout), 'apps', 'app'), realpathSync(checkout)])
+    expect(receipt.commands.map(command => command.cwd)).toEqual([path.join(realpathSync(checkout), 'apps', 'app'), path.join(realpathSync(checkout), 'apps', 'app', 'src')])
+  })
+
+  it('rejects configured checks at the parent, sibling workspace or through an escaping symlink before spawning', async () => {
+    const scoped = context(['apps/app'])
+    initializePipeline(scoped, 'scoped-change')
+    symlinkSync(path.join(checkout, 'apps/other'), path.join(checkout, 'apps/app/other'))
+    for (const cwd of ['.', 'apps', 'apps/other', 'apps/app/..', 'apps/app/other']) {
+      await expect(verifyPipeline(scoped, { kind: 'full', commands: [{ repositoryId: 'app', command: process.execPath, args: ['-e', 'process.exit(0)'], cwd }] })).rejects.toThrow('code workspace')
+    }
+  })
+
+  it('executes explicit checks for two workspaces of the same Git checkout in their own directories', async () => {
+    const scoped = context(['apps/app', 'apps/other'])
+    initializePipeline(scoped, 'scoped-change')
+    const receipt = await verifyPipeline(scoped, { kind: 'full', commands: ['apps/app', 'apps/other'].map(cwd => ({ repositoryId: 'app', command: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'], cwd })) })
+    expect(receipt.valid).toBe(true)
+    expect(receipt.commands.map(check => check.output)).toEqual(['apps/app', 'apps/other'].map(cwd => path.join(realpathSync(checkout), cwd)))
   })
 
   it('keeps model-proposed checks inside the scope and repairs the ones that escape it', () => {

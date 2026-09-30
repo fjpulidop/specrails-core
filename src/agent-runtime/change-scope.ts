@@ -51,6 +51,7 @@ const posix = (file: string): string => file.split(path.sep).join('/')
 export function withScopeDefault<T extends { repositoryId: string; cwd?: string }>(context: PipelineContext, command: T): T {
   if (command.cwd !== undefined) return command
   const scope = context.repositories.find(repo => repo.id === command.repositoryId)?.scope
+  if (scope && scope.length > 1) throw new Error('Verification must name an explicit cwd for each selected code workspace')
   return scope?.length ? { ...command, cwd: scope[0] } : command
 }
 /** Model-proposed checks stay inside the repository scope: they prove the change, not the whole checkout. */

@@ -34,11 +34,15 @@ export function openSpecPieces(bindings: PieceDependencyProvider): Piece[] {
       return { outcome: exited && item.valid ? 'pass' : 'fail', output: json(report) }
     },
   }, {
-    descriptor: { kind: 'openspec-archive', paramsSchema: schema, outcomes: ['next', 'failed'], effect: 'write', requiresAI: false },
+    descriptor: { kind: 'openspec-archive', paramsSchema: { ...schema, properties: { ...(schema.properties as import('../contracts.js').JsonObject), requiresVerified: { type: 'boolean' }, reviewedCandidate: { type: 'string' }, approvedCandidate: { type: 'string' } } }, outcomes: ['next', 'failed'], effect: 'write', requiresAI: false },
     async execute(params, context): Promise<PieceResult> {
       const deps = bindings()
       if (params.repositoryId !== undefined && params.repositoryId !== deps.context.artifactRepositoryId) throw new EngineError('artifact_scope_mismatch', 'OpenSpec repository must match the frozen artifact repository')
-      const change = changeId(text(params.change)), initial = deps.executionSnapshot(context).candidate?.hash
+      const snapshot = deps.executionSnapshot(context)
+      const verified = snapshot.verified ?? deps.verifiedBeforeWrite?.(context)
+      if (params.requiresVerified && (!snapshot.candidate || !verified || verified.candidateHash !== snapshot.candidate.hash)) return { outcome: 'failed', output: { reason: 'unverified' } }
+      if ([params.reviewedCandidate, params.approvedCandidate].some(hash => hash !== undefined && hash !== snapshot.candidate?.hash)) return { outcome: 'failed', output: { reason: 'candidate_changed' } }
+      const change = changeId(text(params.change)), initial = snapshot.candidate?.hash
       const archived = params.allowArchived === true ? archivedOpenSpecChange(deps.context, change) : undefined
       if (archived) return { outcome: 'next', output: { change, archived, skipped: true } }
       try {

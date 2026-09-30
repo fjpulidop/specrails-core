@@ -8,7 +8,7 @@ import { answerEntry, boundedText, captures, captureSchema, historyEntry, json, 
 
 const sessionFailures = new Set(['session_not_found', 'session_expired', 'session_unsupported'])
 interface PromptResponse extends AgentResult { verification?: 'pass' | 'fail'; blockedQuestion?: string }
-const engineSchema = paramsSchema({ provider: { type: 'string', minLength: 1, maxLength: 128 }, model: { type: 'string', minLength: 1, maxLength: 256 }, effort: { type: 'string', minLength: 1, maxLength: 64 }, thinking: { enum: ['on', 'off'] } }, ['provider'])
+const engineSchema = paramsSchema({ provider: { type: 'string', minLength: 1, maxLength: 128 }, model: { type: 'string', minLength: 1, maxLength: 256 }, effort: { type: 'string', minLength: 1, maxLength: 64 }, thinking: { enum: ['on', 'off'] }, maxTurns: { type: 'integer', minimum: 1 } }, ['provider'])
 const promptSchema: JsonObject = {
   ...paramsSchema({ engine: engineSchema, text: { ...stringSchema, minLength: 1 }, nativeCommand: paramsSchema({ id: { type: 'string', pattern: '^[a-z][a-z0-9:_-]{0,63}$' }, args: stringSchema }, ['id']),
     access: { enum: ['read', 'write'] }, sentinel: { enum: ['verification', 'blocked', 'none'] }, captureVars: captureSchema,
@@ -59,7 +59,7 @@ export function promptPiece(bindings: PieceDependencyProvider): Piece {
             prompt: native ? '' : text(params.text) + suffix,
             ...(native ? { nativeCommand: { id: native.id, args: (native.args ?? '') + suffix } } : {}),
             cwd: deps.context.artifactRoot, allowedRoots: deps.context.repositories.map(repo => repo.path),
-            model: engine.model, effort: engine.effort, thinking: engine.thinking,
+            model: engine.model, effort: engine.effort, thinking: engine.thinking, maxTurns: engine.maxTurns,
             timeoutMs: (params.timeoutMs as number | undefined) ?? deps.config.limits?.timeoutMs,
             idleTimeoutMs: (params.idleTimeoutMs as number | undefined) ?? deps.config.limits?.idleTimeoutMs,
             signal: context.signal, resumeSessionId: sessionId,

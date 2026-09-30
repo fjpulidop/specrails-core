@@ -66,6 +66,29 @@ it('publishes an immutable historical cut, patches only vars/outputs and never r
   try { expect(observeLedger(db).events().filter(event => event.type === 'efficiency_updated')).toHaveLength(1) } finally { db.close() }
 })
 
+it('forks a generic artifact contract into its own change and resumes without reauthoring the plan', async () => {
+  const f = fixture({ freeze: { kind: 'artifact-contract', params: { change: '{{run.changeId}}', contractId: 'plan', action: 'freeze' }, ends: { pass: 'ask', fail: null, failed: null } },
+    ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'check' } },
+    check: { kind: 'artifact-contract', params: { change: '{{run.changeId}}', contractId: 'plan', action: 'check' }, ends: { pass: 'done', fail: null, failed: null } }, done }, { change: 'new' })
+  const artifacts = path.join(f.context.artifactRoot, 'openspec/changes/feature')
+  mkdirSync(path.join(artifacts, 'specs/test'), { recursive: true })
+  for (const [name, content] of Object.entries({ 'proposal.md': 'Requirements', 'design.md': 'Design', 'tasks.md': '- [ ] Implement task', 'specs/test/spec.md': 'Acceptance' })) writeFileSync(path.join(artifacts, name), content)
+  const original = await createRun({ ...f, change: 'feature' })
+  expect(original.state.status).toBe('paused')
+  const before = readFileSync(path.join(f.directory, 'run.sqlite'))
+  const fork = await forkRun(f.directory, { fromNodePath: 'ask', runId: 'generic-child', registry: f.registry })
+  const db = await RunDatabase.open(path.join(fork.directory, 'run.sqlite'), { readOnly: true })
+  let childChange: string
+  try { childChange = JSON.parse(String(db.sqlite.prepare('SELECT request_json FROM runs').get()!.request_json)).change } finally { db.close() }
+  expect(childChange!).not.toBe('feature')
+  expect(readFileSync(path.join(f.context.artifactRoot, 'openspec/changes', childChange!, 'design.md'), 'utf8')).toBe('Design')
+  const paused = await resumeRun(fork.directory, { registry: f.registry })
+  const result = await resumeRun(fork.directory, { registry: f.registry, answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Proceed' } } })
+  expect(result.state.status, JSON.stringify(result)).toBe('succeeded')
+  expect(readFileSync(path.join(f.directory, 'run.sqlite'))).toEqual(before)
+  expect(readFileSync(path.join(artifacts, 'design.md'), 'utf8')).toBe('Design')
+})
+
 it('rejects an active source lease and ambiguous visits without leaving a destination', async () => {
   const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
   await createRun(f)

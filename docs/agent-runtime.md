@@ -15,14 +15,14 @@ architect → developer → verify → reviewer → archive
 
 The workflow is a [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/overview) state graph. LangGraph owns the traversal, the typed state and its reducers, the checkpoint history, dynamic interrupts (approvals and questions) and time travel; Core owns the role reports, the OpenSpec workflow binding, the verification subprocesses, the acceptance evidence, the receipts, budgets, leases and interrupted-write recovery. Provider adapters execute one role and load its official OpenSpec skill through the explicit headless tool binding; they never invoke the retired implementation orchestrator.
 
-The developer role has the same autonomy the legacy Implement step had: it edits files and runs commands inside its CLI's own sandbox (Claude `--tools default --dangerously-skip-permissions` with nested agents and skills disallowed, Codex `workspace-write`, Gemini `--yolo`, Kimi ACP auto mode), so it can run the project's tests before handing off. The architect reads code and authors change artifacts through confined OpenSpec tools; the reviewer stays read-only. Claude roles load only project settings (`--setting-sources project,local`), so `CLAUDE.md` and `.claude/rules` apply while the user's global memory and plugins do not.
+The developer role has the same autonomy the legacy Implement step had: it edits files and runs commands inside its CLI's own sandbox (Claude `--tools default --dangerously-skip-permissions` with nested agents and skills disallowed, Codex `workspace-write`), so it can run the project's tests before handing off. The architect reads code and authors change artifacts through confined OpenSpec tools; the reviewer stays read-only. Claude roles load only project settings (`--setting-sources project,local`), so `CLAUDE.md` and `.claude/rules` apply while the user's global memory and plugins do not.
 
 This page describes the current source implementation, **runtime API 1**, workflow version 7, checkpoint envelope format 2. An older published Core package can have the same major version and lack this export. Build the paired checkout when developing this feature; do not assume `@latest` contains unreleased changes.
 
 ## Requirements and ownership
 
 - Node.js **22.22.3+** and Git on macOS, Linux or Windows. Individual provider CLIs may require a newer Node release.
-- Installed and authenticated Claude, Codex, Gemini or Kimi CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
+- Installed and authenticated Claude or Codex CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
 - A frozen execution context and a new change name. Verification commands are optional: configured commands run as given, the architect proposes the project's own checks for repositories that have none, and a repository with no automated check is admitted and recorded as unverified in the receipt.
 - `ownership.git: "host"`. The runtime implements and archives; its caller owns worktrees, commits, pushes, pull requests and backlog delivery. It rejects Core-owned Git delivery rather than reporting success while shipping remains pending.
 
@@ -39,8 +39,6 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
   "providers": [
     { "id": "claude", "kind": "cli", "cli": "claude" },
     { "id": "codex", "kind": "cli", "cli": "codex" },
-    { "id": "gemini", "kind": "cli", "cli": "gemini" },
-    { "id": "kimi", "kind": "cli", "cli": "kimi" },
     {
       "id": "local",
       "kind": "openai-compatible",
@@ -50,7 +48,7 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
   "agents": {
     "architect": { "provider": "claude", "maxTurns": 100 },
     "developer": { "provider": "codex", "maxTurns": 100 },
-    "reviewer": { "provider": "gemini", "maxTurns": 100 }
+    "reviewer": { "provider": "claude", "maxTurns": 100 }
   },
   "limits": { "maxAttempts": 3, "timeoutMs": 900000 },
   "verification": [
@@ -68,7 +66,7 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
 
 `architect.onLowConfidence` decides what happens when the architect still reports low confidence after its investigation pass (see [Questions and approvals](#questions-and-approvals)): `ask` (default) pauses the run with the architect's question; `proceed` continues on the assumptions the architect stated, recording `design-confidence.json` as `medium` with `assumed: true` and the original `reportedConfidence`.
 
-Set any role's `provider` to `kimi` to use Kimi. A CLI role's optional `model` is passed to that provider; omitting it uses the CLI's default. Provider IDs are aliases, so you can configure several endpoints or replace an executor without changing workflow code.
+A CLI role's optional `model` is passed to that provider; omitting it uses the CLI's default. Provider IDs are aliases, so you can configure several endpoints or replace an executor without changing workflow code.
 
 To use the local endpoint, set the desired role to `{"provider":"local","model":"your-installed-model-id","maxTurns":100}`. The endpoint must support `POST <baseUrl>/chat/completions`, OpenAI-style function tool calls and a final assistant result. Its model must actually be able to use these tools; a chat-only endpoint is insufficient for the developer role. The example port is a placeholder for your own running server.
 
@@ -105,7 +103,7 @@ A role can declare `openspecSkill` as `openspec-ff-change`, `openspec-apply-chan
 
 Programmatic `AgentRequest` accepts `access`, `artifacts`, `instructions: 'role'|'none'` and optional `nativeCommand: { id, args? }`. Old built-in requests retain compatible defaults; custom requests require explicit policy. A free request receives no appended role instructions. Native requests use an empty `prompt`, `instructions: 'none'` and no OpenSpec binding; arguments are literal data and cannot contain NUL.
 
-Claude/Gemini receive `/<id> <args>` and Codex `$<id> <args>`. Kimi uses its installed managed skill runner in `--render-only` mode to expand the native skill without inference, then the runtime executes that text through its normal read/write policy and ACP fallback. `specrails:<x>` maps to `specrails-<x>`; `opsx:ff`, `opsx:apply` and `opsx:verify` map to the corresponding OpenSpec skills. Simple IDs name installed Kimi skills. Upgrade the managed framework if its runner lacks render-only support. Unknown namespaces, missing skills and OpenAI-compatible native commands fail with `native_command_unsupported` before provider inference.
+Claude receives `/<id> <args>` and Codex `$<id> <args>`. Unknown namespaces, missing skills and OpenAI-compatible native commands fail with `native_command_unsupported` before provider inference.
 
 `runtime api` advertises `openRoles: 1` together with the engine v2 capabilities listed under [Run from the CLI](#run-from-the-cli). Desktop schema/settings support is paired through D1b. Existing frozen runs continue to use their retained runtime package.
 
@@ -201,7 +199,7 @@ State lives below `<backlogRoot>/.specrails/pipeline/<runId>/`:
 
 Resume uses the saved configuration and change. It rejects a different frozen input, Core/instruction identity or workflow definition. Valid completed phases are retained; stale evidence invalidates the affected phase and everything declared after it, and the graph travels back in time to the checkpoint taken right before that phase last ran, so its predecessors' state is exactly what it saw then. The ledger is authoritative for which node runs next: if LangGraph's own position disagrees after a crash, traversal follows the ledger. Once archived, changed evidence requires a new run.
 
-Correction loops stay cheap: when verification or review sends work back, the developer's previous provider session is resumed with a short correction prompt (Claude `--resume`, Codex `exec resume`, Gemini `--resume`, Kimi `--session`), so the code it wrote and the reasons behind it are already in context. If the session is gone the developer starts a fresh full turn with the same feedback. Unchecked tasks in `tasks.md` are returned to the developer as feedback, not treated as a workflow failure. A run blocked at `limits.maxAttempts` can be resumed explicitly: the resume grants a fresh attempt budget and transition ceiling; visits and history keep the complete record.
+Correction loops stay cheap: when verification or review sends work back, the developer's previous provider session is resumed with a short correction prompt (Claude `--resume`, Codex `exec resume`), so the code it wrote and the reasons behind it are already in context. If the session is gone the developer starts a fresh full turn with the same feedback. Unchecked tasks in `tasks.md` are returned to the developer as feedback, not treated as a workflow failure. A run blocked at `limits.maxAttempts` can be resumed explicitly: the resume grants a fresh attempt budget and transition ceiling; visits and history keep the complete record.
 
 Architect and reviewer replies are validated against a JSON Schema (Claude `--json-schema`, Codex `--output-schema`; other providers are parsed leniently, accepting fenced or prefixed objects). The developer finishes with a structured summary (files, tests, verification run, incomplete tasks) validated the same way; a provider that returns prose instead is recorded as such rather than repaired. An unusable architect or reviewer reply gets one repair turn inside the same session before the phase fails. Omitting the assigned OpenSpec workflow uses that same single repair budget: the role must load and execute its official skill, not merely resend JSON. Sessionless providers receive the full original role prompt for this correction. Evidence from an older role visit cannot satisfy a new invocation.
 
@@ -236,13 +234,9 @@ Core 5.2 requires acceptance evidence before a change can be archived. The runti
 | `limits.maxAttempts` | Maximum development visits per invocation, including correction cycles, default 3; an explicit resume starts a fresh budget |
 | `limits.timeoutMs` | Workflow duration limit and provider timeout; default provider timeout is 15 minutes when omitted |
 | `limits.maxTokens` | Rejects missing required usage or an observed overrun; CLI accounting may arrive only after a call |
-| `limits.maxCostUsd` | Accepted by the built-in Claude executor through its native dollar limit; rejected by built-in Codex, Gemini, Kimi and OpenAI-compatible executors |
+| `limits.maxCostUsd` | Accepted by the built-in Claude executor through its native dollar limit; rejected by built-in Codex and OpenAI-compatible executors |
 
 Do not configure `maxCostUsd` for a mixed-provider run unless every selected custom executor can enforce the requested cap. An observed token limit cannot guarantee that an opaque CLI stops before spending those tokens. Provider spend is accounted the moment each call returns, so a pause or failure after a call never loses it. Unknown usage stays `null`; known spend is tracked as a lower bound, never fabricated as zero. Local endpoints can report zero cost, but absent billing data remains unknown.
-
-OpenSpec Kimi roles use ACP with the per-session workflow server; non-developer roles retain plan mode with scoped reads and denied writes/terminal operations. Unsupported ACP modes or multi-repository capabilities fail explicitly. Kimi lacks authoritative token accounting, so its built-in executor rejects token and dollar caps. Configure another provider for a role when its installed Kimi version cannot expose the required repository scope.
-
-Gemini architect/reviewer roles require a CLI that advertises `--admin-policy` (verified with Gemini 0.49). Core supplies a temporary admin policy allowing file reads, listing, glob, grep and the scoped OpenSpec MCP tool; other tools are denied, including shell, writes and mode changes. This policy applies even if user settings disable plan mode or previously approve write tools. Gemini ignores per-run admin policies when system policy files exist, so Core rejects those managed environments before invoking a read-only role; select another provider for these roles or arrange a compatible environment with the system administrator. Older Gemini versions without this policy capability also fail explicitly. Gemini developer roles retain their existing `--yolo` execution.
 
 ## Embed and extend
 
@@ -324,6 +318,10 @@ Each node declares its `effect`, optional retry bounds, its possible successors 
 
 The OpenAI-compatible tool executor exposes scoped listing, literal text search, numbered line reads and a single-file Git diff. Developers additionally have whole-file writing and exact-match patches. It rejects traversal, symlink escapes and protected runtime metadata. It has no model-accessible shell tool; Core owns verification subprocesses, and `get_diff` runs fixed, read-only Git commands with external diff and text conversion disabled. This is a tool policy, not an operating-system sandbox for arbitrary custom executors or external CLIs.
 
+### Code workspace verification
+
+A frozen repository scope names the code workspaces inside its checkout. Verification command cwd must remain inside one of those scopes; repository parents, sibling packages and symlink escapes are rejected before spawning. With several scopes, agent-proposed checks require an explicit cwd per workspace. Desktop expands host checks without cwd across the selected workspaces and records the actual checkout paths.
+
 ### Efficient development and workspace tools
 
 The programmatic developer runs focused tests while implementing. Core alone runs the complete configured verification plan after the developer returns, and feeds real failures into the correction session. The developer's self-reported checks never replace a Core receipt. This removes the instruction to run the same full suite twice; it does not weaken the final gate. The implement command enters this same runtime, for one ticket or several tickets in one aggregate run.
@@ -377,8 +375,6 @@ All current headless adapters explicitly use **official skill-document adaptatio
 | --- | --- |
 | Claude | Explicit per-process MCP configuration; architect/reviewer native tools remain Read/Grep/Glob plus ToolSearch for deferred discovery of the scoped workflow tool. |
 | Codex | Process-local MCP configuration with approval of this first-party tool; native read-only or workspace-write sandbox is preserved. |
-| Gemini | Temporary settings preserving administrator settings, with an explicit MCP server; read-only admin policy admits only source reads and this workflow tool. Restrictive administrator MCP settings fail admission. |
-| Kimi | ACP session MCP forwarding. Plan mode and denied filesystem/shell reverse requests remain for non-developer roles; developer uses auto mode. Unsupported mode/scope capabilities fail explicitly. |
 | OpenAI-compatible API | The same confined OpenSpec operations alongside the existing workspace function tools. |
 
 No global provider configuration is rewritten. Supported planning is currently **repo-local spec-driven**, without local schema overrides. Custom planning homes/schemas fail explicitly; adding one requires conformance tests. The architect's tool cannot edit application code, the developer's artifact tool changes only checkboxes, and the review tool cannot write. Native developer code tools retain their existing provider permissions.
@@ -466,7 +462,7 @@ Optional schema-version-1 settings:
 }
 ```
 
-These defaults are normalized once at admission and frozen. `full` disables the corresponding adaptive policy. Incremental context requires a compatible session and a transport that explicitly guarantees continuation. Built-in CLI transports currently report continuation as unknown; stateless API and Kimi transports cannot receive a partial packet. They receive full context. A smaller prompt in the offline continuation fixture does **not** imply the same saving on every provider.
+These defaults are normalized once at admission and frozen. `full` disables the corresponding adaptive policy. Incremental context requires a compatible session and a transport that explicitly guarantees continuation. Built-in CLI transports currently report continuation as unknown; stateless API transports cannot receive a partial packet. They receive full context. A smaller prompt in the offline continuation fixture does **not** imply the same saving on every provider.
 
 Each role optionally accepts `effort` and one `escalation: { model, effort? }` within the same provider. Query actual installed support with `specrails-core runtime capabilities --config config.json`; this never runs inference. Unknown effort support rejects an explicit value at admission. Omitting effort leaves the provider default. No economic tier is selected automatically.
 
@@ -521,3 +517,14 @@ Real evaluation is opt-in only: `runtime evaluate --real --config EXPLICIT_MODEL
 A v4 checkpoint requires its original runtime. Never rewrite checksums or substitute a newly installed package. Desktop retains an immutable package and dependency closure per admitted run. Restoring that proven package is the recovery path; an unknown original package cannot be inferred from matching workflow inputs alone. New runtime configuration or package changes affect new runs only.
 
 This source tree is a development package. Publishing Core and updating Desktop's exact version/integrity lock are separate coordinated release steps; local assembly is not proof that a new version has been published.
+
+## Desktop-owned workflow composition
+
+Core exposes `workflowAgentSteps: 1` and catalog version 7 for workflow-defined
+agent steps. Desktop supplies arbitrary custom roles, task schemas and explicit
+artifact/verification/review/approval nodes. Core executes generic primitives
+and durable evidence contracts. Legacy `implementationSteps: 1` remains available
+for saved definitions and retained runs. See the
+[generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
+
+Claude catalog aliases `sonnet` and `opus` resolve to `claude-sonnet-5-5` and `claude-opus-5-5` respectively. Explicit model IDs remain unchanged for reproducible saved requests.

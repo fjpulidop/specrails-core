@@ -47,18 +47,20 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
       const outcomes = node.kind === 'component' ? componentBody?.outputs ?? ['next', 'failed'] : registry.outcomes(node.kind, node.params)
       const branchName = '_core_map_' + id
       const mapPredecessor = node.kind === 'join' ? Object.entries(body.nodes).find(([, value]) => value.kind === 'map' && value.ends.next === id)?.[0] : undefined
-      const retry = { maxAttempts: node.retry?.maxAttempts ?? (piece.descriptor.requiresAI ? 2 : 1), retrySafe: effect === 'read', initialIntervalMs: node.retry?.backoffMs ?? 5000 }
+      const requiresAI = piece.descriptor.requiresAI && !(node.kind === 'implementation-step' && ['verify', 'archive'].includes(String(node.params.phase)))
+      const retry = { maxAttempts: node.retry?.maxAttempts ?? (requiresAI ? 2 : 1), retrySafe: effect === 'read', initialIntervalMs: node.retry?.backoffMs ?? 5000 }
       graph.addNode(id, async (state: CoreDefinitionState, config: LangGraphRunnableConfig) => {
         const info = config.executionInfo
         if (!info?.threadId) throw new EngineError('execution_identity_missing', 'Durable definitions require public task identity and a checkpoint thread')
         const nodePath = state.$scope.nodePathPrefix ? state.$scope.nodePathPrefix + '/' + id : id
-        const frame = await execution.enter({ nodePath, kind: node.kind, effect, requiresAI: piece.descriptor.requiresAI,
-          acceptsSteering: piece.descriptor.requiresAI && ['prompt', 'role-turn'].includes(node.kind) && node.params.appendSteering !== false, scope: state.$scope,
+        const frame = await execution.enter({ nodePath, kind: node.kind, effect, requiresAI,
+          acceptsSteering: requiresAI && (['prompt', 'role-turn'].includes(node.kind) || node.kind === 'implementation-step' && !['verify', 'archive'].includes(String(node.params.phase))) && node.params.appendSteering !== false, scope: state.$scope,
           task: { checkpointThreadId: info.threadId, checkpointId: info.checkpointId, taskCheckpointNs: info.checkpointNs, taskId: info.taskId }, retry })
         let result: PieceResult
+        let childEvidence: Pick<CoreDefinitionState, '$candidate' | '$verified'> | undefined
         let mapPlan: CoreDefinitionState['$maps'][string] | undefined
         try {
-          const interpolated = interpolateParams(node.params, state.$vars)
+          const interpolated = interpolateParams(node.params, state.$vars, state)
           const params = node.kind === 'end' && root ? { ...interpolated, requiresVerified: interpolated.requiresVerified === true || frozen.delivery?.requiresVerified === true } : interpolated
           if (node.kind === 'map') {
             const items = mapItems(params.over, state, options.collections)
@@ -86,10 +88,10 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
             const completed = await child.invoke(input, config)
             const exit = completed.$exit
             if (!exit) throw new EngineError('component_exit_missing', `Component ${nodePath} did not produce an exit`)
+            childEvidence = { $candidate: completed.$candidate, $verified: completed.$verified }
             result = { outcome: exit.outcome, status: exit.status, output: { outputs: completed.$outputs, completion: { ...exit.completion } },
-              candidate: completed.$candidate ?? undefined, verified: completed.$verified, usage: completed.$usage, completion: exit.completion,
+              usage: completed.$usage, completion: exit.completion,
               ...(exit.error ? { error: exit.error } : {}) }
-            if (!result.candidate) delete result.candidate
           } else result = await execution.execute(frame, effect, signal => piece.execute(params, {
             state: structuredClone(state), frame, signal, progress: event => execution.progress({ ...event, payload: {
               ...(event.payload && typeof event.payload === 'object' && !Array.isArray(event.payload) ? event.payload : { payload: event.payload }),
@@ -121,7 +123,7 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
           result.completion = { ...result.completion, ok: false, reasons: [...new Set([...result.completion.reasons, 'unverified'])] }
         }
         const marker = execution.terminal(frame, result)
-        const patch = resultPatch(id, frame, marker.result, marker)
+        const patch = { ...resultPatch(id, frame, marker.result, marker), ...childEvidence }
         if (mapPlan) patch.$maps = { [id]: mapPlan }
         if (node.kind === 'join' && mapPredecessor && state.$maps[mapPredecessor]) patch.$maps = { [mapPredecessor]: { ...state.$maps[mapPredecessor], items: [] } }
         if (exitsBody) {
