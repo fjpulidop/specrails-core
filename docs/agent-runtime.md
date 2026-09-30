@@ -522,3 +522,5 @@ artifact/verification/review/approval nodes. Core executes generic primitives
 and durable evidence contracts. Legacy `implementationSteps: 1` remains available
 for saved definitions and retained runs. See the
 [generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
+
+Claude catalog aliases `sonnet` and `opus` resolve to `claude-sonnet-5-5` and `claude-opus-5-5` respectively. Explicit model IDs remain unchanged for reproducible saved requests.

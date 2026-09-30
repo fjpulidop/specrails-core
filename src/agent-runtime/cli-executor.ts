@@ -34,7 +34,8 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
   }
   const readOnly = requestPolicy(request).access === 'read'
   // Pin the product alias; explicit IDs remain reproducible across releases.
-  const modelId = provider === 'claude' && request.model === 'opus' ? 'claude-opus-5-5' : request.model
+  const claudeModelIds: Readonly<Record<string, string>> = { opus: 'claude-opus-5-5', sonnet: 'claude-sonnet-5-5' }
+  const modelId = provider === 'claude' && request.model ? claudeModelIds[request.model] ?? request.model : request.model
   const model = modelId ? ['--model', modelId] : []
   const extraRoots = request.allowedRoots.filter(root => root !== request.cwd)
   const resume = request.resumeSessionId
