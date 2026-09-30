@@ -31,6 +31,7 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
     const graph: DefinitionGraph = { id: definition.id, version, entry: definition.entry, nodes: [], edges: [] }
     for (const role of definition.roles) if (!Object.hasOwn(roles, role)) add('role_not_found', '/roles', `Role ${role} is not configured`)
     let implementations = 0
+    let operationCount = 0
     let writes = false
     const successfulEnds: Array<{ path: string; verified: boolean }> = []
     const bodies = definition.components ?? {}
@@ -105,6 +106,9 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
           graph.nodes.push({ id, nodePath, kind: node.kind, effect, outcomes: [...outcomes] })
         } catch (error) { add(error instanceof EngineError ? error.code : 'invalid_piece_params', path, error instanceof Error ? error.message : String(error)) }
         if (node.kind === 'implementation') implementations += 1
+        if (node.kind === 'implementation-step') {
+          operationCount += 1
+        }
         if (node.kind === 'end' && node.params.outcome === 'success') successfulEnds.push({ path, verified: node.params.requiresVerified === true })
         if (node.kind === 'end' && node.params.exit !== undefined) {
           if (!prefix || typeof node.params.exit !== 'string' || !(body.outputs ?? ['next', 'failed']).includes(node.params.exit)) add('invalid_component_exit', path + '/params/exit', 'Exit must be a declared output of the containing component')
@@ -133,7 +137,7 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
     for (const [name, body] of Object.entries(bodies)) if (!validatedBodies.has(name)) { validatedBodies.add(name); inspect(body, '/components/' + name, [name]) }
     inspectReferences(definition, [], '')
     for (const [name, body] of Object.entries(bodies)) inspectReferences(body, [name], '/components/' + name)
-    if ((definition.journal === 'ledger-only' && implementations !== 0) || (definition.journal === 'implementation' && (implementations !== 1 || definition.change === 'none'))) add('journal_mismatch', '/journal', 'Implementation journals require exactly one implementation piece and an existing or new change')
+    if ((definition.journal === 'ledger-only' && (implementations !== 0 || operationCount > 0)) || (definition.journal === 'implementation' && ((implementations !== 1 && operationCount === 0) || (implementations > 0 && operationCount > 0) || definition.change === 'none'))) add('journal_mismatch', '/journal', 'Implementation journals require independent implementation steps or one legacy implementation wrapper, and an existing or new change')
     if (writes && definition.delivery?.requiresVerified !== false && definition.delivery?.requiresVerified !== true) for (const end of successfulEnds) if (!end.verified) add('verification_required', end.path, 'Successful write workflows require verification or explicit delivery opt-out')
     return errors.length ? { type: 'runtime-definition-validated', ok: false, errors } : { type: 'runtime-definition-validated', ok: true, version, definition, graph }
   } catch (error) {

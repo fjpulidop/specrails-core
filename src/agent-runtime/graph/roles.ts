@@ -49,6 +49,8 @@ export interface RoleInvokerDeps {
   openspec?: Record<AgentRole, import('../openspec.js').OpenSpecRoleContext>
   /** Engine hosts isolate sessions/routes by scope and node instead of a role-global file. */
   roleState?: RoleStatePort
+  /** Durable independent operations must recover uncertain effects explicitly. */
+  propagateInterruptions?: boolean
   /** `fixer` labels the developer step's events during a correction round on the fixer stance, so a log reader sees who is acting. */
   onAgentEvent?: (role: AgentEventRole, event: AgentEvent) => void
 }
@@ -197,6 +199,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
 
     } catch (error) {
+      if (deps.propagateInterruptions && error instanceof AgentExecutionError && ['aborted', 'timeout', 'idle_timeout', 'lease_lost'].includes(error.code)) throw error
       return { ok: false, error: error instanceof Error ? error.message : String(error), ...(error instanceof AgentExecutionError ? { code: error.code } : {}) }
     }
   }

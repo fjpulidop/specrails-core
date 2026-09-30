@@ -1,3 +1,4 @@
+import { artifactContractPiece } from './artifact-contract.js'
 import { PieceRegistry } from '../piece-registry.js'
 import { controlPieces, compositionPieces } from './control.js'
 import { deciderPiece } from './decider.js'
@@ -8,6 +9,7 @@ import { promptPiece } from './prompt.js'
 import { roleTurnPiece } from './role-turn.js'
 import { shellPiece } from './shell.js'
 import { verifyPiece } from './verify.js'
+import { implementationStepPiece } from './implementation-step.js'
 import { assignPiece } from './assign.js'
 
 export type { PieceDependencies, PieceStatePort } from './ports.js'
@@ -24,5 +26,5 @@ export function validationPieceRegistry(): PieceRegistry {
 
 function registry(bindings: PieceDependencyProvider): PieceRegistry {
   return new PieceRegistry([promptPiece(bindings), roleTurnPiece(bindings), deciderPiece(bindings), verifyPiece(bindings), shellPiece(bindings),
-    ...openSpecPieces(bindings), ...controlPieces(bindings), assignPiece(), ...compositionPieces()])
+    artifactContractPiece(bindings), ...openSpecPieces(bindings), ...controlPieces(bindings), assignPiece(), implementationStepPiece(bindings), ...compositionPieces()])
 }

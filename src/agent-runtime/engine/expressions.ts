@@ -102,15 +102,25 @@ export function parseExpression(source: string): Expression {
 export function validateInterpolations(value: JsonValue): void {
   if (typeof value === 'string') {
     const tokens = value.replaceAll('{{{{', '').match(/\{\{[^}]*\}\}/g) ?? []
-    for (const token of tokens) if (token.startsWith('{{run.') && !/^\{\{run\.[A-Za-z][A-Za-z0-9_-]*\}\}$/.test(token)) throw new EngineError('invalid_interpolation', `Invalid runtime variable ${token}`)
+    for (const token of tokens) {
+      if (token.startsWith('{{outputs.') && (!/^\{\{outputs\.[A-Za-z][A-Za-z0-9_.-]*\}\}$/.test(token) || token.slice(10, -2).split('.').some(part => forbiddenKeys.has(part)))) throw new EngineError('invalid_interpolation', 'Invalid workflow output reference')
+      if (token.startsWith('{{run.') && !/^\{\{run\.[A-Za-z][A-Za-z0-9_-]*\}\}$/.test(token)) throw new EngineError('invalid_interpolation', `Invalid runtime variable ${token}`)
+    }
   } else if (Array.isArray(value)) value.forEach(validateInterpolations)
   else if (value && typeof value === 'object') Object.values(value).forEach(validateInterpolations)
 }
 
-export function interpolateParams(params: JsonObject, vars: Record<string, JsonValue>): JsonObject {
+export function interpolateParams(params: JsonObject, vars: Record<string, JsonValue>, state?: CoreDefinitionState): JsonObject {
   function resolve(value: JsonValue): JsonValue {
-    if (typeof value === 'string') return value.replace(/\{\{\{\{|\{\{run\.([A-Za-z][A-Za-z0-9_-]*)\}\}/g, (token, name: string | undefined) => {
+    if (typeof value === 'string') return value.replace(/\{\{\{\{|\{\{run\.([A-Za-z][A-Za-z0-9_-]*)\}\}|\{\{outputs\.([A-Za-z][A-Za-z0-9_.-]*)\}\}|\{\{history\.text\}\}/g, (token, name: string | undefined, output: string | undefined) => {
       if (token === '{{{{') return '{{'
+      if (token === '{{history.text}}') return (state?.$history ?? []).map(entry => `[${entry.nodePath}] ${entry.text}`).join('\n').slice(-32_000)
+      if (output) {
+        if (output.split('.').some(part => forbiddenKeys.has(part))) throw new EngineError('invalid_interpolation', 'Prototype output paths are forbidden')
+        const resolved = state ? lookup(state, '$outputs.' + output) : undefined
+        if (resolved === undefined) throw new EngineError('output_missing', `Workflow output ${output} is missing`)
+        return typeof resolved === 'string' ? resolved : JSON.stringify(resolved)
+      }
       if (!name || !Object.hasOwn(vars, name)) throw new EngineError('run_var_missing', `Runtime variable ${name ?? ''} is missing`)
       const replacement = vars[name]
       if (replacement !== null && typeof replacement === 'object') return JSON.stringify(replacement)

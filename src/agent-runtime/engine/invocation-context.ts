@@ -23,6 +23,7 @@ export function definitionNodeAt(definition: WorkflowDefinition, nodePath: strin
 
 export function roleAt(definition: WorkflowDefinition, nodePath: string): string {
   const node = definitionNodeAt(definition, nodePath)
+  if (node?.kind === 'implementation-step') return String(node.params.phase)
   if (node?.kind === 'role-turn' || node?.kind === 'decider') return String(node.params.roleId)
   return node?.kind === 'prompt' ? 'prompt' : nodePath.split('/').at(-1)!
 }

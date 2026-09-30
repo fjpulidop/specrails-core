@@ -24,10 +24,13 @@ export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
   for (const kind of ['approval', 'question', 'gate'] as const) {
     const field = kind === 'question' ? 'text' : 'reason'
     pieces.push({
-      descriptor: { kind, paramsSchema: paramsSchema({ [field]: { ...stringSchema, minLength: 1 } }, [field]), outcomes: ['next'], effect: 'read', requiresAI: false },
+      descriptor: { kind, paramsSchema: paramsSchema({ [field]: { ...stringSchema, minLength: 1 }, bindCandidate: { type: 'boolean' }, enabled: { type: 'boolean' } }, [field]), outcomes: ['next'], effect: 'read', requiresAI: false },
       async execute(params, context) {
-        const response = context.interrupt({ kind, prompt: text(params[field]), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId })
-        return { outcome: 'next', output: { response }, ...(kind === 'question' ? { answers: [answerEntry(context, response)] } : {}) }
+        const memo = bindings().memo(context)
+        const bound = params.bindCandidate ? memo.get('approval-candidate') ?? bindings().executionSnapshot(context).candidate?.hash ?? null : undefined
+        if (params.bindCandidate && memo.get('approval-candidate') === undefined) memo.set('approval-candidate', bound!)
+        const response = kind === 'approval' && params.enabled === false ? { approved: true } : context.interrupt({ kind, prompt: text(params[field]), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId })
+        return { outcome: 'next', output: { response, ...(params.bindCandidate ? { candidateHash: bound! } : {}) }, ...(kind === 'question' ? { answers: [answerEntry(context, response)] } : {}) }
       },
     })
   }

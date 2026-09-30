@@ -17,24 +17,29 @@ export interface PieceStatePort {
 
 export interface PieceDependencies {
   context: PipelineContext
+  readonly change?: string
   config: RuntimeConfig
   registry: ExecutorRegistry
   stepContext(context: PieceExecutionContext): WorkflowStepContext
   roleState(context: PieceExecutionContext): RoleStatePort
+  artifactContracts?(context: PieceExecutionContext): PieceStatePort
   memo(context: PieceExecutionContext): PieceStatePort
   /** Narrow project memory is restricted by the declared piece and namespace capability. */
   memory(context: PieceExecutionContext): ProjectMemory
   /** Provider settlement and the response needed for interrupt replay share one transaction. */
   settleResult(context: PieceExecutionContext, key: string, value: JsonValue, invocation: ProviderInvocation): void
+  verifiedBeforeWrite?(context: PieceExecutionContext): VerifiedState | null
   executionSnapshot(context: PieceExecutionContext): { candidate: CandidateState | null; verified: VerifiedState | null }
   verification(context: PieceExecutionContext): VerificationEvidencePort
   /** A scoped adapter directory for recoverable OpenSpec write sets, never state.json. */
   artifactDirectory(context: PieceExecutionContext): string
   /** Registers parent-owned scoped journals for candidate inspection, recovery and fork. */
-  bindImplementation(context: PieceExecutionContext, change: string): ImplementationBinding
+  bindImplementation(context: PieceExecutionContext, change: string, shared?: boolean): ImplementationBinding
   /** Current union of declared implementation artifacts and journals, including the parent run. */
   implementationExclusions?(context: PieceExecutionContext): { runtimeExclusions: readonly string[]; repositoryExclusions: Readonly<Record<string, readonly string[]>> }
   openspec?(context: PieceExecutionContext): Record<string, OpenSpecRoleContext>
+  /** Committed private operation state, inaccessible to workflow variables or fork patches. */
+  operationState?(context: PieceExecutionContext): JsonValue | undefined
   policies?: { historyMaxChars?: number; noProgress?: number }
 }
 /** Evaluated only at execution; catalog listing and validation are effect-free. */

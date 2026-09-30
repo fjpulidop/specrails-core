@@ -251,6 +251,8 @@ export const workflowDefinitionSchema = {
             "join",
             "component",
             "implementation",
+            "implementation-step",
+            "artifact-contract",
             "end"
           ]
         },

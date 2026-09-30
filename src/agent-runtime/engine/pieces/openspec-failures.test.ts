@@ -20,3 +20,13 @@ it.each([new OpenSpecCommandError('timed out', undefined, '', 'ETIMEDOUT'), new 
   vi.mocked(archiveOpenSpecChange).mockRejectedValueOnce(error)
   await expect(archive().execute({ change: 'feature' }, context)).rejects.toBe(error)
 })
+
+it('rejects stale reviewed and approved candidates before archive effects', async () => {
+  const guarded = { ...deps, executionSnapshot: () => ({ candidate: { hash: 'current' }, verified: { candidateHash: 'current' } }) } as unknown as PieceDependencies
+  const piece = openSpecPieces(() => guarded).find(item => item.descriptor.kind === 'openspec-archive')!
+  expect(await piece.execute({ change: 'feature', requiresVerified: true, reviewedCandidate: 'old' }, context)).toMatchObject({ outcome: 'failed', output: { reason: 'candidate_changed' } })
+  expect(await piece.execute({ change: 'feature', requiresVerified: true, reviewedCandidate: 'current', approvedCandidate: 'old' }, context)).toMatchObject({ outcome: 'failed', output: { reason: 'candidate_changed' } })
+})
+it('requires a current host verification receipt when the workflow enables the archive gate', async () => {
+  expect(await archive().execute({ change: 'feature', requiresVerified: true }, context)).toMatchObject({ outcome: 'failed', output: { reason: 'unverified' } })
+})

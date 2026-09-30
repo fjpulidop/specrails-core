@@ -67,7 +67,7 @@ function fixture(respond: (request: AgentRequest, call: number) => AgentResult |
 describe('reviewed piece catalog and control', () => {
   it('registers every implemented kind with exact parameter alternatives', () => {
     const f = fixture()
-    expect(f.pieces.catalog()).toHaveLength(17)
+    expect(f.pieces.catalog()).toHaveLength(19)
     expect(f.pieces.validateParams('prompt', { engine: { provider: 'fixture' }, text: 'hi', nativeCommand: { id: 'opsx:ff' }, access: 'write' }, '')).not.toEqual([])
     expect(f.pieces.validateParams('shell', { repositoryId: 'repo', argv: ['node'], commandLine: 'node' }, '')).not.toEqual([])
     expect(f.pieces.outcomes('prompt', { sentinel: 'verification' })).toEqual(['pass', 'fail', 'failed'])
@@ -80,6 +80,31 @@ describe('reviewed piece catalog and control', () => {
     expect(f.requests).toEqual([])
     f.execution.interrupt = request => { expect(request).toMatchObject({ scopeId: 'root', attemptId: 'attempt', kind: 'question' }); return { answer: 'only app' } }
     expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'only app' }, nodePath: 'node' }] })
+  })
+  it('binds approval to the pre-interrupt candidate across a changed workspace', async () => {
+    const f = fixture(), before = f.deps.executionSnapshot(f.execution).candidate!.hash
+    await expect(f.run('approval', { reason: 'Archive?', bindCandidate: true })).rejects.toThrow('PAUSED')
+    writeFileSync(path.join(f.root, 'input.txt'), 'changed after approval request')
+    f.execution.interrupt = () => ({ approved: true })
+    expect(await f.run('approval', { reason: 'Archive?', bindCandidate: true })).toMatchObject({ output: { candidateHash: before, response: { approved: true } } })
+    expect(f.deps.executionSnapshot(f.execution).candidate!.hash).not.toBe(before)
+  })
+  it('keeps host checks mandatory when an agent proposes alternative commands', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.error("actual host failure"); process.exit(9)'] }]
+    f.execution.state.$outputs.plan = { structured: { verification: [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'process.exit(0)'] }] } }
+    expect(await f.run('verify', { commands: 'configured', additionalCommandsFrom: 'plan' })).toMatchObject({ outcome: 'fail',
+      output: { commands: [{ cwd: expect.stringContaining(path.basename(f.root)), exitCode: 9, output: expect.stringContaining('actual host failure'), args: ['-e', 'console.error("actual host failure"); process.exit(9)'] }] } })
+    expect(f.receipts.at(-1)?.commands).toHaveLength(1)
+    expect(f.receipts.at(-1)?.commands[0].exitCode).toBe(9)
+    f.execution.state.$outputs.plan = { structured: { verification: [{ repositoryId: 'outside', command: process.execPath, args: [] }] } }
+    await expect(f.run('verify', { commands: 'configured', additionalCommandsFrom: 'plan' })).rejects.toThrow('Unknown verification repository')
+  })
+  it('executes proposed verification for an uncovered repository through the real host checker', async () => {
+    const f = fixture()
+    f.execution.state.$outputs.plan = { structured: { verification: [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("actual verification")'] }] } }
+    expect(await f.run('verify', { commands: 'configured', additionalCommandsFrom: 'plan' })).toMatchObject({ outcome: 'pass', receipt: { valid: true, scope: 'full' } })
+    expect(f.receipts.at(-1)?.commands[0].exitCode).toBe(0)
   })
   it('uses a current host snapshot for completion and reports condition failures', async () => {
     const f = fixture()

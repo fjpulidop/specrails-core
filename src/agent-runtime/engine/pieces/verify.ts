@@ -4,7 +4,39 @@ import { executeVerification, validateVerificationRequest, type VerificationComm
 import { withScopeDefault } from '../../change-scope.js'
 import type { Piece, PieceExecutionContext, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { json, paramsSchema, positiveInteger } from './shared.js'
+import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
+
+/** Keep real subprocess diagnostics in committed outputs for subsequent agents.
+ * The full command evidence remains in the receipt; prioritize failed checks
+ * when the output budget is exhausted. */
+function verificationDiagnostics(receipt: VerificationReceipt) {
+  let remaining = 32_000
+  const outputs = new Map<number, string>()
+  const priority = receipt.commands.map((command, index) => ({ command, index }))
+    .sort((a, b) => Number(b.command.exitCode !== 0) - Number(a.command.exitCode !== 0))
+  for (const { command, index } of priority) {
+    const output = command.output.slice(-Math.min(8_000, remaining))
+    // slice(-0) would include all the original text.
+    outputs.set(index, remaining > 0 ? output : '')
+    remaining -= remaining > 0 ? output.length : 0
+  }
+  let budget = 64_000
+  const commands = []
+  for (const { index, command } of priority) {
+    const output = outputs.get(index) ?? ''
+    const args = command.args.slice(0, 16).map(arg => boundedText(arg, 128))
+    const diagnostic = { repositoryId: command.repositoryId, command: boundedText(command.command, 512),
+      args, cwd: boundedText(command.cwd, 512),
+      exitCode: command.exitCode, durationMs: command.durationMs, output,
+      truncated: output.length < command.output.length || command.outputTruncated === true
+        || command.command.length > 512 || command.cwd.length > 512 || command.args.length > 16 || command.args.some(arg => arg.length > 128) }
+    const size = JSON.stringify(diagnostic).length
+    if (size > budget) break
+    budget -= size
+    commands.push(diagnostic)
+  }
+  return { commands, ...(commands.length < receipt.commands.length ? { omittedCommands: receipt.commands.length - commands.length } : {}) }
+}
 
 export const verificationCommandSchema = paramsSchema({
   repositoryId: { type: 'string', minLength: 1, maxLength: 128 }, command: { type: 'string', minLength: 1, maxLength: 4096 },
@@ -25,10 +57,24 @@ export function verificationDeadline(deps: PieceDependencies, context: PieceExec
 export function verifyPiece(bindings: PieceDependencyProvider): Piece {
   return {
     descriptor: { kind: 'verify', paramsSchema: paramsSchema({ commands: { oneOf: [{ const: 'configured' }, { type: 'array', maxItems: 100, items: verificationCommandSchema }] },
-      unverified: { type: 'boolean' }, maxConcurrency: { type: 'integer', minimum: 1, maximum: 4 } }, ['commands']), outcomes: ['pass', 'fail', 'failed'], effect: 'write', requiresAI: false, storeAccess: 'write' },
+      additionalCommandsFrom: { type: 'string', minLength: 1, maxLength: 128 }, unverified: { type: 'boolean' }, maxConcurrency: { type: 'integer', minimum: 1, maximum: 4 } }, ['commands']), outcomes: ['pass', 'fail', 'failed'], effect: 'write', requiresAI: false, storeAccess: 'write' },
     async execute(params, context) {
       const deps = bindings()
       const commands = (params.commands === 'configured' ? deps.config.verification : params.commands as unknown as VerificationCommand[]).map(command => withScopeDefault(deps.context, command))
+      const hostRepositories = new Set(commands.map(command => command.repositoryId))
+      if (typeof params.additionalCommandsFrom === 'string') {
+        const source = context.state.$outputs[params.additionalCommandsFrom] as { structured?: { verification?: unknown } } | undefined
+        const proposals = source?.structured?.verification
+        if (!Array.isArray(proposals) || proposals.length > 20) throw new Error('Verification proposals must be a bounded array from a committed agent output')
+        // Host checks always stay mandatory. The same scoped command validation
+        // applies to these actual subprocesses and to configured checks below.
+        for (const proposal of proposals) {
+          if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) throw new Error('Invalid verification proposal')
+          const raw = proposal as VerificationCommand
+          if (!deps.context.repositories.some(repository => repository.id === raw.repositoryId)) throw new Error('Unknown verification repository')
+          if (!hostRepositories.has(raw.repositoryId)) commands.push(withScopeDefault(deps.context, raw))
+        }
+      }
       const coversAll = deps.context.repositories.every(repository => commands.some(command => command.repositoryId === repository.id))
       const request = { kind: coversAll || params.unverified === true ? 'full' as const : 'scoped' as const, commands, ...(params.unverified === true ? { unverified: true } : {}) }
       validateVerificationRequest(deps.context, request)
@@ -52,7 +98,7 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       const outcome = infrastructure ? 'failed' : receipt.valid ? 'pass' : 'fail'
       const verified = receipt.valid && receipt.commands.length > 0 && !receipt.unverifiedRepositories?.length
       return { outcome, ...(infrastructure ? { status: 'failed' as const, error: { code: 'verification_execution_error', message: receipt.reason ?? 'A verification command could not complete' } } : {}),
-        output: { receiptId: receipt.id, valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), commands: receipt.commands.map(command => ({ repositoryId: command.repositoryId, command: command.command, exitCode: command.exitCode })) },
+        output: { receiptId: receipt.id, valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), ...verificationDiagnostics(receipt) },
         receipt: receiptEvidence(receipt), ...(verified ? { verified: { receiptId: receipt.id, candidateHash: receipt.candidateHash, atTransition: context.frame.transition, revision: context.frame.transition } } : { verified: null }) }
     },
   }

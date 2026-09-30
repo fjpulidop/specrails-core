@@ -174,7 +174,7 @@ export class RunLedger {
     else if (result.verified) {
       const receipt = result.receipt, verified = result.verified
       const evidence = receipt?.evidence && typeof receipt.evidence === 'object' && !Array.isArray(receipt.evidence) ? receipt.evidence : undefined
-      if (!['verify', 'implementation'].includes(String(visit.kind)) || !receipt?.valid || receipt.scope !== 'full' || !candidate ||
+      if (!['verify', 'implementation', 'implementation-step'].includes(String(visit.kind)) || !receipt?.valid || receipt.scope !== 'full' || !candidate ||
         !Array.isArray(evidence?.commands) || evidence.commands.length === 0 ||
         (evidence.unverifiedRepositories !== undefined && (!Array.isArray(evidence.unverifiedRepositories) || evidence.unverifiedRepositories.length !== 0)) ||
         verified.receiptId !== receipt.id || verified.candidateHash !== candidate.hash || verified.revision !== candidate.revision || verified.atTransition !== frame.transition) {
@@ -421,7 +421,7 @@ export class RunLedger {
 
   private sessionOwner(frame: AttemptFrame, ownerNodePath: string, key: string): string {
     const owner = ownerNodePath.replace(/\/$/, '')
-    if (!key.startsWith('session:') || (owner !== '' && owner !== frame.nodePath && !frame.nodePath.startsWith(owner + '/'))) {
+    if ((!key.startsWith('session:') && !key.startsWith('contract:artifacts:') && key !== 'binding:implementation') || (owner !== '' && owner !== frame.nodePath && !frame.nodePath.startsWith(owner + '/'))) {
       throw new EngineError('piece_state_scope', 'Shared sessions require an ancestor node owner in this execution scope')
     }
     return owner

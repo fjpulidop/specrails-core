@@ -7,7 +7,7 @@ import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 
-const ENGINE_V2_CAPABILITIES = ['engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -33,13 +33,13 @@ describe('Desktop integration contract', () => {
 
   it('advertises the real engine v2 catalog: contract, runtime api and workflows list agree with the validation registry', async () => {
     const registry = validationPieceRegistry(), kinds = registry.kinds()
-    expect(kinds).toHaveLength(17)
+    expect(kinds).toHaveLength(19)
     expect(kinds).toEqual(registry.catalog().map(piece => piece.kind))
     expect(kinds.some(kind => /test|fixture|fake/.test(kind))).toBe(false)
     expect(contract.agentRuntime.engine).toEqual({ version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: NODE_KINDS_VERSION })
     expect(existsSync(new URL('../../' + contract.agentRuntime.engine.definitionSchema, import.meta.url))).toBe(true)
     expect(contract.agentRuntime.nodeKinds).toEqual(kinds)
-    expect(contract.agentRuntime.builtins).toEqual([{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: false }])
+    expect(contract.agentRuntime.builtins).toEqual([{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: true }])
 
     const messages: unknown[] = []
     expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)

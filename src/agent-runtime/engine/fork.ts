@@ -1,10 +1,11 @@
-import { existsSync, renameSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { RunnableConfig } from '@langchain/core/runnables'
 import type { CheckpointTuple } from '@langchain/langgraph-checkpoint'
 import { pipelineStateDirectory, validatePipelineContext, type PipelineContext } from '../../pipeline/pipeline-state.js'
 import { createExecutorRegistry, type ExecutorRegistry } from '../executors.js'
+import { artifactPath } from '../openspec.js'
 import { coreRuntimeIdentity } from '../core-host.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.js'
 import { canonicalJson, contentDigest } from './canonical-json.js'
@@ -44,6 +45,30 @@ function rebind(source: ImplementationBinding, parent: PipelineContext, change: 
   const digest = contentDigest({ parentRunId: parent.runId, scopeId: source.scopeId, nodePath: source.nodePath }).slice(0, 24)
   const context = validatePipelineContext({ ...source.context, runId: standalone ? parent.runId : parent.runId.slice(0, 80) + '-impl-' + digest })
   return { ...source, context, parentRunId: parent.runId, change: standalone ? change : change.slice(0, 38).replace(/-+$/, '') + '-' + digest, directory: pipelineStateDirectory(context) }
+}
+
+function copyActiveChange(context: PipelineContext, source: string, target: string, allocation: ForkAllocation): void {
+  const from = artifactPath(context.artifactRoot, 'openspec/changes/' + source)
+  if (!existsSync(from)) return // A cut before planning has no authored artifacts yet.
+  const to = artifactPath(context.artifactRoot, 'openspec/changes/' + target)
+  if (existsSync(to)) throw new EngineError('run_exists', 'Fork refuses to replace an existing change')
+  allocation.reserve(to)
+  let bytes = 0, files = 0
+  const copy = (relative: string): void => {
+    const directory = relative ? artifactPath(from, relative) : from
+    mkdirSync(relative ? artifactPath(to, relative) : to, { recursive: true, mode: 0o700 })
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const child = relative ? relative + '/' + entry.name : entry.name
+      if (entry.isSymbolicLink()) throw new EngineError('artifact_scope_mismatch', 'Fork rejects symlinked change artifacts')
+      if (entry.isDirectory()) copy(child)
+      else if (entry.isFile()) {
+        const content = readFileSync(artifactPath(from, child)); bytes += content.length; files++
+        if (bytes > 2 * 1024 * 1024 || files > 200) throw new EngineError('output_limit', 'Fork artifacts exceed their copy limit')
+        writeFileSync(artifactPath(to, child), content, { flag: 'wx', mode: 0o600 })
+      } else throw new EngineError('artifact_scope_mismatch', 'Fork requires ordinary change artifacts')
+    }
+  }
+  copy('')
 }
 
 /** A fork publishes an independently leased historical cut; the source is opened read-only. */
@@ -92,18 +117,23 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     const change = request.change ? request.change.slice(0, 42).replace(/-+$/, '') + '-fork-' + contentDigest(context.runId).slice(0, 12) : undefined
     const forkRequest = { ...request, context, ...(change ? { change } : {}) }
     const sourceBindings = destination.sqlite.prepare("SELECT * FROM piece_state WHERE key='binding:implementation'").all()
+    const genericChange = !!change && sourceBindings.length === 0 && definition.journal === 'ledger-only'
+    if (genericChange) copyActiveChange(context, request.change!, change!, allocation)
     const restored: Array<{ source: ImplementationBinding; target: ImplementationBinding; row: DatabaseRow }> = []
     for (const row of sourceBindings) {
       // A completed implementation is inherited evidence. Rebinding its journal would
       // create a new candidate and repeat verified work even when the workspace is unchanged.
       const completed = destination.sqlite.prepare('SELECT 1 FROM attempts WHERE visit_id=? AND terminal_digest IS NOT NULL').get(row.visit_id)
-      if (completed) continue
-      const binding = JSON.parse(String(row.value_json)) as ImplementationBinding, target = rebind(binding, context, change!)
-      const changeDirectory = path.join(target.context.artifactRoot, 'openspec', 'changes', target.change)
-      if ((target.directory !== targetRoot && existsSync(target.directory)) || existsSync(changeDirectory)) throw new EngineError('run_exists', 'Fork refuses to replace an existing implementation journal or change')
-      const childScope = binding.scopeId + '/' + String(row.visit_id)
+      const binding = JSON.parse(String(row.value_json)) as ImplementationBinding
+      if (completed && !binding.shared) continue
+      const childScope = binding.shared ? binding.scopeId : binding.scopeId + '/' + String(row.visit_id)
       const results = destination.sqlite.prepare('SELECT a.output_json FROM attempts a JOIN visits v ON a.visit_id=v.visit_id WHERE a.scope_id=? AND a.output_json IS NOT NULL ORDER BY v.global_transition DESC,a.attempt DESC').all(childScope)
       const snapshot = results.map(result => (JSON.parse(String(result.output_json)) as PieceResult).childUpdate?.journal).find(value => value !== undefined) as unknown as ImplementationJournalSnapshot | undefined
+      const lastOperation = results.map(result => JSON.parse(String(result.output_json)) as PieceResult).find(result => result.childUpdate?.operationState !== undefined)
+      if (binding.shared && lastOperation?.completion?.ok) continue
+      const target = rebind(binding, context, change!)
+      const changeDirectory = path.join(target.context.artifactRoot, 'openspec', 'changes', target.change)
+      if ((target.directory !== targetRoot && existsSync(target.directory)) || existsSync(changeDirectory)) throw new EngineError('run_exists', 'Fork refuses to replace an existing implementation journal or change')
       if (snapshot) {
         if (target.directory !== targetRoot) allocation.reserve(target.directory)
         await ensurePrivateDirectory(target.directory)
@@ -116,7 +146,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     destination.transaction('fork-rebound', () => {
       lease.assert(token)
       destination!.put('runs', { ...ledger!.run(), request_json: canonicalJson(forkRequest), status: 'running', completion_json: null,
-        ...(Object.keys(state).length || restored.length ? { verified_json: null } : {}) })
+        ...(Object.keys(state).length || restored.length || genericChange ? { verified_json: null } : {}) })
       for (const binding of restored) destination!.put('piece_state', { ...binding.row, value_json: canonicalJson(binding.target) })
       destination!.put('piece_state', { run_id: context.runId, scope_id: 'root', node_path: '', key: 'lineage:fork', value_json: canonicalJson({
         sourceRunId: request.context.runId, sourceContext: request.context, sourceBindings: sourceBindings.map(row => JSON.parse(String(row.value_json))) }), updated_at: new Date().toISOString() })
@@ -133,7 +163,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       if (!heads.has(namespace)) heads.set(namespace, tuple)
     }
     for (const binding of restored) {
-      if (!existsSync(path.join(binding.target.directory, 'state.json'))) continue
+      if (!existsSync(path.join(binding.target.directory, 'state.json')) || binding.source.shared) continue
       const scope = binding.source.scopeId + '/' + String(binding.row.visit_id)
       const matching = [...heads.values()].filter(tuple => (tuple.checkpoint.channel_values.$scope as ExecutionScope | undefined)?.id === scope && '$next' in tuple.checkpoint.channel_values)
       if (matching.length !== 1) throw new EngineError('fork_checkpoint_missing', 'Implementation journal has no unique child checkpoint at the selected cut')
@@ -143,10 +173,11 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       if (!writer) throw new EngineError('fork_checkpoint_missing', 'Implementation checkpoint has no unambiguous public previous node')
       await runtime.graph.updateState(tuple.config, projection.update, writer)
     }
-    if (Object.keys(state).length) {
+    if (Object.keys(state).length || genericChange) {
       const tuple = await runtime.saver.getTuple(targetConfig)
       if (!tuple) throw new EngineError('fork_checkpoint_missing', 'Target checkpoint is not present in the historical cut')
       const values = tuple.checkpoint.channel_values
+      if (genericChange) state.$vars = { ...((values.$outer as JsonObject | undefined)?.$vars ?? values.$vars) as JsonObject, ...state.$vars, changeId: change! }
       const outer = values.$outer as JsonObject | undefined
       const update = outer ? { $outer: { ...outer,
         ...(state.$vars ? { $vars: { ...(outer.$vars as JsonObject), ...state.$vars } } : {}),

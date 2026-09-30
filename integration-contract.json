@@ -116,14 +116,14 @@
     "file": ".specrails/install-config.yaml",
     "version": 1,
     "fields": {
-      "version": "number — schema version, currently 1",
-      "provider": "string — claude | codex | gemini | kimi",
+      "version": "number \u2014 schema version, currently 1",
+      "provider": "string \u2014 claude | codex | gemini | kimi",
       "tier": "Deprecated legacy string, tolerated and ignored; all installs use deterministic placement.",
-      "agents.selected": "string[] — unique lowercase kebab-case agent ids to install (1-64 characters)",
-      "agents.excluded": "string[] — unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
-      "models.preset": "string — balanced | budget | max; resolved within the selected provider catalog",
-      "models.defaults.model": "string — exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
-      "models.overrides": "Record<safe-agent-id, string> — exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
+      "agents.selected": "string[] \u2014 unique lowercase kebab-case agent ids to install (1-64 characters)",
+      "agents.excluded": "string[] \u2014 unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
+      "models.preset": "string \u2014 balanced | budget | max; resolved within the selected provider catalog",
+      "models.defaults.model": "string \u2014 exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
+      "models.overrides": "Record<safe-agent-id, string> \u2014 exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
     }
   },
   "checkpoints": {
@@ -246,7 +246,9 @@
       "signal",
       "cancel"
     ],
-    "cliPresentationOperations": ["help"],
+    "cliPresentationOperations": [
+      "help"
+    ],
     "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion, runtimeIdentity, workflowVersions, engineVersion, engines, nodeKindsVersion, nodeKinds, capabilities, guardrails}; does not invoke providers",
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
@@ -296,11 +298,14 @@
     "documentation": "docs/agent-runtime.md",
     "instructionsVersion": "10",
     "workflowVersion": "7",
-    "engines": [1, 2],
+    "engines": [
+      1,
+      2
+    ],
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 5
+      "nodeKindsVersion": 7
     },
     "nodeKinds": [
       "prompt",
@@ -308,6 +313,7 @@
       "decider",
       "verify",
       "shell",
+      "artifact-contract",
       "openspec-validate",
       "openspec-archive",
       "condition",
@@ -316,15 +322,25 @@
       "question",
       "gate",
       "assign",
+      "implementation-step",
       "component",
       "map",
       "implementation",
       "join"
     ],
+    "implementationSteps": {
+      "version": 1,
+      "kind": "implementation-step",
+      "ownership": "Host definitions compose phases and freeze role definitions; Core executes individual operations and evidence gates"
+    },
     "engineStatePath": "<backlogRoot>/.specrails/pipeline/<runId>/agent-workflow/run.sqlite",
     "frozenRequest": "agent-runtime-request.json carries workflow {id, version, source: builtin|definition, definitionHash, engine: 1|2}; resume and status select the engine from workflow.engine and a request without the block is a legacy (engine 1) run",
     "builtins": [
-      { "id": "specrails-implementation", "version": "7", "deprecated": false }
+      {
+        "id": "specrails-implementation",
+        "version": "7",
+        "deprecated": true
+      }
     ],
     "developerTools": "The developer role runs with each CLI's autonomous edit+shell mode (claude --tools default --dangerously-skip-permissions with Agent/Task/Skill disallowed; codex workspace-write; gemini --yolo; kimi print mode). Architect and reviewer stay read-only. Claude roles load project settings only (--setting-sources project,local).",
     "verificationPolicy": "Configured commands are optional. The architect proposes commands for repositories without one; repositories with no automated check are admitted and recorded in the receipt as unverifiedRepositories. Unchecked tasks return to the developer as feedback instead of failing the run.",
@@ -356,12 +372,16 @@
       ],
       "customAgentLoop": "free",
       "nativeCommandUnsupported": "native_command_unsupported"
+    },
+    "workflowAgentSteps": {
+      "version": 1,
+      "ownership": "Host-defined roles, schemas and gates; Core provides scoped artifact contracts and verified candidate guards"
     }
   },
   "execution": {
     "schemaVersion": 1,
     "contextEnv": "SPECRAILS_EXECUTION_CONTEXT",
-    "context": "Absolute JSON file: runId, backlogRoot, backlogPath?, artifactRoot, artifactRepositoryId, repositories[{id,name,path,baseSha?,scope?}], ownership{git,backlog,worktrees:host|core}, specs[{id,title,description,repositoryIds?,acceptanceCriteria?}]. scope (runtime capability repositoryScope) lists the checkout-relative directories a repository is confined to — a package registered inside a larger checkout: commands without cwd run in the first one, model-proposed checks stay inside it, edits outside it are undone after each developer/fixer turn and reviews judge the git change set against the run base.",
+    "context": "Absolute JSON file: runId, backlogRoot, backlogPath?, artifactRoot, artifactRepositoryId, repositories[{id,name,path,baseSha?,scope?}], ownership{git,backlog,worktrees:host|core}, specs[{id,title,description,repositoryIds?,acceptanceCriteria?}]. scope (runtime capability repositoryScope) lists the checkout-relative directories a repository is confined to \u2014 a package registered inside a larger checkout: commands without cwd run in the first one, model-proposed checks stay inside it, edits outside it are undone after each developer/fixer turn and reviews judge the git change set against the run base.",
     "runtime": ".specrails/runtime/pipeline.mjs",
     "operations": [
       "init",

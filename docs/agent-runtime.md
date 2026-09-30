@@ -521,3 +521,12 @@ Real evaluation is opt-in only: `runtime evaluate --real --config EXPLICIT_MODEL
 A v4 checkpoint requires its original runtime. Never rewrite checksums or substitute a newly installed package. Desktop retains an immutable package and dependency closure per admitted run. Restoring that proven package is the recovery path; an unknown original package cannot be inferred from matching workflow inputs alone. New runtime configuration or package changes affect new runs only.
 
 This source tree is a development package. Publishing Core and updating Desktop's exact version/integrity lock are separate coordinated release steps; local assembly is not proof that a new version has been published.
+
+## Desktop-owned workflow composition
+
+Core exposes `workflowAgentSteps: 1` and catalog version 7 for workflow-defined
+agent steps. Desktop supplies arbitrary custom roles, task schemas and explicit
+artifact/verification/review/approval nodes. Core executes generic primitives
+and durable evidence contracts. Legacy `implementationSteps: 1` remains available
+for saved definitions and retained runs. See the
+[generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).

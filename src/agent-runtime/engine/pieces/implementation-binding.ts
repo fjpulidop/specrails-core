@@ -3,6 +3,7 @@ import { contentDigest } from '../canonical-json.js'
 import { EngineError, type PieceExecutionContext } from '../contracts.js'
 
 export interface ImplementationBinding {
+  shared?: true
   context: PipelineContext
   change: string
   parentRunId: string

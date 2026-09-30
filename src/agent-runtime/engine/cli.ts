@@ -66,7 +66,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   if (command === 'workflows') {
     if (!positionals[1] || positionals[1] === 'list') {
       emit({ type: 'runtime-workflows', nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().catalog(), definitionSchema: workflowDefinitionSchema,
-        builtins: [{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: false }] })
+        builtins: [{ id: 'specrails-implementation', version: CORE_WORKFLOW_VERSION, deprecated: true }] })
       return 0
     }
     if (positionals[1] !== 'validate' || flags.stdin !== true) throw new EngineError('invalid_arguments', 'Use workflows validate --stdin [--config file | --structural]')
