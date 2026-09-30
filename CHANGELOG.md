@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.0](https://github.com/fjpulidop/specrails-core/compare/v6.1.0...v6.2.0) (2026-09-30)
+
+
+### Features
+
+* **runtime:** support host-defined implementation workflows and evidence gates ([#398](https://github.com/fjpulidop/specrails-core/issues/398)) ([866f4fe](https://github.com/fjpulidop/specrails-core/commit/866f4fe0049b95b79a5aab498dc7badb5c8df5ce))
+
 ## [6.1.0](https://github.com/fjpulidop/specrails-core/compare/v6.0.1...v6.1.0) (2026-09-29)
 
 
