@@ -8,6 +8,7 @@ import { isMain } from './release-utils.mjs'
 export const RUNTIME_FILES = ['src/agent-runtime/core-host.test.ts', 'src/agent-runtime/compact-runtime.test.ts',
   'src/agent-runtime/engine/fork.test.ts', 'src/agent-runtime/engine/implementation-compiler.test.ts']
 export const RUNTIME_PARTS = 3
+export const RECOVERY_FILE = 'src/agent-runtime/engine/robustness.test.ts'
 
 // Keep parameterized cases declared on one line together. Distribute each
 // file independently so every runner gets a share of the expensive suites.
@@ -40,17 +41,24 @@ export function assertSelection(expected, actual) {
   assert.deepEqual(actual.map(identity).sort(), expected.map(identity).sort(), 'Vitest line selection must execute exactly the assigned test inventory')
 }
 
-export function runPartition(partition, { listOnly = false } = {}) {
+export function runPartition(partition, { listOnly = false, spawnProcess = spawnSync } = {}) {
   assert.ok(['full', 'general', 'runtime-1', 'runtime-2', 'runtime-3'].includes(partition), 'Unknown CI test partition')
   const vitest = path.resolve('node_modules/vitest/vitest.mjs')
   const invoke = (args, timeout) => {
-    const result = spawnSync(process.execPath, [vitest, ...args], { stdio: 'inherit', ...(timeout ? { timeout } : {}), windowsHide: true })
+    const result = spawnProcess(process.execPath, [vitest, ...args], { stdio: 'inherit', ...(timeout ? { timeout } : {}), windowsHide: true })
     if (result.error) throw result.error
     assert.equal(result.status, 0, `Vitest ${args[0]} failed (${result.signal ?? result.status})`)
   }
   if (partition === 'full' || partition === 'general') {
     assert.ok(!listOnly, '--list-only is for runtime partitions')
-    invoke(['run', ...(partition === 'general' ? RUNTIME_FILES.flatMap(file => ['--exclude', file]) : [])])
+    invoke(['run', ...(partition === 'general' ? [...RUNTIME_FILES, RECOVERY_FILE].flatMap(file => ['--exclude', file]) : [])])
+    if (partition === 'general') {
+      // Each recovery case drives thirty real CLI nodes and waits for the
+      // production lease TTL. Isolate them from other process-heavy suites
+      // and serialize their CLI trees on Windows; retain every crash phase,
+      // the real lease deadline and the test's bounded recovery assertions.
+      invoke(['run', RECOVERY_FILE, '--maxWorkers', '1', '--maxConcurrency', '1'])
+    }
     return
   }
   const temp = mkdtempSync(path.join(os.tmpdir(), 'core-ci-inventory-'))

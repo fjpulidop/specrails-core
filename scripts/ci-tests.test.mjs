@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { load as yaml } from 'js-yaml'
-import { partitionTests, assertSelection, RUNTIME_PARTS } from './ci-tests.mjs'
+import { partitionTests, assertSelection, runPartition, RUNTIME_FILES, RUNTIME_PARTS, RECOVERY_FILE } from './ci-tests.mjs'
 
 const inventory = ['core', 'compact', 'fork', 'compiler'].flatMap(file => Array.from({ length: 12 }, (_, index) => ({ file, name: `test ${index} [.*] > nested`, location: { line: Math.floor(index / 2) + 1 } })))
 
@@ -28,6 +28,38 @@ test('missing, extra or duplicated selected tests fail closed', () => {
   assert.throws(() => partitionTests([{ file: 'a', name: 'missing location' }]))
   assert.throws(() => partitionTests(inventory, 0))
   assert.throws(() => partitionTests(inventory.slice(0, 1)))
+})
+test('the Windows general partition retains recovery in one isolated serial invocation', () => {
+  const calls = []
+  runPartition('general', { spawnProcess(_executable, args) {
+    calls.push(args.slice(1))
+    return { status: 0 }
+  } })
+  assert.equal(calls.length, 2)
+  const [general, recovery] = calls
+  assert.equal(general[0], 'run')
+  const exclusions = general.filter((_, index) => general[index - 1] === '--exclude')
+  assert.deepEqual(exclusions, [...RUNTIME_FILES, RECOVERY_FILE])
+  assert.equal(general.length, 1 + exclusions.length * 2, 'All remaining suites use the normal unfiltered test inventory')
+  assert.deepEqual(recovery, ['run', RECOVERY_FILE, '--maxWorkers', '1', '--maxConcurrency', '1'])
+})
+test('the full partition retains a single unfiltered invocation for coverage parity', () => {
+  const calls = []
+  runPartition('full', { spawnProcess(_executable, args) {
+    calls.push(args.slice(1))
+    return { status: 0 }
+  } })
+  assert.deepEqual(calls, [['run']])
+})
+test('a failed general or isolated recovery run fails the partition', () => {
+  for (const failedInvocation of [1, 2]) {
+    let calls = 0
+    assert.throws(() => runPartition('general', { spawnProcess() {
+      calls++
+      return { status: calls === failedInvocation ? 6 : 0 }
+    } }), /Vitest run failed \(6\)/)
+    assert.equal(calls, failedInvocation, 'Do not continue after a failed suite')
+  }
 })
 test('the full offline definition corpus runs in parallel with retained failure evidence', () => {
   const ci = yaml(readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'))
