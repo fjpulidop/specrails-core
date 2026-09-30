@@ -52,6 +52,8 @@ it('refuses mixed wrapper/operation journals and ambiguous phase scopes', () => 
   expect(validateWorkflowDefinition(raw, validationPieceRegistry(), {}, { structural: true })).toMatchObject({ ok: false })
 })
 
+// This drives a complete source run and a fork through real Git/OpenSpec
+// processes. Keep the configured Windows integration budget under runner load.
 it('rebinds a fork before verification without mutating its source or trusting patched outputs', async () => {
   const f = implementationFixture(); fixtures.push(f)
   const source = await createRun({ ...f, definition: published(), change: 'native-implementation' })
@@ -63,7 +65,7 @@ it('rebinds a fork before verification without mutating its source or trusting p
   expect(result, JSON.stringify({ state: result.state, error: 'error' in result ? result.error : undefined })).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(readFileSync(path.join(directory, 'run.sqlite'))).toEqual(before)
   expect(f.requests.filter(request => request.role === 'reviewer')).toHaveLength(2)
-}, 90000)
+}, process.platform === 'win32' ? 180000 : 90000)
 
 it('executes renamed phases inside a component with isolated private state', async () => {
   const f = implementationFixture(); fixtures.push(f)
