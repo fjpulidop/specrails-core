@@ -1,4 +1,5 @@
 import { guardrailEnabled } from '../guardrails.js'
+import { verificationFailureSummary } from '../verification-diagnostics.js'
 import { addDeveloperChecks, bindPlan, expandedPlanCommands, initializeVerificationPlan, readVerificationPlan, validateProposedChecks } from '../verification-plan.js'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -414,7 +415,7 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
       }
       const evidence: VerificationRecord = {
         valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), receiptId: receipt.id, unverifiedRepositories: uncovered,
-        commands: receipt.commands.map(({ evidenceId, repositoryId, command, args, exitCode, output }) => ({ ...(evidenceId ? { evidenceId } : {}), repositoryId, command, args, exitCode, output: output.slice(-2000) })),
+        commands: receipt.commands.map(command => ({ ...(command.evidenceId ? { evidenceId: command.evidenceId } : {}), repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, exitCode: command.exitCode, failureSummary: verificationFailureSummary(command), output: command.output.slice(-2000) })),
       }
       const outcome = (passed: boolean, finding?: string): VerifyOutcome => ({ at: new Date().toISOString(), candidateHash: receipt.candidateHash, planHash: effective.planHash, passed, ...(passed ? {} : describeFailure(receipt, roots, finding)) })
       /** Hands a failure to the fixer unless the correction loop has stopped converging. */

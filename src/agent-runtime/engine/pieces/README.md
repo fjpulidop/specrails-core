@@ -44,6 +44,12 @@ command routes to `fail`; infrastructure failures route to `failed`. Zero-check
 or explicitly uncovered receipts do not install a verified candidate. Ordinary
 shell execution and shell evidence never certify the whole workflow.
 
+Failed check outputs include bounded verbatim failure facts and immutable evidence
+IDs. Native/legacy implementation feedback uses the same fact extractor, retaining
+the expected assertion and application location even when a suite's source dump
+or passing tail fills its output excerpt. Full evidence remains available through
+the scoped evidence tool; summaries never alter exit codes or receipt validity.
+
 OpenSpec validation and archive call Core's pinned CLI. Archive prepares a
 write set and checks every preimage before publication; a replay checks the
 saved write set and archive tree. The Quick SDD fixture validates, applies,

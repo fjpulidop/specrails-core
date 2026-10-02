@@ -296,7 +296,7 @@
     "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "10",
+    "instructionsVersion": "11",
     "workflowVersion": "7",
     "engines": [
       1,

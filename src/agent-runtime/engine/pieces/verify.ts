@@ -3,6 +3,7 @@ import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
 import { executeVerification, validateVerificationRequest, type VerificationCommand, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
 import { withScopeDefault } from '../../change-scope.js'
+import { verificationFailureSummary } from '../../verification-diagnostics.js'
 import type { Piece, PieceExecutionContext, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
@@ -43,6 +44,8 @@ function verificationDiagnostics(receipt: VerificationReceipt) {
     const diagnostic = { repositoryId: command.repositoryId, command: boundedText(command.command, 512),
       args, cwd: boundedText(command.cwd, 512),
       exitCode: command.exitCode, durationMs: command.durationMs, output,
+      ...(command.evidenceId ? { evidenceId: boundedText(command.evidenceId, 128) } : {}),
+      ...(command.exitCode !== 0 ? { failureSummary: verificationFailureSummary(command) } : {}),
       truncated: output.length < command.output.length || command.outputTruncated === true
         || command.command.length > 512 || command.cwd.length > 512 || command.args.length > 16 || command.args.some(arg => arg.length > 128) }
     const size = JSON.stringify(diagnostic).length

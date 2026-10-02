@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -17,6 +17,7 @@ import { createPieceRegistry } from './index.js'
 import type { PieceDependencies } from './ports.js'
 import { shellCommand } from './shell.js'
 import { deriveImplementationBinding } from './implementation-binding.js'
+import { rolePromptDefaults } from '../../prompts.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -205,6 +206,50 @@ describe('free prompts and declared roles', () => {
     expect(output).toContain('reconcileProdGuard.test.ts:52')
     expect(output).toContain('expected Escape guard')
     expect(output.length).toBeLessThanOrEqual(8_000)
+  })
+
+  it('hands a real formatting assertion failure to the correction role and still rejects a missing safety guard', async () => {
+    const f = fixture(request => {
+      expect(request.prompt).toContain('failureSummary')
+      expect(request.prompt).toContain('evidenceId')
+      expect(request.prompt).toContain('guard.test.cjs')
+      expect(request.prompt).toContain('ERR_ASSERTION')
+      expect(request.prompt).toContain('expected:')
+      expect(request.prompt).toContain('An unchanged file or a pre-existing test does not prove')
+      const file = path.join(f.root, 'guard.test.cjs')
+      writeFileSync(file, readFileSync(file, 'utf8').replace('&& !confirmPending/', '&&\\s*!confirmPending/'))
+      return { text: 'Repaired whitespace tolerance while preserving the required safety guard.', usage: unknownUsage() }
+    })
+    writeFileSync(path.join(f.root, 'modal.txt'), "e.key === 'Escape' &&\n!confirmPending")
+    writeFileSync(path.join(f.root, 'guard.test.cjs'), `const { test } = require('node:test');\nconst assert = require('node:assert/strict');\nconst fs = require('node:fs');\ntest('cancelling confirmation preserves the queue', () => assert.match(fs.readFileSync('modal.txt', 'utf8'), /e\\.key === 'Escape' && !confirmPending/));\n`)
+    f.deps.config.roles!.writer!.prompt = rolePromptDefaults().fixer
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['--test', '--test-reporter=spec', 'guard.test.cjs'] }]
+    const failed = await f.run('verify', { commands: 'configured' })
+    expect(failed.outcome).toBe('fail')
+    const command = (failed.output as { commands: Array<{ evidenceId: string; failureSummary: string[] }> }).commands[0]
+    expect(command.evidenceId).toBe(f.evidence[0].evidenceId)
+    expect(command.failureSummary.join('\n')).toContain('guard.test.cjs:4')
+    expect(command.failureSummary.join('\n')).toContain('expected:')
+    await f.run('role-turn', { roleId: 'writer', prompt: 'Host verification: ' + JSON.stringify(failed.output) })
+    expect(await f.run('verify', { commands: 'configured' })).toMatchObject({ outcome: 'pass', receipt: { valid: true } })
+    writeFileSync(path.join(f.root, 'modal.txt'), "e.key === 'Escape' &&\ntrue")
+    expect(await f.run('verify', { commands: 'configured' })).toMatchObject({ outcome: 'fail', receipt: { valid: false } })
+  })
+
+  it('keeps expected assertions and application locations separate from huge source dumps', async () => {
+    const f = fixture()
+    const source = ['✖ confirmation stays open ' + 'title '.repeat(100), '✖ second failure ' + 'title '.repeat(100), '✖ third failure ' + 'title '.repeat(100), 'AssertionError [ERR_ASSERTION]: missing required guard ' + 'detail '.repeat(100), 'TypeError: another failure ' + 'detail '.repeat(100), "actual: '" + 'source '.repeat(6000) + "'", "expected: /Escape.*!confirmPending/", 'at TestContext.<anonymous> (/repo/guard.test.ts:52:10)', 'at Test.run (node:internal/test_runner/test:1:2)'].join('\n')
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.error(' + JSON.stringify(source) + ');process.exit(1)'] }]
+    const result = await f.run('verify', { commands: 'configured' })
+    const summary = (result.output as { commands: Array<{ failureSummary: string[] }> }).commands[0].failureSummary.join('\n')
+    expect(summary).toContain('✖ confirmation stays open')
+    expect(summary).toContain('ERR_ASSERTION')
+    expect(summary).toContain('expected: /Escape.*!confirmPending/')
+    expect(summary).toContain('/repo/guard.test.ts:52:10')
+    expect(summary).not.toContain('source source')
+    expect(summary).not.toContain('node:internal/')
+    expect(summary.length).toBeLessThanOrEqual(3_000)
+    expect(f.evidence.at(-1)!.stderr).toContain('source source')
   })
 
   it('stops three failed checks on an unchanged candidate and resets after an edit', async () => {

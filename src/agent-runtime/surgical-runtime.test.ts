@@ -172,6 +172,27 @@ describe('surgical implementation runs', () => {
     expect(calls.filter(call => call.stance === 'fixer')).toHaveLength(1)
   })
 
+  it('gives the legacy fixer failure facts and scoped cwd even when suite output hides the assertion', async () => {
+    config.verification = [hostCheck('if (require("./code.cjs") !== 2) { console.error("not ok 1 - navigation guard\\nAssertionError: wrong return value\\nexpected: 2\\nat TestContext.<anonymous> (/repo/navigation.test.cjs:52:10)\\n" + "suite output\\n".repeat(1000)); process.exit(9) }')]
+    const { registry, calls } = fake({ developer: (request, visit) => {
+      if (visit === 2) {
+        const facts = request.prompt.split('Failure facts (verbatim subprocess lines):')[1]?.split('Evidence ID:')[0]
+        expect(facts).toContain('not ok 1 - navigation guard')
+        expect(facts).toContain('AssertionError: wrong return value')
+        expect(facts).toContain('expected: 2')
+        expect(facts).toContain('/repo/navigation.test.cjs:52:10')
+        expect(request.prompt).toContain('Working directory: ' + realpathSync(path.join(checkout, 'apps/app')))
+        expect(request.prompt).toContain('read_verification_evidence')
+      }
+      write(app(), visit === 1 ? 'module.exports = 3\n' : 'module.exports = 2\n'); tick()
+      return summary()
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.filter(call => call.stance === 'fixer')).toHaveLength(1)
+    expect(runs()).toHaveLength(2)
+  })
+
   it('stops when the same failure survives two correction rounds', async () => {
     const { registry, calls } = fake({ developer: (_request, visit) => {
       write(app(), `module.exports = 3 // attempt ${'x'.repeat(visit)}\n`)
