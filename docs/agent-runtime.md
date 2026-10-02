@@ -386,11 +386,13 @@ files never bypass completeness or validation. Fresh and incomplete changes keep
 the normal artifact dependency order. Missing workflow diagnostics name the
 specific omitted instructions in the correction message.
 
-Apply-bound developer and correction turns receive the exact pinned official
+Apply-bound developer/correction and verify-bound reviewer turns receive the exact pinned official
 skill and real status/apply instructions from Core before provider invocation.
 The scoped trace marks these prerequisite queries with `origin: host`; provider
 calls retain their own origin. Agents still read the returned context files and
-perform the remaining skill procedure. This bootstrap cannot certify tasks,
+perform the remaining skill procedure. Reviewer bootstrap retains read-only
+source access and no artifact writes, including for custom review roles.
+This bootstrap cannot certify tasks,
 verification, review or delivery, and an unrelated failed check remains a failure.
 
 Definition checks and native/legacy implementation feedback expose a bounded

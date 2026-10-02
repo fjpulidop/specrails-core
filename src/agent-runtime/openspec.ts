@@ -210,7 +210,7 @@ export class OpenSpecTools {
       const content = readFileSync(this.context.skillPath, 'utf8')
       if (hash(content) !== this.context.skillHash) throw new Error('OpenSpec skill changed since admission')
       // Both official apply and verify start with these read-only CLI queries.
-      // Execute them as part of the agent's tool request and return their actual
+      // Execute them as part of the skill request and return their actual
       // outputs, so loading a skill cannot omit its required planning context.
       const fastForward = openSpecSkill(this.context) === 'openspec-ff-change'
       let planning: { status: OpenSpecStatus; tasks?: unknown; apply?: unknown } | undefined

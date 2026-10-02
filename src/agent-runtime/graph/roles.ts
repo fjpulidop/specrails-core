@@ -163,14 +163,16 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       return { ok: true, value: accept(output, result.text, result), text: result.text, result }
     }
     try {
-      if (workflow && openSpecSkill(workflow.context) === 'openspec-apply-change') {
-        // Apply's read-only prerequisites are host-owned, not a probabilistic
+      const skill = workflow ? openSpecSkill(workflow.context) : undefined
+      if (workflow && (skill === 'openspec-apply-change' || skill === 'openspec-verify-change')) {
+        // Apply/verify read-only prerequisites are host-owned, not a probabilistic
         // provider action. Deliver the actual pinned skill and CLI outputs; all
         // artifact, task, verification and review gates still run normally.
         const loaded = await workflow.execute({ action: 'load_skill' }, 'host')
-        const context = '\n## Host-loaded official apply workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below, read its contextFiles, and carry out the remaining procedure. You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n' + JSON.stringify(loaded)
+        const procedure = skill === 'openspec-verify-change' ? 'verify' : 'apply'
+        const context = `\n## Host-loaded official ${procedure} workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below, read its contextFiles, and carry out the remaining procedure. You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n` + JSON.stringify(loaded)
         options = { ...options, prompt: options.prompt + context, ...(options.fallbackPrompt ? { fallbackPrompt: options.fallbackPrompt + context } : {}) }
-        note(role, 'Core loaded the pinned OpenSpec apply skill and current planning context for this turn.')
+        note(role, `Core loaded the pinned OpenSpec ${procedure} skill and current planning context for this turn.`)
       }
       let result: AgentResult
       if (options.resumeSessionId && options.fallbackPrompt) {

@@ -4,7 +4,7 @@ import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './grap
 import type { DeveloperRecord } from './graph/state.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '11'
+export const ROLE_INSTRUCTIONS_VERSION = '12'
 const OUTPUT_TAIL = 6_000
 
 export interface RoleFeedback {

@@ -112,29 +112,47 @@ describe('official OpenSpec CLI and confined role tools', () => {
     expect(() => architect.assertParticipation(cursor)).not.toThrow()
     expect(readFileSync(path.join(architect.context.stateDirectory, 'openspec-architect.jsonl'), 'utf8')).toContain('"artifact":"tasks","via":"load_skill"')
   }, 60000)
-  it.each([true, false])('bootstraps custom correction roles and refuses unavailable planning context (artifacts: %s)', async complete => {
+  it.each([
+    { role: 'correct', skill: 'openspec-apply-change' as const, access: 'write' as const, artifacts: 'tasks-checkboxes' as const },
+    { role: 'reviewer', skill: 'openspec-verify-change' as const, access: 'read' as const, artifacts: 'none' as const },
+    { role: 'assess', skill: 'openspec-verify-change' as const, access: 'read' as const, artifacts: 'none' as const },
+  ].flatMap(binding => [true, false].map(complete => ({ ...binding, complete }))))('bootstraps $role and refuses unavailable planning context (artifacts: $complete)', async ({ role, skill, access, artifacts, complete }) => {
     if (complete) await author()
     let calls = 0
     const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
       calls++
-      expect(request.prompt).toContain('Host-loaded official apply workflow')
+      expect(request.prompt).toContain('Host-loaded official ' + (skill === 'openspec-verify-change' ? 'verify' : 'apply') + ' workflow')
+      expect(request.prompt).toContain(skill)
       expect(request.prompt).toContain('contextFiles')
-      return { text: 'Baseline test fails; no unrelated edits made', usage: unknownUsage() }
+      if (skill === 'openspec-verify-change') {
+        expect(request.access).toBe('read')
+        expect(request.artifacts).toBe('none')
+      }
+      // Mirror the logged reviewer: inspect/report without any workflow calls.
+      return { text: 'Inspected the candidate against the supplied context', usage: unknownUsage() }
     } })
     const agent = { provider: 'fixture' }
     const config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: agent, developer: agent, reviewer: agent }, verification: [],
-      roles: { correct: { ...agent, access: 'write', artifacts: 'tasks-checkboxes', openspecSkill: 'openspec-apply-change' } } }
-    const tools = { ...developer.context, role: 'correct', openspecSkill: 'openspec-apply-change' as const, access: 'write' as const, artifacts: 'tasks-checkboxes' as const }
-    const context = { schemaVersion: 1, runId: 'correction', backlogRoot: root, artifactRoot: root, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: root }],
+      ...(role !== 'reviewer' ? { roles: { [role]: { ...agent, access, artifacts, openspecSkill: skill } } } : {}) }
+    const tools = { ...(skill === 'openspec-verify-change' ? reviewer.context : developer.context), role, openspecSkill: skill, access, artifacts }
+    const context = { schemaVersion: 1, runId: 'review-context', backlogRoot: root, artifactRoot: root, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: root }],
       ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Medical alert', description: 'Display alerts', acceptanceCriteria: ['Display alerts'] }] } as PipelineContext
-    const invoke = createRoleInvoker({ context, config, registry, openspec: { correct: tools } })
-    const step = { runId: 'correction', stepId: 'fixer', attemptId: 'attempt', signal: new AbortController().signal,
+    const invoke = createRoleInvoker({ context, config, registry, openspec: { [role]: tools } })
+    const step = { runId: 'review-context', stepId: role, attemptId: 'attempt', signal: new AbortController().signal,
       checkpoint: { history: [], events: [], steps: {} }, remainingBudget: () => ({}), reportUsage: () => {} } as unknown as WorkflowStepContext
-    const outcome = await invoke('correct', step, { prompt: 'Investigate the failed baseline check' }, (_output, text) => text)
+    const outcome = await invoke(role, step, { prompt: 'Inspect the current candidate' }, (_output, text) => text)
     expect(outcome.ok, JSON.stringify(outcome)).toBe(complete)
     expect(calls).toBe(complete ? 1 : 0)
-    if (complete) expect(readFileSync(path.join(tools.stateDirectory, 'openspec-correct.jsonl'), 'utf8')).toContain('"origin":"host"')
-    else expect(() => new OpenSpecTools(tools).assertParticipation()).toThrow('missing')
+    const workflow = new OpenSpecTools(tools)
+    if (complete) {
+      expect(readFileSync(path.join(tools.stateDirectory, `openspec-${role}.jsonl`), 'utf8')).toContain('"origin":"host"')
+      const cursor = workflow.participationCursor()
+      expect(() => workflow.assertParticipation(cursor)).toThrow('missing')
+      // Each new visit gets fresh actual CLI context, not a trace from last time.
+      expect((await invoke(role, step, { prompt: 'Inspect again' }, (_output, text) => text)).ok).toBe(true)
+      expect(() => workflow.assertParticipation(cursor)).not.toThrow()
+      if (artifacts === 'none') await expect(workflow.execute({ action: 'write_artifact', path: 'tasks.md', content: '- [x] bypass' })).rejects.toThrow('cannot write artifacts')
+    } else expect(() => workflow.assertParticipation()).toThrow('missing')
   }, 60000)
 
   it('does not record a loaded role when its required CLI context fails', async () => {

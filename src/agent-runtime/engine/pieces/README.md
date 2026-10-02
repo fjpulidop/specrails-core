@@ -21,6 +21,12 @@ state is private to a node except native implementation phases: developer and
 fixer share role state within the same implementation scope, preserving legacy
 continuation without sharing between map branches.
 
+Apply- and verify-bound turns receive the pinned skill plus real status/apply
+context before provider execution. The fresh host-origin trace satisfies these
+read-only prerequisites even if a reviewer only reads code and returns its report.
+It does not grant writes, certify the review or bypass structured-output,
+candidate, verification or acceptance gates. Missing context blocks the turn.
+
 A blocked free prompt commits its provider response and invocation settlement
 in one transaction before raising a human interrupt. Resume consumes that result
 before sending a continuation. Up to 32 human continuations are admitted in one
