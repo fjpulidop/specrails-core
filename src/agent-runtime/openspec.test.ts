@@ -96,6 +96,17 @@ describe('official OpenSpec CLI and confined role tools', () => {
       expect(ledger).toContain('"artifact":"apply","via":"load_skill"')
     } finally { await client.close() }
   }, 60000)
+  it('returns real task instructions when the architect reuses complete artifacts', async () => {
+    await author()
+    const cursor = architect.participationCursor()
+    const loaded = await architect.execute({ action: 'load_skill' }) as { planning: { status: { isComplete: boolean }; tasks: unknown } }
+    expect(loaded.planning.status.isComplete).toBe(true)
+    expect(loaded.planning.tasks).toBeTruthy()
+    await architect.execute({ action: 'status' })
+    await architect.execute({ action: 'validate' })
+    expect(() => architect.assertParticipation(cursor)).not.toThrow()
+    expect(readFileSync(path.join(architect.context.stateDirectory, 'openspec-architect.jsonl'), 'utf8')).toContain('"artifact":"tasks","via":"load_skill"')
+  }, 60000)
   it('does not record a loaded role when its required CLI context fails', async () => {
     await expect(reviewer.execute({ action: 'load_skill' })).rejects.toThrow('metadata is missing')
     expect(reviewer.participationCursor()).toBe(0)

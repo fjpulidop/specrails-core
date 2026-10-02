@@ -183,6 +183,33 @@ describe('free prompts and declared roles', () => {
     expect(f.pieces.validateParams('prompt', { engine: { provider: 'fixture' }, text: 'inspect', access: 'read', timeoutMs: -1 }, '')).not.toEqual([])
   })
 
+  it('keeps an early failed test in bounded diagnostics after hundreds of passing tests', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - save conflict\\n  ---\\n  error: expected canonical code\\n  ...");for(let i=2;i<650;i++)console.log("ok "+i+" - passing test\\n  ---\\n  duration_ms: 0.134292\\n  type: test\\n  ...");console.log("# tests 649\\n# pass 648\\n# fail 1");process.exit(1)'] }]
+    const result = await f.run('verify', { commands: 'configured' })
+    expect(result.outcome).toBe('fail')
+    const diagnostic = (result.output as { commands: Array<{ output: string }> }).commands[0].output
+    expect(diagnostic).toContain('not ok 1 - save conflict')
+    expect(diagnostic).toContain('expected canonical code')
+    expect(diagnostic).toContain('# fail 1')
+    expect(diagnostic.length).toBeLessThanOrEqual(8_000)
+    expect(f.evidence.at(-1)!.stdout).toContain('ok 649 - passing test')
+  })
+
+  it('stops three failed checks on an unchanged candidate and resets after an edit', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - still broken");process.exit(1)'] }]
+    for (let i = 1; i <= 3; i++) {
+      const result = await f.run('verify', { commands: 'configured' })
+      expect(result.outcome).toBe(i === 3 ? 'failed' : 'fail')
+      expect(result.output).toMatchObject({ noProgressCount: i })
+      if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress' })
+      Object.assign(f.execution.state.$vars, result.vars)
+    }
+    writeFileSync(path.join(f.root, 'input.txt'), 'a real correction')
+    expect(await f.run('verify', { commands: 'configured' })).toMatchObject({ outcome: 'fail', output: { noProgressCount: 1 } })
+  })
+
   it('passes explicit free policy, native arguments and actual unknown usage', async () => {
     const f = fixture(() => ({ text: 'CHANGE: feature-x\nVERIFICATION: PASS\nVERIFICATION: FAIL', usage: unknownUsage(), sessionId: 'session-1' }))
     const result = await f.run('prompt', { engine: { provider: 'fixture', model: 'base', effort: 'low' }, nativeCommand: { id: 'opsx:ff', args: 'user $(literal)' }, access: 'write', sentinel: 'verification', captureVars: [{ name: 'changeId', pattern: 'CHANGE: ([a-z-]+)' }] })

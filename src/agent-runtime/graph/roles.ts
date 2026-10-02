@@ -188,7 +188,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       // complete original role prompt and existing artifacts, never another role.
       const repair = omittedWorkflow ? openSpecRepairPrompt(workflow!.context) : repairInstructions(role, problem)
       note(role, omittedWorkflow
-        ? `The ${role} omitted its required OpenSpec workflow; requesting one correction in the same role before accepting the result.`
+        ? `The ${role} omitted its required OpenSpec workflow (${problem}); requesting one correction in the same role before accepting the result.`
         : `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
       const repaired = await execute(role, step,
         result.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,

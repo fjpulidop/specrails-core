@@ -379,6 +379,13 @@ All current headless adapters explicitly use **official skill-document adaptatio
 
 No global provider configuration is rewritten. Supported planning is currently **repo-local spec-driven**, without local schema overrides. Custom planning homes/schemas fail explicitly; adding one requires conformance tests. The architect's tool cannot edit application code, the developer's artifact tool changes only checkboxes, and the review tool cannot write. Native developer code tools retain their existing provider permissions.
 
+When fast-forward reuses an existing complete change, `load_skill` returns real
+`status` and `instructions tasks` results and records both prerequisites. The
+architect must still reconcile the artifacts with the current request; existing
+files never bypass completeness or validation. Fresh and incomplete changes keep
+the normal artifact dependency order. Missing workflow diagnostics name the
+specific omitted instructions in the correction message.
+
 Advancement requires an observed official skill/instructions tool trace, nonempty planning artifacts, unblocked apply state and strict CLI validation. Existing code verification, frozen-candidate fingerprints and acceptance review still gate completion; a CLI exit code or checked task alone is insufficient. Traces prove tool use and outputs, not perfect semantic compliance by a model.
 
 Deterministic tests cover the real CLI, real stdio MCP, API function calls, adapter configuration, main-spec merging and interrupted archive recovery. Native model-backed end-to-end certification is a separate check; help/argv tests alone do not establish model behavior or support every installed CLI version.

@@ -212,14 +212,20 @@ export class OpenSpecTools {
       // Both official apply and verify start with these read-only CLI queries.
       // Execute them as part of the agent's tool request and return their actual
       // outputs, so loading a skill cannot omit its required planning context.
-      const planning = openSpecSkill(this.context) === 'openspec-ff-change' ? undefined : {
-        status: await this.status(),
-        apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']),
+      const fastForward = openSpecSkill(this.context) === 'openspec-ff-change'
+      let planning: { status: OpenSpecStatus; tasks?: unknown; apply?: unknown } | undefined
+      if (!fastForward) planning = { status: await this.status(), apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) }
+      else if (existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}`))) {
+        const status = await this.status()
+        // Reusing complete artifacts still requires the official task context.
+        // Fresh/incomplete changes continue through the ordinary dependency order.
+        if (status.isComplete) planning = { status, tasks: await this.call(['instructions', 'tasks', '--change', this.context.change, '--json']) }
       }
-      if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact: 'apply', via: 'load_skill' })
+      const artifact = fastForward ? 'tasks' : 'apply'
+      if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact, via: 'load_skill' })
       result = { name: openSpecSkill(this.context), source: this.context.skillPath, version: OPENSPEC_VERSION, content,
-        ...(planning ? { planning, next: 'The official status and instructions apply queries have executed for this request. Read every planning.apply.contextFiles path, then perform the remaining role skill steps. This is planning context, not proof that implementation or review is complete.' } : {}),
-        ...(openSpecSkill(this.context) !== 'openspec-ff-change' ? { savedProgress: readProgress(this.context) } : {}),
+        ...(planning ? { planning, next: `The official status and instructions ${artifact} queries have executed for this request. Read the returned context and current artifacts, reconcile them with the requested change, and perform the remaining role skill steps. Existing artifacts are not proof that the current request is satisfied.` } : {}),
+        ...(!fastForward ? { savedProgress: readProgress(this.context) } : {}),
       }
     } else if (action === 'new') {
       if (openSpecPolicy(this.context).artifacts !== 'all') throw new Error('Role cannot create a change')
