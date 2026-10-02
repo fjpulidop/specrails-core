@@ -386,6 +386,13 @@ files never bypass completeness or validation. Fresh and incomplete changes keep
 the normal artifact dependency order. Missing workflow diagnostics name the
 specific omitted instructions in the correction message.
 
+Apply-bound developer and correction turns receive the exact pinned official
+skill and real status/apply instructions from Core before provider invocation.
+The scoped trace marks these prerequisite queries with `origin: host`; provider
+calls retain their own origin. Agents still read the returned context files and
+perform the remaining skill procedure. This bootstrap cannot certify tasks,
+verification, review or delivery, and an unrelated failed check remains a failure.
+
 Advancement requires an observed official skill/instructions tool trace, nonempty planning artifacts, unblocked apply state and strict CLI validation. Existing code verification, frozen-candidate fingerprints and acceptance review still gate completion; a CLI exit code or checked task alone is insufficient. Traces prove tool use and outputs, not perfect semantic compliance by a model.
 
 Deterministic tests cover the real CLI, real stdio MCP, API function calls, adapter configuration, main-spec merging and interrupted archive recovery. Native model-backed end-to-end certification is a separate check; help/argv tests alone do not establish model behavior or support every installed CLI version.

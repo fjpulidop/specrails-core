@@ -314,6 +314,25 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(journalFile().phases.reviewer.status).not.toBe('done')
   })
 
+  it('loads official apply context before a developer that omits the workflow tool', async () => {
+    const original = fake(), calls: AgentRequest[] = []
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls.push(request)
+      if (request.role !== 'developer') return original.registry.execute('fixture', request)
+      expect(request.prompt).toContain('Host-loaded official apply workflow')
+      expect(request.prompt).toContain('contextFiles')
+      expect(request.prompt).toContain('openspec-apply-change')
+      develop()
+      return result('Implemented using the supplied official context')
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+    const trace = readFileSync(path.join(pipelineStateDirectory(context), 'agent-workflow', 'openspec-developer.jsonl'), 'utf8')
+    expect(trace).toContain('"origin":"host"')
+    expect(trace).toContain('"artifact":"apply"')
+  }, 60000)
+
   it.each([true, false])('repairs an omitted reviewer workflow once without replaying implementation (session: %s)', async session => {
     const original = fake(), calls: AgentRequest[] = []
     let reviews = 0

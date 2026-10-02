@@ -196,6 +196,17 @@ describe('free prompts and declared roles', () => {
     expect(f.evidence.at(-1)!.stdout).toContain('ok 649 - passing test')
   })
 
+  it('retains an early Node spec failure when the output tail contains only passing cases', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("✖ cancelling the confirmation\\ntest at lib/reconcileProdGuard.test.ts:52\\nAssertionError: expected Escape guard");process.stdout.write("✔ passing case\\n".repeat(4000));console.log("ℹ fail 1");process.exit(1)'] }]
+    const result = await f.run('verify', { commands: 'configured' })
+    const output = (result.output as { commands: Array<{ output: string }> }).commands[0].output
+    expect(output).toContain('✖ cancelling the confirmation')
+    expect(output).toContain('reconcileProdGuard.test.ts:52')
+    expect(output).toContain('expected Escape guard')
+    expect(output.length).toBeLessThanOrEqual(8_000)
+  })
+
   it('stops three failed checks on an unchanged candidate and resets after an edit', async () => {
     const f = fixture()
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - still broken");process.exit(1)'] }]

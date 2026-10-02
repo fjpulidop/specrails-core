@@ -1,3 +1,8 @@
+import { createRoleInvoker } from './graph/roles.js'
+import { ExecutorRegistry } from './executors.js'
+import { unknownUsage, type RuntimeConfig } from './executor-types.js'
+import type { WorkflowStepContext } from './workflow-types.js'
+import type { PipelineContext } from '../pipeline/pipeline-state.js'
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
@@ -107,6 +112,31 @@ describe('official OpenSpec CLI and confined role tools', () => {
     expect(() => architect.assertParticipation(cursor)).not.toThrow()
     expect(readFileSync(path.join(architect.context.stateDirectory, 'openspec-architect.jsonl'), 'utf8')).toContain('"artifact":"tasks","via":"load_skill"')
   }, 60000)
+  it.each([true, false])('bootstraps custom correction roles and refuses unavailable planning context (artifacts: %s)', async complete => {
+    if (complete) await author()
+    let calls = 0
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      calls++
+      expect(request.prompt).toContain('Host-loaded official apply workflow')
+      expect(request.prompt).toContain('contextFiles')
+      return { text: 'Baseline test fails; no unrelated edits made', usage: unknownUsage() }
+    } })
+    const agent = { provider: 'fixture' }
+    const config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: agent, developer: agent, reviewer: agent }, verification: [],
+      roles: { correct: { ...agent, access: 'write', artifacts: 'tasks-checkboxes', openspecSkill: 'openspec-apply-change' } } }
+    const tools = { ...developer.context, role: 'correct', openspecSkill: 'openspec-apply-change' as const, access: 'write' as const, artifacts: 'tasks-checkboxes' as const }
+    const context = { schemaVersion: 1, runId: 'correction', backlogRoot: root, artifactRoot: root, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: root }],
+      ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Medical alert', description: 'Display alerts', acceptanceCriteria: ['Display alerts'] }] } as PipelineContext
+    const invoke = createRoleInvoker({ context, config, registry, openspec: { correct: tools } })
+    const step = { runId: 'correction', stepId: 'fixer', attemptId: 'attempt', signal: new AbortController().signal,
+      checkpoint: { history: [], events: [], steps: {} }, remainingBudget: () => ({}), reportUsage: () => {} } as unknown as WorkflowStepContext
+    const outcome = await invoke('correct', step, { prompt: 'Investigate the failed baseline check' }, (_output, text) => text)
+    expect(outcome.ok, JSON.stringify(outcome)).toBe(complete)
+    expect(calls).toBe(complete ? 1 : 0)
+    if (complete) expect(readFileSync(path.join(tools.stateDirectory, 'openspec-correct.jsonl'), 'utf8')).toContain('"origin":"host"')
+    else expect(() => new OpenSpecTools(tools).assertParticipation()).toThrow('missing')
+  }, 60000)
+
   it('does not record a loaded role when its required CLI context fails', async () => {
     await expect(reviewer.execute({ action: 'load_skill' })).rejects.toThrow('metadata is missing')
     expect(reviewer.participationCursor()).toBe(0)

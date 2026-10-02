@@ -149,7 +149,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
   return async <T>(role: AgentRole, step: WorkflowStepContext, options: InvokeOptions, accept: Accept<T>): Promise<InvokeOutcome<T>> => {
     const timers = { timeoutMs: options.timeoutMs, idleTimeoutMs: options.idleTimeoutMs }
     const structured = options.structured === true
-    const workflow = deps.openspec?.[role] ? new OpenSpecTools(deps.openspec[role]) : undefined
+    const workflow = deps.openspec?.[role] ? new OpenSpecTools(deps.openspec[role], step.signal) : undefined
     const cursor = workflow?.participationCursor() ?? 0
     const evaluate = (result: AgentResult): InvokeOutcome<T> => {
       let output: Record<string, unknown> | undefined, parseError: unknown
@@ -163,6 +163,15 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       return { ok: true, value: accept(output, result.text, result), text: result.text, result }
     }
     try {
+      if (workflow && openSpecSkill(workflow.context) === 'openspec-apply-change') {
+        // Apply's read-only prerequisites are host-owned, not a probabilistic
+        // provider action. Deliver the actual pinned skill and CLI outputs; all
+        // artifact, task, verification and review gates still run normally.
+        const loaded = await workflow.execute({ action: 'load_skill' }, 'host')
+        const context = '\n## Host-loaded official apply workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below, read its contextFiles, and carry out the remaining procedure. You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n' + JSON.stringify(loaded)
+        options = { ...options, prompt: options.prompt + context, ...(options.fallbackPrompt ? { fallbackPrompt: options.fallbackPrompt + context } : {}) }
+        note(role, 'Core loaded the pinned OpenSpec apply skill and current planning context for this turn.')
+      }
       let result: AgentResult
       if (options.resumeSessionId && options.fallbackPrompt) {
         // A correction pass continues the role's own session: the work it did and

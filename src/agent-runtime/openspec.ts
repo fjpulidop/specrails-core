@@ -198,7 +198,7 @@ export class OpenSpecTools {
   }
   async apply(): Promise<OpenSpecApply> { await this.status(); return await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) as OpenSpecApply }
   async validate(): Promise<unknown> { await this.status(); return this.call(['validate', this.context.change, '--strict', '--json']) }
-  async execute(input: { action: string; artifact?: string; path?: string; content?: string; progress?: unknown }): Promise<unknown> {
+  async execute(input: { action: string; artifact?: string; path?: string; content?: string; progress?: unknown }, origin: 'agent' | 'host' = 'agent'): Promise<unknown> {
     this.signal?.throwIfAborted()
     const { action } = input
     const log = path.join(this.context.stateDirectory, `openspec-${this.context.role}.jsonl`)
@@ -262,7 +262,7 @@ export class OpenSpecTools {
     this.signal?.throwIfAborted()
     const timestamp = new Date().toISOString()
     appendFileSync(log, [{ action, artifact: input.artifact, path: input.path }, ...prerequisites]
-      .map(event => JSON.stringify({ ...event, timestamp }) + '\n').join(''), { mode: 0o600 })
+      .map(event => JSON.stringify({ ...event, timestamp, ...(origin === 'host' ? { origin } : {}) }) + '\n').join(''), { mode: 0o600 })
     return result
   }
   private participationEvents(): { action: string; artifact?: string }[] {

@@ -22,7 +22,7 @@ function verificationDiagnostics(receipt: VerificationReceipt) {
     const failures: string[] = []
     let used = 0
     for (let i = 0; command.exitCode !== 0 && i < lines.length && used < 6_000; i++) {
-      if (!/^\s*(?:not ok\b|FAIL\b|Error:|AssertionError\b|error:)/.test(lines[i])) continue
+      if (!/^\s*(?:not ok\b|[✖✗]\s|test at\b|FAIL\b|Error:|AssertionError\b|error:)/.test(lines[i])) continue
       const excerpt = lines.slice(Math.max(0, i - 2), i + 28).join('\n').slice(0, 6_000 - used)
       failures.push(excerpt)
       used += excerpt.length
