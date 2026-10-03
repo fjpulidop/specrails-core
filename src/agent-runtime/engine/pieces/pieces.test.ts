@@ -186,7 +186,7 @@ describe('free prompts and declared roles', () => {
 
   it('keeps an early failed test in bounded diagnostics after hundreds of passing tests', async () => {
     const f = fixture()
-    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - save conflict\\n  ---\\n  error: expected canonical code\\n  ...");for(let i=2;i<650;i++)console.log("ok "+i+" - passing test\\n  ---\\n  duration_ms: 0.134292\\n  type: test\\n  ...");console.log("# tests 649\\n# pass 648\\n# fail 1");process.exit(1)'] }]
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - save conflict\\n  ---\\n  error: expected canonical code\\n  ...");for(let i=2;i<650;i++)console.log("ok "+i+" - passing test\\n  ---\\n  duration_ms: 0.134292\\n  type: test\\n  ...");console.log("# tests 649\\n# pass 648\\n# fail 1");process.exitCode=1'] }]
     const result = await f.run('verify', { commands: 'configured' })
     expect(result.outcome).toBe('fail')
     const diagnostic = (result.output as { commands: Array<{ output: string }> }).commands[0].output
@@ -199,7 +199,7 @@ describe('free prompts and declared roles', () => {
 
   it('retains an early Node spec failure when the output tail contains only passing cases', async () => {
     const f = fixture()
-    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("✖ cancelling the confirmation\\ntest at lib/reconcileProdGuard.test.ts:52\\nAssertionError: expected Escape guard");process.stdout.write("✔ passing case\\n".repeat(4000));console.log("ℹ fail 1");process.exit(1)'] }]
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("✖ cancelling the confirmation\\ntest at lib/reconcileProdGuard.test.ts:52\\nAssertionError: expected Escape guard");process.stdout.write("✔ passing case\\n".repeat(4000));console.log("ℹ fail 1");process.exitCode=1'] }]
     const result = await f.run('verify', { commands: 'configured' })
     const output = (result.output as { commands: Array<{ output: string }> }).commands[0].output
     expect(output).toContain('✖ cancelling the confirmation')
@@ -239,7 +239,10 @@ describe('free prompts and declared roles', () => {
   it('keeps expected assertions and application locations separate from huge source dumps', async () => {
     const f = fixture()
     const source = ['✖ confirmation stays open ' + 'title '.repeat(100), '✖ second failure ' + 'title '.repeat(100), '✖ third failure ' + 'title '.repeat(100), 'AssertionError [ERR_ASSERTION]: missing required guard ' + 'detail '.repeat(100), 'TypeError: another failure ' + 'detail '.repeat(100), "actual: '" + 'source '.repeat(6000) + "'", "expected: /Escape.*!confirmPending/", 'at TestContext.<anonymous> (/repo/guard.test.ts:52:10)', 'at Test.run (node:internal/test_runner/test:1:2)'].join('\n')
-    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.error(' + JSON.stringify(source) + ');process.exit(1)'] }]
+    // Keep the dump out of argv (Windows limits it to ~32 KB), and let Node
+    // drain stderr before exiting so pipe output is complete on every platform.
+    writeFileSync(path.join(f.root, 'failure.cjs'), 'console.error(' + JSON.stringify(source) + ');process.exitCode=1')
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['failure.cjs'] }]
     const result = await f.run('verify', { commands: 'configured' })
     const summary = (result.output as { commands: Array<{ failureSummary: string[] }> }).commands[0].failureSummary.join('\n')
     expect(summary).toContain('✖ confirmation stays open')
