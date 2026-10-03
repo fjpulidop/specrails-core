@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.1](https://github.com/fjpulidop/specrails-core/compare/v6.2.0...v6.2.1) (2026-10-03)
+
+
+### Bug Fixes
+
+* improve OpenSpec participation and verification correction feedback ([#400](https://github.com/fjpulidop/specrails-core/issues/400)) ([cbcc601](https://github.com/fjpulidop/specrails-core/commit/cbcc601fb1add56881b1e53ebf03a4e7f48bf2e9))
+
 ## [6.2.0](https://github.com/fjpulidop/specrails-core/compare/v6.1.0...v6.2.0) (2026-09-30)
 
 
