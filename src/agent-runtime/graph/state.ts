@@ -37,7 +37,7 @@ export interface VerificationRecord {
   receiptId?: string
   incompleteTasks?: string[]
   unverifiedRepositories: string[]
-  commands: Array<{ evidenceId?: string; repositoryId: string; command: string; args: string[]; exitCode: number | null; output: string }>
+  commands: Array<{ evidenceId?: string; repositoryId: string; command: string; args: string[]; cwd?: string; exitCode: number | null; failureSummary?: string[]; output: string }>
 }
 export interface ReviewRecord {
   sessionId?: string

@@ -1,7 +1,9 @@
+import { stripVTControlCharacters } from 'node:util'
 import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
 import { executeVerification, validateVerificationRequest, type VerificationCommand, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
 import { withScopeDefault } from '../../change-scope.js'
+import { verificationFailureSummary } from '../../verification-diagnostics.js'
 import type { Piece, PieceExecutionContext, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
@@ -15,7 +17,21 @@ function verificationDiagnostics(receipt: VerificationReceipt) {
   const priority = receipt.commands.map((command, index) => ({ command, index }))
     .sort((a, b) => Number(b.command.exitCode !== 0) - Number(a.command.exitCode !== 0))
   for (const { command, index } of priority) {
-    const output = command.output.slice(-Math.min(8_000, remaining))
+    const limit = Math.min(8_000, remaining)
+    const source = stripVTControlCharacters([command.stdout ?? '', command.stderr ?? '', command.output].join('\n'))
+    const lines = source.split('\n')
+    const failures: string[] = []
+    let used = 0
+    for (let i = 0; command.exitCode !== 0 && i < lines.length && used < 6_000; i++) {
+      if (!/^\s*(?:not ok\b|[✖✗]\s|test at\b|FAIL\b|Error:|AssertionError\b|error:)/.test(lines[i])) continue
+      const excerpt = lines.slice(Math.max(0, i - 2), i + 28).join('\n').slice(0, 6_000 - used)
+      failures.push(excerpt)
+      used += excerpt.length
+      i += 27
+    }
+    const failureText = failures.join('\n').slice(0, Math.min(6_000, limit))
+    const tailBudget = Math.max(0, limit - failureText.length - (failureText ? 1 : 0))
+    const output = failureText + (failureText && tailBudget ? '\n' : '') + (tailBudget ? command.output.slice(-tailBudget) : '')
     // slice(-0) would include all the original text.
     outputs.set(index, remaining > 0 ? output : '')
     remaining -= remaining > 0 ? output.length : 0
@@ -28,6 +44,8 @@ function verificationDiagnostics(receipt: VerificationReceipt) {
     const diagnostic = { repositoryId: command.repositoryId, command: boundedText(command.command, 512),
       args, cwd: boundedText(command.cwd, 512),
       exitCode: command.exitCode, durationMs: command.durationMs, output,
+      ...(command.evidenceId ? { evidenceId: boundedText(command.evidenceId, 128) } : {}),
+      ...(command.exitCode !== 0 ? { failureSummary: verificationFailureSummary(command) } : {}),
       truncated: output.length < command.output.length || command.outputTruncated === true
         || command.command.length > 512 || command.cwd.length > 512 || command.args.length > 16 || command.args.some(arg => arg.length > 128) }
     const size = JSON.stringify(diagnostic).length
@@ -96,9 +114,15 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       }))
       const infrastructure = receipt.commands.some(command => command.exitCode === -1 && command.outcome !== 'cancelled')
       const outcome = infrastructure ? 'failed' : receipt.valid ? 'pass' : 'fail'
+      const progressKey = 'verification-' + contentDigest(context.frame.nodePath).slice(0, 20)
+      const fingerprint = contentDigest(json({ candidateHash: identity.candidateHash,
+        failures: receipt.commands.filter(command => command.exitCode !== 0).map(command => ({ repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, exitCode: command.exitCode })) }))
+      const previous = context.state.$vars[progressKey] as { fingerprint?: string; count?: number } | undefined
+      const count = receipt.valid ? 0 : previous?.fingerprint === fingerprint ? (previous.count ?? 0) + 1 : 1
+      const stalled = !infrastructure && !receipt.valid && count >= 3
       const verified = receipt.valid && receipt.commands.length > 0 && !receipt.unverifiedRepositories?.length
-      return { outcome, ...(infrastructure ? { status: 'failed' as const, error: { code: 'verification_execution_error', message: receipt.reason ?? 'A verification command could not complete' } } : {}),
-        output: { receiptId: receipt.id, valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), ...verificationDiagnostics(receipt) },
+      return { outcome: stalled ? 'failed' : outcome, vars: { [progressKey]: { fingerprint, count } }, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections; inspect the failed checks.' } } : {}), ...(infrastructure ? { status: 'failed' as const, error: { code: 'verification_execution_error', message: receipt.reason ?? 'A verification command could not complete' } } : {}),
+        output: { receiptId: receipt.id, valid: receipt.valid, candidateHash: identity.candidateHash, noProgressCount: count, ...(receipt.reason ? { reason: receipt.reason } : {}), ...(stalled ? { reason: 'Verification failed three times without candidate changes' } : {}), ...verificationDiagnostics(receipt) },
         receipt: receiptEvidence(receipt), ...(verified ? { verified: { receiptId: receipt.id, candidateHash: receipt.candidateHash, atTransition: context.frame.transition, revision: context.frame.transition } } : { verified: null }) }
     },
   }

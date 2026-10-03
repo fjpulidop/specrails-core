@@ -15,6 +15,16 @@ describe('editable role definitions', () => {
     for (const value of ['expected 2, actual 1', '/repo/source.cjs:42:7', 'check-1', 'read_verification_evidence', 'same JSON summary', 'unchanged permissions and obligations']) expect(focused).toContain(value)
     expect(feedback.verification.commands[0].output).toContain('node:internal/modules/loader')
   })
+  it('prioritizes failed facts over successful suites within the shared correction feedback budget', () => {
+    const passed = Array.from({ length: 20 }, () => ({ repositoryId: 'app', command: 'passed-suite', args: [], exitCode: 0, output: 'successful output '.repeat(2000) }))
+    const failed = { repositoryId: 'app', command: 'failed-suite', args: [], cwd: '/repo/app', exitCode: 1, evidenceId: 'failed-check', output: 'source dump '.repeat(2000), failureSummary: ['AssertionError: missing guard', 'expected: !confirmPending', 'at /repo/guard.test.ts:52:10'] }
+    const prompt = correctionInstructions('developer', { verification: { valid: false, commands: [...passed, failed] } })
+    expect(prompt).toContain('expected: !confirmPending')
+    expect(prompt).toContain('at /repo/guard.test.ts:52:10')
+    expect(prompt.indexOf('`failed-suite`')).toBeLessThan(prompt.indexOf('`passed-suite`'))
+    expect(prompt).toContain('failed-check')
+    expect(prompt.length).toBeLessThan(30_000)
+  })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
     expect(roleInstructions(role, context, 'change')).toContain(defaults[role])

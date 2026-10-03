@@ -21,6 +21,12 @@ state is private to a node except native implementation phases: developer and
 fixer share role state within the same implementation scope, preserving legacy
 continuation without sharing between map branches.
 
+Apply- and verify-bound turns receive the pinned skill plus real status/apply
+context before provider execution. The fresh host-origin trace satisfies these
+read-only prerequisites even if a reviewer only reads code and returns its report.
+It does not grant writes, certify the review or bypass structured-output,
+candidate, verification or acceptance gates. Missing context blocks the turn.
+
 A blocked free prompt commits its provider response and invocation settlement
 in one transaction before raising a human interrupt. Resume consumes that result
 before sending a continuation. Up to 32 human continuations are admitted in one
@@ -43,6 +49,12 @@ snapshot-local check reuse. General pieces never create `state.json`. A failed
 command routes to `fail`; infrastructure failures route to `failed`. Zero-check
 or explicitly uncovered receipts do not install a verified candidate. Ordinary
 shell execution and shell evidence never certify the whole workflow.
+
+Failed check outputs include bounded verbatim failure facts and immutable evidence
+IDs. Native/legacy implementation feedback uses the same fact extractor, retaining
+the expected assertion and application location even when a suite's source dump
+or passing tail fills its output excerpt. Full evidence remains available through
+the scoped evidence tool; summaries never alter exit codes or receipt validity.
 
 OpenSpec validation and archive call Core's pinned CLI. Archive prepares a
 write set and checks every preimage before publication; a replay checks the

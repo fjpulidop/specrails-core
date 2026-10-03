@@ -379,6 +379,38 @@ All current headless adapters explicitly use **official skill-document adaptatio
 
 No global provider configuration is rewritten. Supported planning is currently **repo-local spec-driven**, without local schema overrides. Custom planning homes/schemas fail explicitly; adding one requires conformance tests. The architect's tool cannot edit application code, the developer's artifact tool changes only checkboxes, and the review tool cannot write. Native developer code tools retain their existing provider permissions.
 
+When fast-forward reuses an existing complete change, `load_skill` returns real
+`status` and `instructions tasks` results and records both prerequisites. The
+architect must still reconcile the artifacts with the current request; existing
+files never bypass completeness or validation. Fresh and incomplete changes keep
+the normal artifact dependency order. Missing workflow diagnostics name the
+specific omitted instructions in the correction message.
+
+Apply-bound developer/correction and verify-bound reviewer turns receive the exact pinned official
+skill and real status/apply instructions from Core before provider invocation.
+The scoped trace marks these prerequisite queries with `origin: host`; provider
+calls retain their own origin. Agents still read the returned context files and
+perform the remaining skill procedure. Reviewer bootstrap retains read-only
+source access and no artifact writes, including for custom review roles.
+This bootstrap cannot certify tasks,
+verification, review or delivery, and an unrelated failed check remains a failure.
+
+Definition checks and native/legacy implementation feedback expose a bounded
+`failureSummary` alongside command, cwd, original exit code and `evidenceId`.
+Failed commands receive the shared feedback text budget before successful ones.
+It prioritizes failed test names,
+assertions, expected values and application locations separately from source
+dumps. Full subprocess evidence remains available through the scoped evidence
+tool; these facts never waive the failed receipt.
+
+The default fixer reproduces and classifies the reported failure before choosing
+a repair. A filename absent from the current diff does not establish that a
+failure is unrelated. A mandatory test inside the admitted workspace can receive
+a proven minimal compatibility repair, including whitespace tolerance in a source
+assertion, provided every required operand/guard and the behavior stay intact.
+The fixer validates negative cases, preserves original focused test exit codes,
+and reports unresolved failures with evidence instead of claiming success.
+
 Advancement requires an observed official skill/instructions tool trace, nonempty planning artifacts, unblocked apply state and strict CLI validation. Existing code verification, frozen-candidate fingerprints and acceptance review still gate completion; a CLI exit code or checked task alone is insufficient. Traces prove tool use and outputs, not perfect semantic compliance by a model.
 
 Deterministic tests cover the real CLI, real stdio MCP, API function calls, adapter configuration, main-spec merging and interrupted archive recovery. Native model-backed end-to-end certification is a separate check; help/argv tests alone do not establish model behavior or support every installed CLI version.

@@ -198,7 +198,7 @@ export class OpenSpecTools {
   }
   async apply(): Promise<OpenSpecApply> { await this.status(); return await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) as OpenSpecApply }
   async validate(): Promise<unknown> { await this.status(); return this.call(['validate', this.context.change, '--strict', '--json']) }
-  async execute(input: { action: string; artifact?: string; path?: string; content?: string; progress?: unknown }): Promise<unknown> {
+  async execute(input: { action: string; artifact?: string; path?: string; content?: string; progress?: unknown }, origin: 'agent' | 'host' = 'agent'): Promise<unknown> {
     this.signal?.throwIfAborted()
     const { action } = input
     const log = path.join(this.context.stateDirectory, `openspec-${this.context.role}.jsonl`)
@@ -210,16 +210,22 @@ export class OpenSpecTools {
       const content = readFileSync(this.context.skillPath, 'utf8')
       if (hash(content) !== this.context.skillHash) throw new Error('OpenSpec skill changed since admission')
       // Both official apply and verify start with these read-only CLI queries.
-      // Execute them as part of the agent's tool request and return their actual
+      // Execute them as part of the skill request and return their actual
       // outputs, so loading a skill cannot omit its required planning context.
-      const planning = openSpecSkill(this.context) === 'openspec-ff-change' ? undefined : {
-        status: await this.status(),
-        apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']),
+      const fastForward = openSpecSkill(this.context) === 'openspec-ff-change'
+      let planning: { status: OpenSpecStatus; tasks?: unknown; apply?: unknown } | undefined
+      if (!fastForward) planning = { status: await this.status(), apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) }
+      else if (existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}`))) {
+        const status = await this.status()
+        // Reusing complete artifacts still requires the official task context.
+        // Fresh/incomplete changes continue through the ordinary dependency order.
+        if (status.isComplete) planning = { status, tasks: await this.call(['instructions', 'tasks', '--change', this.context.change, '--json']) }
       }
-      if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact: 'apply', via: 'load_skill' })
+      const artifact = fastForward ? 'tasks' : 'apply'
+      if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact, via: 'load_skill' })
       result = { name: openSpecSkill(this.context), source: this.context.skillPath, version: OPENSPEC_VERSION, content,
-        ...(planning ? { planning, next: 'The official status and instructions apply queries have executed for this request. Read every planning.apply.contextFiles path, then perform the remaining role skill steps. This is planning context, not proof that implementation or review is complete.' } : {}),
-        ...(openSpecSkill(this.context) !== 'openspec-ff-change' ? { savedProgress: readProgress(this.context) } : {}),
+        ...(planning ? { planning, next: `The official status and instructions ${artifact} queries have executed for this request. Read the returned context and current artifacts, reconcile them with the requested change, and perform the remaining role skill steps. Existing artifacts are not proof that the current request is satisfied.` } : {}),
+        ...(!fastForward ? { savedProgress: readProgress(this.context) } : {}),
       }
     } else if (action === 'new') {
       if (openSpecPolicy(this.context).artifacts !== 'all') throw new Error('Role cannot create a change')
@@ -256,7 +262,7 @@ export class OpenSpecTools {
     this.signal?.throwIfAborted()
     const timestamp = new Date().toISOString()
     appendFileSync(log, [{ action, artifact: input.artifact, path: input.path }, ...prerequisites]
-      .map(event => JSON.stringify({ ...event, timestamp }) + '\n').join(''), { mode: 0o600 })
+      .map(event => JSON.stringify({ ...event, timestamp, ...(origin === 'host' ? { origin } : {}) }) + '\n').join(''), { mode: 0o600 })
     return result
   }
   private participationEvents(): { action: string; artifact?: string }[] {

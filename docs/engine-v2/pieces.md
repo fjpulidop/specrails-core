@@ -80,9 +80,10 @@ overflow fail before any update is returned.
 Runs verification commands through the real Core command runner and evidence adapter, without a journal (`state.json` is never created for ledger-only runs).
 
 - Parameters: `commands: 'configured'` uses `config.verification`; an explicit array (≤ 100) supplies `VerificationCommand` objects. `unverified: true` admits repositories without a check as an explicit exception. `maxConcurrency` (1–4) bounds parallel commands.
-- Outcomes: `pass` when the receipt is valid, `fail` when a command failed, `failed` only for infrastructure failure (a command could not complete, `error.code: 'verification_execution_error'`).
+- Outcomes: `pass` when the receipt is valid, `fail` when a command failed, `failed` for infrastructure failure (`verification_execution_error`) or three consecutive failures with the same candidate and failing command identities (`verification_no_progress`). A changed candidate or failure identity resets the counter; a valid receipt clears it. The per-node counter is committed in scoped `$vars` and survives resume.
 - Effect: write. The receipt kind is `full` when the commands cover every frozen repository or `unverified` is set, otherwise `scoped`. Certification (`$verified`) is installed only for a valid full receipt with at least one command, no unverified repositories and a candidate hash equal to the committed candidate; the ledger rejects anything else (`receipt_invalid`) and the execution adapter downgrades a receipt whose candidate changed before terminal commit to `fail`.
 - `storeAccess: 'write'`: known-command observations under `verification/known-commands` are advisory and never skip a check.
+- Bounded command diagnostics prioritize early TAP `not ok`, assertion and error blocks from retained stdout/stderr, then include the output tail. Full bounded command evidence is unchanged.
 - Writes: `$outputs[nodeId] = { receiptId, valid, reason?, commands: [{ repositoryId, command, args, cwd, exitCode, durationMs, output, truncated }], omittedCommands? }`, the receipt evidence and `$verified`. Committed diagnostics are bounded, prioritizing failed command output; the receipt retains full evidence. Emits `verification-output` and `runtime-efficiency-event`.
 
 ### `shell`

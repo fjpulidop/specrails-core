@@ -200,7 +200,7 @@ describe('packaged programmatic runtime CLI', () => {
     expect(requests).toHaveLength(6)
     expect(requests.every(request => request.authorization === undefined)).toBe(true)
     const requestFile = path.join(pipelineStateDirectory(context), 'agent-runtime-request.json')
-    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: { workflowVersion: '7', instructionsVersion: '10', apiVersion: 1 },
+    expect(JSON.parse(readFileSync(requestFile, 'utf8'))).toMatchObject({ change: 'cli-feature', config: normalizeRuntimeConfig(config), runtimeIdentity: coreRuntimeIdentity(),
       workflow: { id: 'specrails-implementation', version: '7', source: 'builtin', definitionHash: null, engine: 1 } })
 
     const forbidden = await invoke(['resume', '--context', contextFile, '--config', configFile])

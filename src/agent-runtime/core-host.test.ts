@@ -301,12 +301,11 @@ describe('programmatic Core host with real evidence gates', () => {
     }
   })
 
-  it('requires the developer itself to execute the official apply workflow', async () => {
+  it('requires the architect to execute the real planning workflow instead of returning artifact JSON', async () => {
     const original = fake()
     const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
-      if (request.role !== 'developer') return original.registry.execute('fixture', request)
-      develop()
-      return result('Implementation complete, without loading or executing apply')
+      if (request.role !== 'architect') return original.registry.execute('fixture', request)
+      return result(architecture)
     } })
     const state = await runCoreWorkflow(opts(registry))
     expect(state.status).toBe('failed')
@@ -314,23 +313,41 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(journalFile().phases.reviewer.status).not.toBe('done')
   })
 
-  it.each([true, false])('repairs an omitted reviewer workflow once without replaying implementation (session: %s)', async session => {
+  it('loads official apply context before a developer that omits the workflow tool', async () => {
     const original = fake(), calls: AgentRequest[] = []
-    let reviews = 0
-    const registry = new ExecutorRegistry().register('fixture', { capabilities: async () => ({ transport: 'fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }), execute: async request => {
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
       calls.push(request)
-      if (request.role !== 'reviewer') return original.registry.execute('fixture', request)
-      if (++reviews === 1) return { ...result(review), ...(session ? { sessionId: 'review-session' } : {}) }
-      expect(request.resumeSessionId).toBe(session ? 'review-session' : undefined)
-      expect(request.prompt).toContain('Do not merely resend the JSON')
-      expect(request.prompt).toContain('openspec-verify-change')
-      if (!session) expect(request.prompt).toContain('Acceptance criteria to certify')
-      return original.registry.execute('fixture', request)
+      if (request.role !== 'developer') return original.registry.execute('fixture', request)
+      expect(request.prompt).toContain('Host-loaded official apply workflow')
+      expect(request.prompt).toContain('contextFiles')
+      expect(request.prompt).toContain('openspec-apply-change')
+      develop()
+      return result('Implemented using the supplied official context')
     } })
     const state = await runCoreWorkflow(opts(registry))
     expect(state.status, state.error).toBe('succeeded')
-    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer', 'reviewer'])
-    expect(state.usage.costUsd).toBeCloseTo(0.4)
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+    const trace = readFileSync(path.join(pipelineStateDirectory(context), 'agent-workflow', 'openspec-developer.jsonl'), 'utf8')
+    expect(trace).toContain('"origin":"host"')
+    expect(trace).toContain('"artifact":"apply"')
+  }, 60000)
+
+  it.each([true, false])('supplies official verify context to an omitted reviewer workflow without a repair (session: %s)', async session => {
+    const original = fake(), calls: AgentRequest[] = []
+    const registry = new ExecutorRegistry().register('fixture', { capabilities: async () => ({ transport: 'fixture', continuation: 'supported', effortSupport: 'unsupported', supportedEfforts: [], observedModel: false, observedEffort: false }), execute: async request => {
+      calls.push(request)
+      if (request.role !== 'reviewer') return original.registry.execute('fixture', request)
+      expect(request.prompt).toContain('Host-loaded official verify workflow')
+      expect(request.prompt).toContain('openspec-verify-change')
+      expect(request.prompt).toContain('contextFiles')
+      expect(request.prompt).toContain('Acceptance criteria to certify')
+      expect(request).toMatchObject({ access: 'read', artifacts: 'none' })
+      return { ...result(review), ...(session ? { sessionId: 'review-session' } : {}) }
+    } })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+    expect(state.usage.costUsd).toBeCloseTo(0.3)
     expect(state.history.filter(item => item.stepId === 'verify')).toHaveLength(1)
     expect(state.events.some(event => event.type === 'step_failed')).toBe(false)
   })
@@ -354,17 +371,17 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(state.usage.costUsd).toBeCloseTo(0.3)
   })
 
-  it('bounds repeated workflow omissions and resumes the failed review without replaying valid phases', async () => {
+  it('bounds malformed reviewer reports and resumes the failed review without replaying valid phases', async () => {
     const original = fake(), calls: AgentRequest[] = []
     let comply = false
     const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
       calls.push(request)
-      if (request.role === 'reviewer' && !comply) return { ...result(review), sessionId: 'review-session' }
+      if (request.role === 'reviewer' && !comply) return { ...result('not a JSON object'), sessionId: 'review-session' }
       return original.registry.execute('fixture', request)
     } })
     const failed = await runCoreWorkflow(opts(registry))
     expect(failed.status).toBe('failed')
-    expect(failed.error).toContain('reviewer must execute openspec-verify-change')
+    expect(failed.error).toContain('Invalid structured role response')
     expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(2)
     expect(existsSync(active())).toBe(true)
     comply = true
