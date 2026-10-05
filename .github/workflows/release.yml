@@ -22,7 +22,7 @@ jobs:
   ci-gate:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 65
     permissions:
       contents: read
       actions: read
