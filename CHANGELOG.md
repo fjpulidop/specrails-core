@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.2.2](https://github.com/fjpulidop/specrails-core/compare/v6.2.1...v6.2.2) (2026-10-05)
+
+
+### Bug Fixes
+
+* preserve compiler errors in verification diagnostics ([#402](https://github.com/fjpulidop/specrails-core/issues/402)) ([f8d8cbc](https://github.com/fjpulidop/specrails-core/commit/f8d8cbcc91d975b82a54a21c82c8d42398f0a2a4))
+
 ## [6.2.1](https://github.com/fjpulidop/specrails-core/compare/v6.2.0...v6.2.1) (2026-10-03)
 
 
