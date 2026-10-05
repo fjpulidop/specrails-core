@@ -3,7 +3,7 @@ import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
 import { executeVerification, validateVerificationRequest, type VerificationCommand, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
 import { withScopeDefault } from '../../change-scope.js'
-import { verificationFailureSummary } from '../../verification-diagnostics.js'
+import { verificationDiagnosticPriority, verificationFailureSummary } from '../../verification-diagnostics.js'
 import type { Piece, PieceExecutionContext, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
@@ -20,14 +20,21 @@ function verificationDiagnostics(receipt: VerificationReceipt) {
     const limit = Math.min(8_000, remaining)
     const source = stripVTControlCharacters([command.stdout ?? '', command.stderr ?? '', command.output].join('\n'))
     const lines = source.split('\n')
-    const failures: string[] = []
-    let used = 0
-    for (let i = 0; command.exitCode !== 0 && i < lines.length && used < 6_000; i++) {
-      if (!/^\s*(?:not ok\b|[✖✗]\s|test at\b|FAIL\b|Error:|AssertionError\b|error:)/.test(lines[i])) continue
-      const excerpt = lines.slice(Math.max(0, i - 2), i + 28).join('\n').slice(0, 6_000 - used)
+    // Reserve the bounded facts before contextual blocks: a source dump or a
+    // long warning next to the first failure must not hide later diagnostics.
+    const failures = command.exitCode !== 0 ? verificationFailureSummary(command) : []
+    let used = failures.reduce((total, line) => total + line.length + 1, 0)
+    const anchors = command.exitCode !== 0 ? lines.map((line, index) => ({ line, index, priority: verificationDiagnosticPriority(line) }))
+      .filter((anchor): anchor is { line: string; index: number; priority: number } => anchor.priority !== undefined)
+      .sort((a, b) => a.priority - b.priority || a.index - b.index) : []
+    const selected = new Set<string>()
+    for (const { line, index } of anchors) {
+      if (used >= 6_000) break
+      if (selected.has(line.trim())) continue
+      selected.add(line.trim())
+      const excerpt = lines.slice(Math.max(0, index - 2), index + 28).join('\n').slice(0, 6_000 - used)
       failures.push(excerpt)
-      used += excerpt.length
-      i += 27
+      used += excerpt.length + 1
     }
     const failureText = failures.join('\n').slice(0, Math.min(6_000, limit))
     const tailBudget = Math.max(0, limit - failureText.length - (failureText ? 1 : 0))
