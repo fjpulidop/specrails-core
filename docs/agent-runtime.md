@@ -398,10 +398,13 @@ verification, review or delivery, and an unrelated failed check remains a failur
 Definition checks and native/legacy implementation feedback expose a bounded
 `failureSummary` alongside command, cwd, original exit code and `evidenceId`.
 Failed commands receive the shared feedback text budget before successful ones.
-It prioritizes failed test names,
-assertions, expected values and application locations separately from source
-dumps. Full subprocess evidence remains available through the scoped evidence
-tool; these facts never waive the failed receipt.
+Compiler and runtime errors receive priority, including TypeScript diagnostics
+with file/line coordinates and global compiler errors. Warning-only lint
+summaries are not failure anchors. Bounded space remains reserved for failed
+test names, expected values and application locations separately from source
+dumps; contextual excerpts use the same classification. Full subprocess
+evidence remains available through the scoped evidence tool; these facts never
+waive the failed receipt.
 
 The default fixer reproduces and classifies the reported failure before choosing
 a repair. A filename absent from the current diff does not establish that a

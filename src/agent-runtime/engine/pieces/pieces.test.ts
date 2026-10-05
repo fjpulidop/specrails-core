@@ -255,6 +255,33 @@ describe('free prompts and declared roles', () => {
     expect(f.evidence.at(-1)!.stderr).toContain('source source')
   })
 
+  it('keeps compiler failures in summaries and excerpts when lint noise surrounds them', async () => {
+    const f = fixture()
+    const errors = [
+      "src/service.ts(137,36): error TS2551: Property 'NEW_ENDPOINT' does not exist",
+      'src/other.ts:207:40 - error TS2339: Property is missing',
+      'error TS18003: No inputs were found in the config file',
+    ]
+    const warning = '✖ 74 problems (0 errors, 74 warnings)'
+    const noise = Array.from({ length: 100 }, (_, i) => `${i}:1 warning ${'lint advice '.repeat(20)}`).join('\n')
+    const context = 'Checking project: config/tsconfig.json'
+    const output = [warning, noise, context, '', ...errors, noise, warning].join('\n')
+    writeFileSync(path.join(f.root, 'compiler.cjs'), 'console.log(' + JSON.stringify(output) + ');process.exitCode=2')
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['compiler.cjs'] }]
+    const result = await f.run('verify', { commands: 'configured' })
+    expect(result).toMatchObject({ outcome: 'fail', receipt: { valid: false } })
+    const command = (result.output as { commands: Array<{ exitCode: number; output: string; failureSummary: string[]; truncated: boolean }> }).commands[0]
+    expect(command.exitCode).toBe(2)
+    expect(command.failureSummary).toEqual(errors)
+    expect(command.output.startsWith(errors[0])).toBe(true)
+    for (const error of errors) expect(command.output).toContain(error)
+    expect(command.output).toContain(context)
+    expect(command.output.length).toBeLessThanOrEqual(8_000)
+    expect(command.truncated).toBe(true)
+    expect(f.evidence.at(-1)!.stdout).toContain(warning)
+    expect(f.evidence.at(-1)!.stdout).toContain(errors[0])
+  })
+
   it('stops three failed checks on an unchanged candidate and resets after an edit', async () => {
     const f = fixture()
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("not ok 1 - still broken");process.exit(1)'] }]
