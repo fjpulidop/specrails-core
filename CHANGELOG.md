@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.3.0](https://github.com/fjpulidop/specrails-core/compare/v6.2.2...v6.3.0) (2026-10-06)
+
+
+### Features
+
+* senior implement roles with blast-radius discipline; retire installed role templates ([#408](https://github.com/fjpulidop/specrails-core/issues/408)) ([d74696e](https://github.com/fjpulidop/specrails-core/commit/d74696ed94eeb45570c1a682bd5c1913f1da9182))
+
 ## [6.2.2](https://github.com/fjpulidop/specrails-core/compare/v6.2.1...v6.2.2) (2026-10-05)
 
 
