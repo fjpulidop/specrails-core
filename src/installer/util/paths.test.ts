@@ -35,9 +35,16 @@ describe('paths', () => {
       expect(isReservedPath('.kimi-code\\skills\\rails\\custom-auditor\\SKILL.md')).toBe(true)
     })
 
-    it('does not match bundled sr-* agents', () => {
-      expect(isReservedPath('.claude/agents/sr-architect.md')).toBe(false)
-      expect(isReservedPath('.kimi-code/skills/sr-architect/SKILL.md')).toBe(false)
+    it('keeps <provider>/agents/custom-*.md reserved although the installer no longer creates agents/', () => {
+      // Core 6.3 ships no role files and never creates `agents/`; the directory
+      // stays a user/Desktop region and `custom-*` inside it stays reserved.
+      expect(RESERVED_PATHS).toContain('.claude/agents/custom-')
+      expect(isReservedPath('.claude/agents/custom-x.md')).toBe(true)
+    })
+
+    it('does not match framework-owned sr-* role artifacts', () => {
+      expect(isReservedPath('.claude/agents/sr-role.md')).toBe(false)
+      expect(isReservedPath('.kimi-code/skills/sr-role/SKILL.md')).toBe(false)
       expect(isReservedPath('.kimi-code/specrails/run-skill.mjs')).toBe(false)
       expect(
         isReservedPath(

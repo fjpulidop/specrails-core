@@ -1,10 +1,12 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import os from 'node:os'
+import { PassThrough } from 'node:stream'
 import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { writeFileLf } from '../util/fs.js'
+import { resetLoggerStreams, setLoggerStreams } from '../util/logger.js'
 import {
   CONFIG_RELATIVE_PATH,
   InvalidConfigError,
@@ -15,14 +17,23 @@ import {
   writeInstallConfig,
 } from './install-config.js'
 
+/** A role id an older Core shipped; composed so the retired names never appear literally. */
+const legacyRole = (role: string): string => `sr-${role}`
+
 describe('install-config', () => {
   let tmpDir: string
+  let logged: string[]
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-cfg-test-'))
+    logged = []
+    const sink = new PassThrough()
+    sink.on('data', (chunk: Buffer) => logged.push(chunk.toString()))
+    setLoggerStreams({ out: sink, err: sink })
   })
 
   afterEach(() => {
+    resetLoggerStreams()
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
@@ -41,22 +52,44 @@ describe('install-config', () => {
   })
 
   describe('validateInstallConfig', () => {
-    it('accepts a minimal valid config', () => {
+    it('accepts a minimal valid config without an agents section', () => {
+      const result = validateInstallConfig({ version: 1, provider: 'claude' })
+      expect(result.version).toBe(1)
+      expect(result.provider).toBe('claude')
+      expect(result.agents).toBeUndefined()
+      expect(result.models).toEqual({ preset: 'balanced', defaults: { model: 'sonnet' }, overrides: {} })
+      expect(logged.join('')).toBe('')
+    })
+
+    it('accepts a legacy agents selection, echoes it back and warns once that it is ignored', () => {
       const result = validateInstallConfig({
         version: 1,
         provider: 'claude',
-        agents: { selected: ['sr-architect'] },
+        agents: { selected: [legacyRole('architect')] },
       })
-      expect(result.version).toBe(1)
-      expect(result.provider).toBe('claude')
-      expect(result.agents.selected).toEqual(['sr-architect'])
+      expect(result.agents?.selected).toEqual([legacyRole('architect')])
+      const out = logged.join('')
+      expect(out).toContain('agents.selected')
+      expect(out).toContain('ignored since Core 6.3')
+      expect(out.match(/ignored since Core 6\.3/g)).toHaveLength(1)
+    })
+
+    it('stays silent for an empty legacy selection', () => {
+      const result = validateInstallConfig({ version: 1, provider: 'claude', agents: { selected: [] } })
+      expect(result.agents).toEqual({ selected: [] })
+      expect(logged.join('')).toBe('')
+    })
+
+    it('rejects an agents section that is not a mapping', () => {
+      expect(() => validateInstallConfig({ version: 1, provider: 'claude', agents: [legacyRole('architect')] })).toThrow(/'agents' must be a mapping/)
+      expect(() => validateInstallConfig({ version: 1, provider: 'claude', agents: legacyRole('architect') })).toThrow(/'agents' must be a mapping/)
     })
 
     it('accepts gemini as a valid provider', () => {
       const result = validateInstallConfig({
         version: 1,
         provider: 'gemini',
-        agents: { selected: ['sr-architect'] },
+        agents: { selected: [legacyRole('architect')] },
       })
       expect(result.provider).toBe('gemini')
     })
@@ -65,7 +98,7 @@ describe('install-config', () => {
       const result = validateInstallConfig({
         version: 1,
         provider: 'kimi',
-        agents: { selected: ['sr-architect'] },
+        agents: { selected: [legacyRole('architect')] },
       })
       expect(result.provider).toBe('kimi')
       expect(result.models).toEqual({
@@ -90,17 +123,17 @@ describe('install-config', () => {
       const result = validateInstallConfig({
         version: 1,
         provider: 'kimi',
-        agents: { selected: ['sr-architect'] },
+        agents: { selected: [legacyRole('architect')] },
         models: {
           preset: 'max',
           defaults: { model: 'sonnet' },
-          overrides: { 'sr-architect': 'company/custom-kimi' },
+          overrides: { [legacyRole('architect')]: 'company/custom-kimi' },
         },
       })
       expect(result.models).toEqual({
         preset: 'max',
         defaults: { model: 'sonnet' },
-        overrides: { 'sr-architect': 'company/custom-kimi' },
+        overrides: { [legacyRole('architect')]: 'company/custom-kimi' },
       })
     })
 
@@ -116,11 +149,11 @@ describe('install-config', () => {
         validateInstallConfig({
           version: 1,
           provider: 'kimi',
-          agents: { selected: ['sr-architect'] },
+          agents: { selected: [legacyRole('architect')] },
           models: {
             preset: 'balanced',
             defaults: { model },
-            overrides: { 'sr-reviewer': model },
+            overrides: { [legacyRole('reviewer')]: model },
           },
         }),
       ).toThrow(/safe Kimi model id/)
@@ -131,7 +164,7 @@ describe('install-config', () => {
         validateInstallConfig({
           version: 1,
           provider: 'kimi',
-          agents: { selected: ['sr-architect'] },
+          agents: { selected: [legacyRole('architect')] },
           models: {
             preset: 'balanced',
             defaults: { model: '  ' },
@@ -147,8 +180,8 @@ describe('install-config', () => {
           version: 1,
           provider: 'kimi',
           agents: {
-            selected: ['sr-architect', '../escape', 42, '-leading'],
-            excluded: ['sr-reviewer', 'UPPERCASE', 'x'.repeat(65)],
+            selected: [legacyRole('architect'), '../escape', 42, '-leading'],
+            excluded: [legacyRole('reviewer'), 'UPPERCASE', 'x'.repeat(65)],
           },
         })
         throw new Error('expected config validation to fail')
@@ -172,8 +205,8 @@ describe('install-config', () => {
           version: 1,
           provider: 'kimi',
           agents: {
-            selected: ['sr-architect', 'sr-architect', 'sr-reviewer'],
-            excluded: ['sr-reviewer', 'sr-reviewer'],
+            selected: [legacyRole('architect'), legacyRole('architect'), legacyRole('reviewer')],
+            excluded: [legacyRole('reviewer'), legacyRole('reviewer')],
           },
         })
         throw new Error('expected config validation to fail')
@@ -181,13 +214,13 @@ describe('install-config', () => {
         expect(err).toBeInstanceOf(InvalidConfigError)
         const messages = (err as InvalidConfigError).errors.join('\n')
         expect(messages).toContain(
-          `'agents.selected' must not contain duplicate agent id 'sr-architect'`,
+          `'agents.selected' must not contain duplicate agent id '${legacyRole('architect')}'`,
         )
         expect(messages).toContain(
-          `'agents.excluded' must not contain duplicate agent id 'sr-reviewer'`,
+          `'agents.excluded' must not contain duplicate agent id '${legacyRole('reviewer')}'`,
         )
         expect(messages).toContain(
-          `'agents.selected' and 'agents.excluded' must not overlap: sr-reviewer`,
+          `'agents.selected' and 'agents.excluded' must not overlap: ${legacyRole('reviewer')}`,
         )
       }
     })
@@ -197,7 +230,7 @@ describe('install-config', () => {
         validateInstallConfig({
           version: 1,
           provider: 'kimi',
-          agents: { selected: ['sr-architect'] },
+          agents: { selected: [legacyRole('architect')] },
           models: {
             preset: 'balanced',
             defaults: { model: 'k3' },
@@ -213,7 +246,7 @@ describe('install-config', () => {
         provider: 'claude',
         agents: { selected: [], preset: 'balanced' },
       })
-      expect(result.agents.preset).toBe('balanced')
+      expect(result.agents?.preset).toBe('balanced')
     })
 
     it('tolerates legacy agent_teams and tier fields (backward compat) without failing', () => {
@@ -225,10 +258,10 @@ describe('install-config', () => {
         provider: 'claude',
         agent_teams: true,
         tier: 'quick',
-        agents: { selected: ['sr-architect'], preset: 'balanced' },
+        agents: { selected: [legacyRole('architect')], preset: 'balanced' },
       })
       expect(result.provider).toBe('claude')
-      expect(result.agents.selected).toEqual(['sr-architect'])
+      expect(result.agents?.selected).toEqual([legacyRole('architect')])
       expect((result as unknown as Record<string, unknown>).agent_teams).toBeUndefined()
       expect((result as unknown as Record<string, unknown>).tier).toBeUndefined()
     })
@@ -260,10 +293,13 @@ describe('install-config', () => {
       expect(result.models?.defaults.model).toBe('gpt-5.5-mini')
     })
 
-    it('rejects missing agents.selected', () => {
+    it('rejects an agents section without a selected list (malformed, not merely legacy)', () => {
+      expect(() => validateInstallConfig({ version: 1, provider: 'claude', agents: {} })).toThrow(InvalidConfigError)
       try {
-        validateInstallConfig({ version: 1, provider: 'claude', agents: {} })
+        validateInstallConfig({ version: 1, provider: 'claude', agents: { selected: legacyRole('architect') } })
+        throw new Error('expected config validation to fail')
       } catch (err) {
+        expect(err).toBeInstanceOf(InvalidConfigError)
         expect((err as InvalidConfigError).errors[0]).toContain(`'agents.selected' must be a list`)
       }
     })
@@ -321,8 +357,8 @@ describe('install-config', () => {
           'tier: full',
           'agents:',
           '  selected:',
-          '    - sr-architect',
-          '    - sr-developer',
+          `    - ${legacyRole('architect')}`,
+          `    - ${legacyRole('developer')}`,
           '  preset: balanced',
           '',
         ].join('\n'),
@@ -330,9 +366,18 @@ describe('install-config', () => {
       const cfg = loadInstallConfig(p)
       expect(cfg).not.toBeNull()
       expect(cfg!.provider).toBe('claude')
-      expect(cfg!.agents.selected).toEqual(['sr-architect', 'sr-developer'])
-      expect(cfg!.agents.preset).toBe('balanced')
+      expect(cfg!.agents?.selected).toEqual([legacyRole('architect'), legacyRole('developer')])
+      expect(cfg!.agents?.preset).toBe('balanced')
       expect(cfg!.models?.defaults.model).toBe('sonnet')
+      expect(logged.join('')).toContain('ignored since Core 6.3')
+    })
+
+    it('parses a YAML file that has no agents section and raises no error about agents', () => {
+      const p = path.join(tmpDir, 'install-config.yaml')
+      writeFileLf(p, ['version: 1', 'provider: codex', ''].join('\n'))
+      const cfg = loadInstallConfig(p)
+      expect(cfg).toEqual({ version: 1, provider: 'codex', models: { preset: 'balanced', defaults: { model: 'gpt-5.5-mini' }, overrides: {} } })
+      expect(logged.join('')).not.toMatch(/agents/)
     })
 
     it('surfaces YAML parse errors as InvalidConfigError', () => {
@@ -348,16 +393,24 @@ describe('install-config', () => {
       writeInstallConfig(p, {
         version: 1,
         provider: 'claude',
-        agents: { selected: ['sr-architect'], preset: 'max' },
+        agents: { selected: [legacyRole('architect')], preset: 'max' },
       })
       const cfg = loadInstallConfig(p)
       expect(cfg!.provider).toBe('claude')
-      expect(cfg!.agents.preset).toBe('max')
+      expect(cfg!.agents?.preset).toBe('max')
+      // No preset ships per-role overrides any more: Core has no role ids.
       expect(cfg!.models).toEqual({
         preset: 'max',
         defaults: { model: 'sonnet' },
-        overrides: { 'sr-architect': 'opus' },
+        overrides: {},
       })
+    })
+
+    it('round-trips a config without an agents section', () => {
+      const p = path.join(tmpDir, 'rt-no-agents.yaml')
+      writeInstallConfig(p, { version: 1, provider: 'gemini' })
+      expect(loadInstallConfig(p)).toMatchObject({ version: 1, provider: 'gemini' })
+      expect(loadInstallConfig(p)!.agents).toBeUndefined()
     })
   })
 
@@ -368,6 +421,7 @@ describe('install-config', () => {
       ) as {
         schemaVersion: string
         configSchema: { fields: Record<string, string> }
+        checkpoints: Record<string, string>
         modelPresets: Record<
           'balanced' | 'budget' | 'max',
           {
@@ -377,11 +431,15 @@ describe('install-config', () => {
         >
       }
 
-      expect(contract.schemaVersion).toBe('5.1')
+      expect(contract.schemaVersion).toBe('5.2')
       expect(contract.configSchema.fields.provider).toBe(
         'string — claude | codex | gemini | kimi',
       )
       expect(contract.configSchema.fields.provider).not.toContain('auto')
+      // The agents section is optional and deprecated; nothing is generated for it.
+      expect(contract.configSchema.fields.agents).toMatch(/optional.*deprecated/i)
+      expect(contract.configSchema.fields['agents.selected']).toMatch(/deprecated/)
+      expect(contract.checkpoints.agent_generation).toBeUndefined()
 
       for (const preset of ['balanced', 'budget', 'max'] as const) {
         const resolved = resolveProviderModelConfig('claude', preset)

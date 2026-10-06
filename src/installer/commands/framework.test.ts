@@ -4,7 +4,10 @@ import path from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { isDir, isSymlink, pathExists, readTextFile, realpathSafe, writeFileLf } from '../util/fs.js'
+import { PassThrough } from 'node:stream'
+
+import { isDir, isSymlink, listDir, pathExists, readTextFile, realpathSafe, writeFileLf } from '../util/fs.js'
+import { resetLoggerStreams, setLoggerStreams } from '../util/logger.js'
 import { main } from '../cli.js'
 import { runAssemble, runInstallFramework, runSwapCurrent, readPackageVersion } from './framework.js'
 
@@ -15,19 +18,15 @@ import { runAssemble, runInstallFramework, runSwapCurrent, readPackageVersion } 
  * and assert the framework is materialized + the workspace is SYMLINKED with NO
  * network and NO openspec init.
  *
- * Platform-aware: on Windows a per-FILE agent link is a COPY (not a symlink) and
- * a whole-DIR link is a junction (still reported as a symlink by lstat). So the
- * agent-file check verifies placement + content; the dir-link check verifies it
- * resolves into the framework. POSIX-only symlink assertions stay guarded.
+ * Platform-aware: on Windows a whole-DIR link is a junction (still reported as
+ * a symlink by lstat), so the dir-link check verifies it resolves into the
+ * framework. POSIX-only symlink assertions stay guarded.
  */
 
 const IS_WIN = process.platform === 'win32'
 
 function setupFakeScriptDir(scriptDir: string): void {
   writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version: '5.0.0' })}\n`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), '# arch\n')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), '# dev\n')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), '# reviewer\n')
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), '# rules\n')
   writeFileLf(
     path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'),
@@ -119,20 +118,22 @@ describe('framework subcommands (install-framework / assemble)', () => {
       })
       expect(out.providerDir).toBe('.claude')
       const fwClaude = path.join(fwDir, '5.0.0', '.claude')
-      expect(isDir(path.join(fwClaude, 'agents'))).toBe(true)
-      expect(pathExists(path.join(fwClaude, 'agents', 'sr-architect.md'))).toBe(true)
+      expect(isDir(path.join(fwClaude, 'commands', 'specrails'))).toBe(true)
+      expect(pathExists(path.join(fwClaude, 'commands', 'specrails', 'implement.md'))).toBe(true)
+      // Roles are runtime-defined: the framework store carries no agents/ subtree.
+      expect(pathExists(path.join(fwClaude, 'agents'))).toBe(false)
       // current → 5.0.0. `current` is a dir link (symlink on POSIX, junction on
       // Windows); assert it RESOLVES to the version dir (holds for both kinds),
       // keep the stronger symlink check POSIX-only.
       expect(realpathSafe(path.join(fwDir, 'current'))).toBe(realpathSafe(path.join(fwDir, '5.0.0')))
       if (!IS_WIN) expect(isSymlink(path.join(fwDir, 'current'))).toBe(true)
-      expect(isDir(path.join(fwDir, 'current', '.claude', 'agents'))).toBe(true)
+      expect(isDir(path.join(fwDir, 'current', '.claude', 'commands'))).toBe(true)
     })
 
     it('is idempotent — a second call does not throw and keeps the framework', async () => {
       await runInstallFramework({ 'framework-dir': fwDir, provider: 'claude', version: '5.0.0' })
       await runInstallFramework({ 'framework-dir': fwDir, provider: 'claude', version: '5.0.0' })
-      expect(isDir(path.join(fwDir, '5.0.0', '.claude', 'agents'))).toBe(true)
+      expect(isDir(path.join(fwDir, '5.0.0', '.claude', 'commands'))).toBe(true)
     })
 
     it('rejects a missing --framework-dir', async () => {
@@ -176,7 +177,7 @@ describe('framework subcommands (install-framework / assemble)', () => {
         version,
       })
       expect(out.version).toBe(version)
-      expect(isDir(path.join(fwDir, version, '.claude', 'agents'))).toBe(true)
+      expect(isDir(path.join(fwDir, version, '.claude', 'commands'))).toBe(true)
     })
   })
 
@@ -209,27 +210,47 @@ describe('framework subcommands (install-framework / assemble)', () => {
       })
       expect(out.providerDir).toBe('.claude')
 
-      // agents/ is a real dir holding per-file links into the framework (symlink
-      // on POSIX, copy on Windows). Assert placement + content (holds for both);
-      // the stronger symlink check is POSIX-only.
-      const wsAgents = path.join(workspace, '.claude', 'agents')
-      expect(isDir(wsAgents)).toBe(true)
-      const wsArch = path.join(wsAgents, 'sr-architect.md')
-      const fwArch = path.join(fwDir, 'current', '.claude', 'agents', 'sr-architect.md')
-      expect(pathExists(wsArch)).toBe(true)
-      expect(readTextFile(wsArch)).toBe(readTextFile(fwArch))
-      if (!IS_WIN) expect(isSymlink(wsArch)).toBe(true)
       // commands/ is a whole-dir link (symlink on POSIX, junction on Windows) →
       // resolves into the framework on both.
       expect(realpathSafe(path.join(workspace, '.claude', 'commands'))).toBe(
         realpathSafe(path.join(fwDir, 'current', '.claude', 'commands')),
       )
-      // agent-memory is a REAL writable dir, never linked.
-      const memDir = path.join(workspace, '.claude', 'agent-memory', 'sr-architect')
-      expect(isDir(memDir)).toBe(true)
-      expect(isSymlink(memDir)).toBe(false)
+      expect(readTextFile(path.join(workspace, '.claude', 'commands', 'specrails', 'implement.md'))).toBe('/specrails:implement\n')
+      // No role file, no agents/ dir and no agent-memory: roles are runtime-defined.
+      expect(pathExists(path.join(workspace, '.claude', 'agents'))).toBe(false)
+      expect(pathExists(path.join(workspace, '.claude', 'agent-memory'))).toBe(false)
       // The version marker the gate checks for is written.
       expect(pathExists(path.join(workspace, '.specrails', 'specrails-version'))).toBe(true)
+    })
+
+    it('accepts --selected-agents for compatibility, warns, and assembles the same workspace', async () => {
+      await runInstallFramework({ 'framework-dir': fwDir, provider: 'claude', version: '5.0.0' })
+      const codeRoot = path.join(tmpDir, 'repo')
+      writeFileLf(path.join(codeRoot, 'README.md'), '# repo')
+      const inventory = (workspace: string): string[] =>
+        listDir(path.join(workspace, '.claude')).map((entry) => path.basename(entry)).sort()
+
+      const plain = path.join(tmpDir, 'ws-plain')
+      await runAssemble({ workspace: plain, 'framework-dir': fwDir, provider: 'claude', version: '5.0.0', 'code-root': codeRoot })
+
+      const lines: string[] = []
+      const sink = new PassThrough()
+      sink.on('data', (chunk: Buffer) => lines.push(chunk.toString()))
+      setLoggerStreams({ out: sink, err: sink })
+      const flagged = path.join(tmpDir, 'ws-flagged')
+      try {
+        await runAssemble({
+          workspace: flagged, 'framework-dir': fwDir, provider: 'claude', version: '5.0.0', 'code-root': codeRoot,
+          // The id an older Desktop would still pass; composed so the retired name never appears literally.
+          'selected-agents': ['sr', 'architect'].join('-'),
+        })
+      } finally {
+        resetLoggerStreams()
+      }
+
+      expect(lines.join('')).toContain('--selected-agents is ignored since Core 6.3')
+      expect(inventory(flagged)).toEqual(inventory(plain))
+      expect(pathExists(path.join(flagged, '.claude', 'agents'))).toBe(false)
     })
 
     it('fails when the framework was not materialized first', async () => {
@@ -278,7 +299,7 @@ describe('framework subcommands (install-framework / assemble)', () => {
       })
       expect(out.swapped).toBe(false)
       expect(realpathSafe(path.join(fwDir, 'current'))).toBe(before) // unchanged
-      expect(isDir(path.join(fwDir, '6.0.0', '.claude', 'agents'))).toBe(true)
+      expect(isDir(path.join(fwDir, '6.0.0', '.claude', 'commands'))).toBe(true)
 
       // The single explicit swap makes 6.0.0 visible.
       const swapOut = await runSwapCurrent({ 'framework-dir': fwDir, version: '6.0.0' })
@@ -353,7 +374,7 @@ describe('framework subcommands (install-framework / assemble)', () => {
         'no-swap': true,
       })
       writeFileLf(
-        path.join(fwDir, '4.12.0', '.claude', 'agents', 'sr-architect.md'),
+        path.join(fwDir, '4.12.0', '.claude', 'commands', 'specrails', 'implement.md'),
         'corrupt after materialize\n',
       )
 
@@ -398,7 +419,8 @@ describe('framework subcommands (install-framework / assemble)', () => {
         codeRoot,
       ])
       expect(asmCode).toBe(0)
-      expect(isDir(path.join(workspace, '.claude', 'agents'))).toBe(true)
+      expect(pathExists(path.join(workspace, '.claude', 'commands', 'specrails', 'implement.md'))).toBe(true)
+      expect(pathExists(path.join(workspace, '.claude', 'agents'))).toBe(false)
     })
 
     it('routes install-framework --no-swap then swap-current through main()', async () => {

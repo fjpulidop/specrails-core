@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, symlinkSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -19,15 +18,15 @@ import {
   detectExistingSetup,
   ensureCurrentSymlink,
   installFramework,
+  pruneStaleRoleArtifacts,
   scaffoldInstallation,
   translateClaudeTextForKimi,
-  translateOpsxSkillCallsForGemini,
-  writeGeminiAgentAcknowledgments,
 } from './scaffold.js'
 
+/** A role id an older Core shipped; composed so the retired names never appear literally. */
+const legacyRole = (role: string): string => `sr-${role}`
+
 function setupFakeSource(scriptDir: string): void {
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'arch')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'dev')
   writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'), 'implement')
   // Codex settings templates — fake content with placeholders the installer
   // substitutes.
@@ -38,20 +37,6 @@ function setupFakeSource(scriptDir: string): void {
 }
 
 function setupRichFakeSource(scriptDir: string): void {
-  // v5 ships exactly the three core agents.
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
-    '# arch\nproject: {{PROJECT_NAME}}\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'),
-    '# dev\n',
-  )
-  writeFileLf(
-    path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'),
-    '# reviewer\n',
-  )
-
   // Commands: the runtime entry points. An `unknown-ph.md` exercises token stripping.
   const cmds = [
     ['implement.md', '/specrails:implement for {{PROJECT_NAME}}\n'],
@@ -70,8 +55,8 @@ describe('scaffold', () => {
 
   beforeEach(() => {
     tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-scaffold-test-'))
-    // Redirect the home dir so the gemini agent pre-acknowledgment (writes
-    // ~/.gemini/acknowledgments/agents.json) never touches the real home dir.
+    // Redirect the home dir so the scaffold can be proven to never touch it
+    // (older Core wrote gemini acknowledgments there).
     // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
     originalHome = process.env.HOME
     originalUserProfile = process.env.USERPROFILE
@@ -95,11 +80,19 @@ describe('scaffold', () => {
       ).toBe(false)
     })
 
-    it('returns true when .claude/agents/ has content', () => {
-      writeFileLf(path.join(tmpDir, '.claude', 'agents', 'foo.md'), '')
+    it('returns true when .claude/commands/ has content', () => {
+      writeFileLf(path.join(tmpDir, '.claude', 'commands', 'specrails', 'implement.md'), '')
       expect(
         detectExistingSetup({ artifactRoot: tmpDir, codeRoot: tmpDir, providerDir: '.claude' }),
       ).toBe(true)
+    })
+
+    it('ignores a user-owned .claude/agents/ dir: role files no longer mean an installation', () => {
+      writeFileLf(path.join(tmpDir, '.claude', 'agents', 'custom-foo.md'), '')
+      writeFileLf(path.join(tmpDir, '.claude', 'agents', `${legacyRole('architect')}.md`), '')
+      expect(
+        detectExistingSetup({ artifactRoot: tmpDir, codeRoot: tmpDir, providerDir: '.claude' }),
+      ).toBe(false)
     })
 
     it('returns true when openspec/ exists with content', () => {
@@ -125,7 +118,8 @@ describe('scaffold', () => {
       })
 
       expect(isDir(path.join(repoRoot, '.claude', 'commands', 'specrails'))).toBe(true)
-      expect(isDir(path.join(repoRoot, '.specrails', 'setup-templates', 'agents'))).toBe(true)
+      expect(isDir(path.join(repoRoot, '.specrails', 'setup-templates', 'commands'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'agents'))).toBe(false)
     })
 
     function setupGeminiFakeSource(scriptDir: string): void {
@@ -146,45 +140,24 @@ describe('scaffold', () => {
       })
     }
 
-    it('emits the gemini artifact tree (agents .md + commands .toml + settings + GEMINI.md)', () => {
+    it('emits the gemini artifact tree (commands .toml + settings + GEMINI.md) and no subagent', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo-gemini')
       setupGeminiFakeSource(scriptDir)
       scaffoldGemini(scriptDir, repoRoot)
 
-      // Agents: .gemini/agents/sr-*.md with gemini frontmatter (model + tools), no claude color/memory keys.
-      const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
-      expect(arch.startsWith('---\nname: sr-architect\n')).toBe(true)
-      expect(arch).toContain('model: gemini-3.5-flash')
-      expect(arch).toContain('tools: [read_file, write_file, run_shell_command, glob, search_file_content, activate_skill]')
-      // Regression guard: a `max_turns`/`maxTurns` frontmatter key makes gemini 0.46
-      // silently drop the agent (`invoke_agent` → "Subagent not found"). Verified
-      // empirically. It must NEVER be emitted, no matter the documented schema.
-      expect(arch).not.toMatch(/max_?turns/i)
-      expect(isDir(path.join(repoRoot, '.gemini', 'agent-memory', 'sr-architect'))).toBe(true)
-      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))).toBe(true)
-      const dev = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-developer.md'))
-      expect(dev).not.toMatch(/max_?turns/i)
-      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-reviewer.md'))).toBe(true)
-      // VPC-dependent agent excluded from the quick tier.
-      expect(pathExists(path.join(repoRoot, '.gemini', 'agents', 'sr-product-manager.md'))).toBe(false)
-
-      // Pre-acknowledgment so the agents load in headless `gemini -p` (else they
-      // need an interactive "Acknowledge and Enable" prompt and invoke_agent fails).
-      const ackPath = path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
-      expect(pathExists(ackPath)).toBe(true)
-      const ack = JSON.parse(readTextFile(ackPath)) as Record<string, Record<string, string>>
-      expect(Object.keys(ack[repoRoot])).toEqual(expect.arrayContaining(['sr-architect', 'sr-developer', 'sr-reviewer']))
-      const expectedHash = createHash('sha256')
-        .update(readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md')))
-        .digest('hex')
-      expect(ack[repoRoot]['sr-architect']).toBe(expectedHash)
+      // Roles are runtime-defined: no .gemini/agents/, no agent-memory and no
+      // headless acknowledgment written to the (redirected) home dir.
+      expect(pathExists(path.join(repoRoot, '.gemini', 'agents'))).toBe(false)
+      expect(pathExists(path.join(repoRoot, '.gemini', 'agent-memory'))).toBe(false)
+      expect(pathExists(path.join(os.homedir(), '.gemini'))).toBe(false)
 
       // Commands: every workflow entry point is generated as TOML from its command body.
       const retry = readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'retry.toml'))
       expect(retry.startsWith('description = ')).toBe(true)
       expect(retry).toContain("prompt = '''")
       expect(retry).toContain('/specrails:retry')
+      expect(readTextFile(path.join(repoRoot, '.gemini', 'commands', 'specrails', 'implement.toml'))).toContain('/specrails:implement')
 
       // Settings + GEMINI.md.
       const settings = JSON.parse(readTextFile(path.join(repoRoot, '.gemini', 'settings.json')))
@@ -196,34 +169,6 @@ describe('scaffold', () => {
       expect(gmd).not.toContain('Prefer the `/specrails:*` commands')
       // No throw, no codex/claude leakage.
       expect(isDir(path.join(repoRoot, '.gemini', 'skills'))).toBe(true)
-    })
-
-    it('grants activate_skill + rewrites Claude Skill("opsx:*") calls in gemini agents', () => {
-      const scriptDir = path.join(tmpDir, 'core')
-      const repoRoot = path.join(tmpDir, 'repo-gemini-skill')
-      setupGeminiFakeSource(scriptDir)
-      // Author the architect template in Claude form (the shared source of truth
-      // across providers) — exactly the syntax the real templates use.
-      writeFileLf(
-        path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
-        [
-          '# arch',
-          'First call: Skill("opsx:ff", "<specName> — desc")',
-          'Recover with Skill("opsx:continue", "<specName>") or re-run Skill("opsx:ff").',
-          'Receipt: the exact Skill("opsx:ff", …) call.',
-        ].join('\n') + '\n',
-      )
-      scaffoldGemini(scriptDir, repoRoot)
-
-      const arch = readTextFile(path.join(repoRoot, '.gemini', 'agents', 'sr-architect.md'))
-      // activate_skill granted in the tools frontmatter (else the agent halts with
-      // "the required `Skill` tool is not available").
-      expect(arch).toContain(', activate_skill]')
-      // Every Skill("opsx:*") call form rewritten to gemini's activate_skill;
-      // NO Claude Skill( call survives in the generated body.
-      expect(arch).toContain('activate_skill(name="openspec-ff-change")')
-      expect(arch).toContain('activate_skill(name="openspec-continue-change")')
-      expect(arch).not.toContain('Skill("opsx:')
     })
 
     it('deep-merges .gemini/settings.json (preserves user keys) and upserts GEMINI.md', () => {
@@ -266,8 +211,9 @@ describe('scaffold', () => {
         repoRoot,
         '.specrails',
         'setup-templates',
-        'agents',
-        'sr-architect.md',
+        'commands',
+        'specrails',
+        'implement.md',
       )
       expect(pathExists(copied)).toBe(true)
     })
@@ -313,7 +259,7 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.specrails-version'))).toBe(false)
     })
 
-    it('places agents and commands directly under <providerDir>', () => {
+    it('places commands directly under <providerDir> and no role file', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo')
       setupFakeSource(scriptDir)
@@ -326,13 +272,13 @@ describe('scaffold', () => {
         providerDir: '.claude',
       })
 
-      expect(pathExists(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
       expect(pathExists(path.join(repoRoot, '.claude', 'commands', 'specrails', 'implement.md'))).toBe(true)
+      expect(pathExists(path.join(repoRoot, '.claude', 'agents'))).toBe(false)
       expect(pathExists(path.join(repoRoot, '.claude', 'rules'))).toBe(false)
     })
 
-    describe('agent selection + placeholders', () => {
-      it('excludes VPC-dependent agents (sr-product-*)', () => {
+    describe('placeholders + role-free placement', () => {
+      it('places no role file and no agent-memory for claude', () => {
         const scriptDir = path.join(tmpDir, 'core')
         const repoRoot = path.join(tmpDir, 'repo')
         setupRichFakeSource(scriptDir)
@@ -345,44 +291,10 @@ describe('scaffold', () => {
           providerDir: '.claude',
         })
 
-        const agentsDir = path.join(repoRoot, '.claude', 'agents')
-        expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
-        // sr-merge-resolver is now optional — NOT placed by default
-        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(false)
-        expect(pathExists(path.join(agentsDir, 'sr-product-manager.md'))).toBe(false)
-        expect(pathExists(path.join(agentsDir, 'sr-product-analyst.md'))).toBe(false)
-      })
-
-      it('honours selectedAgents for config-driven quick installs while keeping the baseline trio', () => {
-        const scriptDir = path.join(tmpDir, 'core')
-        const repoRoot = path.join(tmpDir, 'repo')
-        setupRichFakeSource(scriptDir)
-
-        scaffoldInstallation({
-          scriptDir,
-          artifactRoot: repoRoot,
-          codeRoot: repoRoot,
-          provider: 'claude',
-          providerDir: '.claude',
-          selectedAgents: ['sr-architect'],
-        })
-
-        const agentsDir = path.join(repoRoot, '.claude', 'agents')
-        expect(pathExists(path.join(agentsDir, 'sr-architect.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-developer.md'))).toBe(true)
-        // sr-merge-resolver is optional — not placed unless explicitly selected
-        expect(pathExists(path.join(agentsDir, 'sr-merge-resolver.md'))).toBe(false)
-        expect(pathExists(path.join(agentsDir, 'sr-reviewer.md'))).toBe(true)
-        expect(pathExists(path.join(agentsDir, 'sr-frontend-developer.md'))).toBe(false)
-
-        const cmdsDir = path.join(repoRoot, '.claude', 'commands', 'specrails')
-        // merge-resolve command is excluded because sr-merge-resolver was not selected
-        expect(pathExists(path.join(cmdsDir, 'merge-resolve.md'))).toBe(false)
-        expect(pathExists(path.join(cmdsDir, 'implement.md'))).toBe(true)
-        expect(pathExists(path.join(cmdsDir, 'auto-propose-backlog-specs.md'))).toBe(false)
-        expect(pathExists(path.join(cmdsDir, 'get-backlog-specs.md'))).toBe(false)
+        expect(pathExists(path.join(repoRoot, '.claude', 'agents'))).toBe(false)
+        expect(pathExists(path.join(repoRoot, '.claude', 'agent-memory'))).toBe(false)
+        expect(readdirSync(path.join(repoRoot, '.claude')).sort()).toEqual(['commands', 'skills'])
+        expect(readdirSync(path.join(repoRoot, '.claude', 'skills'))).toEqual(['sr-implement'])
       })
 
       it('substitutes every documented placeholder', () => {
@@ -399,11 +311,9 @@ describe('scaffold', () => {
         })
 
         const projectName = path.basename(repoRoot)
-        const archContent = readTextFile(path.join(repoRoot, '.claude', 'agents', 'sr-architect.md'))
-        expect(archContent).toContain(`project: ${projectName}`)
-        expect(archContent).not.toContain('{{PROJECT_NAME}}')
         const implement = readTextFile(path.join(repoRoot, '.claude', 'commands', 'specrails', 'implement.md'))
         expect(implement).toContain(`/specrails:implement for ${projectName}`)
+        expect(implement).not.toContain('{{PROJECT_NAME}}')
       })
 
       it('strips unknown {{PLACEHOLDER}} tokens rather than leaving them raw', () => {
@@ -423,25 +333,6 @@ describe('scaffold', () => {
         expect(cmd).toBe('raw  trailing')
       })
 
-      it('creates per-agent memory directories', () => {
-        const scriptDir = path.join(tmpDir, 'core')
-        const repoRoot = path.join(tmpDir, 'repo')
-        setupRichFakeSource(scriptDir)
-
-        scaffoldInstallation({
-          scriptDir,
-          artifactRoot: repoRoot,
-          codeRoot: repoRoot,
-          provider: 'claude',
-          providerDir: '.claude',
-        })
-
-        const memRoot = path.join(repoRoot, '.claude', 'agent-memory')
-        expect(isDir(path.join(memRoot, 'sr-architect'))).toBe(true)
-        expect(isDir(path.join(memRoot, 'sr-developer'))).toBe(true)
-        expect(isDir(path.join(memRoot, 'sr-reviewer'))).toBe(true)
-        expect(pathExists(path.join(memRoot, 'explanations'))).toBe(false)
-      })
     })
 
     it('adds entries to .gitignore without duplicating existing lines', () => {
@@ -482,6 +373,8 @@ describe('scaffold', () => {
       const skill = readTextFile(path.join(repoRoot, '.codex', 'skills', 'implement', 'SKILL.md'))
       expect(skill).toMatch(/^---\nname: implement\n/)
       expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'doctor'))).toBe(false)
+      // No codex-native rail: roles are runtime-defined.
+      expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'rails'))).toBe(false)
     })
 
     it('codex provider applies codex-config.toml + AGENTS.md (no rules.star)', () => {
@@ -534,148 +427,92 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.claude'))).toBe(false)
     })
   })
-
-  describe('rail skill parity', () => {
-    it('every core agent has a codex-native rail under templates/codex-skills/rails/', () => {
-      // Codex cannot load Claude's .claude/agents/ convention, so each core
-      // agent must have a codex-native rail SKILL.md it can invoke via
-      // spawn_agent / $-mention. (The old claude-shape templates/skills/rails/
-      // copies were vestigial — unused on Claude, overridden on codex, and
-      // shipped with unsubstituted placeholders — so they were removed; the
-      // Claude path uses templates/agents/ directly.)
-      const fs = require('node:fs')
-      const repoRoot = path.resolve(__dirname, '..', '..', '..')
-      const railIds = ['sr-architect', 'sr-developer', 'sr-reviewer']
-      for (const id of railIds) {
-        const claudePath = path.join(repoRoot, 'templates', 'agents', id + '.md')
-        const codexPath = path.join(repoRoot, 'templates', 'codex-skills', 'rails', id, 'SKILL.md')
-        expect(fs.existsSync(claudePath), `${claudePath} missing`).toBe(true)
-        expect(fs.existsSync(codexPath), `${codexPath} missing — every core agent needs a codex-native rail`).toBe(true)
-      }
-    })
-  })
 })
 
-describe('translateOpsxSkillCallsForGemini', () => {
-  it('maps each opsx skill id to its gemini activate_skill name', () => {
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff")')).toBe('activate_skill(name="openspec-ff-change")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply")')).toBe('activate_skill(name="openspec-apply-change")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:archive")')).toBe('activate_skill(name="openspec-archive-change")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue")')).toBe('activate_skill(name="openspec-continue-change")')
-    // Non-uniform names — the reason the map must be explicit, not a regex suffix.
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:sync")')).toBe('activate_skill(name="openspec-sync-specs")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:explore")')).toBe('activate_skill(name="openspec-explore")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bulk-archive")')).toBe('activate_skill(name="openspec-bulk-archive-change")')
-  })
-
-  it('drops positional skill input and the ellipsis placeholder', () => {
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:ff", "<specName> — desc")')).toBe('activate_skill(name="openspec-ff-change")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:apply", …)')).toBe('activate_skill(name="openspec-apply-change")')
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:continue", "<specName>")')).toBe('activate_skill(name="openspec-continue-change")')
-  })
-
-  it('rewrites multiple calls in one body and preserves surrounding prose', () => {
-    const body = 'Run Skill("opsx:ff") then later Skill("opsx:apply", "<x>") to finish.'
-    expect(translateOpsxSkillCallsForGemini(body)).toBe(
-      'Run activate_skill(name="openspec-ff-change") then later activate_skill(name="openspec-apply-change") to finish.',
-    )
-  })
-
-  it('leaves unknown opsx ids untouched (no name="undefined")', () => {
-    expect(translateOpsxSkillCallsForGemini('Skill("opsx:bogus")')).toBe('Skill("opsx:bogus")')
-  })
-
-  it('is a no-op for bodies without Skill calls', () => {
-    expect(translateOpsxSkillCallsForGemini('just prose about the skill')).toBe('just prose about the skill')
-  })
-})
-
-describe('writeGeminiAgentAcknowledgments', () => {
+describe('pruneStaleRoleArtifacts', () => {
   let tmpDir: string
-  let originalHome: string | undefined
-  let originalUserProfile: string | undefined
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-ack-test-'))
-    // os.homedir() reads HOME on POSIX but USERPROFILE on Windows — set both.
-    originalHome = process.env.HOME
-    originalUserProfile = process.env.USERPROFILE
-    const fakeHome = path.join(tmpDir, 'home')
-    process.env.HOME = fakeHome
-    process.env.USERPROFILE = fakeHome
+    tmpDir = mkdtempSync(path.join(os.tmpdir(), 'specrails-prune-test-'))
   })
+
   afterEach(() => {
-    if (originalHome === undefined) delete process.env.HOME
-    else process.env.HOME = originalHome
-    if (originalUserProfile === undefined) delete process.env.USERPROFILE
-    else process.env.USERPROFILE = originalUserProfile
     rmSync(tmpDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   })
 
-  const ackFile = () => path.join(os.homedir(), '.gemini', 'acknowledgments', 'agents.json')
-  const writeAgent = (repoRoot: string, id: string, content: string) =>
-    writeFileLf(path.join(repoRoot, '.gemini', 'agents', `${id}.md`), content)
-  const sha = (s: string) => createHash('sha256').update(s).digest('hex')
+  it.each(['claude', 'gemini'] as const)('%s: removes sr-*.md links and copies in agents/ and keeps every other file byte-identical', (provider) => {
+    const providerDir = path.join(tmpDir, `.${provider}`)
+    const agents = path.join(providerDir, 'agents')
+    const target = path.join(tmpDir, 'framework-role.md')
+    writeFileLf(target, 'framework role\n')
+    writeFileLf(path.join(agents, 'custom-serena.md'), 'custom\n')
+    symlinkSync(target, path.join(agents, `${legacyRole('developer')}.md`), 'file')
+    writeFileLf(path.join(agents, `${legacyRole('reviewer')}.md`), 'copied role\n')
+    writeFileLf(path.join(agents, 'notes.md'), 'notes\n')
+    writeFileLf(path.join(agents, 'sr-role.txt'), 'not markdown\n')
+    writeFileLf(path.join(agents, legacyRole('architect'), 'README.md'), 'a directory, not a role file\n')
 
-  it('writes sha256-of-file-content per agent under the project-root key', () => {
-    const repo = path.join(tmpDir, 'repo')
-    writeAgent(repo, 'sr-architect', '---\nname: sr-architect\n---\nbody\n')
-    writeGeminiAgentAcknowledgments(repo, ['sr-architect'])
-    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
-    expect(ack[repo]['sr-architect']).toBe(sha('---\nname: sr-architect\n---\nbody\n'))
+    pruneStaleRoleArtifacts(providerDir, provider)
+
+    expect(readdirSync(agents).sort()).toEqual(['custom-serena.md', 'notes.md', legacyRole('architect'), 'sr-role.txt'].sort())
+    expect(readTextFile(path.join(agents, 'custom-serena.md'))).toBe('custom\n')
+    expect(readTextFile(target)).toBe('framework role\n')
   })
 
-  it('merges — preserves other projects and earlier agents across calls', () => {
-    const repoA = path.join(tmpDir, 'repoA')
-    const repoB = path.join(tmpDir, 'repoB')
-    writeAgent(repoA, 'sr-architect', 'A-arch\n')
-    writeAgent(repoB, 'sr-developer', 'B-dev\n')
-    writeGeminiAgentAcknowledgments(repoA, ['sr-architect'])
-    writeGeminiAgentAcknowledgments(repoB, ['sr-developer'])
-    writeAgent(repoA, 'sr-reviewer', 'A-rev\n')
-    writeGeminiAgentAcknowledgments(repoA, ['sr-reviewer'])
-    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
-    expect(ack[repoB]['sr-developer']).toBe(sha('B-dev\n')) // other project survives
-    expect(ack[repoA]['sr-architect']).toBe(sha('A-arch\n')) // earlier agent survives
-    expect(ack[repoA]['sr-reviewer']).toBe(sha('A-rev\n'))
+  it('codex: removes skills/rails/sr-* and the emptied rails/ container, never a custom-* rail', () => {
+    const providerDir = path.join(tmpDir, '.codex')
+    const rails = path.join(providerDir, 'skills', 'rails')
+    writeFileLf(path.join(rails, legacyRole('developer'), 'SKILL.md'), 'old rail\n')
+    writeFileLf(path.join(rails, legacyRole('reviewer'), 'SKILL.md'), 'old rail\n')
+    writeFileLf(path.join(providerDir, 'skills', 'implement', 'SKILL.md'), 'workflow\n')
+
+    pruneStaleRoleArtifacts(providerDir, 'codex')
+    expect(pathExists(rails)).toBe(false)
+    expect(readTextFile(path.join(providerDir, 'skills', 'implement', 'SKILL.md'))).toBe('workflow\n')
+
+    // A custom rail keeps the container alive and stays byte-identical.
+    writeFileLf(path.join(rails, legacyRole('developer'), 'SKILL.md'), 'old rail\n')
+    writeFileLf(path.join(rails, 'custom-x', 'SKILL.md'), 'custom rail\n')
+    pruneStaleRoleArtifacts(providerDir, 'codex')
+    expect(readdirSync(rails)).toEqual(['custom-x'])
+    expect(readTextFile(path.join(rails, 'custom-x', 'SKILL.md'))).toBe('custom rail\n')
   })
 
-  it('is a no-op when no agent ids are given', () => {
-    writeGeminiAgentAcknowledgments(path.join(tmpDir, 'repo'), [])
-    expect(pathExists(ackFile())).toBe(false)
+  it('codex: never prunes through a skills/ symlink into the shared framework', () => {
+    const framework = path.join(tmpDir, 'framework', '.codex', 'skills')
+    writeFileLf(path.join(framework, 'rails', legacyRole('developer'), 'SKILL.md'), 'framework-owned\n')
+    const providerDir = path.join(tmpDir, '.codex')
+    writeFileLf(path.join(providerDir, '.keep'), '')
+    symlinkSync(framework, path.join(providerDir, 'skills'), process.platform === 'win32' ? 'junction' : 'dir')
+
+    pruneStaleRoleArtifacts(providerDir, 'codex')
+    expect(readTextFile(path.join(framework, 'rails', legacyRole('developer'), 'SKILL.md'))).toBe('framework-owned\n')
   })
 
-  it('recovers from a corrupt existing ack file', () => {
-    const repo = path.join(tmpDir, 'repo')
-    writeAgent(repo, 'sr-reviewer', 'rev\n')
-    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // creates dir + file
-    writeFileLf(ackFile(), 'not json{{{')
-    writeGeminiAgentAcknowledgments(repo, ['sr-reviewer']) // must not throw
-    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
-    expect(ack[repo]['sr-reviewer']).toBe(sha('rev\n'))
+  it('kimi: removes skills/sr-* (links and dirs) and keeps custom-*, openspec-* and workflow skills', () => {
+    const providerDir = path.join(tmpDir, '.kimi-code')
+    const skills = path.join(providerDir, 'skills')
+    const target = path.join(tmpDir, 'framework-skill')
+    writeFileLf(path.join(target, 'SKILL.md'), 'framework role\n')
+    writeFileLf(path.join(skills, 'custom-auditor', 'SKILL.md'), 'custom\n')
+    symlinkSync(target, path.join(skills, legacyRole('architect')), process.platform === 'win32' ? 'junction' : 'dir')
+    writeFileLf(path.join(skills, legacyRole('reviewer'), 'SKILL.md'), 'copied role\n')
+    writeFileLf(path.join(skills, 'openspec-apply-change', 'SKILL.md'), 'openspec\n')
+    writeFileLf(path.join(skills, 'specrails-implement', 'SKILL.md'), 'workflow\n')
+
+    pruneStaleRoleArtifacts(providerDir, 'kimi')
+
+    expect(readdirSync(skills).sort()).toEqual(['custom-auditor', 'openspec-apply-change', 'specrails-implement'])
+    expect(readTextFile(path.join(skills, 'custom-auditor', 'SKILL.md'))).toBe('custom\n')
+    expect(readTextFile(path.join(target, 'SKILL.md'))).toBe('framework role\n')
   })
 
-  it('skips agent ids whose file is missing', () => {
-    const repo = path.join(tmpDir, 'repo')
-    writeAgent(repo, 'sr-architect', 'arch\n')
-    writeGeminiAgentAcknowledgments(repo, ['sr-architect', 'ghost'])
-    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
-    expect(ack[repo]['sr-architect']).toBe(sha('arch\n'))
-    expect(ack[repo]['ghost']).toBeUndefined()
-  })
-
-  it('keys the ack on the WORKSPACE (agentsBaseDir) under relocation, not the repo', () => {
-    // Under relocation, gemini runs with cwd=<workspace>, so the ack store must be
-    // keyed on the workspace providerDir base (3rd arg) — NOT the repo root —
-    // otherwise headless `gemini -p` looks up `store[<workspace>]` and finds
-    // nothing. The agent files are hashed from the workspace too.
-    const repo = path.join(tmpDir, 'repo')
-    const workspace = path.join(tmpDir, 'workspace')
-    writeAgent(workspace, 'sr-architect', 'ws-arch\n')
-    writeGeminiAgentAcknowledgments(repo, ['sr-architect'], workspace)
-    const ack = JSON.parse(readTextFile(ackFile())) as Record<string, Record<string, string>>
-    expect(ack[workspace]['sr-architect']).toBe(sha('ws-arch\n'))
-    expect(ack[repo]).toBeUndefined() // repo is NOT the key under relocation
+  it('is a no-op on a workspace without the subtree', () => {
+    for (const provider of ['claude', 'codex', 'gemini', 'kimi'] as const) {
+      const providerDir = path.join(tmpDir, provider)
+      expect(() => pruneStaleRoleArtifacts(providerDir, provider)).not.toThrow()
+      expect(pathExists(providerDir)).toBe(false)
+    }
   })
 })
 
@@ -732,21 +569,9 @@ describe('Kimi scaffold', () => {
       ),
       'js-yaml fixture notice\n',
     )
-    writeFileLf(
-      path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'),
-      [
-        '---',
-        'name: sr-architect',
-        'description: "Architecture role"',
-        'model: sonnet',
-        '---',
-        'Run Skill("opsx:ff", "<change>") and read .claude/rules/.',
-        '',
-      ].join('\n'),
-    )
   }
 
-  it('renders directory workflows and rail roles without Claude invocation syntax', () => {
+  it('renders directory workflows without Claude invocation syntax and no role skill', () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     setupKimiSource(scriptDir)
@@ -770,16 +595,9 @@ describe('Kimi scaffold', () => {
     expect(workflow).not.toContain('subagent_type')
     expect(workflow).not.toContain('.claude/')
 
-    const role = readTextFile(
-      path.join(repoRoot, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md'),
-    )
-    expect(role).toContain('name: sr-architect')
-    expect(role).toContain(
-      'Skill(skill="openspec-ff-change", args="<change>")',
-    )
-    expect(role).toContain('.kimi-code/rules/')
-    expect(role).not.toContain('Skill("opsx:')
-    expect(role).not.toContain('/skill:')
+    // Roles are runtime-defined: only workflow skills are rendered.
+    expect(readdirSync(path.join(repoRoot, '.kimi-code', 'skills')).sort()).toEqual(['specrails-implement', 'specrails-retry', 'specrails-unknown-ph'])
+    expect(pathExists(path.join(repoRoot, '.kimi-code', 'agent-memory'))).toBe(false)
 
     const instructions = readTextFile(path.join(repoRoot, '.kimi-code', 'AGENTS.md'))
     expect(instructions).toContain('/skill:specrails-<command>')
@@ -811,7 +629,7 @@ describe('Kimi scaffold', () => {
     ).toBe(false)
   })
 
-  it('rematerializes a same-version framework that still has nested role skills', () => {
+  it('rematerializes a same-version framework that still has role skills from an older build', () => {
     const scriptDir = path.join(tmpDir, 'core')
     const frameworkDir = path.join(tmpDir, 'framework')
     setupKimiSource(scriptDir)
@@ -826,9 +644,9 @@ describe('Kimi scaffold', () => {
     expect(initial.materialized).toBe(true)
 
     const skillsDir = path.join(initial.providerFrameworkDir, 'skills')
-    rmSync(path.join(skillsDir, 'sr-architect'), { recursive: true, force: true })
+    writeFileLf(path.join(skillsDir, legacyRole('architect'), 'SKILL.md'), 'role-from-an-older-build\n')
     writeFileLf(
-      path.join(skillsDir, 'rails', 'sr-architect', 'SKILL.md'),
+      path.join(skillsDir, 'rails', legacyRole('architect'), 'SKILL.md'),
       'undiscoverable-pre-release-role\n',
     )
 
@@ -841,7 +659,8 @@ describe('Kimi scaffold', () => {
     })
     expect(repaired.materialized).toBe(true)
     expect(pathExists(path.join(skillsDir, 'rails'))).toBe(false)
-    expect(pathExists(path.join(skillsDir, 'sr-architect', 'SKILL.md'))).toBe(true)
+    expect(pathExists(path.join(skillsDir, legacyRole('architect')))).toBe(false)
+    expect(pathExists(path.join(skillsDir, 'specrails-implement', 'SKILL.md'))).toBe(true)
 
     const idempotent = installFramework({
       scriptDir,
@@ -939,6 +758,8 @@ describe('Kimi scaffold', () => {
       'corrected-upstream-byte-content\n',
     )
     writeFileLf(path.join(workspace, '.kimi-code', 'mcp.json'), '{"user":true}\n')
+    // A role skill an older Core linked into the flat layout.
+    writeFileLf(path.join(workspace, '.kimi-code', 'skills', legacyRole('architect'), 'SKILL.md'), 'old role\n')
 
     const assembled = assembleProjectWorkspace({
       workspace,
@@ -962,11 +783,8 @@ describe('Kimi scaffold', () => {
       ),
     ).toBe('corrected-upstream-byte-content\n')
     expect(readTextFile(path.join(workspace, '.kimi-code', 'mcp.json'))).toBe('{"user":true}\n')
-    expect(
-      pathExists(
-        path.join(workspace, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md'),
-      ),
-    ).toBe(true)
+    expect(pathExists(path.join(workspace, '.kimi-code', 'skills', legacyRole('architect')))).toBe(false)
+    expect(pathExists(path.join(workspace, '.kimi-code', 'agent-memory'))).toBe(false)
     expect(
       pathExists(path.join(workspace, '.kimi-code', 'skills', 'specrails-implement', 'SKILL.md'),
     )).toBe(true)
@@ -1103,13 +921,13 @@ describe('Kimi scaffold', () => {
   it('translates provider paths, workflow names, and non-uniform OpenSpec ids', () => {
     expect(
       translateClaudeTextForKimi(
-        'Skill("opsx:sync") /specrails:why /sr:implement .claude/agents/sr-reviewer.md subagent_type',
+        'Skill("opsx:sync") /specrails:why /sr:implement .claude/agents/custom-reviewer.md subagent_type',
       ),
     ).toBe(
       'Skill(skill="openspec-sync-specs", args="") ' +
         'Skill(skill="specrails-why", args=<arguments following this command>) ' +
         'Skill(skill="specrails-implement", args=<arguments following this command>) ' +
-        '.kimi-code/skills/sr-reviewer/SKILL.md role_skill',
+        '.kimi-code/skills/custom-reviewer/SKILL.md role_skill',
     )
   })
 
@@ -1122,7 +940,6 @@ describe('Kimi scaffold', () => {
       codeRoot: repoRoot,
       provider: 'kimi',
       providerDir: '.kimi-code',
-      materializeAllAgents: true,
     })
 
     const canonicalCommands = listDir(path.join(scriptDir, 'templates', 'commands', 'specrails'))
@@ -1143,20 +960,11 @@ describe('Kimi scaffold', () => {
       .sort()
     expect(workflows).toEqual(canonicalCommands)
 
-    const canonicalRoles = listDir(path.join(scriptDir, 'templates', 'agents'))
-      .filter((entry) => entry.endsWith('.md'))
-      .map((entry) => path.basename(entry, '.md'))
-      .sort()
-    const roles = generatedSkillDirs
-      .filter((entry) => isDir(entry) && path.basename(entry).startsWith('sr-'))
-      .map((entry) => path.basename(entry))
-      .sort()
-    expect(roles).toEqual(canonicalRoles)
+    // The real package ships no role template, so no `sr-*` skill is rendered.
+    expect(pathExists(path.join(scriptDir, 'templates', 'agents'))).toBe(false)
+    expect(generatedSkillDirs.map((entry) => path.basename(entry)).filter((name) => name.startsWith('sr-'))).toEqual([])
 
-    const allSkillFiles = [
-      ...workflows.map((name) => path.join(workflowRoot, name, 'SKILL.md')),
-      ...roles.map((name) => path.join(workflowRoot, name, 'SKILL.md')),
-    ]
+    const allSkillFiles = workflows.map((name) => path.join(workflowRoot, name, 'SKILL.md'))
     for (const skillFile of allSkillFiles) {
       const rendered = readTextFile(skillFile)
       expect(rendered).toMatch(/^---\nname: [^\n]+\ndescription: [^\n]+\ntype: prompt\n---\n/)

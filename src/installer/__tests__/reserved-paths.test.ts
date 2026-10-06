@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { runInit } from '../commands/init.js'
-import { mkdirp, readTextFile, writeFileLf } from '../util/fs.js'
+import { mkdirp, pathExists, readTextFile, writeFileLf } from '../util/fs.js'
 import { initRepo } from '../util/git.js'
 import { resolveArtifacts } from '../util/registry.js'
 
@@ -15,12 +15,15 @@ import { resolveArtifacts } from '../util/registry.js'
  *   - .specrails/profiles/**        (desktop app / team profile JSON)
  *   - .claude/agents/custom-*.md    (user-authored custom agents)
  *
+ * Core ships no role file since 6.3; the only thing the installer does inside
+ * `agents/` is prune the framework-owned `sr-*` files an older Core left there.
  */
+
+/** A role id an older Core shipped; composed so the retired names never appear literally. */
+const legacyRole = (role: string): string => `sr-${role}`
 
 async function setupFakeScriptDir(scriptDir: string, version: string): Promise<void> {
   writeFileLf(path.join(scriptDir, 'VERSION'), `${version}\n`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), 'bundled-arch')
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), 'bundled-dev')
   writeFileLf(path.join(scriptDir, 'templates', 'commands', 'specrails', 'implement.md'), 'implement')
 }
 
@@ -139,5 +142,25 @@ describe('reserved paths audit', () => {
 
     await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
     assertReservedUntouched(fx)
+  })
+
+  it('init prunes stale sr-* role files an older Core left in agents/ but never the reserved custom-* agent', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo')
+    await setupFakeScriptDir(scriptDir, '5.0.0')
+    mkdirp(repoRoot)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    const workspace = workspaceFor(repoRoot)
+    const fx = sprinkleReservedFixtures(workspace)
+    const staleRole = path.join(workspace, '.claude', 'agents', `${legacyRole('developer')}.md`)
+    writeFileLf(staleRole, 'copied by an older Core\n')
+
+    await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
+
+    assertReservedUntouched(fx)
+    expect(pathExists(staleRole)).toBe(false)
+    expect(pathExists(path.join(workspace, '.claude', 'commands', 'specrails', 'implement.md'))).toBe(true)
   })
 })

@@ -353,10 +353,10 @@ describe('managed Kimi skill runner — upstream-compatible rendering', () => {
 
 describe('managed Kimi skill runner — secure invocation', () => {
   it.each([
-    '../sr-reviewer',
+    '../custom-reviewer',
     '/absolute',
-    'sr-reviewer;touch-pwned',
-    'sr-reviewer$(whoami)',
+    'custom-reviewer;touch-pwned',
+    'custom-reviewer$(whoami)',
     'sr_review',
     'SR-reviewer',
   ])('rejects malicious or non-canonical skill id %s', (skill) => {
@@ -368,7 +368,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
   it('retains exact Unicode and multiline args without shell parsing', () => {
     const parsed = runner.parseRunnerArgs([
       '--skill',
-      'sr-reviewer',
+      'custom-reviewer',
       '--model',
       'company/Kimi-Custom:v2',
       '--args',
@@ -382,7 +382,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(
       runner.parseRunnerArgs([
         '--skill',
-        'sr-reviewer',
+        'custom-reviewer',
         '--model',
         'k3',
         '--args',
@@ -392,7 +392,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(() =>
       runner.parseRunnerArgs([
         '--skill',
-        'sr-reviewer',
+        'custom-reviewer',
         '--model',
         'k3',
         '--args',
@@ -431,7 +431,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(() =>
       runner.parseRunnerArgs([
         '--skill',
-        'sr-reviewer',
+        'custom-reviewer',
         '--model',
         model,
       ]),
@@ -440,7 +440,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
 
   it('loads the direct skill, expands it, and builds a shell-free Kimi argv', () => {
     const providerRoot = writeSkill(
-      'sr-reviewer',
+      'custom-reviewer',
       'Target: $target\nRaw: $ARGUMENTS\nDir: ${KIMI_SKILL_DIR}\nSession: ${KIMI_SESSION_ID}',
       ['arguments: [target]'],
     )
@@ -448,7 +448,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
     writeFileLf(attachment, 'png')
     const prepared = runner.prepareSkillLaunch({
       providerRoot,
-      skill: 'sr-reviewer',
+      skill: 'custom-reviewer',
       model: 'company/Kimi-Custom:v2',
       rawArgs: '"src/área crítica.ts"\nsegunda línea',
       sessionId: 'ses_known',
@@ -458,13 +458,13 @@ describe('managed Kimi skill runner — secure invocation', () => {
     })
 
     expect(prepared.prompt).toContain(
-      'User activated the skill "sr-reviewer". Follow the loaded skill instructions.',
+      'User activated the skill "custom-reviewer". Follow the loaded skill instructions.',
     )
     expect(prepared.prompt).toContain('Target: src/área crítica.ts')
     expect(prepared.prompt).toContain('Session: ses_known')
     expect(prepared.prompt).toContain('Keep every finding.')
     expect(prepared.prompt).toContain(attachment)
-    expect(prepared.prompt).not.toContain('/skill:sr-reviewer')
+    expect(prepared.prompt).not.toContain('/skill:custom-reviewer')
     expect(prepared.kimiArgs).toEqual([
       '--session=ses_known',
       '--add-dir',
@@ -919,7 +919,7 @@ describe('managed Kimi skill runner — secure invocation', () => {
     expect(() =>
       runner.parseRunnerArgs([
         '--skill',
-        'sr-reviewer',
+        'custom-reviewer',
         '--model',
         'k3',
         '--experimental',
