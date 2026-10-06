@@ -75,6 +75,17 @@ describe('reviewed piece catalog and control', () => {
     expect(f.pieces.outcomes('role-turn', {})).toEqual(['next', 'failed'])
     expect(f.pieces.validateParams('prompt', { engine: { provider: 'fixture' }, text: 'hi', access: 'read', captureVars: [{ name: 'constructor', pattern: '(x)' }] }, '')).not.toEqual([])
   })
+  it('copies a committed host blocker into the completion when an end names its source node', async () => {
+    const f = fixture()
+    const blocker = { kind: 'network', reason: 'the Playwright browser download cannot reach its CDN from the verification environment', command: 'npx', args: ['playwright', 'install', 'chromium'], cwd: '.', requiredAction: 'Run `npx playwright install chromium` in . with network access, then retry the run.', evidenceId: 'ev-1' }
+    f.execution.state.$outputs.verify = { valid: false, blocker }
+    expect(await f.run('end', { outcome: 'failure', reason: 'host blocked', blockerFrom: 'verify' })).toMatchObject({ outcome: 'failure', completion: { ok: false, reasons: ['host blocked'], blocker } })
+    // A correction role reports the same shape under its structured JSON, with free-text evidence instead of a host reason.
+    f.execution.state.$outputs.correct = { structured: { summary: 'left unchanged on purpose', blocker: { kind: 'toolchain', command: 'npx', cwd: '.', evidence: 'Executable does not exist', requiredAction: 'Install the browser.' } } }
+    expect(await f.run('end', { outcome: 'failure', blockerFrom: 'correct' })).toMatchObject({ completion: { blocker: { kind: 'toolchain', reason: 'Executable does not exist', args: [], requiredAction: 'Install the browser.' } } })
+    expect((await f.run('end', { outcome: 'failure', blockerFrom: 'missing' })).completion).not.toHaveProperty('blocker')
+    expect(f.pieces.validateParams('end', { outcome: 'failure', blockerFrom: 'Not An Id' }, '')).not.toEqual([])
+  })
   it('interrupts before any question side effects and retains the answered value', async () => {
     const f = fixture()
     await expect(f.run('question', { text: 'Choose a scope' })).rejects.toThrow('PAUSED')

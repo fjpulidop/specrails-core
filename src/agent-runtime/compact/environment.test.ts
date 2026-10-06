@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectCheckCommand, hostPreconditionFailure, installEnvironment, isEnvironmentFailure, missingNodeDependencies, plannedInstalls, runGroupCheck, suggestedPackages } from './environment.js'
+import { detectCheckCommand, hostPreconditionFailure, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -202,5 +202,56 @@ describe('group check', () => {
       expect(spawn).toHaveBeenCalledWith('npm', ['test', '--silent'], expect.objectContaining({ cwd: dir }))
       expect(runGroupCheck([mkdtempSync(path.join(tmpdir(), 'empty-'))])).toEqual({ ran: false, ok: true, output: '' })
     } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+describe('Playwright browser builds', () => {
+  // Observed verbatim on 2026-10-06 (pixel-depths, ticket 1): the package was installed by `npm ci`, the browser build was not.
+  const missing = "Error: browserType.launch: Executable doesn't exist at /Users/dev/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-mac-arm64/headless_shell\n╔═══╗\n║ Looks like Playwright Test or Playwright was just installed or updated. ║\n║ Please run the following command to download new browsers:             ║\n║     npx playwright install                                              ║"
+  it('recognises each missing-browser signature as an environment failure and parses the browser from the path', () => {
+    expect(isEnvironmentFailure(1, missing)).toBe(true)
+    expect(isPlaywrightBrowserFailure("browserType.launch: Executable doesn't exist at C:\\Users\\dev\\AppData\\Local\\ms-playwright\\firefox-1466\\firefox\\firefox.exe")).toBe(true)
+    expect(isPlaywrightBrowserFailure('Looks like Playwright was just installed or updated.')).toBe(true)
+    expect(isPlaywrightBrowserFailure('Error: page.goto: net::ERR_CONNECTION_REFUSED at http://localhost:3000/')).toBe(false)
+    expect(playwrightBrowser(missing)).toBe('chromium')
+    expect(playwrightBrowser('at C:\\Users\\dev\\AppData\\Local\\ms-playwright\\firefox-1466\\firefox\\firefox.exe')).toBe('firefox')
+    expect(playwrightBrowser('/home/ci/.cache/ms-playwright/webkit-2104/pw_run.sh')).toBe('webkit')
+    expect(playwrightBrowser('Looks like Playwright was just installed or updated.')).toBeUndefined()
+  })
+  it('treats a browser download that cannot reach the CDN as a network precondition', () => {
+    const offline = 'Downloading Chromium 131.0.6778.33 (playwright build v1148) from https://cdn.playwright.dev/dbazure/download/playwright/builds/chromium/1148/chromium-mac-arm64.zip\nError: getaddrinfo ENOTFOUND cdn.playwright.dev\nFailed to download Chromium 131.0.6778.33 (playwright build v1148), caused by\nError: getaddrinfo ENOTFOUND cdn.playwright.dev'
+    expect(hostPreconditionFailure(offline)).toContain('Playwright browser download')
+    expect(hostPreconditionKind(offline)).toBe('network')
+    expect(hostPreconditionKind('Error: connect ETIMEDOUT 13.107.246.64:443 while fetching https://playwright.azureedge.net/builds/chromium/1148/chromium-linux.zip')).toBe('network')
+    // A test that times out against the app under test is a code failure, even inside a Playwright suite.
+    expect(hostPreconditionFailure('Error: connect ETIMEDOUT 127.0.0.1:3000\n    at node_modules/playwright-core/lib/client/page.js:12:1')).toBeUndefined()
+    expect(hostPreconditionKind('npm error code E401\nnpm error 401 Unauthorized - GET https://npm.pkg.github.com/@acme%2fui')).toBe('credential')
+    expect(hostPreconditionKind('Usage Error: Environment variable not found (NODE_AUTH_TOKEN) in /w/app/.yarnrc.yml')).toBe('environment-variable')
+    expect(hostPreconditionKind('npm error code ENOTFOUND\nnpm error network request to https://registry.npmjs.org/left-pad failed, reason: getaddrinfo ENOTFOUND registry.npmjs.org')).toBe('network')
+    expect(hostPreconditionKind("fatal: could not read Username for 'https://github.com': terminal prompts disabled")).toBe('credential')
+    expect(hostPreconditionKind('FAIL src/app.spec.ts\n  ● renders\n    expect(received).toBe(expected)')).toBeUndefined()
+  })
+  it('plans the browser install only for manifests that declare Playwright, after the dependency plan, with its own timeout', () => {
+    const manifest = JSON.stringify({ devDependencies: { '@playwright/test': '^1.48' } })
+    const installed = root({ 'package.json': manifest }, ['node_modules/@playwright/test'])
+    expect(plannedInstalls(installed, missing)).toEqual([{ ecosystem: 'node', root: installed, command: 'npx', args: ['playwright', 'install', 'chromium'], timeoutMs: 600_000, installs: 'Playwright chromium' }])
+    expect(plannedInstalls(installed, 'FAIL src/app.spec.ts')).toEqual([])
+    expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { playwright: '^1.48' } }) }, ['node_modules/playwright']), 'Looks like Playwright was just installed or updated.')).toMatchObject([{ command: 'npx', args: ['playwright', 'install'], installs: 'Playwright browsers' }])
+    expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { jest: '^29' } }) }, ['node_modules/jest']), missing)).toEqual([])
+    // A fresh worktree installs node_modules first: `npx playwright` needs the package.
+    expect(plannedInstalls(root({ 'package.json': manifest }), missing).map(plan => [plan.command, ...plan.args])).toEqual([['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error'], ['npx', 'playwright', 'install', 'chromium']])
+    expect(plannedInstalls(root({ 'package.json': manifest, 'pnpm-lock.yaml': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'pnpm', args: ['exec', 'playwright', 'install', 'chromium'] }])
+    expect(plannedInstalls(root({ 'package.json': manifest, 'yarn.lock': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'yarn', args: ['playwright', 'install', 'chromium'] }])
+  })
+  it('runs the browser install with the plan timeout and names what it installed', () => {
+    const dir = root({ 'package.json': JSON.stringify({ devDependencies: { '@playwright/test': '^1.48' } }) }, ['node_modules/@playwright/test'])
+    const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null })) as never
+    const events: string[] = []
+    const outcomes = installEnvironment([dir], { spawn, failureOutput: missing, onEvent: event => { if (event.kind === 'text') events.push(event.text ?? '') } })
+    expect(spawn).toHaveBeenCalledWith('npx', ['playwright', 'install', 'chromium'], expect.objectContaining({ cwd: dir, timeout: 600_000 }))
+    expect(outcomes).toMatchObject([{ ok: true, detail: `installed Playwright chromium in ${path.basename(dir)}` }])
+    expect(events).toContain(`Environment: installed Playwright chromium in ${path.basename(dir)}`)
+    const offline = vi.fn(() => ({ status: 1, stdout: '', stderr: 'Failed to download Chromium 131.0.6778.33 (playwright build v1148), caused by\nError: getaddrinfo ENOTFOUND cdn.playwright.dev', pid: 1, output: [], signal: null })) as never
+    expect(installEnvironment([dir], { spawn: offline, failureOutput: missing })[0]).toMatchObject({ ok: false, precondition: expect.stringContaining('CDN') })
   })
 })

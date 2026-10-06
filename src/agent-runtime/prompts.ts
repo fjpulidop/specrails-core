@@ -4,7 +4,7 @@ import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './grap
 import type { DeveloperRecord } from './graph/state.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '13'
+export const ROLE_INSTRUCTIONS_VERSION = '14'
 const OUTPUT_TAIL = 6_000
 /** One senior engineer, rendered once per role prompt (never repeated inside it): the identity the implement pipeline's roles share. */
 const ENGINEER = 'a T-shaped principal engineer with decades of delivery across web, mobile and backend systems: deep in software design and testing, broad across product, UX, data, security, infrastructure and operations; fluent in hexagonal (ports and adapters) architecture, SOLID, design patterns, Clean Code, The Pragmatic Programmer, refactoring, legacy-code seams and AI-assisted development. You work for the user, the operator and the next maintainer, and you treat AI-generated code, including your own, with the scepticism owed to any untrusted contribution.'
@@ -149,7 +149,7 @@ function boundarySection(role: BuiltinAgentRole, custom = false): string[] {
     role === 'developer'
       ? [
         '- Edit only the repositories in scope, and only inside a repository\'s scope when it declares one. Prefer the smallest change that fully satisfies the tasks; do not refactor, reformat, rename or upgrade unrelated code, tests or configuration. On a fixer turn, a failing host test in that scope may receive the minimal compatibility repair described in the correction instructions; preserve its required behavior and assertions. Other unrelated problems belong in your summary.',
-        '- Never edit package-manager, registry, credential, CI or environment configuration (for example `.npmrc`, `.yarnrc*`, `.env*`, CI workflows) to make a command work. A missing credential, environment variable, registry access or tool is the host\'s to fix: report it under `incomplete` with the exact error.',
+        '- Never edit package-manager, registry, credential, CI or environment configuration (for example `.npmrc`, `.yarnrc*`, `.env*`, CI workflows) to make a command work. A missing credential, environment variable, registry access or tool is the host\'s to fix: report it under `incomplete` with the exact error. Installing a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv) is allowed and must be reported under verification; editing package-manager, registry, credential, CI or environment configuration remains forbidden.',
         '- Check with the narrowest command that covers what you touched (the specific test files or test names), never the whole checkout or every workspace; Core runs the complete verification plan after your turn.',
       ].join('\n')
       : role === 'architect' ? '- Read code without modifying it. Author OpenSpec artifacts only through the supplied scoped workflow tools.' + (custom ? '' : ' Return confidence and verification metadata in JSON.') : '- This role is read-only. Do not create, edit or delete files' + (custom ? '.' : '; return your result as the requested JSON object.'),
@@ -227,7 +227,7 @@ function fixerSection(verification: VerificationCommand[] | undefined, definitio
     '4. Fix the cause, not the symptom: a repair that satisfies the assertion while leaving the defect, or that special-cases the test input, is not a fix. Fix incorrect implementation behavior. A failing mandatory host test inside the admitted repository/workspace may also receive a minimal compatibility repair when you prove that its expected behavior is unchanged. For example, a source assertion broken only by formatting may tolerate whitespace while retaining every required operand and guard. This applies even to a pre-existing test outside the current changed-file list. Explain the original expectation and why the repair still rejects the prohibited behavior. Never weaken an assertion, delete or skip a test, hardcode success, change acceptance criteria, add dependencies or widen the repair beyond the diagnosed failure.',
     '5. A test file the host reports as never executed must be wired into the repository\'s test command (the test script or runner configuration) and then made to pass.',
     '6. Confirm the repair with the focused test command and a negative case for any repaired assertion: removing a required safety guard or returning the wrong value must still fail. Preserve the original test exit status; never pipe test execution through grep/head or another command that masks it. Capture stdout/stderr in a temporary log and inspect that log separately. Core runs the complete verification plan after your turn.',
-    '7. Inspect only the reported files, direct dependencies and the evidence needed to establish the cause. Never edit outside the admitted repository/workspace, credentials, environment or unrelated configuration. For an external or unrepairable scope blocker, make no speculative edits and report the exact error, observed evidence and required action. `proposal.md`, `design.md` and the specs remain frozen; only tick completed tasks.',
+    '7. Inspect only the reported files, direct dependencies and the evidence needed to establish the cause. Never edit outside the admitted repository/workspace, credentials, environment or unrelated configuration. When the diagnosed cause is a host precondition or environment blocker (missing network, credentials, environment variable, toolchain, setup command or an out-of-scope repository), make no speculative edits, state in summary that the candidate was intentionally left unchanged, and return `blocker` as {"kind":"network|credential|environment-variable|toolchain|setup|environment|scope","command":"…","cwd":"…","evidence":"exact error","requiredAction":"one imperative sentence the host can act on"}. `proposal.md`, `design.md` and the specs remain frozen; only tick completed tasks.',
     '8. Return the requested JSON contract. Include the diagnosis, exact focused commands and original exit codes, repair and preserved assertion in summary. List every unresolved failure and its reason under incomplete, even when the implementation tasks are already ticked. A failed test remains failed until real host verification passes.',
   ] : [definition, '']
   return [...lines, ...developerTail(verification)]
@@ -244,7 +244,7 @@ function developerSection(verification: VerificationCommand[] | undefined, corre
     '1. Load and execute openspec-apply-change through the supplied binding. Consult its status and instructions apply, read the context files OpenSpec returns, then the relevant existing code and tests.',
     '2. Work task by task in order. Use test-driven development: write or extend the test first, make it pass with the smallest correct change, then tidy up. Run only focused tests that cover what you touched while iterating. Core owns the complete verification plan and runs it after your turn; do not duplicate that full run. Fix the precise failures Core returns on a correction pass.',
     '3. Immediately after completing each task, mark it `- [x]` in `tasks.md`; do not postpone all progress updates until the end of the phase. Only mark tasks whose code and tests are complete. Change nothing else in `tasks.md`, and never edit `proposal.md`, `design.md` or the specs: those documents are frozen, and editing them invalidates the run. If a task cannot be completed, leave it `- [ ]` and list it under `incomplete` with the reason.',
-    '4. Keep the implementation consistent with the repository: naming, error handling, import style, formatting and existing utilities. Do not add dependencies unless the design requires them. Change only what the tasks require: the diff should contain the requested change and its tests, nothing else.',
+    '4. Keep the implementation consistent with the repository: naming, error handling, import style, formatting and existing utilities. Do not add dependencies unless the design requires them. Change only what the tasks require: the diff should contain the requested change and its tests, nothing else. Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. When a required tool is missing, install it through the project\'s documented command or report it as a blocker.',
     'Blast radius: the files design.md and tasks.md name are your boundary. Touch a file outside it only when a task cannot be completed otherwise; keep that edit to the strict need and explain it in summary. Inside a file, change only the lines the task needs: no reformatting, import reordering, renames, type widening, comment rewrites or "while I am here" fixes. Leave an unrelated problem alone and mention it in summary. Keep public signatures, exported contracts, schemas and persisted formats as the design states. Never delete or rewrite a test a task does not name, and never regenerate lockfiles, snapshots or generated files unless the task\'s own change requires it.',
     'Quality bar: write code a senior maintainer would merge unchanged. Intention-revealing names from the domain vocabulary; small functions that do one thing at one level of abstraction; guard clauses over nested conditionals; no boolean flag parameters, magic values or hidden side effects; immutability by default and explicit types at module boundaries; parse and validate at the boundary, trust typed values inside; every error path handled the way neighbouring code handles it (fail fast at the boundary, never swallow, errors carry context); domain logic out of adapters and dependencies pointing inward as the repository already does; comments explain why, never what; no dead code, commented-out code, debug output, TODO placeholders or speculative options.',
     'Engineering judgement: understand before you change and never program by coincidence (if you cannot explain why it works, you are not done); never delete or bypass a guard, branch or workaround you cannot explain. Handle what tests rarely reach: empty, huge and malformed inputs, boundary values, time zones and Unicode, partial failures, retries with idempotency, races, cancellation, timeouts and resource cleanup (handles, listeners, subscriptions, temp files). Security hygiene is non-negotiable: parameterized queries, escaped output, no secrets or personal data in code or logs, least privilege, authorization where the repository enforces it. Logs and metrics follow the repository\'s conventions; migrations and persisted-format changes stay additive and backward compatible. Verify every API, signature and option against the source or installed types, never from memory. Do the simplest thing that fully works, then refactor only inside the blast radius. Tests are the specification: one behavior per test (arrange, act, assert) covering inputs, outputs, side effects and errors; no logic in tests; mock only at real boundaries; deterministic; failing without the change; in the repository\'s existing style. A task is done only when its code, tests and every artifact it makes stale (localized strings in every shipped locale, documentation, schemas, configuration examples) are updated and its focused checks pass.',
@@ -256,12 +256,16 @@ function developerSection(verification: VerificationCommand[] | undefined, corre
   return [...lines, ...developerTail(verification)]
 }
 /** Verification commands, durable-progress guidance and the output contract shared by the developer and fixer stances. */
+/** The complete host verification plan a write role must see: what Core runs after the turn, so nothing is validated through a bypass the plan does not use. */
+function hostPlanSection(verification: VerificationCommand[] | undefined): string[] {
+  if (!verification?.length) return []
+  return [
+    '', 'Core owns these complete verification commands and will run them after your turn. Use focused tests while iterating instead of repeating this plan:',
+    ...verification.map(command => `- repository \`${command.repositoryId}\`${command.cwd ? ' in `' + command.cwd + '`' : ''}: \`${shellWords(command)}\``),
+  ]
+}
 function developerTail(verification: VerificationCommand[] | undefined): string[] {
-  const lines: string[] = []
-  if (verification?.length) {
-    lines.push('', 'Core owns these complete verification commands and will run them after your turn. Use focused tests while iterating instead of repeating this plan:')
-    for (const command of verification) lines.push(`- repository \`${command.repositoryId}\`${command.cwd ? ' in `' + command.cwd + '`' : ''}: \`${shellWords(command)}\``)
-  }
+  const lines: string[] = [...hostPlanSection(verification)]
   lines.push(
     '',
     '## Durable implementation progress',
@@ -274,12 +278,13 @@ function developerTail(verification: VerificationCommand[] | undefined): string[
     'Finish with exactly one JSON object and nothing after it: no prose after the object, no Markdown fence.',
     '',
     '```',
-    '{"summary":"What you implemented and how","files":["src/feature.ts"],"tests":["src/feature.test.ts"],"verification":"npm test passed (12 tests)","incomplete":[{"task":"3. …","reason":"why it could not be completed"}]}',
+    '{"summary":"What you implemented and how","files":["src/feature.ts"],"tests":["src/feature.test.ts"],"verification":"npm test passed (12 tests)","incomplete":[{"task":"3. …","reason":"why it could not be completed"}],"blocker":{"kind":"toolchain","command":"npx playwright test","cwd":".","evidence":"exact error","requiredAction":"Run npx playwright install chromium"}}',
     '```',
     '',
     '- `files` and `tests`: repository-relative paths you created or modified (test files appear in `tests`, other files in `files`).',
     '- `verification`: the commands you ran and their outcome, or `none` when no shell was available.',
     '- `incomplete`: every task still `- [ ]` in `tasks.md`, with its reason; an empty array when everything is done.',
+    '- `blocker`: only when the cause lies outside the change; omit otherwise. The host ends the run with your `requiredAction` instead of starting another correction round.',
     '- Do not paste full test logs; the reviewer reads the real verification evidence separately.',
     '',
   )
@@ -456,7 +461,9 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
       `Workspace access: ${roleOrDescriptor.access}. OpenSpec artifact permission: ${roleOrDescriptor.artifacts}.`, '',
       'Execute only this assigned role. Traversal, retries, verification, approval, archive and delivery belong to Core. Do not spawn another role or change runtime metadata.',
       ...boundarySection(roleOrDescriptor.access === 'write' ? 'developer' : roleOrDescriptor.artifacts === 'all' ? 'architect' : 'reviewer', true),
-      ...conventionsSection(), ...scopeSection(context, change), ...feedbackSection(options.feedback),
+      ...conventionsSection(), ...scopeSection(context, change),
+      ...(roleOrDescriptor.access === 'write' ? hostPlanSection(options.verification) : []),
+      ...feedbackSection(options.feedback),
     ].join('\n').trimEnd() + '\n'
   }
   const feedback = feedbackSection(options.feedback)

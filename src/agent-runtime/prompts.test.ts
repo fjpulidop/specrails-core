@@ -94,6 +94,42 @@ describe('editable role definitions', () => {
     expect(plan).toContain('Author OpenSpec artifacts only through the supplied scoped workflow tools.')
     expect(plan).not.toContain('Return confidence and verification metadata in JSON')
   })
+  it('states the host blocker contract for the fixer, the toolchain and bypass rules for the developer, and the host plan for custom write roles', () => {
+    const verification = [{ repositoryId: 'app', command: 'npm', args: ['run', 'test:e2e'] }]
+    // Desktop keeps a parity test against these exact sentences.
+    const DEV_BYPASS = 'Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. When a required tool is missing, install it through the project\'s documented command or report it as a blocker.'
+    const TOOLCHAIN_ALLOW = 'Installing a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv) is allowed and must be reported under verification; editing package-manager, registry, credential, CI or environment configuration remains forbidden.'
+    const FIXER_BLOCKER = 'When the diagnosed cause is a host precondition or environment blocker (missing network, credentials, environment variable, toolchain, setup command or an out-of-scope repository), make no speculative edits, state in summary that the candidate was intentionally left unchanged, and return `blocker` as {"kind":"network|credential|environment-variable|toolchain|setup|environment|scope","command":"…","cwd":"…","evidence":"exact error","requiredAction":"one imperative sentence the host can act on"}.'
+    const BLOCKER_BULLET = '- `blocker`: only when the cause lies outside the change; omit otherwise. The host ends the run with your `requiredAction` instead of starting another correction round.'
+    const developer = roleInstructions('developer', context, 'change', { verification })
+    expect(developer).toContain(DEV_BYPASS)
+    expect(developer).toContain('report it under `incomplete` with the exact error. ' + TOOLCHAIN_ALLOW)
+    expect(developer).toContain(BLOCKER_BULLET)
+    expect(developer).toContain('"blocker":{"kind":"toolchain"')
+    expect(developer).not.toContain(FIXER_BLOCKER)
+    const fixer = roleInstructions('developer', context, 'change', { stance: 'fixer', verification, feedback: { verification: { valid: false, commands: [] } } })
+    expect(fixer).toContain(FIXER_BLOCKER)
+    expect(fixer).not.toContain('For an external or unrepairable scope blocker')
+    expect(fixer).toContain(TOOLCHAIN_ALLOW)
+    expect(fixer).toContain(BLOCKER_BULLET)
+    expect(fixer).toContain('`npm run test:e2e`')
+    // The default definitions carry the same sentences, so Desktop can extract them.
+    const defaults = rolePromptDefaults()
+    expect(defaults.developer).toContain(DEV_BYPASS)
+    expect(defaults.fixer).toContain(FIXER_BLOCKER)
+    // A custom write role sees the host plan block (and nothing of the builtin output contract).
+    const build = roleInstructions({ id: 'build', provider: 'claude', access: 'write', artifacts: 'tasks-checkboxes', prompt: 'Build the thing' } as unknown as RoleDescriptor, context, 'change', { verification: [...verification, { repositoryId: 'app', command: 'cargo', args: ['test'], cwd: 'crates/core' }] })
+    expect(build).toContain('Core owns these complete verification commands and will run them after your turn.')
+    expect(build).toContain('- repository `app`: `npm run test:e2e`')
+    expect(build).toContain('- repository `app` in `crates/core`: `cargo test`')
+    expect(build).toContain(TOOLCHAIN_ALLOW)
+    expect(build).not.toContain('## Output contract')
+    expect(roleInstructions({ id: 'build', provider: 'claude', access: 'write', artifacts: 'none', prompt: 'Build' } as unknown as RoleDescriptor, context, 'change')).not.toContain('Core owns these complete verification commands')
+    // A read-only custom role never gets the plan, even when the host has one.
+    const assess = roleInstructions({ id: 'assess', provider: 'claude', access: 'read', artifacts: 'none', prompt: 'Assess it' } as unknown as RoleDescriptor, context, 'change', { verification })
+    expect(assess).not.toContain('Core owns these complete verification commands')
+    expect(assess).not.toContain('npm run test:e2e')
+  })
   it('renders the re-review section for a reviewer pass after corrections, with a machine-readable change list', () => {
     const reReview = { changes: [{ repositoryId: 'app', path: 'src/game.js', status: 'changed' as const }], previouslyMet: [{ specId: '7', criterionIndex: 0 }] }
     const prompt = roleInstructions('reviewer', context, 'change', { reReview, feedback: { review: { issues: ['src/game.js: guard the overlay'] } } })

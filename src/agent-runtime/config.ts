@@ -49,9 +49,49 @@ function score(value: unknown, field: string, floor: number): number {
   if (value < floor) fail(field, `must be at least ${floor}, Core's own review gate`)
   return value
 }
+/** `verification` and `setup` share one command shape and one set of rules, including the credential refusal. */
+function validateCommandList(value: unknown, list: string): RuntimeConfig['verification'] {
+  if (!Array.isArray(value)) fail(list, 'expected an array of verification commands')
+  return value.map((item, i) => {
+    const field = `${list}[${i}]`, command = object(item, field)
+    keys(command, ['repositoryId', 'command', 'args', 'cwd', 'env', 'timeoutMs', 'key', 'label', 'policy'], field)
+    if (command.key !== undefined) identifier(command.key, `${field}.key`)
+    if (command.label !== undefined && string(command.label, `${field}.label`).length > 256) fail(`${field}.label`, 'maximum 256 characters')
+    if (command.policy !== undefined) {
+      const policy = object(command.policy, `${field}.policy`)
+      keys(policy, ['reuse', 'inputs', 'deterministic', 'readOnly', 'toolchainInputs', 'independentGroup', 'resources'], `${field}.policy`)
+      if (policy.reuse !== undefined) choices(policy.reuse, ['never', 'snapshot-local'], `${field}.policy.reuse`)
+      for (const key of ['deterministic', 'readOnly']) if (policy[key] !== undefined) boolean(policy[key], `${field}.policy.${key}`)
+      if (policy.independentGroup !== undefined) identifier(policy.independentGroup, `${field}.policy.independentGroup`)
+      for (const key of ['inputs', 'toolchainInputs', 'resources']) {
+        const values = policy[key]
+        if (values === undefined) continue
+        if (!Array.isArray(values) || values.length > 256) fail(`${field}.policy.${key}`, 'expected at most 256 entries')
+        for (const value of values) if (string(value, `${field}.policy.${key}`).length > 4096) fail(`${field}.policy.${key}`, 'entry exceeds 4096 characters')
+      }
+    }
+    identifier(command.repositoryId, `${field}.repositoryId`)
+    string(command.command, `${field}.command`)
+    if (!Array.isArray(command.args) || !command.args.every(arg => typeof arg === 'string' && !arg.includes('\0'))) fail(`${field}.args`, 'expected a string array')
+    if (command.cwd !== undefined) string(command.cwd, `${field}.cwd`)
+    if (command.timeoutMs !== undefined) positive(command.timeoutMs, `${field}.timeoutMs`)
+    if (command.env !== undefined) {
+      const env = object(command.env, `${field}.env`)
+      for (const [key, value] of Object.entries(env)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof value !== 'string' || value.includes('\0')) fail(`${field}.env`, 'expected environment names and string values')
+        if (/(?:token|secret|password|api_?key|credential)/i.test(key)) fail(`${field}.env.${key}`, 'credentials must be inherited from the process environment, never saved')
+      }
+    }
+    return structuredClone(command)
+  }) as unknown as RuntimeConfig['verification']
+}
+function uniqueKeys(commands: RuntimeConfig['verification'], list: string): void {
+  const checkKeys = commands.flatMap(check => check.key ? [check.key] : [])
+  if (new Set(checkKeys).size !== checkKeys.length) fail(list, 'duplicate check key')
+}
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'roles', 'fixer', 'limits', 'verification', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'roles', 'fixer', 'limits', 'verification', 'setup', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
   if (config.enabled !== undefined && typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
@@ -135,41 +175,14 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     keys(limits, ['maxAttempts', 'maxTokens', 'maxCostUsd', 'timeoutMs'], 'limits')
     for (const [key, value] of Object.entries(limits)) positive(value, `limits.${key}`, key !== 'maxCostUsd')
   }
-  if (!Array.isArray(config.verification)) fail('verification', 'expected an array of verification commands')
-  const verification = config.verification.map((item, i) => {
-    const field = `verification[${i}]`, command = object(item, field)
-    keys(command, ['repositoryId', 'command', 'args', 'cwd', 'env', 'timeoutMs', 'key', 'label', 'policy'], field)
-    if (command.key !== undefined) identifier(command.key, `${field}.key`)
-    if (command.label !== undefined && string(command.label, `${field}.label`).length > 256) fail(`${field}.label`, 'maximum 256 characters')
-    if (command.policy !== undefined) {
-      const policy = object(command.policy, `${field}.policy`)
-      keys(policy, ['reuse', 'inputs', 'deterministic', 'readOnly', 'toolchainInputs', 'independentGroup', 'resources'], `${field}.policy`)
-      if (policy.reuse !== undefined) choices(policy.reuse, ['never', 'snapshot-local'], `${field}.policy.reuse`)
-      for (const key of ['deterministic', 'readOnly']) if (policy[key] !== undefined) boolean(policy[key], `${field}.policy.${key}`)
-      if (policy.independentGroup !== undefined) identifier(policy.independentGroup, `${field}.policy.independentGroup`)
-      for (const key of ['inputs', 'toolchainInputs', 'resources']) {
-        const values = policy[key]
-        if (values === undefined) continue
-        if (!Array.isArray(values) || values.length > 256) fail(`${field}.policy.${key}`, 'expected at most 256 entries')
-        for (const value of values) if (string(value, `${field}.policy.${key}`).length > 4096) fail(`${field}.policy.${key}`, 'entry exceeds 4096 characters')
-      }
-    }
-    identifier(command.repositoryId, `${field}.repositoryId`)
-    string(command.command, `${field}.command`)
-    if (!Array.isArray(command.args) || !command.args.every(arg => typeof arg === 'string' && !arg.includes('\0'))) fail(`${field}.args`, 'expected a string array')
-    if (command.cwd !== undefined) string(command.cwd, `${field}.cwd`)
-    if (command.timeoutMs !== undefined) positive(command.timeoutMs, `${field}.timeoutMs`)
-    if (command.env !== undefined) {
-      const env = object(command.env, `${field}.env`)
-      for (const [key, value] of Object.entries(env)) {
-        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || typeof value !== 'string' || value.includes('\0')) fail(`${field}.env`, 'expected environment names and string values')
-        if (/(?:token|secret|password|api_?key|credential)/i.test(key)) fail(`${field}.env.${key}`, 'credentials must be inherited from the process environment, never saved')
-      }
-    }
-    return structuredClone(command)
-  }) as unknown as RuntimeConfig['verification']
-  const checkKeys = verification.flatMap(check => check.key ? [check.key] : [])
-  if (new Set(checkKeys).size !== checkKeys.length) fail('verification', 'duplicate check key')
+  const verification = validateCommandList(config.verification, 'verification')
+  const setup = config.setup === undefined ? undefined : validateCommandList(config.setup, 'setup')
+  uniqueKeys(verification, 'verification')
+  if (setup) {
+    uniqueKeys(setup, 'setup')
+    // A key names one check in receipts and host UIs: it cannot be both a setup command and a verification check.
+    if (setup.some(command => command.key && verification.some(check => check.key === command.key))) fail('setup', 'duplicate check key shared with verification')
+  }
   if (config.efficiency !== undefined) {
     const policy = object(config.efficiency, 'efficiency')
     keys(policy, ['schemaVersion', 'contextMode', 'reviewMode', 'planning', 'acceptDeveloperChecks', 'verification'], 'efficiency')
@@ -223,6 +236,7 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     }
   }
   return { schemaVersion: 1, enabled: true, providers, agents, verification,
+    ...(setup === undefined ? {} : { setup }),
     ...(roles === undefined ? {} : { roles }),
     ...(config.efficiency === undefined ? {} : { efficiency: structuredClone(config.efficiency) as RuntimeConfig['efficiency'] }),
     ...(rolePrompts === undefined ? {} : { rolePrompts }),

@@ -105,10 +105,27 @@ export interface ReceiptEvidence {
   evidence: JsonValue
 }
 
+/**
+ * A failure only the host can repair, reported structurally so hosts render the
+ * action instead of parsing prose. `cwd` is relative to the checkout. `scope`
+ * is reserved for a correction role that diagnoses the cause outside the change.
+ */
+export interface HostBlocker {
+  kind: 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment' | 'scope'
+  reason: string
+  command: string
+  args: string[]
+  cwd: string
+  requiredAction: string
+  evidenceId?: string
+}
+
 export interface EngineCompletion {
   ok: boolean
   reasons: string[]
   verified: boolean
+  /** Copied by an `end` piece from the node named in `blockerFrom`, when that output carries one. */
+  blocker?: HostBlocker
 }
 
 export interface EngineAnswer {

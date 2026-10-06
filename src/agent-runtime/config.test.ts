@@ -26,6 +26,8 @@ describe('runtime configuration and registration', () => {
     { agents: { architect: { provider: 'claude', escalation: { model: 'high' } }, developer: { provider: 'claude' }, reviewer: { provider: 'claude' } } },
     { verification: [{ repositoryId: 'main', command: 'node', args: [], policy: { passed: true } }] },
     { verification: [{ repositoryId: 'main', command: 'node', args: [], key: 'same' }, { repositoryId: 'main', command: 'node', args: [], key: 'same' }] },
+    { setup: [{ repositoryId: 'main', command: 'node', args: [], key: 'same' }, { repositoryId: 'main', command: 'node', args: [], key: 'same' }] },
+    { setup: { repositoryId: 'main', command: 'node', args: [] } },
   ])('rejects invalid efficiency contracts', extra => expect(() => validateRuntimeConfig({ ...config(), ...extra })).toThrow('Invalid runtime config'))
   it('defaults to the agent runtime and ignores the retired opt-in flag', () => {
     expect(validateRuntimeConfig({ ...config(), enabled: undefined }).enabled).toBe(true)
@@ -98,4 +100,23 @@ it('validates and clones role prompt overrides without changing older configurat
   expect(validated.rolePrompts?.developer).toBe('Custom developer')
   expect(validateRuntimeConfig({ ...config(), rolePrompts: { fixer: 'Custom fixer' } }).rolePrompts?.fixer).toBe('Custom fixer')
   for (const rolePrompts of [{ developer: '' }, { developer: ' ' }, { alien: 'x' }, { developer: 'x'.repeat(20001) }, { developer: 'x\0y' }]) expect(() => validateRuntimeConfig({ ...config(), rolePrompts })).toThrow()
+})
+
+describe('setup commands', () => {
+  it('accepts the verification command shape, keeps the list and adds nothing when absent', () => {
+    const value = config()
+    value.setup = [{ repositoryId: 'app', command: 'npx', args: ['playwright', 'install', 'chromium'] }]
+    value.verification = [{ repositoryId: 'app', key: 'e2e', command: 'npm', args: ['run', 'test:e2e'] }]
+    const validated = validateRuntimeConfig(value)
+    expect(validated).toEqual(value)
+    value.setup[0].args.push('--with-deps')
+    expect(validated.setup![0].args).toEqual(['playwright', 'install', 'chromium'])
+    expect(validateRuntimeConfig(config())).not.toHaveProperty('setup')
+  })
+  it('applies the verification rules: credentials never saved, one key per check across both lists', () => {
+    expect(() => validateRuntimeConfig({ ...config(), setup: [{ repositoryId: 'app', command: 'npm', args: ['ci'], env: { NPM_TOKEN: 'do-not-save' } }] })).toThrow('setup[0].env.NPM_TOKEN')
+    expect(() => validateRuntimeConfig({ ...config(), setup: [{ repositoryId: 'app', command: 'npm', args: ['ci'], cwd: '' }] })).toThrow('setup[0].cwd')
+    expect(() => validateRuntimeConfig({ ...config(), setup: [{ repositoryId: 'app', key: 'e2e', command: 'npx', args: ['playwright', 'install'] }],
+      verification: [{ repositoryId: 'app', key: 'e2e', command: 'npm', args: ['run', 'test:e2e'] }] })).toThrow('Invalid runtime config setup: duplicate check key shared with verification')
+  })
 })

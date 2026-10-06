@@ -17,9 +17,34 @@ import path from 'node:path'
 // install/check round in circles. cross-spawn resolves the shim on every OS.
 const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
 
-interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[] }
+/** `timeoutMs` overrides the default bound for one plan (a browser download is far larger than a dependency install). */
+export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[]; timeoutMs?: number; installs?: string }
 /** `precondition`: the install failed for a reason only the host can repair (see hostPreconditionFailure). */
-interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string; precondition?: string }
+export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string; precondition?: string }
+
+export type HostPreconditionKind = 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment'
+export interface HostPrecondition { kind: HostPreconditionKind; reason: string; requiredAction: string }
+
+// A Playwright test run on a host whose browser cache was never populated (a
+// fresh machine, a new Playwright version): the package is installed, the
+// browser build it pins is not. `playwright install` is the documented fix.
+const PLAYWRIGHT_SIGNATURES: RegExp[] = [
+  /browserType\.launch: Executable doesn't exist at/i,
+  /Looks like Playwright was just installed or updated/i,
+  /ms-playwright[\\/](?:chromium|firefox|webkit|chromium_headless_shell)[-_]\d+/i,
+]
+/** True when a verification failure names a missing Playwright browser build. */
+export function isPlaywrightBrowserFailure(output: string): boolean {
+  const tail = output.slice(-6000)
+  return PLAYWRIGHT_SIGNATURES.some(pattern => pattern.test(tail))
+}
+/** The browser the missing build path names (`chromium_headless_shell-1243` → `chromium`), undefined when none is parsable. */
+export function playwrightBrowser(output: string): 'chromium' | 'firefox' | 'webkit' | undefined {
+  const match = /ms-playwright[\\/](chromium|firefox|webkit|chromium_headless_shell)[-_]\d+/i.exec(output.slice(-6000))
+  if (!match) return undefined
+  const name = match[1]!.toLowerCase()
+  return name === 'chromium_headless_shell' ? 'chromium' : name as 'chromium' | 'firefox' | 'webkit'
+}
 
 const ENVIRONMENT_SIGNATURES: RegExp[] = [
   /command not found/i,
@@ -37,6 +62,7 @@ const ENVIRONMENT_SIGNATURES: RegExp[] = [
   /Module (?:[\w@./-]+) in the \w+ option was not found|Preset [\w@./-]+ not found|Cannot find module '(?:ts-jest|babel-jest|@swc\/jest|ts-node|tsx)'/i,
   // Yarn Berry refuses to run scripts in a checkout that was never installed.
   /doesn't seem to have been installed - running an install there might help|Couldn't find the node_modules state file - running an install might help/i,
+  ...PLAYWRIGHT_SIGNATURES,
 ]
 
 /** True when a verification failure looks like a missing toolchain/dependency rather than a code defect. */
@@ -57,16 +83,34 @@ const REGISTRY = String.raw`(?:registry|npmjs\.org|yarnpkg\.com|npm\.pkg\.github
  * again). Returns a short host-facing reason, or undefined.
  */
 export function hostPreconditionFailure(output: string): string | undefined {
+  return hostPrecondition(output)?.reason
+}
+/** The blocker kind the matched precondition belongs to; undefined when the output is not a host precondition. */
+export function hostPreconditionKind(output: string): HostPreconditionKind | undefined {
+  return hostPrecondition(output)?.kind
+}
+const PLAYWRIGHT_CDN = String.raw`(?:cdn\.playwright\.dev|playwright\.azureedge\.net|playwright-akamai\.azureedge\.net|playwright-verizon\.azureedge\.net)`
+/** Classifies a host precondition with its kind, host-facing reason and the action that unblocks it. */
+export function hostPrecondition(output: string): HostPrecondition | undefined {
   const text = output.replace(/\u001b\[[0-9;?]*[A-Za-z]/g, '').slice(-16_000)
   const variable = /Environment variable not found \(([A-Za-z_][A-Za-z0-9_]*)\)/.exec(text)
-  if (variable) return `the environment variable ${variable[1]} is not available to verification commands, and a package-manager configuration file requires it`
+  if (variable) return { kind: 'environment-variable', reason: `the environment variable ${variable[1]} is not available to verification commands, and a package-manager configuration file requires it`,
+    requiredAction: `Make ${variable[1]} available to Specrails (for example in the login shell profile it loads), then retry the run.` }
   if (/\bYN0041\b/.test(text) || /YN0035[\s\S]{0,400}?Response Code: 40[13]\b/.test(text) || /Response code 40[13] \((?:Unauthorized|Forbidden)\)/i.test(text)
     || /npm (?:ERR!|error) code (?:E401|E403|ENEEDAUTH)\b/.test(text) || /ERR_PNPM_FETCH_40[13]\b/.test(text)
     || new RegExp(String.raw`\b40[13] (?:Unauthorized|Forbidden)\b[^\n]{0,80}https?://[^\s]*${REGISTRY}`, 'i').test(text)
-    || /\b(?:401|403) Client Error: (?:Unauthorized|Forbidden) for url/.test(text)) return 'the package registry rejected the credentials available to verification commands (HTTP 401/403)'
+    || /\b(?:401|403) Client Error: (?:Unauthorized|Forbidden) for url/.test(text)) return { kind: 'credential', reason: 'the package registry rejected the credentials available to verification commands (HTTP 401/403)',
+    requiredAction: 'Refresh the registry credentials Specrails can use (for example a new token in the login shell profile it loads), then retry the run.' }
+  // The browser download is checked before registry reachability: its CDN is
+  // not a package registry, and the fix is a different command.
+  if (/Failed to download (?:Chrome for Testing|Chromium|Firefox|WebKit|chromium|firefox|webkit|FFMPEG|ffmpeg)\b/i.test(text)
+    || new RegExp(String.raw`Error: (?:getaddrinfo ENOTFOUND|connect ETIMEDOUT|connect ECONNREFUSED|ECONNRESET|ETIMEDOUT)[^\n]{0,300}${PLAYWRIGHT_CDN}`, 'i').test(text)) return { kind: 'network', reason: 'the Playwright browser download cannot reach its CDN from the verification environment',
+    requiredAction: 'Download the Playwright browsers with network access (`npx playwright install`), then retry the run.' }
   if (/npm (?:ERR!|error) code (?:ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET)\b/.test(text) || /ERR_PNPM_META_FETCH_FAIL\b/.test(text)
-    || new RegExp(String.raw`\b(?:ENOTFOUND|EAI_AGAIN)\b[^\n]{0,200}${REGISTRY}|${REGISTRY}[^\n]{0,200}\b(?:ENOTFOUND|EAI_AGAIN)\b`, 'i').test(text)) return 'the package registry cannot be reached from the verification environment'
-  if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return 'git credentials needed to fetch a dependency are not available to verification commands'
+    || new RegExp(String.raw`\b(?:ENOTFOUND|EAI_AGAIN)\b[^\n]{0,200}${REGISTRY}|${REGISTRY}[^\n]{0,200}\b(?:ENOTFOUND|EAI_AGAIN)\b`, 'i').test(text)) return { kind: 'network', reason: 'the package registry cannot be reached from the verification environment',
+    requiredAction: 'Give the verification environment network access to the package registry, then retry the run.' }
+  if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return { kind: 'credential', reason: 'git credentials needed to fetch a dependency are not available to verification commands',
+    requiredAction: 'Make the git credentials that fetch the dependency (an SSH key or credential helper) available to Specrails, then retry the run.' }
   return undefined
 }
 
@@ -89,6 +133,17 @@ export function missingNodeDependencies(root: string): string[] {
   }
   return [...declared].filter(name => !existsSync(path.join(root, 'node_modules', name))).slice(0, 20)
 }
+/** Browser builds are ~150 MB each; the default 5-minute install bound is too short on a slow link. */
+const PLAYWRIGHT_INSTALL_TIMEOUT_MS = 10 * 60_000
+/** True when package.json declares `@playwright/test` or `playwright`; only those repositories get a browser install plan. */
+function declaresPlaywright(root: string): boolean {
+  let manifest: Record<string, unknown>
+  try { manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<string, unknown> } catch { return false }
+  return ['dependencies', 'devDependencies', 'optionalDependencies'].some(field => {
+    const block = manifest[field]
+    return !!block && typeof block === 'object' && ['@playwright/test', 'playwright'].some(name => Object.hasOwn(block as object, name))
+  })
+}
 /** The installs a repository root needs, judged from its manifests and the absence of their install output. */
 export function plannedInstalls(root: string, failureOutput = ''): EnvironmentInstall[] {
   const plans: EnvironmentInstall[] = []
@@ -104,6 +159,14 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
   if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length)) {
     const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
     plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error'] : ['install'] })
+  }
+  // After the dependency plan: a fresh worktree needs node_modules before
+  // `playwright install` can run at all.
+  if (isPlaywrightBrowserFailure(failureOutput) && declaresPlaywright(root)) {
+    const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npx'
+    const browser = playwrightBrowser(failureOutput)
+    plans.push({ ecosystem: 'node', root, command: runner, args: [...(runner === 'pnpm' ? ['exec'] : []), 'playwright', 'install', ...(browser ? [browser] : [])],
+      timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${browser ?? 'browsers'}` })
   }
   if ((has('requirements.txt') || has('pyproject.toml')) && !has('.venv') && !has('venv')) {
     const python = process.platform === 'win32' ? 'python' : 'python3'
@@ -139,7 +202,7 @@ export function installEnvironment(roots: readonly string[], io: { spawn?: typeo
     for (const plan of plannedInstalls(root, io.failureOutput ?? '')) {
       io.onEvent?.({ kind: 'tool-start', tool: plan.command, detail: `${plan.args.join(' ')} (${path.basename(root)})` })
       const run = (): SpawnSyncReturns<string> => {
-        try { return spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env }) }
+        try { return spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env }) }
         catch (error) { return { status: null, error: error as Error, stdout: '', stderr: '', pid: 0, output: [], signal: null } }
       }
       let result = run()
@@ -163,7 +226,7 @@ export function installEnvironment(roots: readonly string[], io: { spawn?: typeo
       }
       io.onEvent?.({ kind: 'tool-end', tool: plan.command })
       const ok = result.status === 0
-      const detail = ok ? `installed ${plan.ecosystem} dependencies in ${path.basename(root)}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
+      const detail = ok ? `installed ${plan.installs ?? `${plan.ecosystem} dependencies`} in ${path.basename(root)}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
       io.onEvent?.({ kind: 'text', text: `Environment: ${detail}` })
       const precondition = ok ? undefined : hostPreconditionFailure(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
       outcomes.push({ ...plan, ok, detail, ...(precondition ? { precondition } : {}) })
