@@ -6,7 +6,7 @@
 
 The agent workflow engine behind [Specrails Desktop](https://github.com/fjpulidop/specrails-desktop). Core does two things:
 
-1. **Installs** the specrails workflow into a project for Claude Code or Codex CLI: three roles (architect, developer, reviewer), the `implement` and `retry` entry points (`implement` runs one ticket or several tickets as one aggregate run) and the official OpenSpec skills.
+1. **Installs** the specrails workflow into a project for Claude Code, Codex CLI, Gemini CLI or Kimi Code: the `implement` and `retry` entry points (`implement` runs one ticket or several tickets as one aggregate run), provider settings and the official OpenSpec skills. The architect, developer and reviewer roles are defined by the runtime itself; no role file is installed.
 2. **Executes** Desktop-owned workflow definitions through the [programmatic agent runtime](docs/agent-runtime.md): independent agent and implementation operations, per-role providers, deterministic verification, durable recovery and OpenAI-compatible local models. Desktop owns workflow composition and editable loop agents; Core retains the old builtin for saved runs.
 
 Desktop bundles a pinned Core package and owns everything around it: worktrees, commits, pull requests, backlog and the user interface. Core never ships code on its own; it prepares a reviewed candidate for the host.
@@ -31,7 +31,7 @@ bin/specrails-core.mjs     npm bin shim → dist/installer/cli.js
 src/installer/             CLI, framework lifecycle, provider rendering
 src/pipeline/              pipeline journal, gates and verification receipts
 src/agent-runtime/         programmatic runtime: graph, executors, compact loop, recovery
-templates/                 role definitions, workflow commands, provider settings
+templates/                 workflow commands, provider settings, Kimi runner
 schemas/                   runtime configuration schema and fixtures
 integration-contract.json  Desktop ⇄ Core contract
 ```

@@ -1,11 +1,10 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { load as yaml } from 'js-yaml'
 import { afterEach, describe, expect, it } from 'vitest'
-import { scaffoldInstallation, geminiAgentLimitMetadata } from './scaffold.js'
+import { scaffoldInstallation } from './scaffold.js'
 
 const scriptDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const temporary: string[] = []
@@ -27,7 +26,7 @@ describe('installed provider pipeline fixtures', () => {
       execFileSync('git', ['-C', root, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'fixture'])
     }
     const providerDir = provider === 'kimi' ? '.kimi-code' : '.' + provider
-    scaffoldInstallation({ scriptDir, codeRoot: repo, artifactRoot: workspace, provider, providerDir, seedProjectDirs: false })
+    scaffoldInstallation({ scriptDir, codeRoot: repo, artifactRoot: workspace, provider, providerDir })
     const workflow = provider === 'gemini'
       ? path.join(workspace, providerDir, 'commands', 'specrails', 'implement.toml')
       : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-implement' : 'implement', 'SKILL.md')
@@ -39,10 +38,11 @@ describe('installed provider pipeline fixtures', () => {
       ? path.join(workspace, providerDir, 'commands', 'specrails', 'batch-implement.toml')
       : path.join(workspace, providerDir, 'skills', provider === 'kimi' ? 'specrails-batch-implement' : 'batch-implement')
     expect(() => readFileSync(retiredBatch)).toThrow()
+    // Roles are runtime-defined: no provider receives a role file.
+    expect(() => readFileSync(path.join(workspace, providerDir, provider === 'gemini' ? 'agents' : path.join('skills', 'rails')))).toThrow()
+    if (provider === 'kimi') expect(readdirSync(path.join(workspace, providerDir, 'skills')).filter(name => name.startsWith('sr-'))).toEqual([])
+    expect(() => readFileSync(path.join(workspace, providerDir, 'agent-memory'))).toThrow()
     if (provider === 'gemini') {
-      const role = readFileSync(path.join(workspace, providerDir, 'agents', 'sr-developer.md'), 'utf8')
-      const metadata = yaml(role.split('---')[1]!) as { tools: string[] }
-      expect(metadata.tools).toContain('activate_skill')
       expect(readFileSync(path.join(workspace, providerDir, 'commands', 'specrails', 'retry.toml'), 'utf8')).toContain('agent-runtime.mjs resume --context')
     }
     const backlog = { tickets: { '1': { status: 'todo' }, '2': { status: 'todo' } } }
@@ -100,11 +100,5 @@ describe('installed provider pipeline fixtures', () => {
     write(path.join(source, 'integration-contract.json'), { execution: { runtime: '.specrails/runtime/pipeline.mjs' } })
     expect(() => scaffoldInstallation({ scriptDir: source, codeRoot: dir, artifactRoot: workspace, provider: 'codex', providerDir: '.codex' })).toThrow('compiled module is missing')
     expect(() => readFileSync(path.join(workspace, '.codex', 'skills', 'implement', 'SKILL.md'))).toThrow()
-  })
-  it('opts into turn metadata only for a verified loader capability', () => {
-    expect(geminiAgentLimitMetadata({})).toEqual([])
-    expect(geminiAgentLimitMetadata({ SPECRAILS_GEMINI_MAX_TURNS: '80' })).toEqual([])
-    expect(geminiAgentLimitMetadata({ SPECRAILS_GEMINI_AGENT_LIMITS: 'supported', SPECRAILS_GEMINI_MAX_TURNS: '80' })).toEqual(['max_turns: 80'])
-    expect(() => geminiAgentLimitMetadata({ SPECRAILS_GEMINI_AGENT_LIMITS: 'supported', SPECRAILS_GEMINI_MAX_TURNS: '0' })).toThrow('1 to 200')
   })
 })

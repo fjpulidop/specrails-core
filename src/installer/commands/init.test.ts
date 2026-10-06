@@ -9,7 +9,7 @@ import { isDir, isSymlink, mkdirp, pathExists, readTextFile, writeFileLf } from 
 import { initRepo } from '../util/git.js'
 import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
 import { resetLoggerStreams, setLoggerStreams } from '../util/logger.js'
-import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit, warnUnknownSelectedAgents } from './init.js'
+import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit, snapshotWorkspaceProviderSelections } from './init.js'
 
 /**
  * Integration-style tests for `runInit`. Uses a real filesystem
@@ -18,23 +18,39 @@ import { KIMI_REQUIRED_OPENSPEC_SKILLS, runInit, warnUnknownSelectedAgents } fro
  * claude-auth / npm checks which would otherwise require an
  * installed Claude CLI in the test environment.
  *
- * Platform-aware: per-FILE agent links are symlinks on POSIX but COPIES on
- * Windows (Windows file-symlinks need admin/Dev-Mode). So the framework agent
- * assertion checks placement + content (holds for symlink OR copy); the stronger
- * `isSymbolicLink()` check is guarded POSIX-only so coverage isn't weakened.
+ * Platform-aware: whole-dir links are symlinks on POSIX but junctions on
+ * Windows, so link assertions check that the path RESOLVES into the framework;
+ * the stronger `isSymlink()` check is guarded POSIX-only so coverage isn't weakened.
  */
 
 const IS_WIN = process.platform === 'win32'
+
+/** Relative path of the managed workflow file inside a claude provider dir. */
+const IMPLEMENT = path.join('commands', 'specrails', 'implement.md')
+
+/** A role id an older Core shipped; composed so the retired names never appear literally. */
+const legacyRole = (role: string): string => `sr-${role}`
+
+/** Capture every logger line while `run` executes. */
+async function captureLog(run: () => Promise<void>): Promise<string> {
+  const lines: string[] = []
+  const sink = new PassThrough()
+  sink.on('data', (chunk: Buffer) => lines.push(chunk.toString()))
+  setLoggerStreams({ out: sink, err: sink })
+  try {
+    await run()
+  } finally {
+    resetLoggerStreams()
+  }
+  return lines.join('')
+}
 
 async function setupFakeScriptDir(
   scriptDir: string,
   version = '4.2.0',
 ): Promise<void> {
   writeFileLf(path.join(scriptDir, 'package.json'), `${JSON.stringify({ version })}\n`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-architect.md'), `${version}-arch`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-developer.md'), `${version}-dev`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-reviewer.md'), `${version}-reviewer`)
-  writeFileLf(path.join(scriptDir, 'templates', 'agents', 'sr-merge-resolver.md'), 'merge')
+  writeFileLf(path.join(scriptDir, 'templates', IMPLEMENT), `${version}-implement`)
   writeFileLf(path.join(scriptDir, 'templates', 'rules', 'general.md'), 'rules')
   writeFileLf(
     path.join(scriptDir, 'templates', 'kimi', 'specrails', 'run-skill.mjs'),
@@ -156,7 +172,7 @@ describe('runInit', () => {
     }
   }
 
-  it('installs the core agents into a fresh git repo', async () => {
+  it('installs the workflow commands into a fresh git repo and places no role file', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -182,7 +198,9 @@ describe('runInit', () => {
     const fw = frameworkFor()
     const fwClaude = path.join(fw, '4.2.0', '.claude')
     expect(isDir(path.join(fwClaude, 'commands', 'specrails')), 'framework commands materialized').toBe(true)
-    expect(pathExists(path.join(fw, '4.2.0', '.specrails', 'setup-templates', 'agents')), 'setup-templates in framework').toBe(true)
+    expect(pathExists(path.join(fw, '4.2.0', '.specrails', 'setup-templates', 'commands')), 'setup-templates in framework').toBe(true)
+    // Roles are runtime-defined: the framework store carries no agents/ subtree.
+    expect(pathExists(path.join(fwClaude, 'agents'))).toBe(false)
     // `current` points at the version dir.
     expect(realpathSync(path.join(fw, 'current'))).toBe(realpathSync(path.join(fw, '4.2.0')))
 
@@ -196,18 +214,10 @@ describe('runInit', () => {
     expect(realpathSync(path.join(ws, '.claude', 'commands'))).toBe(
       realpathSync(path.join(fwClaude, 'commands')),
     )
-    // `agents/` is a REAL dir of per-file links (so custom-*.md can coexist);
-    // each framework agent is PLACED with matching content (symlink on POSIX,
-    // copy on Windows). The stronger symlink check is POSIX-only.
-    expect(isDir(path.join(ws, '.claude', 'agents'))).toBe(true)
-    expect(isSymlink(path.join(ws, '.claude', 'agents'))).toBe(false)
-    const wsArch = path.join(ws, '.claude', 'agents', 'sr-architect.md')
-    expect(pathExists(wsArch)).toBe(true)
-    expect(readTextFile(wsArch)).toBe(readTextFile(path.join(fwClaude, 'agents', 'sr-architect.md')))
-    if (!IS_WIN) expect(lstatSync(wsArch).isSymbolicLink()).toBe(true)
-    // `agent-memory/` is a REAL writable dir — NEVER a link into the framework.
-    expect(isDir(path.join(ws, '.claude', 'agent-memory', 'sr-architect'))).toBe(true)
-    expect(isSymlink(path.join(ws, '.claude', 'agent-memory'))).toBe(false)
+    expect(readTextFile(path.join(ws, '.claude', IMPLEMENT))).toBe('4.2.0-implement')
+    // No role file, no agents/ dir and no agent-memory: roles are runtime-defined.
+    expect(pathExists(path.join(ws, '.claude', 'agents'))).toBe(false)
+    expect(pathExists(path.join(ws, '.claude', 'agent-memory'))).toBe(false)
     // The workspace records the framework version it consumes.
     expect(readFileSync(path.join(ws, '.specrails', 'specrails-version'), 'utf8').trim()).toBe('4.2.0')
     // setup-templates is NOT copied per-workspace anymore (it lives in framework).
@@ -235,7 +245,7 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })
 
-  it('reads provider + agents from install-config.yaml (tolerating a legacy tier key) when --from-config is passed', async () => {
+  it('reads the provider from install-config.yaml, tolerates a legacy tier key and ignores the legacy agents selection with a warning', async () => {
     const scriptDir = path.join(tmpDir, 'core')
     const repoRoot = path.join(tmpDir, 'repo')
     mkdirp(repoRoot)
@@ -250,25 +260,28 @@ describe('runInit', () => {
         'provider: claude',
         'tier: quick',
         'agents:',
-        '  selected: [sr-architect]',
+        `  selected: [${legacyRole('architect')}]`,
         '',
       ].join('\n'),
     )
 
-    await runInit({
-      'root-dir': repoRoot,
-      yes: true,
-      provider: 'claude',
-      'from-config': true,
-      relocate: true,
+    const log = await captureLog(async () => {
+      await runInit({
+        'root-dir': repoRoot,
+        yes: true,
+        provider: 'claude',
+        'from-config': true,
+        relocate: true,
+      })
     })
 
+    // One deprecation warning, the install succeeds, and no role file is placed.
+    expect(log).toContain('Loaded install config from')
+    expect(log.match(/agents\.selected.*ignored since Core 6\.3/g)).toHaveLength(1)
+    expect(log).toContain('init complete')
     const ws = workspaceFor(repoRoot)
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-developer.md'))).toBe(true)
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-reviewer.md'))).toBe(true)
-    // Removed v4 agents never exist — only the core trio ships.
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-merge-resolver.md'))).toBe(false)
+    expect(pathExists(path.join(ws, '.claude', IMPLEMENT))).toBe(true)
+    expect(pathExists(path.join(ws, '.claude', 'agents'))).toBe(false)
     // NOTE: this test pre-creates repo/.specrails/install-config.yaml (a USER
     // file), so the repo-immutability invariant is asserted in the other tests.
     // Here we only assert the installer wrote NO provider artifacts into the repo.
@@ -329,7 +342,7 @@ describe('runInit', () => {
         'provider: kimi',
         'tier: quick',
         'agents:',
-        '  selected: [sr-architect]',
+        `  selected: [${legacyRole('architect')}]`,
         '',
       ].join('\n'),
     )
@@ -364,18 +377,20 @@ describe('runInit', () => {
     })
     expect(result.provider).toBe('claude')
 
-    // The repo received the framework agents as REAL regular files — NOT symlinks
-    // into $HOME/.specrails/framework.
-    const repoArch = path.join(repoRoot, '.claude', 'agents', 'sr-architect.md')
-    expect(pathExists(repoArch), 'repo has sr-architect.md').toBe(true)
-    expect(lstatSync(repoArch).isSymbolicLink(), 'sr-architect.md is NOT a symlink').toBe(false)
-    expect(lstatSync(repoArch).isFile(), 'sr-architect.md is a regular file').toBe(true)
-    expect(readTextFile(repoArch).length, 'sr-architect.md has content').toBeGreaterThan(0)
+    // The repo received the framework commands as REAL regular files — NOT
+    // symlinks into $HOME/.specrails/framework.
+    const repoImplement = path.join(repoRoot, '.claude', IMPLEMENT)
+    expect(pathExists(repoImplement), 'repo has implement.md').toBe(true)
+    expect(lstatSync(repoImplement).isSymbolicLink(), 'implement.md is NOT a symlink').toBe(false)
+    expect(lstatSync(repoImplement).isFile(), 'implement.md is a regular file').toBe(true)
+    expect(readTextFile(repoImplement)).toBe('4.2.0-implement')
 
     // Whole-dir subtrees (commands) are also REAL dirs, not symlinks, in-repo.
     const repoCommands = path.join(repoRoot, '.claude', 'commands', 'specrails')
     expect(isDir(repoCommands)).toBe(true)
     expect(isSymlink(path.join(repoRoot, '.claude', 'commands'))).toBe(false)
+    // No role file lands in the repo either.
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents'))).toBe(false)
 
     // The in-repo marker: the specrails-version file lives in the repo's
     // .specrails/, not in a relocated $HOME workspace.
@@ -383,9 +398,6 @@ describe('runInit', () => {
     expect(
       readFileSync(path.join(repoRoot, '.specrails', 'specrails-version'), 'utf8').trim(),
     ).toBe('4.2.0')
-
-    // agent-memory is a REAL writable dir either way (never linked).
-    expect(isDir(path.join(repoRoot, '.claude', 'agent-memory', 'sr-architect'))).toBe(true)
 
     // No relocated workspace was allocated for this repo: the resolver falls back
     // to the in-repo layout (artifactRoot === the repo's canonical realpath).
@@ -411,10 +423,10 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
 
     // The relocated $HOME workspace (under SPECRAILS_REGISTRY_HOME) holds the
-    // agents instead.
+    // commands instead.
     const ws = workspaceFor(repoRoot)
     expect(ws).not.toBe(repoRoot)
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+    expect(pathExists(path.join(ws, '.claude', IMPLEMENT))).toBe(true)
     expect(pathExists(path.join(ws, '.specrails', 'specrails-version'))).toBe(true)
   })
 
@@ -436,7 +448,7 @@ describe('runInit', () => {
     const ws = workspaceFor(repoRoot)
     const fw = frameworkFor()
     const claudeCommands = path.join(ws, '.claude', 'commands')
-    const claudeArchitect = path.join(ws, '.claude', 'agents', 'sr-architect.md')
+    const claudeImplement = path.join(ws, '.claude', IMPLEMENT)
     writeFileLf(
       path.join(ws, '.claude', 'agents', 'custom-owner.md'),
       'user-owned-claude-agent\n',
@@ -444,7 +456,7 @@ describe('runInit', () => {
     expect(realpathSync(claudeCommands)).toBe(
       realpathSync(path.join(fw, '4.11.0', '.claude', 'commands')),
     )
-    expect(readTextFile(claudeArchitect)).toBe('4.11.0-arch')
+    expect(readTextFile(claudeImplement)).toBe('4.11.0-implement')
 
     // Simulate installing the next Core release while selecting Kimi. Because
     // `current` is global, the 4.12 target must be complete for BOTH providers
@@ -468,7 +480,7 @@ describe('runInit', () => {
     expect(realpathSync(claudeCommands)).toBe(
       realpathSync(path.join(fw, '4.12.0', '.claude', 'commands')),
     )
-    expect(readTextFile(claudeArchitect)).toBe('4.12.0-arch')
+    expect(readTextFile(claudeImplement)).toBe('4.12.0-implement')
     expect(
       readTextFile(path.join(ws, '.claude', 'agents', 'custom-owner.md')),
     ).toBe('user-owned-claude-agent\n')
@@ -476,8 +488,9 @@ describe('runInit', () => {
     // The newly selected provider is assembled from the same destination
     // version, while the previous version remains available for rollback.
     expect(
-      pathExists(path.join(ws, '.kimi-code', 'skills', 'sr-architect', 'SKILL.md')),
+      pathExists(path.join(ws, '.kimi-code', 'skills', 'specrails-implement', 'SKILL.md')),
     ).toBe(true)
+    expect(pathExists(path.join(ws, '.kimi-code', 'agent-memory'))).toBe(false)
     expect(pathExists(path.join(ws, '.kimi-code', 'specrails', 'run-skill.mjs'))).toBe(true)
     expect(isDir(path.join(fw, '4.11.0', '.claude'))).toBe(true)
 
@@ -509,7 +522,33 @@ describe('runInit', () => {
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
     const ws = workspaceFor(repoRoot)
     expect(ws).not.toBe(repoRoot)
-    expect(pathExists(path.join(ws, '.claude', 'agents', 'sr-architect.md'))).toBe(true)
+    expect(pathExists(path.join(ws, '.claude', IMPLEMENT))).toBe(true)
+  })
+
+  it('recognizes a commands-only workspace on reinstall and never warns about missing roles', async () => {
+    const scriptDir = path.join(tmpDir, 'core')
+    const repoRoot = path.join(tmpDir, 'repo-reinstall')
+    mkdirp(repoRoot)
+    await setupFakeScriptDir(scriptDir)
+    await initRepo(repoRoot)
+    process.env.SPECRAILS_CORE_SCRIPT_DIR = scriptDir
+
+    await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
+    expect(pathExists(path.join(repoRoot, '.claude', IMPLEMENT))).toBe(true)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents'))).toBe(false)
+    // The in-repo workspace is an installed claude provider — by its commands.
+    expect(snapshotWorkspaceProviderSelections(realpathSync(repoRoot))).toEqual({ claude: [] })
+
+    const log = await captureLog(async () => {
+      await runInit({ 'root-dir': repoRoot, yes: true, provider: 'claude' })
+    })
+    expect(log).toContain('init complete')
+    expect(log).not.toMatch(/role|agent/i)
+    expect(pathExists(path.join(repoRoot, '.claude', 'agents'))).toBe(false)
+    const manifest = JSON.parse(
+      readTextFile(path.join(repoRoot, '.specrails', 'specrails-manifest.json')),
+    ) as { providers: string[] }
+    expect(manifest.providers).toEqual(['claude'])
   })
 
   // Uses a POSIX shell script as a fake openspec binary, pointed at via
@@ -636,39 +675,4 @@ describe('runInit', () => {
       expect(manifest.primary_provider).toBe('kimi')
     },
   )
-})
-
-describe('warnUnknownSelectedAgents', () => {
-  const capture = (): { lines: string[]; restore: () => void } => {
-    const lines: string[] = []
-    const sink = new PassThrough()
-    sink.on('data', (chunk: Buffer) => lines.push(chunk.toString()))
-    setLoggerStreams({ out: sink, err: sink })
-    return { lines, restore: () => resetLoggerStreams() }
-  }
-
-  it('warns for each selected agent that no longer ships', () => {
-    const { lines, restore } = capture()
-    try {
-      warnUnknownSelectedAgents(['sr-architect', 'sr-frontend-developer', 'sr-test-writer'])
-    } finally {
-      restore()
-    }
-    const out = lines.join('')
-    expect(out).toContain(`'sr-frontend-developer'`)
-    expect(out).toContain(`'sr-test-writer'`)
-    expect(out).toContain('removed in v5')
-    expect(out).not.toContain(`'sr-architect'`)
-  })
-
-  it('is silent for the core trio and for undefined', () => {
-    const { lines, restore } = capture()
-    try {
-      warnUnknownSelectedAgents(['sr-architect', 'sr-developer', 'sr-reviewer'])
-      warnUnknownSelectedAgents(undefined)
-    } finally {
-      restore()
-    }
-    expect(lines.join('')).toBe('')
-  })
 })

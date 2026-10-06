@@ -125,7 +125,7 @@ describe('pipeline runtime journal and verification receipts', () => {
     await verifyPipeline(context, request())
     for (const repo of context.repositories) {
       for (const provider of ['.claude', '.codex', '.gemini', '.kimi-code', '.specrails']) {
-        write(path.join(repo.path, provider, 'agent-memory', 'sr-reviewer', 'MEMORY.md'), 'Review notes after verification')
+        write(path.join(repo.path, provider, 'agent-memory', 'custom-reviewer', 'MEMORY.md'), 'Review notes after verification')
       }
     }
     expect(inspectPipeline(context).verification.valid).toBe(true)
@@ -135,7 +135,7 @@ describe('pipeline runtime journal and verification receipts', () => {
       expect(inspectPipeline(context).verification.reasons).toContain('Candidate files changed')
       rmSync(target)
     }
-    const memory = '.claude/agent-memory/sr-reviewer/MEMORY.md'
+    const memory = '.claude/agent-memory/custom-reviewer/MEMORY.md'
     const result = spawnSync('git', ['-C', context.artifactRoot, 'add', memory], { encoding: 'utf8' })
     expect(result.status, result.stderr).toBe(0)
     expect(inspectPipeline(context).verification.reasons).toContain('Candidate files changed')

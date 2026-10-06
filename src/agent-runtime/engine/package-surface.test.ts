@@ -48,9 +48,9 @@ describe('package exports and files', () => {
     expect(pkg.files.some((entry: string) => /^src\b|test/.test(entry))).toBe(false)
     const pinned = read('pinned-versions.json')
     expect(pinned.openspec).toBe(pkg.dependencies['@fission-ai/openspec'])
-    expect(readdirSync(path.join(packageRoot, 'templates')).sort()).toEqual(['agents', 'codex-skills', 'commands', 'kimi', 'settings'])
-    expect(readdirSync(path.join(packageRoot, 'templates', 'agents')).sort()).toEqual(['sr-architect.md', 'sr-developer.md', 'sr-reviewer.md'])
-    for (const relative of ['templates/commands/specrails', 'templates/codex-skills/rails', 'templates/kimi/specrails', 'templates/settings/codex-config.toml', 'templates/settings/gemini-settings.json']) {
+    // Roles are runtime-defined (src/agent-runtime/prompts.ts); no role template ships.
+    expect(readdirSync(path.join(packageRoot, 'templates')).sort()).toEqual(['commands', 'kimi', 'settings'])
+    for (const relative of ['templates/commands/specrails', 'templates/kimi/specrails', 'templates/settings/codex-config.toml', 'templates/settings/gemini-settings.json']) {
       expect(existsSync(path.join(packageRoot, relative)), relative).toBe(true)
     }
     const schema = read('schemas/workflow-definition.schema.json')

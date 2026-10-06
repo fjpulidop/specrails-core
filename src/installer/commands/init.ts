@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
 import { runCommand } from '../util/exec.js'
-import { info, ok, step, warn } from '../util/logger.js'
+import { info, ok, step } from '../util/logger.js'
 import {
   isDir,
   isSymlink,
@@ -36,7 +36,6 @@ import { checkPrerequisites } from '../phases/prereqs.js'
 import { derivedPaths } from '../phases/provider-detect.js'
 import { materializeFrameworkVersion } from '../phases/framework-lifecycle.js'
 import {
-  CORE_AGENTS,
   assembleProjectWorkspace,
   installFramework,
 } from '../phases/scaffold.js'
@@ -49,7 +48,8 @@ import { frameworkRoot, resolveArtifacts } from '../util/registry.js'
  *   --root-dir <path>     Target repo (default: cwd)
  *   --yes / -y            Non-interactive; auto-init git + accept defaults
  *   --provider <name>     Force provider (claude, codex, gemini, or kimi)
- *   --from-config [<p>]   Read provider + agents from install-config.yaml
+ *   --from-config [<p>]   Read the provider from install-config.yaml (a legacy
+ *                         `agents` section is validated and ignored)
  *   --relocate            Relocate artifacts to the $HOME workspace (symlinked
  *                         from the bundled framework) instead of installing them
  *                         IN-REPO. Default is in-repo so a standalone user's
@@ -87,12 +87,12 @@ type WorkspaceProviderSelections = Partial<
 >
 
 /**
- * Snapshot the provider/role inventory exposed by one live workspace before a
- * global framework version swap. This matters on Windows: directory junctions
- * resolve their target when they are created, so a workspace link made through
- * `framework/current` must be recreated after `current` moves. Keeping the
- * exact visible `sr-*` set also avoids widening or narrowing a project's
- * optional role selection during that refresh.
+ * Snapshot the providers exposed by one live workspace before a global
+ * framework version swap. This matters on Windows: directory junctions resolve
+ * their target when they are created, so a workspace link made through
+ * `framework/current` must be recreated after `current` moves. Roles are
+ * runtime-defined since Core 6.3, so every provider reports an empty selection;
+ * the keys are what drive the multi-provider reassembly.
  */
 export function snapshotWorkspaceProviderSelections(
   workspace: string,
@@ -102,55 +102,29 @@ export function snapshotWorkspaceProviderSelections(
   try {
     const manifest = JSON.parse(readTextFile(path.join(workspace, '.specrails', 'specrails-manifest.json'))) as { providers?: unknown }
     if (Array.isArray(manifest.providers)) recorded = manifest.providers.filter((value): value is string => typeof value === 'string')
-  } catch { /* Legacy manifests are recognized by the complete Core role trio. */ }
+  } catch { /* Legacy manifests: a provider counts only through its managed links. */ }
   for (const provider of WORKSPACE_PROVIDER_ORDER) {
     const { providerDir } = derivedPaths(provider)
     const providerRoot = path.join(workspace, providerDir)
     if (
       !pathExists(providerRoot) ||
       (!workspaceHasManagedProviderLink(providerRoot, provider)
-        && !(recorded.includes(provider) && hasCopiedCoreArtifacts(providerRoot, provider))
-        && !hasCopiedCoreRoles(providerRoot, provider))
+        && !(recorded.includes(provider) && hasCopiedCoreArtifacts(providerRoot, provider)))
     ) {
       continue
     }
-
-    const roleRoot =
-      provider === 'codex'
-        ? path.join(workspace, providerDir, 'skills', 'rails')
-        : provider === 'kimi'
-          ? path.join(workspace, providerDir, 'skills')
-          : path.join(workspace, providerDir, 'agents')
-    const ids = listDir(roleRoot)
-      .filter((entry) =>
-        provider === 'claude' || provider === 'gemini'
-          ? path.basename(entry).endsWith('.md')
-          : isDir(entry),
-      )
-      .map((entry) => {
-        const name = path.basename(entry)
-        return name.endsWith('.md') ? name.slice(0, -3) : name
-      })
-      .filter((id) => /^sr-[a-z0-9-]+$/.test(id))
-    selections[provider] = [...new Set(ids)].sort()
+    selections[provider] = []
   }
   return selections
 }
 
+/** A copied (in-repo) install is recognised by its workflow commands or runtime, never by role files. */
 function hasCopiedCoreArtifacts(providerRoot: string, provider: Provider): boolean {
-  return hasCopiedCoreRoles(providerRoot, provider) || pathExists(
+  return pathExists(
     provider === 'codex' ? path.join(providerRoot, 'skills', 'implement', 'SKILL.md')
       : provider === 'kimi' ? path.join(providerRoot, 'specrails', 'run-skill.mjs')
         : path.join(providerRoot, 'commands', 'specrails', provider === 'gemini' ? 'implement.toml' : 'implement.md'),
   )
-}
-
-function hasCopiedCoreRoles(providerRoot: string, provider: Provider): boolean {
-  return [...CORE_AGENTS].every((id) => pathExists(
-    provider === 'codex' ? path.join(providerRoot, 'skills', 'rails', id, 'SKILL.md')
-      : provider === 'kimi' ? path.join(providerRoot, 'skills', id, 'SKILL.md')
-        : path.join(providerRoot, 'agents', id + '.md'),
-  ))
 }
 
 function workspaceHasManagedProviderLink(
@@ -173,11 +147,10 @@ function workspaceHasManagedProviderLink(
     return true
   }
 
-  const granularRoot =
-    provider === 'kimi'
-      ? path.join(providerRoot, 'skills')
-      : path.join(providerRoot, 'agents')
-  return listDir(granularRoot).some((entry) => isSymlink(entry))
+  // Kimi links its skills one directory at a time; claude/gemini have no
+  // granular region any more (role files are no longer linked per file).
+  if (provider !== 'kimi') return false
+  return listDir(path.join(providerRoot, 'skills')).some((entry) => isSymlink(entry))
 }
 
 interface ReassembleWorkspaceProvidersInput {
@@ -187,7 +160,6 @@ interface ReassembleWorkspaceProvidersInput {
   codeRoot: string
   scriptDir: string
   selectedProvider: Provider
-  selectedAgents?: string[]
   previousSelections: WorkspaceProviderSelections
   copyStatics: boolean
 }
@@ -217,10 +189,6 @@ function reassembleWorkspaceProviders(
       version: input.version,
       codeRoot: input.codeRoot,
       scriptDir: input.scriptDir,
-      selectedAgents:
-        provider === input.selectedProvider
-          ? input.selectedAgents ?? input.previousSelections[provider]
-          : input.previousSelections[provider],
       copyStatics: input.copyStatics,
     })
   }
@@ -261,10 +229,10 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     explicitProvider = flags.provider
   }
 
-  // --from-config: read provider + agents from yaml.
+  // --from-config: read the provider from yaml. The legacy `agents` section is
+  // validated (and warned about) by `loadInstallConfig`; roles are runtime-defined.
   const fromConfigFlag = flags['from-config']
   let providerHint: Provider | undefined = explicitProvider
-  let selectedAgentsHint: string[] | undefined
 
   if (fromConfigFlag !== undefined) {
     const explicitPath = typeof fromConfigFlag === 'string' ? fromConfigFlag : undefined
@@ -278,9 +246,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
         )
       }
       providerHint = config.provider
-      selectedAgentsHint = config.agents.selected
       info(`Loaded install config from ${resolved}`)
-      warnUnknownSelectedAgents(selectedAgentsHint)
     } else {
       info(
         `install-config.yaml not found at ${resolved} — falling back to ${
@@ -327,7 +293,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   // Bundled-framework flow: materialize the provider-INVARIANT framework ONCE
   // under `<home>/.specrails/framework/<version>/<providerDir>/`, point `current`
   // at it, then SYMLINK that copy into the workspace and seed the project layer
-  // (agent-memory, manifest, instruction files, gemini acks). The framework
+  // (manifest, instruction files). The framework
   // source for standalone npx is the package's templates/+commands/ (scriptDir).
   step('Phase 2 & 3: Installing specrails artifacts')
   const { providerDir } = derivedPaths(prereqs.provider)
@@ -356,7 +322,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     provider: prereqs.provider,
     providerDir,
     version,
-    selectedAgents: selectedAgentsHint,
     requiredProviders: Object.keys(previousSelections) as Provider[],
   })
 
@@ -367,7 +332,6 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
     codeRoot,
     scriptDir,
     selectedProvider: prereqs.provider,
-    selectedAgents: selectedAgentsHint,
     previousSelections,
     // In-repo: COPY the framework statics as real, committable files. Relocated:
     // symlink from the framework store (O(1) update on a version swap).
@@ -385,7 +349,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   if (artifactRoot !== codeRoot) recordSuccessfulInstall(repoRoot, { home: process.env.SPECRAILS_REGISTRY_HOME, providers: [prereqs.provider], coreVersion: version })
 
   step('Installation complete')
-  info('Agents, commands, and rules were placed directly — no follow-up step required.')
+  info('Commands and skills were placed directly — no follow-up step required.')
   // Terminal sentinel for programmatic consumers (specrails-desktop's setup
   // wizard matches this exact line via regex to mark the "init complete"
   // checkpoint). The sentinel line below is FROZEN — the downstream setup
@@ -400,31 +364,12 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   })
 }
 
-/**
- * Warn (once per id) about `agents.selected` entries that have no shipped
- * template — typically a pre-v5 install-config.yaml still listing removed
- * agents. They are skipped at placement; the warning tells the user why and
- * points at the v5 extension path.
- */
-export function warnUnknownSelectedAgents(selected: string[] | undefined): void {
-  if (!selected) return
-  for (const id of selected) {
-    if (!CORE_AGENTS.has(id)) {
-      warn(
-        `install-config.yaml selects agent '${id}', which specrails-core no longer ships — ` +
-          `skipping (removed in v5).`,
-      )
-    }
-  }
-}
-
 interface EnsureFrameworkInput {
   scriptDir: string
   frameworkDir: string
   provider: Provider
   providerDir: string
   version: string
-  selectedAgents?: string[]
   /**
    * Additional providers that must remain available through the global
    * `framework/current` pointer after this version transition.
@@ -464,7 +409,6 @@ export function ensureFramework(input: EnsureFrameworkInput): void {
       provider: input.provider,
       providerDir: input.providerDir,
       version: input.version,
-      selectedAgents: input.selectedAgents,
     })
     return
   }

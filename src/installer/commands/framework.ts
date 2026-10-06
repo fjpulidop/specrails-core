@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { assertNoCoreDowngrade, currentFrameworkVersion, withFrameworkLifecycleLock } from '../util/install-transaction.js'
 import { InstallerError } from '../util/errors.js'
-import { ok, step } from '../util/logger.js'
+import { ok, step, warn } from '../util/logger.js'
 import { pathExists, readTextFile } from '../util/fs.js'
 
 import { type Provider } from '../phases/provider-detect.js'
@@ -56,7 +56,11 @@ export interface AssembleFlags {
   provider?: string | boolean
   version?: string | boolean
   'code-root'?: string | boolean
-  /** Comma-separated per-project agent allow-list (links a subset of the superset). */
+  /**
+   * Deprecated since Core 6.3: roles are runtime-defined, so there is nothing
+   * to select. Still parsed so older Desktop builds keep working; ignored with
+   * a warning.
+   */
   'selected-agents'?: string | boolean
 }
 
@@ -221,8 +225,8 @@ export async function runSwapCurrent(flags: SwapCurrentFlags): Promise<SwapCurre
 
 /**
  * `specrails-core assemble` — SYMLINK the materialized framework subtrees into a
- * project workspace and seed the per-project layer (agent-memory, manifest,
- * instruction/settings files, gemini acks). NO network, NO openspec init.
+ * project workspace and seed the per-project layer (manifest,
+ * instruction/settings files). NO network, NO openspec init.
  */
 export async function runAssemble(flags: AssembleFlags): Promise<AssembleOutcome> {
   const scriptDir = resolveScriptDir()
@@ -250,11 +254,9 @@ export async function runAssemble(flags: AssembleFlags): Promise<AssembleOutcome
 
   assertFrameworkVersionComplete(frameworkDir, version, [provider])
 
-  const selectedAgentsFlag = flags['selected-agents']
-  const selectedAgents =
-    typeof selectedAgentsFlag === 'string' && selectedAgentsFlag.length > 0
-      ? selectedAgentsFlag.split(',').map((s) => s.trim()).filter((s) => s.length > 0)
-      : undefined
+  if (flags['selected-agents'] !== undefined) {
+    warn('--selected-agents is ignored since Core 6.3: roles are runtime-defined and no role file is installed.')
+  }
 
   step(`Assembling workspace ${workspace} ← framework ${version} (${provider})`)
   assembleProjectWorkspace({
@@ -265,7 +267,6 @@ export async function runAssemble(flags: AssembleFlags): Promise<AssembleOutcome
     version,
     codeRoot,
     scriptDir,
-    selectedAgents,
   })
   ok(`Linked ${providerDir}/ from framework ${version} + seeded project layer`)
 

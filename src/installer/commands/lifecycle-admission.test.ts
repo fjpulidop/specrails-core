@@ -155,21 +155,35 @@ describe('framework lifecycle admission', () => {
 })
 
 describe('copied provider inventory', () => {
-  it('discovers all copied providers recorded in the manifest and retains their role selections', () => {
+  /** A role id an older Core shipped; composed so the retired names never appear literally. */
+  const legacyRole = (role: string): string => `sr-${role}`
+  const commandArtifact = (provider: string): string[] =>
+    provider === 'codex' ? ['.codex', 'skills', 'implement', 'SKILL.md']
+      : provider === 'kimi' ? ['.kimi-code', 'specrails', 'run-skill.mjs']
+        : [`.${provider}`, 'commands', 'specrails', provider === 'gemini' ? 'implement.toml' : 'implement.md']
+
+  it('discovers all copied providers recorded in the manifest by their commands and runtime, reporting no roles', () => {
     file(path.join(repo, '.specrails', 'specrails-manifest.json'), JSON.stringify({ providers: ['claude', 'codex', 'gemini', 'kimi'] }))
-    for (const provider of ['claude', 'codex', 'gemini', 'kimi']) {
-      const dir = provider === 'kimi' ? '.kimi-code' : '.' + provider
-      for (const role of ['sr-architect', 'sr-developer', 'sr-reviewer']) {
-        file(path.join(repo, dir, ...(provider === 'codex' ? ['skills', 'rails', role, 'SKILL.md'] : provider === 'kimi' ? ['skills', role, 'SKILL.md'] : ['agents', role + '.md'])), 'role')
-      }
-    }
-    expect(Object.keys(snapshotWorkspaceProviderSelections(repo))).toEqual(['claude', 'codex', 'gemini', 'kimi'])
-    for (const roles of Object.values(snapshotWorkspaceProviderSelections(repo))) expect(roles).toEqual(['sr-architect', 'sr-developer', 'sr-reviewer'])
+    for (const provider of ['claude', 'codex', 'gemini', 'kimi']) file(path.join(repo, ...commandArtifact(provider)), 'workflow')
+    const selections = snapshotWorkspaceProviderSelections(repo)
+    expect(Object.keys(selections)).toEqual(['claude', 'codex', 'gemini', 'kimi'])
+    for (const roles of Object.values(selections)) expect(roles).toEqual([])
   })
 
-  it('recognizes legacy copies without inventory but does not enroll a user-only provider directory', () => {
-    for (const role of ['sr-architect', 'sr-developer', 'sr-reviewer']) file(path.join(repo, '.claude', 'agents', role + '.md'), 'role')
-    file(path.join(repo, '.gemini', 'agents', 'custom-user.md'), 'custom')
-    expect(snapshotWorkspaceProviderSelections(repo)).toEqual({ claude: ['sr-architect', 'sr-developer', 'sr-reviewer'] })
+  it('does not enroll a provider that only carries stale role files or user-only content', () => {
+    file(path.join(repo, '.specrails', 'specrails-manifest.json'), JSON.stringify({ providers: ['claude', 'gemini'] }))
+    file(path.join(repo, '.claude', 'commands', 'specrails', 'implement.md'), 'workflow')
+    // A workspace an older Core left with role files only: not an installed provider any more.
+    for (const role of ['architect', 'developer']) file(path.join(repo, '.gemini', 'agents', `${legacyRole(role)}.md`), 'role')
+    file(path.join(repo, '.codex', 'skills', 'rails', legacyRole('developer'), 'SKILL.md'), 'role')
+    file(path.join(repo, '.kimi-code', 'skills', 'custom-user', 'SKILL.md'), 'custom')
+    expect(snapshotWorkspaceProviderSelections(repo)).toEqual({ claude: [] })
+  })
+
+  it('recognizes a linked provider through its managed directory links', () => {
+    const target = path.join(framework, 'current', '.claude', 'commands')
+    mkdirSync(target, { recursive: true }); mkdirSync(path.join(repo, '.claude'), { recursive: true })
+    symlinkSync(target, path.join(repo, '.claude', 'commands'), process.platform === 'win32' ? 'junction' : 'dir')
+    expect(snapshotWorkspaceProviderSelections(repo)).toEqual({ claude: [] })
   })
 })

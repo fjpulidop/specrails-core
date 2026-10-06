@@ -13,7 +13,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.1')
+    expect(contract.schemaVersion).toBe('5.2')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -23,6 +23,15 @@ describe('Desktop integration contract', () => {
       workflowVersion: contract.agentRuntime.workflowVersion,
       instructionsVersion: contract.agentRuntime.instructionsVersion,
     })
+  })
+
+  it('carries no role identifiers: roles are runtime-defined, never installed', () => {
+    expect(Object.keys(contract.checkpoints)).toEqual(['base_install', 'command_generation'])
+    expect(contract.tiers.standard.checkpoints).toEqual(['base_install', 'command_generation'])
+    expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
+    for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
+    expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
+    expect(contract.agentRuntime.instructionsVersion).toBe('13')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {

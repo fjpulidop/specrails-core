@@ -312,7 +312,7 @@ describe('fs', () => {
       const surface = path.join(tmpDir, 'workspace')
       mkdirp(path.join(surface, 'agents'))
       writeFileLf(path.join(surface, 'settings.json'), '{}')
-      writeFileLf(path.join(surface, 'agents', 'sr-architect.md'), 'agent')
+      writeFileLf(path.join(surface, 'agents', 'custom-architect.md'), 'agent')
       symlinkOrCopy(shared, path.join(surface, 'commands'))
 
       const backup = path.join(tmpDir, 'backup')
@@ -321,7 +321,7 @@ describe('fs', () => {
       expect(records.map((record) => record.rel)).toEqual(['commands'])
       expect(realpathSync(records[0]!.target)).toBe(realpathSync(shared))
       expect(readTextFile(path.join(backup, 'settings.json'))).toBe('{}')
-      expect(readTextFile(path.join(backup, 'agents', 'sr-architect.md'))).toBe('agent')
+      expect(readTextFile(path.join(backup, 'agents', 'custom-architect.md'))).toBe('agent')
       expect(pathExists(path.join(backup, 'commands'))).toBe(false)
     })
 

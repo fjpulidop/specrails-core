@@ -30,7 +30,7 @@ maybe('cli direct-run guard (compiled dist)', () => {
       )
       expect(res.status, res.stderr || res.stdout).toBe(0)
       const fw = path.join(tmp, 'fw')
-      expect(existsSync(path.join(fw, packageVersion, '.claude', 'agents'))).toBe(true)
+      expect(existsSync(path.join(fw, packageVersion, '.claude', 'commands'))).toBe(true)
       expect(readlinkSync(path.join(fw, 'current'))).toContain(packageVersion)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -55,7 +55,7 @@ maybe('cli direct-run guard (compiled dist)', () => {
       )
       expect(res.status, res.stderr || res.stdout).toBe(0)
       // The old broken guard also exited 0 — the REAL assertion is that work happened.
-      expect(existsSync(path.join(tmp, 'fw', packageVersion, '.claude', 'agents'))).toBe(true)
+      expect(existsSync(path.join(tmp, 'fw', packageVersion, '.claude', 'commands'))).toBe(true)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { correctionInstructions, roleInstructions, rolePromptDefaults } from './prompts.js'
-import type { BuiltinAgentRole } from './executor-types.js'
+import type { BuiltinAgentRole, RoleDescriptor } from './executor-types.js'
 import type { PipelineContext } from '../pipeline/pipeline-state.js'
 const context = { artifactRoot: '/repo', repositories: [{ id: 'app', name: 'App', path: '/repo' }], specs: [{ title: 'A feature', description: 'Implement the requested feature', acceptanceCriteria: ['Works'], repositoryIds: ['app'] }] } as PipelineContext
 
@@ -55,6 +55,44 @@ describe('editable role definitions', () => {
     expect(custom).toContain('## Output contract')
     // Without the stance the developer definition is untouched.
     expect(roleInstructions('developer', context, 'change', { feedback })).toContain('returning for a correction pass')
+  })
+  it('every factory definition carries the blast-radius discipline and stays a single extractable section', () => {
+    const defaults = rolePromptDefaults()
+    // The compact pipelines and Desktop extract the stance up to the next `## ` heading (the developer tail adds
+    // `## Durable implementation progress`): identity, focus and blast radius must all live before it.
+    const stance = (role: keyof typeof defaults) => defaults[role].split('\n## ')[0]!
+    for (const role of ['architect', 'developer', 'reviewer', 'fixer'] as const) {
+      expect(stance(role).toLowerCase()).toContain('blast radius')
+      expect(stance(role).split('T-shaped principal engineer')).toHaveLength(2)
+      expect(stance(role)).toContain('Focus:')
+    }
+    expect(defaults.architect).toContain('`Blast radius` heading')
+    expect(defaults.architect).toContain('hexagonal')
+    expect(defaults.developer).toContain('Clean Code')
+    expect(defaults.reviewer).toContain('SOLID')
+    expect(defaults.architect).toContain('solve exactly the requested spec and nothing else')
+    expect(defaults.developer).toContain('solve exactly the requested spec and nothing else')
+    expect(defaults.fixer).toContain('Fix the cause, not the symptom')
+    expect(defaults.developer).toContain('git diff --stat')
+    expect(defaults.fixer).toContain('never grows the blast radius')
+    expect(defaults.reviewer).toContain('issue to REVERT')
+    expect(defaults.reviewer).toContain('asking to REVERT an edit this change introduced is always in scope')
+    // A fresh correction pass keeps the identity and the correction framing.
+    expect(roleInstructions('developer', context, 'change', { feedback: { review: { issues: ['x'] } } })).toContain('returning for a correction pass')
+  })
+  it('gives declared (custom) roles the shared boundaries that match their access, without the built-in output contracts', () => {
+    const build = roleInstructions({ id: 'build', provider: 'claude', access: 'write', artifacts: 'tasks-checkboxes', prompt: 'Build the thing' } as unknown as RoleDescriptor, context, 'change')
+    expect(build).toContain('## Your task: build')
+    expect(build).toContain('Build the thing')
+    expect(build).toContain('## Boundaries')
+    expect(build).toContain('Never edit package-manager')
+    expect(build).not.toContain('## Output contract')
+    const assess = roleInstructions({ id: 'assess', provider: 'claude', access: 'read', artifacts: 'none', prompt: 'Assess it' } as unknown as RoleDescriptor, context, 'change')
+    expect(assess).toContain('This role is read-only')
+    expect(assess).not.toContain('Never edit package-manager')
+    const plan = roleInstructions({ id: 'plan', provider: 'claude', access: 'read', artifacts: 'all', prompt: 'Plan it' } as unknown as RoleDescriptor, context, 'change')
+    expect(plan).toContain('Author OpenSpec artifacts only through the supplied scoped workflow tools.')
+    expect(plan).not.toContain('Return confidence and verification metadata in JSON')
   })
   it('renders the re-review section for a reviewer pass after corrections, with a machine-readable change list', () => {
     const reReview = { changes: [{ repositoryId: 'app', path: 'src/game.js', status: 'changed' as const }], previouslyMet: [{ specId: '7', criterionIndex: 0 }] }

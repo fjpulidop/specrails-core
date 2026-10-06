@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.1",
+  "schemaVersion": "5.2",
   "providers": {
     "claude": {
       "cli": {
@@ -103,10 +103,9 @@
   },
   "tiers": {
     "standard": {
-      "description": "Deterministic installation of the core agents, provider workflows and required skills. No model invocation or enrichment.",
+      "description": "Deterministic installation of the provider workflows and required skills. Roles are defined by the programmatic runtime; no role file is installed. No model invocation or enrichment.",
       "checkpoints": [
         "base_install",
-        "agent_generation",
         "command_generation"
       ],
       "requiresEnrich": false
@@ -119,8 +118,9 @@
       "version": "number \u2014 schema version, currently 1",
       "provider": "string \u2014 claude | codex | gemini | kimi",
       "tier": "Deprecated legacy string, tolerated and ignored; all installs use deterministic placement.",
-      "agents.selected": "string[] \u2014 unique lowercase kebab-case agent ids to install (1-64 characters)",
-      "agents.excluded": "string[] \u2014 unique lowercase kebab-case agent ids to skip; must not overlap agents.selected",
+      "agents": "Optional, deprecated since Core 6.3: roles are runtime-defined, so the section has no effect on the installed artifacts. Validated for shape when present; a non-empty agents.selected logs a deprecation warning.",
+      "agents.selected": "string[] \u2014 optional, deprecated: unique lowercase kebab-case agent ids (1-64 characters), accepted and ignored",
+      "agents.excluded": "string[] \u2014 optional, deprecated: unique lowercase kebab-case agent ids; must not overlap agents.selected",
       "models.preset": "string \u2014 balanced | budget | max; resolved within the selected provider catalog",
       "models.defaults.model": "string \u2014 exact provider model id or configured alias (overrides preset; Kimi: 1-128 characters matching [A-Za-z0-9][A-Za-z0-9._/:-]*; default: k3)",
       "models.overrides": "Record<safe-agent-id, string> \u2014 exact per-agent provider model ids or configured aliases with the same provider-specific validation (highest priority)"
@@ -128,7 +128,6 @@
   },
   "checkpoints": {
     "base_install": "Runtime prerequisites and artifact workspace resolved",
-    "agent_generation": "Core agents and selected custom roles placed",
     "command_generation": "Workflow commands, required skills and installation manifest verified"
   },
   "modelPresets": {
@@ -154,9 +153,7 @@
       "defaults": {
         "model": "sonnet"
       },
-      "overrides": {
-        "sr-architect": "opus"
-      }
+      "overrides": {}
     }
   },
   "providerModelCatalogs": {
@@ -296,7 +293,7 @@
     "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "12",
+    "instructionsVersion": "13",
     "workflowVersion": "7",
     "engines": [
       1,

@@ -23,8 +23,8 @@ src/installer/
 src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
 src/shared/                   helpers shared by the CLIs (argument parsing)
-templates/                    sr-* roles, implement/retry, provider settings, Kimi runner
-integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.1)
+templates/                    implement/retry commands, provider settings, Kimi runner (roles are runtime-defined, never templated)
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.2)
 ```
 
 ## Commands
@@ -46,6 +46,6 @@ npm run ci             # typecheck, script tests, coverage, package check
 
 ## Contracts with Desktop
 
-- Reserved paths the installer never creates, modifies or deletes: `.specrails/profiles/**` and `<provider>/agents/custom-*.md` (Desktop-owned). Audited by `src/installer/__tests__/reserved-paths.test.ts`.
+- Reserved paths the installer never creates, modifies or deletes: `.specrails/profiles/**` and `<provider>/agents/custom-*.md` (Desktop-owned). The installer no longer creates `<provider>/agents/`; it only prunes stale framework-owned `sr-*` role files an older Core left there. Audited by `src/installer/__tests__/reserved-paths.test.ts`.
 - `init complete` is a frozen sentinel line matched by Desktop's setup wizard.
 - The runtime requires host-owned delivery (`ownership.git: "host"`).

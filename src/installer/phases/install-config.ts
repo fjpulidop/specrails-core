@@ -4,6 +4,7 @@ import yaml from 'js-yaml'
 
 import { FilesystemError, InstallerError } from '../util/errors.js'
 import { pathExists, readTextFile, writeFileLf } from '../util/fs.js'
+import { warn } from '../util/logger.js'
 
 /**
  * Provider identifier. Kept in lock-step with `provider-detect.ts` `Provider`.
@@ -29,7 +30,12 @@ interface InstallModelConfig {
 interface InstallConfig {
   version: 1
   provider: Provider
-  agents: {
+  /**
+   * Deprecated since Core 6.3: roles are runtime-defined, so the selection has
+   * no effect on the installed artifacts. Validated for shape when present and
+   * echoed back for consumers that still read it; absent when not supplied.
+   */
+  agents?: {
     selected: string[]
     excluded?: string[]
     /** Legacy pre-models-section location, accepted for backward compatibility. */
@@ -64,7 +70,8 @@ const SAFE_KIMI_MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._/:-]{0,127}$/
  * Resolve a preset into provider-native identifiers. Kimi currently exposes no
  * Core-defined cost/capability tier mapping, so every named preset resolves to
  * its explicit `k3` default. User-supplied exact identifiers are handled later
- * and are never interpreted as Claude aliases.
+ * and are never interpreted as Claude aliases. No preset carries per-role
+ * overrides: Core ships no role ids, so `models.overrides` is Desktop's to fill.
  */
 export function resolveProviderModelConfig(
   provider: Provider,
@@ -75,11 +82,7 @@ export function resolveProviderModelConfig(
       return { preset, defaults: { model: 'haiku' }, overrides: {} }
     }
     if (preset === 'max') {
-      return {
-        preset,
-        defaults: { model: 'sonnet' },
-        overrides: { 'sr-architect': 'opus' },
-      }
+      return { preset, defaults: { model: 'sonnet' }, overrides: {} }
     }
   }
   return {
@@ -162,12 +165,17 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
   // configs. It is intentionally ignored (not rejected and not carried forward)
   // — v5 has no install tiers.
 
+  // The `agents` section is OPTIONAL and deprecated: roles are runtime-defined
+  // since Core 6.3. When present it is still validated for shape (safe ids, no
+  // overlap, known preset) so a malformed file fails fast, and a non-empty
+  // selection logs one warning instead of being rejected — Desktop builds
+  // paired with an older Core still write it.
   const agents = doc.agents as Record<string, unknown> | undefined
   let selectedAgents: string[] = []
   let excludedAgents: string[] | undefined
-  if (!agents || typeof agents !== 'object') {
-    errors.push(`missing required 'agents' section with 'selected' list`)
-  } else {
+  if (doc.agents !== undefined && (!agents || typeof agents !== 'object' || Array.isArray(agents))) {
+    errors.push(`'agents' must be a mapping`)
+  } else if (agents) {
     if (!Array.isArray(agents.selected)) {
       errors.push(`'agents.selected' must be a list`)
     } else {
@@ -259,6 +267,13 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
     throw new InvalidConfigError(errors)
   }
 
+  if (selectedAgents.length > 0) {
+    warn(
+      `install-config.yaml 'agents.selected' is ignored since Core 6.3: roles are ` +
+        `runtime-defined and no role file is installed (${selectedAgents.join(', ')}).`,
+    )
+  }
+
   const preset = (modelPreset ?? agents?.preset ?? 'balanced') as ModelPreset
   const resolvedModels = resolveProviderModelConfig(provider, preset)
   if (typeof modelDefaults?.model === 'string') {
@@ -270,18 +285,18 @@ export function validateInstallConfig(raw: unknown): InstallConfig {
   const result: InstallConfig = {
     version: 1,
     provider,
-    agents: {
-      selected: selectedAgents,
-    },
     models: resolvedModels,
   }
   // NOTE: a legacy `agent_teams` field may still be present in older configs.
   // It is intentionally ignored (not rejected) for backward compatibility.
-  if (agents?.preset !== undefined) {
-    result.agents.preset = agents.preset as ModelPreset
-  }
-  if (excludedAgents !== undefined) {
-    result.agents.excluded = excludedAgents
+  if (agents) {
+    result.agents = { selected: selectedAgents }
+    if (agents.preset !== undefined) {
+      result.agents.preset = agents.preset as ModelPreset
+    }
+    if (excludedAgents !== undefined) {
+      result.agents.excluded = excludedAgents
+    }
   }
   return result
 }
