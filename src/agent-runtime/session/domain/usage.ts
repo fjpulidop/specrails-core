@@ -6,6 +6,7 @@ export interface ReportedUsage {
   outputTokens?: number | null
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
+  totalTokens?: number | null
   costUsd?: number | null
   model?: string | null
 }
@@ -61,6 +62,8 @@ export function computeTurnUsage(semantics: UsageSemantics, baseline: UsageBasel
   const next: UsageBaseline = { ...baseline }
   const usage: Usage = { ...EMPTY_USAGE, model: reported.model ?? null }
 
+  // A reported total is only meaningful per turn; cumulative totals are not tracked as a baseline.
+  if (semantics.tokens === 'per-turn') usage.totalTokens = finite(reported.totalTokens)
   if (semantics.costUsd === 'session-cumulative') {
     const result = delta(finite(reported.costUsd), baseline.costUsd, 'costUsd', resets)
     usage.costUsd = result.value
@@ -110,7 +113,7 @@ export function withEstimatedCost(usage: Usage, rate: RateCard | null): Usage {
 export function sumUsage(items: readonly Usage[]): Usage {
   const total: Usage = { ...EMPTY_USAGE }
   for (const item of items) {
-    for (const key of [...COUNTERS, 'costUsd'] as const) {
+    for (const key of [...COUNTERS, 'totalTokens', 'costUsd'] as const) {
       const value = item[key]
       if (value !== null) total[key] = (total[key] ?? 0) + value
     }

@@ -20,6 +20,8 @@ export interface Usage {
   outputTokens: number | null
   cacheReadTokens: number | null
   cacheWriteTokens: number | null
+  /** Provider total when it reports no breakdown (e.g. Claude sub-agent progress). */
+  totalTokens: number | null
   /** Per-turn delta in USD. Sub-agent usage is a breakdown and is never added on top. */
   costUsd: number | null
   /** True when the cost was derived from a rate card instead of billed by the provider. */
@@ -32,6 +34,7 @@ export const EMPTY_USAGE: Usage = Object.freeze({
   outputTokens: null,
   cacheReadTokens: null,
   cacheWriteTokens: null,
+  totalTokens: null,
   costUsd: null,
   costEstimated: false,
   model: null,

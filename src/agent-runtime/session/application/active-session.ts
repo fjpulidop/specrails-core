@@ -536,6 +536,7 @@ export class ActiveSession {
       outputTokens: reported.outputTokens ?? null,
       cacheReadTokens: reported.cacheReadTokens ?? null,
       cacheWriteTokens: reported.cacheWriteTokens ?? null,
+      totalTokens: reported.totalTokens ?? null,
       costUsd: reported.costUsd ?? null,
       costEstimated: false,
       model: reported.model ?? null,
