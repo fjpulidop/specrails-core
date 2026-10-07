@@ -38,6 +38,10 @@ The runtime SHALL translate `policy.subagents` into the provider's native mechan
 - **WHEN** a Codex session opens with sub-agents disabled
 - **THEN** the provider MUST be started with multi-agent tools disabled
 
+#### Scenario: Provider starts a sub-agent despite the switch
+- **WHEN** a session with sub-agents disabled observes the provider starting a sub-agent anyway
+- **THEN** the runtime MUST stop that sub-agent, record it as `stopped` with reason `policy`, and journal a `policy.subagent_blocked` diagnostic
+
 #### Scenario: Unenforceable policy
 - **WHEN** a session requests sub-agents disabled with a driver that supports sub-agents but cannot disable them
 - **THEN** `session.open` MUST fail with `policy_unenforceable`

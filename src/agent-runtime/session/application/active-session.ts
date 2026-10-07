@@ -143,6 +143,28 @@ export class ActiveSession {
     return result
   }
 
+  /**
+   * Policy says no sub-agents, yet the provider started one (a provider switch
+   * can be ignored by a model or CLI version). Stop it and say so: the policy
+   * holds whatever the provider's own switch does.
+   */
+  private async blockSubagent(subagentId: string): Promise<void> {
+    this.commit([{ type: 'provider.diagnostic', level: 'warning', code: 'policy.subagent_blocked', message: `The provider started sub-agent ${subagentId} although sub-agents are disabled; it was stopped.` }])
+    try {
+      const result = this.driver ? await this.driver.stopSubagents([subagentId]) : []
+      if (result === 'process') {
+        await this.retire('host_request', { turnStatus: 'stopped', subagentPhase: 'stopped', reason: 'policy' })
+        return
+      }
+    } catch (error) {
+      this.commit([{ type: 'provider.diagnostic', level: 'warning', code: 'provider.stop_failed', message: `${subagentId}: ${(error as Error).message}` }])
+    }
+    if (this.state.subagents[subagentId]?.phase === 'running') {
+      this.commit([{ type: 'subagent.phase', subagentId, phase: 'stopped', reason: 'policy' }, ...this.output.drainSubagent(subagentId)])
+      this.afterSubagentChange()
+    }
+  }
+
   /** Apply now when nothing is running; otherwise defer to the next idle point. */
   async update(changes: { model?: string; effort?: string; systemPrompt?: string; policy?: SessionPolicy }): Promise<'applied' | 'deferred'> {
     this.assertOpen()
@@ -306,6 +328,7 @@ export class ActiveSession {
         this.finishedSinceLastTurn.delete(event.subagentId)
         this.commit([{ type: 'subagent.started', subagentId: event.subagentId, parentId: event.parentId, kind: event.agentKind, description: event.description, ...(event.agentType ? { agentType: event.agentType } : {}), ...(event.prompt ? { prompt: event.prompt.slice(0, 8_000) } : {}) }])
         this.afterSubagentChange()
+        if (this.config.policy.subagents === 'disabled') void this.blockSubagent(event.subagentId)
         return
       case 'subagent.phase':
         // Only work that finished while the agent was not in a turn is news to it (it saw the rest via its own tools).

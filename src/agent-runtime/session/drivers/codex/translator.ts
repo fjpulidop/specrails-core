@@ -3,10 +3,12 @@ import type { DriverEvent } from '../../ports.js'
 import type { ReportedUsage } from '../../domain/usage.js'
 
 /**
- * Anti-corruption layer for `codex app-server` notifications (codex-cli 0.153.4).
- * Deterministic and free of I/O. Pinned by the recorded transcripts:
- * - the session is one root thread; sub-agents are child threads spawned by a
- *   `collabAgentToolCall` (`spawnAgent`), known only via `receiverThreadIds`;
+ * Anti-corruption layer for `codex app-server` notifications (codex-cli 0.153.4
+ * and 0.160.1). Deterministic and free of I/O. Pinned by the recorded transcripts:
+ * - the session is one root thread; sub-agents are child threads. 0.153 announces
+ *   them with a `collabAgentToolCall` (`spawnAgent`, `receiverThreadIds`); 0.160
+ *   with a `subAgentActivity` item (`kind: started`, `agentThreadId`, `agentPath`)
+ *   and no prompt, so the description comes from the agent's path name;
  * - every thread streams its own turn/item/tokenUsage notifications, interleaved;
  * - children keep running after the parent's turn completes; the parent never
  *   continues on its own (it collects them with `wait`).
@@ -33,6 +35,12 @@ function toolName(item: Json): string {
 
 function toolFailed(item: Json): boolean {
   return ['failed', 'declined'].includes(str(item.status) ?? '') || item.success === false || (typeof item.exitCode === 'number' && item.exitCode !== 0) || !!item.error
+}
+
+/** `/root/run_tests` → `run tests` (0.160 sub-agents are named, not described). */
+function describeAgentPath(agentPath: string | undefined): string {
+  const name = agentPath?.split('/').filter(Boolean).pop() ?? ''
+  return name.replace(/[_-]+/g, ' ').trim().slice(0, 200)
 }
 
 function tokens(usage: Json): ReportedUsage {
@@ -72,6 +80,11 @@ export class CodexTranslator {
   liveChildren(): Array<{ threadId: string; turnId: string }> {
     return [...this.childTurn.entries()].filter((entry): entry is [string, string] => entry[1] !== null).map(([threadId, turnId]) => ({ threadId, turnId }))
   }
+
+  /** A registered child thread (live or not). */
+  isChild(threadId: string): boolean { return this.children.has(threadId) }
+  /** The turn a child is running, if any. */
+  childTurnOf(threadId: string): string | null { return this.childTurn.get(threadId) ?? null }
 
   notification(method: string, params: Json): DriverEvent[] {
     const threadId = str(params.threadId)
@@ -203,6 +216,9 @@ export class CodexTranslator {
         if (item.phase === 'final_answer') this.rootFinal = text
       }
       else if (text) this.childLastText.set(owner, text)
+    } else if (type === 'subAgentActivity') {
+      // Child turns carry progress, results and phase; only the start registers.
+      if (str(item.kind) === 'started') events.push(...this.registerChild(owner, str(item.agentThreadId), describeAgentPath(str(item.agentPath))))
     } else if (TOOL_ITEMS.has(type)) {
       const name = toolName(item)
       if (!this.startedTools.has(id)) {
@@ -225,19 +241,7 @@ export class CodexTranslator {
     if (str(item.tool) === 'spawnAgent') {
       const prompt = str(item.prompt) ?? ''
       for (const childId of Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds as unknown[] : []) {
-        if (typeof childId !== 'string' || this.children.has(childId)) continue
-        this.children.set(childId, owner)
-        this.childPhase.set(childId, 'running')
-        this.childTurn.set(childId, this.childTurn.get(childId) ?? null)
-        events.push({
-          kind: 'subagent.started',
-          subagentId: childId,
-          parentId: owner,
-          agentKind: 'background',
-          agentType: 'codex-agent',
-          description: (prompt.split('\n')[0] ?? '').slice(0, 200) || 'Sub-agent',
-          ...(prompt ? { prompt } : {}),
-        })
+        if (typeof childId === 'string') events.push(...this.registerChild(owner, childId, (prompt.split('\n')[0] ?? '').slice(0, 200), prompt))
       }
     }
     // `wait` reports the final message of finished children.
@@ -249,6 +253,22 @@ export class CodexTranslator {
       }
     }
     return events
+  }
+
+  private registerChild(owner: string | null, childId: string | undefined, description: string, prompt = ''): DriverEvent[] {
+    if (!childId || this.children.has(childId)) return []
+    this.children.set(childId, owner)
+    this.childPhase.set(childId, 'running')
+    this.childTurn.set(childId, this.childTurn.get(childId) ?? null)
+    return [{
+      kind: 'subagent.started',
+      subagentId: childId,
+      parentId: owner,
+      agentKind: 'background',
+      agentType: 'codex-agent',
+      description: description || 'Sub-agent',
+      ...(prompt ? { prompt } : {}),
+    }]
   }
 
   private roster(): DriverEvent {

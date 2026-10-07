@@ -101,6 +101,59 @@ describe('Codex driver against recorded transcripts', () => {
   })
 })
 
+describe('Codex 0.160 transcripts (subAgentActivity)', () => {
+  it('maps named child threads to sub-agents with results', async () => {
+    const replayer = FixtureReplayer.fromFile(fixture('codex-0160-multi-wait'))
+    const ctx = setup(replayer)
+    const { sessionId } = await ctx.service.open({ driver: 'codex', model: 'gpt-6.1-sol', cwd: '/repo', policy: { subagents: 'enabled' } })
+    await ctx.service.send(sessionId, { inputId: 'in-1', text: 'Spawn two sub-agents and wait', delivery: 'queue' })
+    await drain(replayer)
+    ctx.clock.advance(DEFAULT_LIMITS.settleDebounceMs)
+    await drain(replayer)
+
+    const snapshot = ctx.service.snapshot(sessionId)
+    const nodes = Object.values(snapshot.subagents)
+    expect(nodes.map((node) => [node.description, node.phase, node.resultSummary])).toEqual([['agent a', 'idle', 'A_DONE'], ['agent b', 'idle', 'B_DONE']])
+    expect(nodes.every((node) => node.parentId === null && node.kind === 'background')).toBe(true)
+    expect(of(ctx.events(sessionId), 'turn.completed')[0]?.text).toBe('A_DONE B_DONE')
+    expect(snapshot).toMatchObject({ phase: 'idle', settled: { settled: true, live: 0 } })
+  })
+
+  it('keeps an announced child running past the parent turn', async () => {
+    const replayer = FixtureReplayer.fromFile(fixture('codex-0160-spawn-nowait'))
+    const ctx = setup(replayer)
+    const { sessionId } = await ctx.service.open({ driver: 'codex', model: 'gpt-6.1-sol', cwd: '/repo', policy: { subagents: 'enabled' } })
+    await ctx.service.send(sessionId, { inputId: 'in-1', text: 'Spawn one sub-agent, do not wait', delivery: 'queue' })
+    await drain(replayer)
+    const background = ctx.service.snapshot(sessionId)
+    expect(background.phase).toBe('background')
+    const [child] = Object.values(background.subagents)
+    expect(child).toMatchObject({ phase: 'running', description: 'late command' })
+
+    await ctx.service.send(sessionId, { inputId: 'in-2', text: 'Now wait for it', delivery: 'queue' })
+    await drain(replayer)
+    ctx.clock.advance(DEFAULT_LIMITS.settleDebounceMs)
+    expect(ctx.service.snapshot(sessionId).subagents[child!.subagentId]).toMatchObject({ phase: 'idle', resultSummary: expect.stringContaining('LATE_DONE') })
+  })
+
+  it('stops a sub-agent the provider starts although the policy disables them', async () => {
+    const replayer = FixtureReplayer.fromFile(fixture('codex-0160-disabled'))
+    const ctx = setup(replayer)
+    const { sessionId } = await ctx.service.open({ driver: 'codex', model: 'gpt-6.1-sol', cwd: '/repo', policy: { subagents: 'disabled' } })
+    await ctx.service.send(sessionId, { inputId: 'in-1', text: 'Try to spawn a sub-agent', delivery: 'queue' })
+    await drain(replayer)
+
+    expect(replayer.last.spec.args.slice(0, 2)).toEqual(['-c', 'features.multi_agent=false'])
+    const events = ctx.events(sessionId)
+    expect(of(events, 'provider.diagnostic').map((event) => event.code)).toContain('policy.subagent_blocked')
+    const [child] = of(events, 'subagent.started')
+    expect(of(events, 'subagent.phase').find((event) => event.subagentId === child!.subagentId)).toMatchObject({ phase: 'stopped', reason: 'policy' })
+    // The child is interrupted on its own thread as soon as its turn starts.
+    expect(replayer.last.written.some((line) => line.method === 'turn/interrupt' && (line.params as Record<string, unknown>).threadId === child!.subagentId)).toBe(true)
+    expect(ctx.service.snapshot(sessionId).subagents[child!.subagentId]?.phase).toBe('stopped')
+  })
+})
+
 describe('Codex argv and config discovery', () => {
   it('disables declared user servers, enables requested ones and maps sandbox modes', () => {
     const policy = resolvePolicy({ subagents: 'enabled', mcp: { servers: [{ name: 'specrails', url: 'http://127.0.0.1:9/mcp', headers: { Authorization: 'Bearer x' } }, { name: 'local', command: 'node', args: ['s.js'], env: { A: '1' } }] } }, CODEX_DESCRIPTOR)

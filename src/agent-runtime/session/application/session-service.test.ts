@@ -422,3 +422,44 @@ describe('SessionService — output, recovery, eviction, shutdown', () => {
     expect(ctx.service.list('closed').map((summary) => summary.sessionId)).toEqual([sessionId])
   })
 })
+
+describe('SessionService — disabled sub-agent policy', () => {
+  it('stops a sub-agent the provider starts anyway and records why', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx, 'hello', { subagents: 'disabled' })
+    driver.stopResult = ['a1']
+    driver.emit(
+      { kind: 'input.receipt', inputId: 'u1', state: 'started' },
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'subagent.started', subagentId: 'a1', parentId: null, agentKind: 'background', description: 'Sneaky' },
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(driver.calls).toContain('stopSubagents:a1')
+    const events = ctx.events(sessionId)
+    expect(of(events, 'provider.diagnostic').map((event) => event.code)).toContain('policy.subagent_blocked')
+    expect(of(events, 'subagent.phase')).toEqual([expect.objectContaining({ subagentId: 'a1', phase: 'stopped', reason: 'policy' })])
+  })
+
+  it('retires the process when the driver can only stop sub-agents with it', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx, 'hello', { subagents: 'disabled' })
+    driver.emit(
+      { kind: 'input.receipt', inputId: 'u1', state: 'started' },
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'subagent.started', subagentId: 'a1', parentId: null, agentKind: 'background', description: 'Sneaky' },
+    )
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(driver.closed).toBe('host_request')
+    expect(ctx.service.snapshot(sessionId).subagents.a1).toMatchObject({ phase: 'stopped', reason: 'policy' })
+  })
+
+  it('leaves sub-agents alone when the policy enables them', async () => {
+    const ctx = setup()
+    const { driver } = await openAndSend(ctx)
+    driver.emit({ kind: 'turn.started', trigger: 'input', inputIds: ['u1'] }, { kind: 'subagent.started', subagentId: 'a1', parentId: null, agentKind: 'background', description: 'Allowed' })
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(driver.calls.some((call) => call.startsWith('stopSubagents'))).toBe(false)
+  })
+})
+

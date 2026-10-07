@@ -16,6 +16,9 @@ installation ids are replaced by `<TMP>`, `<HOME>`, `<HOST>` and `<ID>`.
 | `codex-multi-wait` | codex-cli 0.153.4, gpt-5.6-luna low | `app-server`, two parallel sub-agents plus `wait` |
 | `codex-spawn-nowait` | same | Spawn without `wait`, end the turn, collect in the next turn |
 | `codex-disabled` | same | `-c features.multi_agent=false` |
+| `codex-0160-multi-wait` | codex-cli 0.160.1, gpt-6.1-sol | Same scenario on the `subAgentActivity` protocol |
+| `codex-0160-spawn-nowait` | same | Same scenario on the `subAgentActivity` protocol |
+| `codex-0160-disabled` | same | `-c features.multi_agent=false`; the model still spawns a sub-agent |
 
 ## Claude Code (`-p --input-format stream-json --output-format stream-json --verbose --replay-user-messages`)
 
@@ -113,6 +116,12 @@ The driver therefore disables every server declared in the user's
 declared there and stay. Codex has no `--tools` equivalent, so tool filtering
 is declared unsupported. With a ChatGPT login some models
 are rejected (`gpt-5.4-mini`): model availability is account-dependent.
+
+## Codex 0.160.1 changes (2026-10-07)
+
+- **Sub-agent announcement.** `spawnAgent` calls are no longer reported. The parent emits `item/*` with `item.type:"subAgentActivity"`: `{id, kind: started|interacted|interrupted|completed, agentThreadId, agentPath}`. `agentPath` is a name such as `/root/agent_a`, with no prompt. The `started` item precedes the child's first `turn/started`. A `completed` item is tagged with the parent turn that spawned the child, even when it arrives during a later parent turn.
+- **`wait`** remains a `collabAgentToolCall`, with empty `receiverThreadIds` and `agentsStates`. Results come from the child's own final `agentMessage`.
+- **Disable is model-dependent.** With `gpt-6.1-sol` (multi-agent v2 tools: `spawn_agent`, `followup_task`, `send_message`, …), `features.multi_agent=false` does not remove sub-agents. This holds whether the override is global, after `app-server`, or in `thread/start.config`, and `multi_agent_v2=false` and `agents.max_depth=0` do not help either. With `gpt-5.6-luna` the switch still works. Core therefore enforces `disabled` itself, by stopping any started sub-agent (see the sub-agents spec).
 
 ## Normalization implications
 

@@ -8,7 +8,7 @@ import { CodexTranslator } from './translator.js'
 export const CODEX_DESCRIPTOR: DriverDescriptor = Object.freeze({
   id: 'codex',
   displayName: 'Codex',
-  testedVersions: ['0.153.4'],
+  testedVersions: ['0.153.4', '0.160.1'],
   capabilities: Object.freeze({
     resident: true,
     // Codex starts a turn per request; the application holds input while one runs.
@@ -52,6 +52,8 @@ class CodexDriverSession implements DriverSession {
     private readonly sink: DriverEventSink,
     private readonly graceMs: number,
     private readonly markClosing: () => void,
+    /** Children asked to stop before their first turn started (0.160 announces them first). */
+    private readonly pendingStops: Set<string>,
   ) {}
 
   async send(input: DriverInput): Promise<void> {
@@ -83,6 +85,10 @@ class CodexDriverSession implements DriverSession {
   async stopSubagents(ids?: string[]): Promise<string[]> {
     const targets = this.translator.liveChildren().filter((child) => !ids || ids.includes(child.threadId))
     const stopped: string[] = []
+    // A child announced but not yet running is interrupted as soon as its turn starts.
+    for (const id of ids ?? []) {
+      if (this.translator.isChild(id) && !this.translator.childTurnOf(id)) { this.pendingStops.add(id); stopped.push(id) }
+    }
     for (const target of targets) {
       try {
         await this.peer.request('turn/interrupt', { threadId: target.threadId, turnId: target.turnId })
@@ -114,6 +120,7 @@ export class CodexDriverFactory implements DriverFactory {
     const env = { ...(this.options.env ?? process.env) }
     const declared = this.options.declaredMcpServers ?? declaredCodexMcpServers(env)
     const translator = new CodexTranslator()
+    const pendingStops = new Set<string>()
     let closeRequested = false
     let ended = false
     let peer: JsonRpcPeer | null = null
@@ -133,7 +140,14 @@ export class CodexDriverFactory implements DriverFactory {
       },
     )
     peer = new JsonRpcPeer((line) => child.write(line), {
-      onNotification: (method, params) => { for (const event of translator.notification(method, params)) sink(event) },
+      onNotification: (method, params) => {
+        for (const event of translator.notification(method, params)) sink(event)
+        const threadId = typeof params.threadId === 'string' ? params.threadId : null
+        const turnId = threadId ? translator.childTurnOf(threadId) : null
+        if (method === 'turn/started' && threadId && turnId && pendingStops.delete(threadId)) {
+          void peer?.request('turn/interrupt', { threadId, turnId }).catch((error: Error) => sink({ kind: 'diagnostic', level: 'warning', code: 'provider.stop_failed', message: `${threadId}: ${error.message}` }))
+        }
+      },
       onRequest: (method) => {
         // approvalPolicy is `never`; a request still arriving is declined (the sandbox is the boundary).
         if (method === 'item/commandExecution/requestApproval' || method === 'item/fileChange/requestApproval') return { decision: 'decline' }
@@ -165,7 +179,7 @@ export class CodexDriverFactory implements DriverFactory {
       translator.setRoot(threadId, spec.model)
       sink({ kind: 'process.started', ...(child.pid !== undefined ? { pid: child.pid } : {}) })
       sink({ kind: 'provider.ref', providerSessionRef: threadId })
-      return new CodexDriverSession(child, peer, translator, threadId, spec, sink, this.options.terminateGraceMs ?? 5_000, () => { closeRequested = true })
+      return new CodexDriverSession(child, peer, translator, threadId, spec, sink, this.options.terminateGraceMs ?? 5_000, () => { closeRequested = true }, pendingStops)
     } catch (error) {
       closeRequested = true
       peer.close('Codex session failed to start')
