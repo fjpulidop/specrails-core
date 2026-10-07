@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.4.0](https://github.com/fjpulidop/specrails-core/compare/v6.3.0...v6.4.0) (2026-10-07)
+
+
+### Features
+
+* **runtime:** host-owned environment repair, setup commands and structured blockers ([#410](https://github.com/fjpulidop/specrails-core/issues/410)) ([053037c](https://github.com/fjpulidop/specrails-core/commit/053037c723e6c07af90c47be2387199fe4774fad))
+
 ## [6.3.0](https://github.com/fjpulidop/specrails-core/compare/v6.2.2...v6.3.0) (2026-10-06)
 
 
