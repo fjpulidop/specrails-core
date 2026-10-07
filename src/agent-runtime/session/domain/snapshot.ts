@@ -1,4 +1,5 @@
 import { SessionError } from './errors.js'
+import { fingerprint } from './fingerprint.js'
 import type { SessionEvent, SessionEventEnvelope } from './events.js'
 import {
   INPUT_TRANSITIONS,
@@ -27,6 +28,8 @@ export interface InputRecord {
   state: InputState
   turnId: string | null
   textLength: number
+  /** Detects a retried inputId carrying different content. */
+  fingerprint: string
 }
 
 export interface OpenTurn {
@@ -71,6 +74,7 @@ export interface SessionSnapshot {
   driver: string
   model: string
   effort: string | null
+  systemPrompt: string | null
   policy: SessionPolicy | null
   providerSessionRef: string | null
   phase: SessionPhase
@@ -93,6 +97,7 @@ export function emptySnapshot(sessionId: string): SessionSnapshot {
     driver: '',
     model: '',
     effort: null,
+    systemPrompt: null,
     policy: null,
     providerSessionRef: null,
     phase: 'idle',
@@ -142,6 +147,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
         driver: event.driver,
         model: event.model,
         effort: event.effort ?? null,
+        systemPrompt: event.systemPrompt ?? null,
         policy: event.policy,
         providerSessionRef: event.providerSessionRef ?? state.providerSessionRef,
       }
@@ -154,8 +160,14 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       return { ...state, providerSessionRef: event.providerSessionRef }
     case 'session.updated': {
       if (event.outcome === 'deferred') return state
-      const changes = event.changes as { model?: string; effort?: string; policy?: SessionPolicy }
-      return { ...state, model: changes.model ?? state.model, effort: changes.effort ?? state.effort, policy: changes.policy ?? state.policy }
+      const changes = event.changes as { model?: string; effort?: string; systemPrompt?: string; policy?: SessionPolicy }
+      return {
+        ...state,
+        model: changes.model ?? state.model,
+        effort: changes.effort ?? state.effort,
+        systemPrompt: changes.systemPrompt ?? state.systemPrompt,
+        policy: changes.policy ?? state.policy,
+      }
     }
     case 'session.closed':
       return { ...state, status: 'closed', closedReason: event.reason, process: { ...state.process, alive: false } }
@@ -164,7 +176,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       if (state.inputs[event.inputId]) throw new SessionError('input_conflict', `Input ${event.inputId} already exists`, { inputId: event.inputId })
       return {
         ...state,
-        inputs: { ...state.inputs, [event.inputId]: { inputId: event.inputId, delivery: event.delivery, state: 'accepted', turnId: null, textLength: event.text.length } },
+        inputs: { ...state.inputs, [event.inputId]: { inputId: event.inputId, delivery: event.delivery, state: 'accepted', turnId: null, textLength: event.text.length, fingerprint: fingerprint(event.text) } },
       }
     case 'input.state': {
       const input = state.inputs[event.inputId]

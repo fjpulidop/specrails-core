@@ -27,7 +27,7 @@ export interface ToolActivity {
 }
 
 export type SessionEventBody =
-  | { type: 'session.opened'; driver: string; model: string; effort?: string; policy: SessionPolicy; resumed: boolean; providerSessionRef: string | null }
+  | { type: 'session.opened'; driver: string; model: string; effort?: string; systemPrompt?: string; policy: SessionPolicy; resumed: boolean; providerSessionRef: string | null }
   | { type: 'session.phase'; phase: SessionPhase }
   | { type: 'session.process'; state: 'started' | 'retired' | 'exited'; generation: number; reason?: string; exitCode?: number | null }
   | { type: 'session.provider-ref'; providerSessionRef: string }

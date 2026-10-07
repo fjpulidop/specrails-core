@@ -109,7 +109,7 @@ describe('session snapshot', () => {
     ['unknown sub-agent', [{ type: 'subagent.phase', subagentId: 'ghost', phase: 'idle' }], 'illegal_transition'],
     ['unknown parent', [{ type: 'subagent.started', subagentId: 'c', parentId: 'ghost', kind: 'background', description: 'x' }], 'illegal_transition'],
     ['restarting a killed sub-agent', [...backgroundRun.slice(0, 9), { type: 'subagent.phase', subagentId: 'a1', phase: 'killed' }, { type: 'subagent.started', subagentId: 'a1', parentId: null, kind: 'background', description: 'x' }], 'illegal_transition'],
-    ['illegal phase jump', [{ type: 'session.phase', phase: 'background' }], 'illegal_transition'],
+    ['illegal phase jump', [{ type: 'session.phase', phase: 'turn' }, { type: 'session.phase', phase: 'turn' }, { type: 'turn.completed', turnId: 'x', status: 'completed', text: '', usage: EMPTY_USAGE }], 'illegal_transition'],
     ['event after close', [{ type: 'session.closed', reason: 'host_request' }, { type: 'session.phase', phase: 'turn' }], 'session_closed'],
   ])('rejects %s', (_name, bodies, code) => {
     expect(errorCode(() => fold(bodies))).toBe(code)

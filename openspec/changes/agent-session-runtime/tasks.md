@@ -16,11 +16,11 @@
 
 ## 3. Ports, application and supervision
 
-- [ ] 3.1 `ports.ts`: `DriverFactory`, `DriverSession`, `DriverEventSink`, `SessionJournal`, `ProcessSpawner`, `Clock`, `Ids` (narrow, use-case owned)
-- [ ] 3.2 `application/session-service.ts` use cases: open/resume, send (idempotent by inputId, commit-before-write), interrupt, stopSubagents, update (applied/deferred), close, snapshot, events, list
-- [ ] 3.3 `application/supervisor.ts`: idle/stall/background-max/turn-inactivity timers, LRU resident cap, graceful retirement, reasons; fake-clock tests
-- [ ] 3.4 Continuation handling: provider-native, `resume-agent` with bounded handoffs, `notify-only`; tests per mode
-- [ ] 3.5 Restart recovery: mark running turns/sub-agents/inputs interrupted on open; never auto-start providers
+- [x] 3.1 `ports.ts`: `DriverFactory`, `DriverSession`, `DriverEventSink`, `SessionJournal`, `ProcessSpawner`, `Clock`, `Ids` (narrow, use-case owned)
+- [x] 3.2 `application/session-service.ts` use cases: open/resume, send (idempotent by inputId, commit-before-write), interrupt, stopSubagents, update (applied/deferred), close, snapshot, events, list
+- [x] 3.3 `application/supervisor.ts`: idle/stall/background-max/turn-inactivity timers, LRU resident cap, graceful retirement, reasons; fake-clock tests
+- [x] 3.4 Continuation handling: provider-native, `resume-agent` with bounded handoffs, `notify-only`; tests per mode
+- [x] 3.5 Restart recovery: mark running turns/sub-agents/inputs interrupted on open; never auto-start providers
 
 ## 4. Journal
 

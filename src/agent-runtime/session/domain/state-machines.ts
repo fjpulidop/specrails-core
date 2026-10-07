@@ -8,7 +8,8 @@ import type { InputState, SessionPhase, SubagentPhase, TurnStatus } from './type
 type Table<S extends string> = Readonly<Partial<Record<S, readonly S[]>>>
 
 export const SESSION_PHASE_TRANSITIONS: Table<SessionPhase> = Object.freeze({
-  idle: ['turn'],
+  // idle → background: a provider restarts a finished sub-agent after the session went idle.
+  idle: ['turn', 'background'],
   turn: ['idle', 'background'],
   // A user or continuation turn can start while sub-agents run; work can settle while idle.
   background: ['turn', 'idle'],

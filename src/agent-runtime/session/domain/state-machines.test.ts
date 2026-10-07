@@ -18,7 +18,7 @@ function matrix<S extends string>(states: readonly S[], allowed: Record<S, reado
 
 describe('session state machines', () => {
   const phases: SessionPhase[] = ['idle', 'turn', 'background']
-  it.each(matrix(phases, { idle: ['turn'], turn: ['idle', 'background'], background: ['turn', 'idle'] }))(
+  it.each(matrix(phases, { idle: ['turn', 'background'], turn: ['idle', 'background'], background: ['turn', 'idle'] }))(
     'session phase %s → %s legal=%s', (from, to, legal) => {
       expect(canTransition(SESSION_PHASE_TRANSITIONS, from, to)).toBe(legal)
     })
@@ -64,5 +64,14 @@ describe('session state machines', () => {
       expect((error as SessionError).code).toBe('illegal_transition')
       expect((error as SessionError).retryable).toBe(false)
     }
+  })
+})
+
+describe('fingerprint', () => {
+  it('is stable and content-sensitive', async () => {
+    const { fingerprint } = await import('./fingerprint.js')
+    expect(fingerprint('hello')).toBe(fingerprint('hello'))
+    expect(fingerprint('hello')).not.toBe(fingerprint('hellO'))
+    expect(fingerprint('')).toMatch(/^[0-9a-f]{16}$/)
   })
 })
