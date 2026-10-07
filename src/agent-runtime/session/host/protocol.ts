@@ -19,6 +19,7 @@ const mcpServer = {
     env: { type: 'object', additionalProperties: { type: 'string', maxLength: 16384 } },
     url: { type: 'string', maxLength: 4096 },
     headers: { type: 'object', additionalProperties: { type: 'string', maxLength: 16384 } },
+    autoApprove: { type: 'boolean' },
   },
 }
 const limits = {

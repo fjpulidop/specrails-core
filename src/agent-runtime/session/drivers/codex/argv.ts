@@ -41,6 +41,8 @@ function serverOverrides(server: McpServerSpec): string[] {
     values.push(`${key}.args=[${(server.args ?? []).map(tomlString).join(',')}]`)
     for (const [name, value] of Object.entries(server.env ?? {})) values.push(`${key}.env.${tomlKey(name)}=${tomlString(value)}`)
   }
+  // Codex gates MCP tools it cannot classify; under approvalPolicy=never it refuses them.
+  if (server.autoApprove) values.push(`${key}.default_tools_approval_mode="approve"`)
   return values
 }
 

@@ -156,7 +156,7 @@ describe('Codex 0.160 transcripts (subAgentActivity)', () => {
 
 describe('Codex argv and config discovery', () => {
   it('disables declared user servers, enables requested ones and maps sandbox modes', () => {
-    const policy = resolvePolicy({ subagents: 'enabled', mcp: { servers: [{ name: 'specrails', url: 'http://127.0.0.1:9/mcp', headers: { Authorization: 'Bearer x' } }, { name: 'local', command: 'node', args: ['s.js'], env: { A: '1' } }] } }, CODEX_DESCRIPTOR)
+    const policy = resolvePolicy({ subagents: 'enabled', mcp: { servers: [{ name: 'specrails', url: 'http://127.0.0.1:9/mcp', headers: { Authorization: 'Bearer x' }, autoApprove: true }, { name: 'local', command: 'node', args: ['s.js'], env: { A: '1' } }] } }, CODEX_DESCRIPTOR)
     const values = codexArgs(policy, ['specrails', 'blender', 'my.server']).filter((_, index, all) => all[index - 1] === '-c')
     expect(values).toEqual([
       'mcp_servers.blender.enabled=false',
@@ -164,6 +164,7 @@ describe('Codex argv and config discovery', () => {
       'mcp_servers.specrails.enabled=true',
       'mcp_servers.specrails.url="http://127.0.0.1:9/mcp"',
       'mcp_servers.specrails.http_headers.Authorization="Bearer x"',
+      'mcp_servers.specrails.default_tools_approval_mode="approve"',
       'mcp_servers.local.enabled=true',
       'mcp_servers.local.command="node"',
       'mcp_servers.local.args=["s.js"]',

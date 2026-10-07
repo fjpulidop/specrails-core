@@ -49,6 +49,12 @@ export interface McpServerSpec {
   /** http server */
   url?: string
   headers?: Record<string, string>
+  /**
+   * The host authorizes every call of this server itself (e.g. a capability-bound
+   * bridge), so the provider must not ask for per-call approval. Without it,
+   * providers that gate MCP tools refuse them under a non-interactive policy.
+   */
+  autoApprove?: boolean
 }
 
 export interface SessionLimits {

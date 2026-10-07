@@ -113,7 +113,19 @@ interface SessionPolicy {
   mcp: { servers: McpServerSpec[]; inheritUserScope: boolean }
   limits?: Partial<SessionLimits>   // idleMs, stallMs, backgroundMaxMs, turnInactivityMs, maxSettleHandoffs
 }
+
+interface McpServerSpec {
+  name: string
+  command?: string; args?: string[]; env?: Record<string, string>   // stdio
+  url?: string; headers?: Record<string, string>                     // http
+  autoApprove?: boolean   // the host authorizes each call; providers must not gate its tools
+}
 ```
+
+Set `autoApprove` only for servers the host authorizes itself, such as a
+capability-bound bridge. Codex otherwise refuses MCP tools it cannot classify
+under its non-interactive approval policy. Claude ignores the flag: its
+permissions come from `policy.permissions`.
 
 `session.open` fails with `policy_unenforceable` when the selected driver cannot
 enforce a requested value. For example, `subagents: 'disabled'` on a driver that
