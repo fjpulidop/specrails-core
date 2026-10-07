@@ -41,11 +41,11 @@
 
 ## 6. Host and contract
 
-- [ ] 6.1 `host/`: NDJSON framing with size limit, Ajv-validated closed method table (one handler per method), error mapping, committed-event notification fan-out with bounded backpressure (coalesce deltas only)
-- [ ] 6.2 `cli.ts`: `runtime host --stdio --scope`, signal handling and `host.shutdown`; add to `RUNTIME_CLI_OPERATIONS`
-- [ ] 6.3 `runtime api` capability `sessions: 1`; `integration-contract.json` `agentRuntime.sessions` block; contract test updates
-- [ ] 6.4 Composition root `createSessionRuntime` and package exports `./agent-runtime/session` and `./agent-runtime/session/testing`; `scripts/verify-package.mjs` smoke-imports them
-- [ ] 6.5 Built-binary smoke: spawn `runtime host` with a fake driver, run open/send/stream/close/replay over stdio (all platforms in CI)
+- [x] 6.1 `host/`: NDJSON framing with size limit, Ajv-validated closed method table (one handler per method), error mapping, committed-event notification fan-out with bounded backpressure (coalesce deltas only)
+- [x] 6.2 `cli.ts`: `runtime host --stdio --scope`, signal handling and `host.shutdown`; add to `RUNTIME_CLI_OPERATIONS`
+- [x] 6.3 `runtime api` capability `sessions: 1`; `integration-contract.json` `agentRuntime.sessions` block; contract test updates
+- [x] 6.4 Composition root `createSessionRuntime` and package exports `./agent-runtime/session` and `./agent-runtime/session/testing`; `scripts/verify-package.mjs` smoke-imports them
+- [x] 6.5 Built-binary smoke: spawn `runtime host` with a fake driver, run open/send/stream/close/replay over stdio (all platforms in CI)
 
 ## 7. Documentation and release
 

@@ -53,9 +53,14 @@ The host SHALL publish `session.event` notifications only after the event is com
 - **AND** a client that applies events idempotently by sequence MUST reach the same state as a client that never disconnected
 
 #### Scenario: Notification consumer is slow
-- **WHEN** the outbound notification queue is full
-- **THEN** only coalescible streaming deltas MAY be merged
-- **AND** lifecycle, receipt, usage and sub-agent status events MUST NOT be dropped
+- **WHEN** the outbound notification queue exceeds its bound
+- **THEN** the host MAY discard queued notifications of the busiest session
+- **AND** MUST first send `session.lagged` naming that session and the last sequence it delivered
+- **AND** every discarded event MUST remain available through `session.events`
+
+#### Scenario: Client detects a gap
+- **WHEN** a client receives an event whose sequence is not the next one it expects
+- **THEN** it can request the missing range with `session.events` and obtain every committed event in order
 
 ### Requirement: Graceful host shutdown
 The host SHALL handle `host.shutdown` and termination signals by retiring every resident provider process within a grace period and recording the resulting state before exiting.

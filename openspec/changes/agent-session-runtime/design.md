@@ -162,7 +162,7 @@ interface DriverSession {
   - `session.update {sessionId, model?, effort?, policy?}`: applied at the next safe boundary; the response says `applied | deferred`
   - `session.close {sessionId, reason}`, `session.snapshot {sessionId}`, `session.events {sessionId, afterSeq, limit}`, `session.list {}`
   - `host.shutdown {graceMs}`
-- **Notifications:** `session.event {sessionId, seq, event}`, published only **after** the journal commit (Observer over committed events). Hosts resume from their last `seq` via `session.events`, so delivery is at-least-once and idempotent by `seq`.
+- **Notifications:** `session.event {sessionId, seq, event}`, published only **after** the journal commit (Observer over committed events). Hosts resume from their last `seq` via `session.events`, so delivery is at-least-once and idempotent by `seq`. Under backpressure the host discards queued notifications of the busiest session after sending `session.lagged`. Merging deltas was rejected because it would break the gap-free sequence; the journal makes discarding lossless.
 - **Versioning:**
   - `protocolVersion` is an integer negotiated at `initialize`.
   - `runtime api` advertises `sessions: 1`.

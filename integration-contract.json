@@ -241,7 +241,8 @@
       "workflows",
       "fork",
       "signal",
-      "cancel"
+      "cancel",
+      "host"
     ],
     "cliPresentationOperations": [
       "help"
@@ -373,6 +374,42 @@
     "workflowAgentSteps": {
       "version": 1,
       "ownership": "Host-defined roles, schemas and gates; Core provides scoped artifact contracts and verified candidate guards"
+    },
+    "sessions": {
+      "version": 1,
+      "protocolVersions": [
+        1
+      ],
+      "capability": "sessions",
+      "cliOperation": "host",
+      "cliCommand": "specrails-core runtime host --stdio --scope <projectKey|global>",
+      "transport": "JSON-RPC 2.0 over newline-delimited stdio; one host per scope",
+      "journalRoot": "~/.specrails/sessions/<scope>/sessions.sqlite",
+      "moduleExport": "./agent-runtime/session",
+      "documentation": "docs/agent-sessions/protocol.md",
+      "eventTypes": [
+        "session.opened",
+        "session.phase",
+        "session.process",
+        "session.provider-ref",
+        "session.updated",
+        "session.closed",
+        "input.accepted",
+        "input.state",
+        "turn.started",
+        "turn.output",
+        "turn.tool",
+        "turn.completed",
+        "subagent.started",
+        "subagent.phase",
+        "subagent.output",
+        "subagent.usage",
+        "subagent.result",
+        "subagents.settled",
+        "output.truncated",
+        "notice.interruption",
+        "provider.diagnostic"
+      ]
     }
   },
   "execution": {

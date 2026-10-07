@@ -44,10 +44,14 @@ the next time a turn needs a process.
 
 `session.event` → `{ sessionId, seq, event: SessionEvent }`
 
+`session.lagged` → `{ sessionId, deliveredSeq }` (queued notifications after `deliveredSeq` were discarded; read them with `session.events`)
+
+`host.leaseLost` → `{}` (another host took over the scope; this host stops serving and exits)
+
 - Notifications are sent only after the event is committed to the journal.
-- `seq` is gap-free per session and starts at 1.
-- Delivery is at least once. A host applies events idempotently by `(sessionId, seq)` and catches up with `session.events`.
-- Under backpressure, only consecutive `turn.output` and `subagent.output` deltas may be merged. Other events are never dropped.
+- `seq` is gap-free per session and starts at 1. The journal is the source of truth and notifications are a live feed of it.
+- A client applies events idempotently by `(sessionId, seq)`. When it sees a gap, it fetches the missing range with `session.events`.
+- Under backpressure the host may discard queued notifications of the busiest session. It first sends `session.lagged { sessionId, deliveredSeq }`. Nothing is lost: the client catches up with `session.events`.
 
 ## Events
 

@@ -84,8 +84,3 @@ export const SESSION_EVENT_TYPES = Object.freeze([
   'notice.interruption',
   'provider.diagnostic',
 ] as const satisfies readonly SessionEventType[])
-
-/** Streaming deltas the notification channel may merge under backpressure. */
-export function isCoalescible(event: SessionEventBody): boolean {
-  return event.type === 'turn.output' || (event.type === 'subagent.output' && event.channel === 'text')
-}

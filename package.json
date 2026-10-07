@@ -14,6 +14,16 @@
       "import": "./dist/agent-runtime/engine/index.js",
       "default": "./dist/agent-runtime/engine/index.js"
     },
+    "./agent-runtime/session": {
+      "types": "./dist/agent-runtime/session/index.d.ts",
+      "import": "./dist/agent-runtime/session/index.js",
+      "default": "./dist/agent-runtime/session/index.js"
+    },
+    "./agent-runtime/session/testing": {
+      "types": "./dist/agent-runtime/session/testing/index.d.ts",
+      "import": "./dist/agent-runtime/session/testing/index.js",
+      "default": "./dist/agent-runtime/session/testing/index.js"
+    },
     "./package.json": "./package.json",
     "./integration-contract.json": "./integration-contract.json",
     "./schemas/agent-runtime.schema.json": "./schemas/agent-runtime.schema.json",
