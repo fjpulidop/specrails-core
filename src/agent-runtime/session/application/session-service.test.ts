@@ -463,3 +463,35 @@ describe('SessionService — disabled sub-agent policy', () => {
   })
 })
 
+describe('SessionService — idempotent updates', () => {
+  it('keeps the resident process when an update changes nothing', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    userTurn(driver, 'u1', 'hi')
+    const before = ctx.events(sessionId).length
+    expect(await ctx.service.update(sessionId, { model: 'm', policy: { subagents: 'enabled' } })).toEqual({ outcome: 'applied' })
+    expect(driver.closed).toBeNull()
+    expect(ctx.events(sessionId)).toHaveLength(before)
+    expect(await ctx.service.update(sessionId, { model: 'other' })).toEqual({ outcome: 'applied' })
+    expect(driver.closed).toBe('config_change')
+  })
+
+  it('records a reverting update while another change is deferred', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    driver.emit(
+      { kind: 'input.receipt', inputId: 'u1', state: 'started' },
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'subagent.started', subagentId: 'a1', parentId: null, agentKind: 'background', description: 'Long job' },
+      { kind: 'turn.completed', status: 'completed', text: 'LAUNCHED', usage: {} },
+    )
+    expect(await ctx.service.update(sessionId, { model: 'bigger' })).toEqual({ outcome: 'deferred' })
+    expect(await ctx.service.update(sessionId, { model: 'bigger' })).toEqual({ outcome: 'deferred' })
+    expect(await ctx.service.update(sessionId, { model: 'm' })).toEqual({ outcome: 'deferred' })
+    driver.emit({ kind: 'subagent.phase', subagentId: 'a1', phase: 'idle' })
+    ctx.clock.advance(DEFAULT_LIMITS.settleDebounceMs)
+    await tick()
+    expect(ctx.service.snapshot(sessionId).model).toBe('m')
+  })
+})
+

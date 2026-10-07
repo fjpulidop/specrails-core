@@ -36,6 +36,8 @@ A scope has at most one live host. A second host for the same scope fails
 | `host.ping` | `{}` | `{ uptimeMs, sessions, residentProcesses }` |
 | `host.shutdown` | `{ graceMs? }` | `{}` (sent before the process exits) |
 
+`session.update` replaces the fields it carries; `policy` is resolved as a whole, so send the complete policy. An update that leaves the effective configuration unchanged is a no-op: nothing is journaled and the resident process keeps running. Hosts may re-send their configuration before every turn. A real change applies at once when the session is idle and retires the process, because provider flags are fixed at spawn. While a turn or sub-agents run, the change is `deferred` until the session goes idle.
+
 `resume` reopens a closed, retired or interrupted session from the journal.
 The provider session is resumed (Claude `--resume`, Codex `thread/resume`)
 the next time a turn needs a process.

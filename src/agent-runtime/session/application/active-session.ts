@@ -168,7 +168,11 @@ export class ActiveSession {
   /** Apply now when nothing is running; otherwise defer to the next idle point. */
   async update(changes: { model?: string; effort?: string; systemPrompt?: string; policy?: SessionPolicy }): Promise<'applied' | 'deferred'> {
     this.assertOpen()
-    const recorded: Record<string, unknown> = { ...changes }
+    const recorded: Record<string, unknown> = Object.fromEntries(Object.entries(changes).filter(([, value]) => value !== undefined))
+    // Hosts re-send their whole configuration before every turn. A change that
+    // leaves the effective configuration as it is must not restart the process.
+    const effective: Record<string, unknown> = { ...this.config, ...(this.pendingDeferred ?? {}) }
+    if (Object.entries(recorded).every(([key, value]) => sameValue(effective[key], value))) return this.pendingDeferred ? 'deferred' : 'applied'
     if (this.isBusy) {
       this.pendingDeferred = { ...(this.pendingDeferred ?? {}), ...recorded }
       this.commit([{ type: 'session.updated', changes: recorded, outcome: 'deferred' }])
@@ -613,3 +617,17 @@ export class ActiveSession {
     this.deps.touched(this)
   }
 }
+
+/** Structural equality for configuration values (key order does not matter). */
+function sameValue(left: unknown, right: unknown): boolean {
+  return canonical(left) === canonical(right)
+}
+
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value as Record<string, unknown>).sort().filter((key) => (value as Record<string, unknown>)[key] !== undefined).map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'undefined'
+}
+
