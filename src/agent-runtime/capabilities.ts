@@ -34,6 +34,15 @@ export async function cliCapabilities(provider: CliProvider, model: string | und
       const levels = section?.match(/\(([^)]+)\)/)?.[1].split(',').map(value => value.trim())
       if (levels?.length && levels.every(value => /^[a-z][a-z0-9_-]{0,31}$/.test(value))) return { ...result, effortSupport: 'supported', supportedEfforts: levels }
     } else if (model && help.stdout.includes('--config')) {
+      // Ask the installed client for its own model catalog. Other Codex clients
+      // (the desktop app's app-server daemon, IDE extensions) share
+      // models_cache.json and rewrite it with their own version, so the cache
+      // is only a fallback for clients without `codex debug models`.
+      const catalog = await runner({ command: provider, args: ['debug', 'models'] }, { cwd: tmpdir(), env, timeoutMs: 10_000 }).catch(() => null)
+      if (catalog?.exitCode === 0 && catalog.stdout.length <= 2 * 1024 * 1024) {
+        const levels = codexModelEfforts(JSON.parse(catalog.stdout), model)
+        if (levels) return { ...result, effortSupport: 'supported', supportedEfforts: levels }
+      }
       // Use the installed client's own bounded, fresh model catalog. Do not
       // infer reasoning support from a model prefix or another provider.
       const file = path.join(env.CODEX_HOME ?? path.join(env.HOME ?? homedir(), '.codex'), 'models_cache.json')
@@ -43,14 +52,20 @@ export async function cliCapabilities(provider: CliProvider, model: string | und
       if (!Number.isFinite(age) || age < -60_000 || age > 24 * 60 * 60_000) return result
       const version = await runner({ command: provider, args: ['--version'] }, { cwd: tmpdir(), env, timeoutMs: 10_000 })
       if (version.exitCode !== 0 || version.stdout.trim() !== `codex-cli ${cache.client_version}`) return result
-      const entry = Array.isArray(cache.models) ? cache.models.find((item: { slug?: unknown }) => item?.slug === model) : undefined
-      const levels: unknown = entry?.supported_reasoning_levels?.map((item: { effort?: unknown }) => item?.effort)
-      if (Array.isArray(levels) && levels.length && levels.every(value => typeof value === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(value))) {
-        return { ...result, effortSupport: 'supported', supportedEfforts: [...new Set(levels)] }
-      }
+      const levels = codexModelEfforts(cache, model)
+      if (levels) return { ...result, effortSupport: 'supported', supportedEfforts: levels }
     }
   } catch { /* Missing/stale metadata is unknown, never optimistic support. */ }
   return result
+}
+
+/** Reasoning levels a Codex catalog (`{ models: [...] }`) declares for one model; null when unknown or malformed. */
+function codexModelEfforts(catalog: unknown, model: string): string[] | null {
+  const models = (catalog as { models?: unknown } | null)?.models
+  const entry = Array.isArray(models) ? models.find((item: { slug?: unknown }) => item?.slug === model) : undefined
+  const levels: unknown = entry?.supported_reasoning_levels?.map?.((item: { effort?: unknown }) => item?.effort)
+  if (!Array.isArray(levels) || !levels.length || !levels.every(value => typeof value === 'string' && /^[a-z][a-z0-9_-]{0,31}$/.test(value))) return null
+  return [...new Set(levels as string[])]
 }
 
 export function assertEffortSupported(selection: Pick<RuntimeAgentConfig, 'effort'>, capability: ExecutorCapabilities): void {
