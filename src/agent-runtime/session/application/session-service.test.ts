@@ -171,6 +171,17 @@ describe('SessionService — Codex-like drivers', () => {
     expect(driver.sent.map((input) => input.inputId)).toEqual(['u1', 'u2'])
   })
 
+  it('completes an input steered into a running turn together with that turn', async () => {
+    const ctx = setup(new ScriptedDriverFactory(descriptor('steerable', { nativeInputQueue: false })))
+    const { sessionId, driver } = await openAndSend(ctx)
+    driver.emit({ kind: 'input.receipt', inputId: 'u1', state: 'started' }, { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] })
+    await ctx.service.send(sessionId, { inputId: 'u2', text: 'also this', delivery: 'steer' })
+    expect(driver.sent.map((input) => [input.inputId, input.delivery])).toEqual([['u1', 'queue'], ['u2', 'steer']])
+    driver.emit({ kind: 'input.receipt', inputId: 'u2', state: 'started' })
+    driver.emit({ kind: 'turn.completed', status: 'completed', text: 'ok', usage: {} })
+    expect(ctx.service.snapshot(sessionId).inputs.u2).toMatchObject({ state: 'completed', turnId: 'turn-1' })
+  })
+
   it('asks the agent to collect settled sub-agents, bounded by maxSettleHandoffs', async () => {
     const ctx = setup(codexLike())
     const { sessionId } = await ctx.service.open({ driver: 'codex-like', model: 'm', cwd: '/r', policy: { subagents: 'enabled', limits: { maxSettleHandoffs: 1 } } })

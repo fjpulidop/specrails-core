@@ -20,6 +20,7 @@ export const CLAUDE_DESCRIPTOR: DriverDescriptor = Object.freeze({
     subagentDisable: true,
     autonomousContinuation: true,
     steer: true,
+    toolFiltering: true,
     usage: Object.freeze({ costUsd: 'session-cumulative' as const, tokens: 'per-turn' as const }),
   }),
 })

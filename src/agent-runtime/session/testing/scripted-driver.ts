@@ -12,6 +12,7 @@ export function descriptor(id: string, capabilities: Partial<DriverCapabilities>
       subagentDisable: true,
       autonomousContinuation: true,
       steer: true,
+      toolFiltering: true,
       usage: { costUsd: 'session-cumulative', tokens: 'per-turn' },
       ...capabilities,
     },

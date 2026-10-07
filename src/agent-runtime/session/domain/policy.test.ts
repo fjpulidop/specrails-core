@@ -15,6 +15,7 @@ function driver(id: string, caps: Partial<DriverCapabilities> = {}): DriverDescr
       subagentDisable: true,
       autonomousContinuation: true,
       steer: true,
+      toolFiltering: true,
       usage: { costUsd: 'session-cumulative', tokens: 'per-turn' },
       ...caps,
     },
@@ -58,6 +59,13 @@ describe('session policy', () => {
   it('refuses provider-native continuation on drivers that never continue by themselves', () => {
     expect(code(() => resolvePolicy({ subagents: 'enabled', onSubagentsSettled: 'provider-native' }, threaded))).toBe('policy_unenforceable')
     expect(resolvePolicy({ subagents: 'disabled', onSubagentsSettled: 'provider-native' }, threaded).onSubagentsSettled).toBe('provider-native')
+  })
+
+  it('refuses tool restrictions on drivers that cannot filter tools', () => {
+    const noFilter = driver('no-filter', { toolFiltering: false })
+    expect(code(() => resolvePolicy({ subagents: 'enabled', tools: { mode: 'read-only' } }, noFilter))).toBe('policy_unenforceable')
+    expect(code(() => resolvePolicy({ subagents: 'enabled', tools: { mode: 'default', deny: ['x'] } }, noFilter))).toBe('policy_unenforceable')
+    expect(resolvePolicy({ subagents: 'enabled', tools: { mode: 'default' } }, noFilter).tools).toEqual({ mode: 'default' })
   })
 
   it('refuses sub-agents without tools', () => {

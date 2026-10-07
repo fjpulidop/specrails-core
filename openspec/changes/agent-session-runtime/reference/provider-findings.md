@@ -99,7 +99,19 @@ shows only `exec`, `wait`, `apply_patch`, …).
 
 **Other.** `item.phase` distinguishes `commentary` from `final_answer` messages.
 The user's global MCP servers and hooks are loaded into every thread, so the
-runtime must control the MCP set explicitly. With a ChatGPT login some models
+runtime must control the MCP set explicitly.
+
+**MCP isolation (probe without model calls).** `-c mcp_servers={}` does *not*
+remove the user's servers, because `-c` overrides are merged into the config. What
+works:
+
+- adding a server with `-c mcp_servers.<name>.url=…` (or `.command`/`.args`);
+- disabling one with `-c mcp_servers.<name>.enabled=false`.
+
+The driver therefore disables every server declared in the user's
+`config.toml`. The built-in `codex_apps` and `cua_repl` servers are not
+declared there and stay. Codex has no `--tools` equivalent, so tool filtering
+is declared unsupported. With a ChatGPT login some models
 are rejected (`gpt-5.4-mini`): model availability is account-dependent.
 
 ## Normalization implications

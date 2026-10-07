@@ -66,6 +66,9 @@ export function resolvePolicy(input: SessionPolicyInput, driver: DriverDescripto
   }
 
   const tools = input.tools ?? { mode: 'default' as const }
+  if (!caps.toolFiltering && (tools.mode !== 'default' || tools.allow?.length || tools.deny?.length)) {
+    throw unenforceable(`Driver "${driver.id}" cannot restrict its tool set`, { field: 'tools', driver: driver.id })
+  }
   if (tools.mode === 'none' && caps.resident && caps.subagents === 'supported' && input.subagents === 'enabled') {
     throw unenforceable('A session without tools cannot launch sub-agents; disable sub-agents or allow tools', { field: 'tools.mode' })
   }

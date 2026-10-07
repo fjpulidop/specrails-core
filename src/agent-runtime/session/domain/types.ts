@@ -95,6 +95,8 @@ export interface DriverCapabilities {
   autonomousContinuation: boolean
   /** Input can be delivered into a running turn. */
   steer: boolean
+  /** The tool set can be restricted (`policy.tools` other than the default). */
+  toolFiltering: boolean
   usage: UsageSemantics
 }
 

@@ -308,7 +308,8 @@ export class ActiveSession {
         this.afterSubagentChange()
         return
       case 'subagent.phase':
-        if (event.phase !== 'running') this.finishedSinceLastTurn.add(event.subagentId)
+        // Only work that finished while the agent was not in a turn is news to it (it saw the rest via its own tools).
+        if (event.phase !== 'running' && !this.state.openTurn) this.finishedSinceLastTurn.add(event.subagentId)
         this.commit([
           { type: 'subagent.phase', subagentId: event.subagentId, phase: event.phase, ...(event.reason ? { reason: event.reason } : {}) },
           ...(event.phase === 'running' ? [] : this.output.drainSubagent(event.subagentId)),
@@ -370,11 +371,14 @@ export class ActiveSession {
     void this.releaseHeldInput()
   }
 
-  /** Inputs whose receipts never reported completion are completed with their turn. */
+  /**
+   * Inputs whose receipts never reported completion are completed with their
+   * turn: the ones that opened it and the ones steered into it.
+   */
   private completeTurnInputs(inputIds: string[], turnId: string): SessionEventBody[] {
-    return inputIds
-      .filter((id) => this.state.inputs[id]?.state === 'started')
-      .map((id) => ({ type: 'input.state' as const, inputId: id, state: 'completed' as const, turnId }))
+    return Object.values(this.state.inputs)
+      .filter((input) => input.state === 'started' && (inputIds.includes(input.inputId) || input.turnId === turnId))
+      .map((input) => ({ type: 'input.state' as const, inputId: input.inputId, state: 'completed' as const, turnId }))
   }
 
   private settlePhaseAfterTurn(): void {
