@@ -49,7 +49,7 @@
 
 ## 7. Documentation and release
 
-- [ ] 7.1 `docs/agent-sessions/drivers.md` (driver contract, capability matrix, adding a provider), `journal.md`, `extending.md`; READMEs in `session/`, `drivers/`, `journal/`, `host/`
-- [ ] 7.2 Update `docs/agent-runtime.md` capability table and CLAUDE.md layering note
-- [ ] 7.3 Gates: `npm run typecheck`, `npm test`, `npm run ci` (coverage gates unchanged), `npm run check:package`
+- [x] 7.1 `docs/agent-sessions/drivers.md` (driver contract, capability matrix, adding a provider), `journal.md`, `extending.md`; READMEs in `session/`, `drivers/`, `journal/`, `host/`
+- [x] 7.2 Update `docs/agent-runtime.md` capability table and CLAUDE.md layering note
+- [x] 7.3 Gates: `npm run typecheck`, `npm test`, `npm run ci` (coverage gates unchanged), `npm run check:package`
 - [ ] 7.4 Coordinate release with the paired Desktop change `core-agent-sessions-host` (Core released first; Desktop pins and negotiates `sessions`)
