@@ -90,7 +90,7 @@ describe('executor-backed driver', () => {
     const executor = new EchoExecutor()
     const events: unknown[] = []
     const factory = new ExecutorDriverFactory(executorDescriptor('kimi', 'Kimi'), executor)
-    const session = await factory.open({ sessionId: 's', generation: 1, cwd: '/repo', model: 'k2', effort: 'high', systemPrompt: 'SYSTEM', providerSessionRef: null, policy: { subagents: 'disabled', onSubagentsSettled: 'notify-only', tools: { mode: 'default' }, permissions: 'read-only', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } } }, (event) => events.push(event))
+    const session = await factory.open({ sessionId: 's', generation: 1, cwd: '/repo', model: 'k2', effort: 'high', systemPrompt: 'SYSTEM', providerSessionRef: null, policy: { subagents: 'disabled', subagentRuntime: { mode: 'native' as const }, onSubagentsSettled: 'notify-only', tools: { mode: 'default' }, permissions: 'read-only', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } } }, (event) => events.push(event))
     await session.send({ inputId: 'a', text: 'first', delivery: 'queue' })
     await tick()
     await session.send({ inputId: 'b', text: 'second', delivery: 'queue', attachments: [{ kind: 'file', path: '/repo/x.md' }] })
@@ -112,7 +112,7 @@ describe('executor-backed driver', () => {
         throw new Error('unreachable')
       },
     }
-    const session = await new ExecutorDriverFactory(executorDescriptor('gemini', 'Gemini'), executor).open({ sessionId: 's', generation: 1, cwd: '/r', model: 'm', effort: null, systemPrompt: null, providerSessionRef: 'prev', policy: { subagents: 'disabled', onSubagentsSettled: 'notify-only', tools: { mode: 'default' }, permissions: 'workspace-write', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } } }, (event) => events.push(event as never))
+    const session = await new ExecutorDriverFactory(executorDescriptor('gemini', 'Gemini'), executor).open({ sessionId: 's', generation: 1, cwd: '/r', model: 'm', effort: null, systemPrompt: null, providerSessionRef: 'prev', policy: { subagents: 'disabled', subagentRuntime: { mode: 'native' as const }, onSubagentsSettled: 'notify-only', tools: { mode: 'default' }, permissions: 'workspace-write', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } } }, (event) => events.push(event as never))
     await session.send({ inputId: 'a', text: 'long', delivery: 'queue' })
     await expect(session.send({ inputId: 'x', text: 'parallel', delivery: 'queue' })).rejects.toThrow(/one turn at a time/)
     await session.interrupt()

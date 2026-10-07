@@ -157,7 +157,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
         model: event.model,
         effort: event.effort ?? null,
         systemPrompt: event.systemPrompt ?? null,
-        policy: event.policy,
+        policy: normalizePolicy(event.policy),
         providerSessionRef: event.providerSessionRef ?? state.providerSessionRef,
       }
     case 'session.phase':
@@ -175,7 +175,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
         model: changes.model ?? state.model,
         effort: changes.effort ?? state.effort,
         systemPrompt: changes.systemPrompt ?? state.systemPrompt,
-        policy: changes.policy ?? state.policy,
+        policy: changes.policy ? normalizePolicy(changes.policy) : state.policy,
       }
     }
     case 'session.closed':
@@ -322,3 +322,12 @@ export function foldEvents(initial: SessionSnapshot, envelopes: readonly Session
 export function liveSubagents(state: SessionSnapshot): SubagentNode[] {
   return Object.values(state.subagents).filter((node) => isLiveSubagentPhase(node.phase))
 }
+
+/**
+ * Journals written before `subagentRuntime` existed carry policies without it:
+ * those sessions ran native sub-agents, so replay reads them as such.
+ */
+export function normalizePolicy(policy: SessionPolicy): SessionPolicy {
+  return policy.subagentRuntime ? policy : { ...policy, subagentRuntime: { mode: 'native' } }
+}
+

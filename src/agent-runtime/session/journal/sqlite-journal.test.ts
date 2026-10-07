@@ -21,7 +21,7 @@ async function home(): Promise<string> {
   return root
 }
 
-const policy: SessionPolicy = { subagents: 'enabled', onSubagentsSettled: 'provider-native', tools: { mode: 'default' }, permissions: 'bypass', mcp: { servers: [], inheritUserScope: false }, limits: DEFAULT_LIMITS }
+const policy: SessionPolicy = { subagents: 'enabled', subagentRuntime: { mode: 'native' as const }, onSubagentsSettled: 'provider-native', tools: { mode: 'default' }, permissions: 'bypass', mcp: { servers: [], inheritUserScope: false }, limits: DEFAULT_LIMITS }
 const at = '2026-10-07T10:00:00.000Z'
 const opened: SessionEvent = { type: 'session.opened', driver: 'claude', model: 'haiku', policy, resumed: false, providerSessionRef: null, at }
 

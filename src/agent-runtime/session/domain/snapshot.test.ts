@@ -9,7 +9,7 @@ import { EMPTY_USAGE, type SessionPolicy } from './types.js'
 
 const policy: SessionPolicy = {
   subagents: 'enabled',
-  onSubagentsSettled: 'provider-native',
+  subagentRuntime: { mode: 'native' as const }, onSubagentsSettled: 'provider-native',
   tools: { mode: 'default' },
   permissions: 'bypass',
   mcp: { servers: [], inheritUserScope: false },
@@ -75,6 +75,15 @@ describe('session snapshot', () => {
     expect(state.subagents.a1).toMatchObject({ phase: 'idle', restarts: 1, resultSummary: 'SUBDONE', toolUses: 3, durationMs: 39_494 })
     expect(liveSubagents(state)).toEqual([])
     expect(state.settled).toEqual({ settled: true, live: 0 })
+  })
+
+  it('replays journals written before subagentRuntime existed as native sub-agents', () => {
+    const { subagentRuntime: _omitted, ...legacy } = policy
+    const state = foldEvents(emptySnapshot('s1'), envelopes([
+      { type: 'session.opened', driver: 'claude', model: 'm', policy: legacy as SessionPolicy, resumed: false, providerSessionRef: null },
+      { type: 'session.updated', changes: { policy: legacy }, outcome: 'applied' },
+    ]))
+    expect(state.policy?.subagentRuntime).toEqual({ mode: 'native' })
   })
 
   it('does not mutate the previous snapshot', () => {
