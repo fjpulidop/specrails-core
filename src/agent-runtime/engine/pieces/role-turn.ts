@@ -1,8 +1,10 @@
 import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
 import { Ajv2020 } from 'ajv/dist/2020.js'
+import { withScopeDefault } from '../../change-scope.js'
 import { resolveRoleDescriptor } from '../../config.js'
 import { AgentExecutionError } from '../../executor-types.js'
+import type { VerificationCommand } from '../../../pipeline/pipeline-state.js'
 import { createRoleInvoker } from '../../graph/roles.js'
 import { roleInstructions } from '../../prompts.js'
 import { EngineError, type JsonObject, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
@@ -13,7 +15,7 @@ const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false,
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
@@ -49,7 +51,8 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const priorNote = !previous && descriptor.access === 'read' && saved?.session && typeof saved.notes?.value.text === 'string'
     ? saved.notes.value.text.slice(0, 4000) : ''
   const task = text(params.prompt) + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
-  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt }) + '\n## Current workflow task\n' + task
+  const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
+  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
     structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
     const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output
@@ -71,4 +74,32 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   return { outcome: 'next', output: { candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, text: boundedText(result.text), ...(result.value ? { structured: json(result.value) } : {}) },
     history: [historyEntry(context, result.text)], ...(params.sessionContinuity !== 'none' && session ? { session: { sessionId: session.sessionId, identity: session.identity } } : {}) }
+}
+
+/** The complete plan the host will run for the repositories in scope: configured checks plus, when `verificationProposalsFrom`
+ * names a committed output, its proposals for repositories without a configured check (the rule the verify piece applies). */
+function hostVerificationPlan(deps: PieceDependencies, context: PieceExecutionContext, params: JsonObject): VerificationCommand[] {
+  const inScope = new Set(deps.context.repositories.map(repository => repository.id))
+  const commands = deps.config.verification.filter(command => inScope.has(command.repositoryId)).map(command => withScopeDefault(deps.context, command))
+  const configured = new Set(commands.map(command => command.repositoryId))
+  const seen = new Set(commands.map(planKey))
+  if (typeof params.verificationProposalsFrom === 'string') {
+    const source = context.state.$outputs[params.verificationProposalsFrom] as { structured?: { verification?: unknown } } | undefined
+    const proposals = Array.isArray(source?.structured?.verification) ? source.structured.verification.slice(0, 20) : []
+    for (const proposal of proposals) {
+      if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) continue
+      const raw = proposal as Partial<VerificationCommand>
+      if (typeof raw.repositoryId !== 'string' || typeof raw.command !== 'string' || !Array.isArray(raw.args) || !raw.args.every(arg => typeof arg === 'string')) continue
+      if (!inScope.has(raw.repositoryId) || configured.has(raw.repositoryId)) continue
+      const command = withScopeDefault(deps.context, { repositoryId: raw.repositoryId, command: raw.command, args: raw.args, ...(typeof raw.cwd === 'string' ? { cwd: raw.cwd } : {}) })
+      const key = planKey(command)
+      if (seen.has(key)) continue
+      seen.add(key)
+      commands.push(command)
+    }
+  }
+  return commands
+}
+function planKey(command: VerificationCommand): string {
+  return JSON.stringify([command.repositoryId, command.cwd ?? '', command.command, command.args])
 }

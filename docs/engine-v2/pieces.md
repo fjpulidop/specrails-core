@@ -79,12 +79,15 @@ overflow fail before any update is returned.
 
 Runs verification commands through the real Core command runner and evidence adapter, without a journal (`state.json` is never created for ledger-only runs).
 
-- Parameters: `commands: 'configured'` uses `config.verification`; an explicit array (≤ 100) supplies `VerificationCommand` objects. `unverified: true` admits repositories without a check as an explicit exception. `maxConcurrency` (1–4) bounds parallel commands.
-- Outcomes: `pass` when the receipt is valid, `fail` when a command failed, `failed` for infrastructure failure (`verification_execution_error`) or three consecutive failures with the same candidate and failing command identities (`verification_no_progress`). A changed candidate or failure identity resets the counter; a valid receipt clears it. The per-node counter is committed in scoped `$vars` and survives resume.
+- Parameters: `commands: 'configured'` uses `config.verification`; an explicit array (≤ 100) supplies `VerificationCommand` objects. `unverified: true` admits repositories without a check as an explicit exception. `maxConcurrency` (1–4) bounds parallel commands. `setup: 'configured'` runs `config.setup` (an inline array has the same shape) sequentially before the plan. `hostBlockers: true` adds the `blocked` outcome.
+- Outcomes: `pass` when the receipt is valid, `fail` when a command failed, `failed` for infrastructure failure (`verification_execution_error`) or three consecutive failures with the same candidate and failing command identities (`verification_no_progress`). A changed candidate or failure identity resets the counter; a valid receipt clears it. The per-node counter is committed in scoped `$vars` and survives resume. `blocked` exists only when `hostBlockers: true` (`getOutcomes`), so definitions without the flag keep their three `ends`; with the flag, `blocked` must be mapped.
+- Environment repair: an invalid receipt is classified before `fail`. A host precondition (registry 401/403 or unreachable registry, `Environment variable not found (NAME)`, a git credential prompt, a Playwright browser download that cannot reach its CDN) yields `output.blocker = { kind, reason, command, args, cwd, requiredAction, evidenceId? }` with `kind` in `network | credential | environment-variable | toolchain | setup | environment` and `cwd` relative to the checkout, without running installs. An environment failure (exit 127, `command not found`, `Cannot find module`, a missing Playwright browser build such as `Executable doesn't exist at …/ms-playwright/chromium_headless_shell-1243/…`) runs the planned installs once for the failing roots (`npm|pnpm|yarn install`, `pip`, `go mod download`, `cargo fetch`, and `npx playwright install <browser>` / `pnpm exec playwright install <browser>` / `yarn playwright install <browser>` for manifests declaring `@playwright/test` or `playwright`, after the dependency plan, bounded to 10 minutes), reports each step on `verification-output` as `[environment] <command> (<root>)` and `Environment: installed …`, then re-runs the same plan once. The second receipt decides the outcome and the no-progress fingerprint; `output.environmentRepair = { attempted: true, installs: [{ command, args, root, ok, detail }], reverified }`. A refused install (offline browser download, registry credentials) is a blocker. `guardrails['environment-repair'] === false` disables the installs; `lockfile-repair` governs the lockfile retry; classification always applies.
+- Blocker routing: with `hostBlockers: true` a blocker returns outcome `blocked`, `status: 'blocked'` and `error.code = 'verification_host_precondition'` (message = reason + required action). Without the flag the same `output.blocker` travels through `fail`, and the no-progress stop still bounds the loop.
+- Setup: the selected setup commands are validated like checks (a `cwd` outside the admitted scope throws the same scoped-command error), run with `maxConcurrency: 1` through the verification runner with evidence and progress wired, and are recorded as `output.setup = { commands: [...] }` with the bounded diagnostics format. The setup receipt is `scoped` evidence only: it never installs `$verified` and is not part of the no-progress fingerprint. A non-zero setup exit is a `{ kind: 'setup' }` blocker routed as above, and no verification command runs for that visit; exit `-1` keeps the infrastructure `failed` outcome. Setup runs on every visit, so commands must be idempotent and cheap; `policy` is accepted and ignored.
 - Effect: write. The receipt kind is `full` when the commands cover every frozen repository or `unverified` is set, otherwise `scoped`. Certification (`$verified`) is installed only for a valid full receipt with at least one command, no unverified repositories and a candidate hash equal to the committed candidate; the ledger rejects anything else (`receipt_invalid`) and the execution adapter downgrades a receipt whose candidate changed before terminal commit to `fail`.
 - `storeAccess: 'write'`: known-command observations under `verification/known-commands` are advisory and never skip a check.
 - Bounded command diagnostics reserve space for compiler/runtime errors, test failures, expected values and application locations from retained stdout/stderr before contextual blocks and the output tail. TypeScript file/line diagnostics and global compiler errors are recognized; warning-only lint summaries are not failure anchors. Full bounded command evidence is unchanged.
-- Writes: `$outputs[nodeId] = { receiptId, valid, reason?, commands: [{ repositoryId, command, args, cwd, exitCode, durationMs, output, truncated }], omittedCommands? }`, the receipt evidence and `$verified`. Committed diagnostics are bounded, prioritizing failed command output; the receipt retains full evidence. Emits `verification-output` and `runtime-efficiency-event`.
+- Writes: `$outputs[nodeId] = { receiptId, valid, reason?, commands: [{ repositoryId, command, args, cwd, exitCode, durationMs, output, truncated }], omittedCommands?, setup?, environmentRepair?, blocker? }`, the receipt evidence and `$verified`. Committed diagnostics are bounded, prioritizing failed command output; the receipt retains full evidence. Emits `verification-output` and `runtime-efficiency-event`.
 
 ### `shell`
 
@@ -168,7 +171,7 @@ Core's native implementation (architect → developer → fixer/verify → revie
 
 ### `end`
 
-Terminates the current body. `completion.ok` is `outcome === 'success'`; `completion.verified` is whether the ledger's current `$verified` matches the current candidate hash; `requiresVerified: true` (or the root `delivery.requiresVerified: true`, combined by the compiler at execution time) turns an unverified success into `ok: false` with `reasons: ['unverified']`. `reason` is appended to the reasons. `exit` is valid only inside a component body and must name a declared output.
+Terminates the current body. `completion.ok` is `outcome === 'success'`; `completion.verified` is whether the ledger's current `$verified` matches the current candidate hash; `requiresVerified: true` (or the root `delivery.requiresVerified: true`, combined by the compiler at execution time) turns an unverified success into `ok: false` with `reasons: ['unverified']`. `reason` is appended to the reasons. `exit` is valid only inside a component body and must name a declared output. `blockerFrom: <nodeId>` copies that node's committed host blocker (`$outputs[nodeId].blocker`, or `$outputs[nodeId].structured.blocker` from a correction role) into `completion.blocker` with bounded strings; a missing or malformed blocker adds nothing. Reason templates can render it, for example `{{outputs.verify.blocker.requiredAction}}`.
 
 - Outcomes: none. Effect: read. At the root the compiler marks `completesRun` and the ledger records the durable completion; inside a component it sets the private `$exit`.
 
@@ -222,6 +225,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `prompt` | yes | string (1–32000 chars) |
 | `structuredOutput` | no | object |
 | `sessionContinuity` | no | `"run"` / `"none"` |
+| `verificationProposalsFrom` | no | string (1–128 chars) |
 
 ### Descriptor: `decider`
 
@@ -249,7 +253,7 @@ Exactly one of: `text`, `nativeCommand`.
 | Effect | `write` |
 | Requires AI | no |
 | Store access | `write` |
-| Declared outcomes | `pass`, `fail`, `failed` |
+| Declared outcomes | `pass`, `fail`, `failed`, `blocked` |
 | Additional parameters | rejected |
 
 | Parameter | Required | Type |
@@ -258,6 +262,8 @@ Exactly one of: `text`, `nativeCommand`.
 | `additionalCommandsFrom` | no | string (1–128 chars) |
 | `unverified` | no | boolean |
 | `maxConcurrency` | no | integer (1–4) |
+| `setup` | no | `"configured"` / array of object { `repositoryId`: string (1–128 chars), `command`: string (1–4096 chars), `args`: array of string (≤ 32000 chars) (≤ 1024 items), `cwd`: string (≤ 4096 chars), `env`: object of string (≤ 32000 chars), `timeoutMs`: integer (1–7200000), `key`: string (≤ 128 chars), `label`: string (1–256 chars), `policy`: object } (required: `repositoryId`, `command`, `args`) (≤ 100 items) |
+| `hostBlockers` | no | boolean |
 
 ### Descriptor: `shell`
 
@@ -365,6 +371,7 @@ Exactly one of: `argv`, `commandLine`.
 | `requiresVerified` | no | boolean |
 | `reason` | no | string (≤ 32000 chars) |
 | `exit` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
+| `blockerFrom` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
 
 ### Descriptor: `approval`
 

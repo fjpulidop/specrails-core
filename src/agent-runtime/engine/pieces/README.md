@@ -41,6 +41,14 @@ Captures and expression regexes use a constant VM script, 50 ms timeout, 200
 pattern characters and at most 32,000 input characters. User input supplies only
 data. Provider text, shell output and history are separately bounded.
 
+A `role-turn` for a role with write access renders the complete host
+verification plan in its instructions: the configured checks for the
+repositories in scope plus, when the optional `verificationProposalsFrom`
+param names a committed node output, that output's `structured.verification`
+proposals for repositories without a configured check (the same admission rule
+the `verify` piece applies to `additionalCommandsFrom`), deduplicated. Read-only
+roles receive no plan block. The turn never runs those commands.
+
 ## Verification and OpenSpec
 
 `verify` and shell evidence reuse the real Core command runner, its isolated
@@ -49,6 +57,31 @@ snapshot-local check reuse. General pieces never create `state.json`. A failed
 command routes to `fail`; infrastructure failures route to `failed`. Zero-check
 or explicitly uncovered receipts do not install a verified candidate. Ordinary
 shell execution and shell evidence never certify the whole workflow.
+
+Before returning `fail`, `verify` classifies an invalid receipt through the
+shared host-repair helpers (`src/agent-runtime/verification-repair.ts`, also
+used by the legacy graph). A host precondition (registry credentials or
+reachability, a missing environment variable, git credentials, a Playwright
+browser download that cannot reach its CDN) becomes a structured `HostBlocker`
+in `output.blocker` without any install. An environment failure (a missing
+tool, module, dependency or Playwright browser build) runs the planned installs
+once, narrated on the `verification-output` channel with the `[environment]`
+prefix, then re-runs the same plan; the second receipt alone decides the outcome
+and the no-progress fingerprint, and `output.environmentRepair` records the
+attempt. The `environment-repair` and `lockfile-repair` guardrails switch the
+installs off; precondition classification always applies. A blocker routes to
+the opt-in `blocked` outcome (`hostBlockers: true`, `status: 'blocked'`,
+`verification_host_precondition`) or, without the flag, to `fail` with the same
+output so older definitions keep their exact `ends`.
+
+Optional `setup` commands (`'configured'` reads `config.setup`; an inline list
+has the `verification` shape) run sequentially in the admitted workspace before
+the first verification of every visit. Their scoped receipt is evidence only:
+it never installs `$verified` or feeds the no-progress counter. A failing setup
+command is a `setup` blocker and no verification command runs for that visit.
+An `end` with `blockerFrom: <nodeId>` copies that node's committed blocker
+(`output.blocker`, or a correction role's `output.structured.blocker`) into
+`completion.blocker`.
 
 Failed check outputs include bounded verbatim failure facts and immutable evidence
 IDs. Native/legacy implementation feedback uses the same fact extractor, retaining

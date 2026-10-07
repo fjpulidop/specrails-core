@@ -134,13 +134,8 @@
       "maxAttempts": { "$ref": "#/definitions/positiveInteger" }, "maxTokens": { "$ref": "#/definitions/positiveInteger" },
       "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 }, "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
     } },
-    "verification": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["repositoryId", "command", "args"], "properties": {
-      "key": { "$ref": "#/definitions/id" }, "label": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S" }, "policy": { "$ref": "#/definitions/checkPolicy" },
-      "repositoryId": { "$ref": "#/definitions/id" }, "command": { "type": "string", "minLength": 1 },
-      "args": { "type": "array", "items": { "type": "string" } }, "cwd": { "type": "string", "minLength": 1 },
-      "env": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "additionalProperties": { "type": "string" } },
-      "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
-    } } },
+    "verification": { "type": "array", "items": { "$ref": "#/definitions/checkCommand" } },
+    "setup": { "type": "array", "description": "Idempotent commands the verify piece runs sequentially in the admitted workspace before each verification plan; a failing setup command blocks the run instead of starting a correction round.", "items": { "$ref": "#/definitions/checkCommand" } },
     "approvalBeforeArchive": { "type": "boolean" },
     "review": { "type": "object", "additionalProperties": false, "description": "Review gate thresholds; unset fields keep Core's defaults (score 70, security 75, other aspects 60).", "properties": {
       "minScore": { "$ref": "#/definitions/score" },
@@ -154,6 +149,13 @@
     } }
   },
   "definitions": {
+    "checkCommand": { "type": "object", "additionalProperties": false, "required": ["repositoryId", "command", "args"], "properties": {
+      "key": { "$ref": "#/definitions/id" }, "label": { "type": "string", "minLength": 1, "maxLength": 256, "pattern": "\\S" }, "policy": { "$ref": "#/definitions/checkPolicy" },
+      "repositoryId": { "$ref": "#/definitions/id" }, "command": { "type": "string", "minLength": 1 },
+      "args": { "type": "array", "items": { "type": "string" } }, "cwd": { "type": "string", "minLength": 1 },
+      "env": { "type": "object", "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }, "additionalProperties": { "type": "string" } },
+      "timeoutMs": { "$ref": "#/definitions/positiveInteger" }
+    } },
     "effort": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,31}$" },
     "inputList": { "type": "array", "maxItems": 256, "items": { "type": "string", "minLength": 1, "maxLength": 4096, "pattern": "\\S" } },
     "checkPolicy": { "type": "object", "additionalProperties": false, "properties": {

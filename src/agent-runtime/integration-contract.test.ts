@@ -31,7 +31,7 @@ describe('Desktop integration contract', () => {
     expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
-    expect(contract.agentRuntime.instructionsVersion).toBe('13')
+    expect(contract.agentRuntime.instructionsVersion).toBe('14')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {

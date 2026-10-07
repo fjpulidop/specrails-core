@@ -1,19 +1,19 @@
 import { guardrailEnabled } from '../guardrails.js'
 import { verificationFailureSummary } from '../verification-diagnostics.js'
 import { addDeveloperChecks, bindPlan, expandedPlanCommands, initializeVerificationPlan, readVerificationPlan, validateProposedChecks } from '../verification-plan.js'
-import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
   candidateManifest, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
-  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type CommandReceipt, type PipelineContext, type VerificationCommand, type VerificationReceipt,
+  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type PipelineContext, type VerificationCommand,
 } from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
-import { hostPreconditionFailure, installEnvironment, isEnvironmentFailure } from '../compact/environment.js'
+import { isEnvironmentFailure } from '../compact/environment.js'
+import { hostPreconditionMessage, preconditionBlock, repairEnvironment } from '../verification-repair.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
 import { exitCodeContradiction, exitHonestyReason } from '../compact/exit-code-honesty.js'
 import type { RoleInvoker } from './roles.js'
@@ -302,45 +302,6 @@ function fixerNode(deps: CoreNodeDeps): CoreNode {
   }
 }
 
-/** Where a missing dependency install belongs: the nearest directory with a lockfile or manifest above the failing command, else the repository root. */
-const INSTALL_MARKERS = ['package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'pnpm-lock.yaml', 'bun.lock', 'bun.lockb', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml']
-function installRoots(context: PipelineContext, commands: readonly CommandReceipt[]): string[] {
-  const roots: string[] = []
-  for (const command of commands) {
-    const repository = context.repositories.find(repo => repo.id === command.repositoryId)
-    if (!repository) continue
-    let directory = command.cwd
-    let chosen = repository.path
-    for (;;) {
-      const relative = path.relative(repository.path, directory)
-      if (relative.startsWith('..') || path.isAbsolute(relative)) break
-      if (INSTALL_MARKERS.some(name => existsSync(path.join(directory, name)))) { chosen = directory; break }
-      if (!relative) break
-      directory = path.dirname(directory)
-    }
-    roots.push(chosen)
-  }
-  // Every repository root stays a candidate: its plan is a no-op when it is already installed.
-  return [...new Set([...roots, ...context.repositories.map(repository => repository.path)])]
-}
-/** A directory as the log should name it: relative to the checkout that contains it. */
-function checkoutRelative(context: PipelineContext, directory: string): string {
-  const repository = context.repositories.find(repo => { const relative = path.relative(repo.path, directory); return !relative.startsWith('..') && !path.isAbsolute(relative) })
-  return repository ? path.relative(repository.path, directory).split(path.sep).join('/') || '.' : directory
-}
-function hostPreconditionMessage(reason: string, command: string, args: readonly string[], directory: string): string {
-  return `Verification cannot run in this environment: ${reason} (\`${[command, ...args].join(' ')}\` in ${directory}). This is not a defect in the change, so no correction round was started. Make it available to Specrails (for example in the login shell profile Specrails loads, or with a refreshed registry token), then resume.`
-}
-/** A failed check the host must unblock (credentials, registry access, a missing variable): no correction round can repair it. */
-function preconditionBlock(context: PipelineContext, receipt: VerificationReceipt): string | undefined {
-  for (const command of receipt.commands) {
-    if (command.exitCode === 0) continue
-    const reason = hostPreconditionFailure(command.output)
-    if (reason) return hostPreconditionMessage(reason, command.command, command.args, checkoutRelative(context, command.cwd))
-  }
-  return undefined
-}
-
 function verifyNode(deps: CoreNodeDeps): CoreNode {
   const { context, note, config } = deps
   const roots = context.repositories.map(repository => repository.path)
@@ -395,22 +356,22 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
         note('fixer', 'Verification failed on the environment, not on the change; stopping for the host instead of starting a correction round.')
         return { status: 'blocked', error: reason, usage: NO_SPEND }
       }
+      const blockerMessage = (blocker: { reason: string; command: string; args: string[]; cwd: string }): string => hostPreconditionMessage(blocker.reason, blocker.command, blocker.args, blocker.cwd)
       let precondition = receipt.valid ? undefined : preconditionBlock(context, receipt)
-      if (precondition) return hostBlocked(precondition)
+      if (precondition) return hostBlocked(blockerMessage(precondition))
       // A failure that is really a missing toolchain or dependency (exit 127,
       // "command not found", "Cannot find module"…) is the HOST's to fix, not
       // the model's — for every developer: a fresh worktree has no
       // node_modules whatever wrote the code. Install once where the failing
       // command runs and re-verify; only a second failure becomes feedback.
       if (!receipt.valid && guardrailEnabled(config.guardrails, 'environment-repair') && receipt.commands.some(command => isEnvironmentFailure(command.exitCode, command.output))) {
-        const installs = installEnvironment(installRoots(context, receipt.commands.filter(command => command.exitCode !== 0)), { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(config.guardrails, 'lockfile-repair'), onEvent: event => note('developer', event.kind === 'text' ? event.text ?? '' : `[environment] ${event.tool ?? ''} ${event.detail ?? ''}`.trim()) })
-        const refused = installs.find(outcome => outcome.precondition)
-        if (refused) return hostBlocked(hostPreconditionMessage(`installing its dependencies failed because ${refused.precondition}`, refused.command, refused.args, checkoutRelative(context, refused.root)))
-        if (installs.some(outcome => outcome.ok)) {
+        const repair = repairEnvironment(context, receipt, config.guardrails, text => note('developer', text))
+        if (repair.refused) return hostBlocked(blockerMessage(repair.refused))
+        if (repair.installs.some(outcome => outcome.ok)) {
           note('developer', 'Verification failed on the environment (missing dependencies or tools); the host installed them and is verifying again.')
           receipt = await run()
           precondition = receipt.valid ? undefined : preconditionBlock(context, receipt)
-          if (precondition) return hostBlocked(precondition)
+          if (precondition) return hostBlocked(blockerMessage(precondition))
         }
       }
       const evidence: VerificationRecord = {

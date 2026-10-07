@@ -1,5 +1,5 @@
 import { END, interrupt, isGraphInterrupt, Send, START, StateGraph, type BaseCheckpointSaver, type CompiledStateGraph, type LangGraphRunnableConfig } from '@langchain/langgraph'
-import { EngineError, type AttemptFrame, type CoreDefinitionState, type JsonValue, type NodeExecutionPort, type PieceResult } from './contracts.js'
+import { EngineError, type AttemptFrame, type CoreDefinitionState, type EngineCompletion, type JsonValue, type NodeExecutionPort, type PieceResult } from './contracts.js'
 import type { ComponentBody, RoleCatalog, WorkflowDefinition } from './definition-types.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { interpolateParams } from './expressions.js'
@@ -89,7 +89,7 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
             const exit = completed.$exit
             if (!exit) throw new EngineError('component_exit_missing', `Component ${nodePath} did not produce an exit`)
             childEvidence = { $candidate: completed.$candidate, $verified: completed.$verified }
-            result = { outcome: exit.outcome, status: exit.status, output: { outputs: completed.$outputs, completion: { ...exit.completion } },
+            result = { outcome: exit.outcome, status: exit.status, output: { outputs: completed.$outputs, completion: completionOutput(exit.completion) },
               usage: completed.$usage, completion: exit.completion,
               ...(exit.error ? { error: exit.error } : {}) }
           } else result = await execution.execute(frame, effect, signal => piece.execute(params, {
@@ -146,7 +146,7 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
           if (!completed.$exit) throw new EngineError('component_exit_missing', 'Map body did not produce an exit')
           return { $branches: { [id]: { total: task.total, visitId: task.frame.visitId, transition: task.frame.transition,
             results: [{ id: task.frame.visitId + ':' + task.index, transition: task.frame.transition, attempt: task.frame.attempt, ordinal: task.index,
-              index: task.index, outcome: completed.$exit.completion.ok ? 'next' : 'failed', output: boundPieceOutput({ outputs: completed.$outputs, completion: { ...completed.$exit.completion } }) }] } } }
+              index: task.index, outcome: completed.$exit.completion.ok ? 'next' : 'failed', output: boundPieceOutput({ outputs: completed.$outputs, completion: completionOutput(completed.$exit.completion) }) }] } } }
         }, { subgraphs: [child] })
       }
     }
@@ -215,7 +215,14 @@ function componentInput(state: CoreDefinitionState, frame: AttemptFrame, mapping
   return input
 }
 
-function implicitCompletion(result: import('./contracts.js').PieceResult, state: CoreDefinitionState): import('./contracts.js').EngineCompletion {
+/** A completion as committed output: the optional blocker is present only when set, so the value stays plain JSON. */
+function completionOutput(completion: EngineCompletion): JsonObject {
+  const { blocker, ...rest } = completion
+  if (!blocker) return { ...rest }
+  const { evidenceId, ...fields } = blocker
+  return { ...rest, blocker: { ...fields, ...(evidenceId === undefined ? {} : { evidenceId }) } }
+}
+function implicitCompletion(result: import('./contracts.js').PieceResult, state: CoreDefinitionState): EngineCompletion {
   const candidate = result.candidate ?? state.$candidate
   const verified = Object.hasOwn(result, 'verified') ? result.verified : state.$verified
   return { ok: !result.status || result.status === 'succeeded' ? ['success', 'next', 'pass', 'stop', 'ok', 'true'].includes(result.outcome) : false,

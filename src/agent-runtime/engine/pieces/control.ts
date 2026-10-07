@@ -1,7 +1,15 @@
-import { EngineError, type Piece, type PieceExecutionContext } from '../contracts.js'
+import { EngineError, type HostBlocker, type JsonValue, type Piece, type PieceExecutionContext } from '../contracts.js'
 import { parseExpression } from '../expressions.js'
 import type { PieceDependencyProvider } from './ports.js'
+import { boundedBlocker } from '../../verification-repair.js'
 import { answerEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
+
+/** A host blocker committed by `verify` (`output.blocker`) or by a correction role's structured JSON (`output.structured.blocker`). */
+function committedBlocker(output: JsonValue | undefined): HostBlocker | undefined {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return undefined
+  const structured = output.structured
+  return boundedBlocker(output.blocker) ?? (structured && typeof structured === 'object' && !Array.isArray(structured) ? boundedBlocker(structured.blocker) : undefined)
+}
 
 export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
   const pieces: Piece[] = [{
@@ -12,13 +20,14 @@ export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
         completion: { ok: false, verified: false, reasons: ['condition_error:' + context.frame.nodePath] } } }
     },
   }, {
-    descriptor: { kind: 'end', paramsSchema: paramsSchema({ outcome: { enum: ['success', 'failure'] }, requiresVerified: { type: 'boolean' }, reason: stringSchema, exit: idSchema }, ['outcome']), outcomes: [], effect: 'read', requiresAI: false },
+    descriptor: { kind: 'end', paramsSchema: paramsSchema({ outcome: { enum: ['success', 'failure'] }, requiresVerified: { type: 'boolean' }, reason: stringSchema, exit: idSchema, blockerFrom: idSchema }, ['outcome']), outcomes: [], effect: 'read', requiresAI: false },
     async execute(params, context) {
       const { candidate, verified } = bindings().executionSnapshot(context)
       const current = verified !== null && candidate !== null && verified.candidateHash === candidate.hash
       const reasons = typeof params.reason === 'string' && params.reason ? [params.reason] : []
       if (params.requiresVerified && !current) reasons.push('unverified')
-      return { outcome: text(params.outcome), completion: { ok: params.outcome === 'success' && !(params.requiresVerified && !current), verified: current, reasons } }
+      const blocker = typeof params.blockerFrom === 'string' ? committedBlocker(context.state.$outputs[params.blockerFrom]) : undefined
+      return { outcome: text(params.outcome), completion: { ok: params.outcome === 'success' && !(params.requiresVerified && !current), verified: current, reasons, ...(blocker ? { blocker } : {}) } }
     },
   }]
   for (const kind of ['approval', 'question', 'gate'] as const) {

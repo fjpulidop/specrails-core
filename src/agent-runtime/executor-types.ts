@@ -79,6 +79,8 @@ export interface RuntimeConfig {
   fixer?: RuntimeAgentConfig
   limits?: { maxAttempts?: number; maxTokens?: number; maxCostUsd?: number; timeoutMs?: number; idleTimeoutMs?: number }
   verification: VerificationCommand[]
+  /** Idempotent commands the `verify` piece runs sequentially before each verification plan (same shape as `verification`; `policy` is ignored). */
+  setup?: VerificationCommand[]
   approvalBeforeArchive?: boolean
   /** Review gate thresholds (0–100); unset fields keep Core's defaults. */
   review?: { minScore?: number; aspects?: Partial<Record<ReviewAspectName, number>> }
