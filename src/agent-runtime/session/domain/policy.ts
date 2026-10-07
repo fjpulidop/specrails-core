@@ -1,5 +1,5 @@
 import { SessionError } from './errors.js'
-import type { DriverDescriptor, McpServerSpec, SessionLimits, SessionPolicy } from './types.js'
+import type { DriverDescriptor, McpServerSpec, SessionLimits, SessionPolicy, SubagentRuntime } from './types.js'
 
 /** Defaults chosen from the provider spike and Desktop's previous mission limits. */
 export const DEFAULT_LIMITS: SessionLimits = Object.freeze({
@@ -28,6 +28,32 @@ export interface SessionPolicyInput {
   permissions?: SessionPolicy['permissions']
   mcp?: { servers?: McpServerSpec[]; inheritUserScope?: boolean }
   limits?: Partial<SessionLimits>
+  subagentRuntime?:
+    | { mode: 'native'; model?: string; effort?: string }
+    | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent?: number }
+}
+
+export const DEFAULT_MAX_DELEGATED = 4
+const MAX_DELEGATED_BOUNDS = [1, 16] as const
+
+/** Validate the sub-agent runtime against what the parent driver can enforce. */
+function resolveRuntime(input: SessionPolicyInput, driver: DriverDescriptor): SubagentRuntime {
+  const runtime = input.subagentRuntime ?? { mode: 'native' as const }
+  const caps = driver.capabilities
+  if (runtime.mode === 'native') {
+    if (runtime.model && !caps.subagentModel) throw unenforceable(`Driver "${driver.id}" cannot choose a model for its own sub-agents`, { field: 'subagentRuntime.model', driver: driver.id })
+    if (runtime.effort && !caps.subagentEffort) throw unenforceable(`Driver "${driver.id}" cannot choose an effort for its own sub-agents`, { field: 'subagentRuntime.effort', driver: driver.id })
+    return { mode: 'native', ...(runtime.model ? { model: runtime.model } : {}), ...(runtime.effort ? { effort: runtime.effort } : {}) }
+  }
+  // Delegated: the parent's own tool must be switchable off, or the setting would not hold.
+  if (caps.subagents === 'supported' && !caps.subagentDisable) {
+    throw unenforceable(`Driver "${driver.id}" cannot disable its own sub-agents, so Core cannot launch them instead`, { field: 'subagentRuntime.mode', driver: driver.id })
+  }
+  const maxConcurrent = runtime.maxConcurrent ?? DEFAULT_MAX_DELEGATED
+  if (!Number.isInteger(maxConcurrent) || maxConcurrent < MAX_DELEGATED_BOUNDS[0] || maxConcurrent > MAX_DELEGATED_BOUNDS[1]) {
+    throw new SessionError('invalid_params', `policy.subagentRuntime.maxConcurrent must be an integer in [${MAX_DELEGATED_BOUNDS[0]}, ${MAX_DELEGATED_BOUNDS[1]}]`, { path: 'policy.subagentRuntime.maxConcurrent' })
+  }
+  return { mode: 'delegated', driver: runtime.driver, ...(runtime.model ? { model: runtime.model } : {}), ...(runtime.effort ? { effort: runtime.effort } : {}), maxConcurrent }
 }
 
 function unenforceable(message: string, detail: Record<string, unknown>): SessionError {
@@ -75,6 +101,7 @@ export function resolvePolicy(input: SessionPolicyInput, driver: DriverDescripto
 
   return {
     subagents: input.subagents,
+    subagentRuntime: resolveRuntime(input, driver),
     onSubagentsSettled,
     tools: { mode: tools.mode, ...(tools.allow ? { allow: [...tools.allow] } : {}), ...(tools.deny ? { deny: [...tools.deny] } : {}) },
     permissions: input.permissions ?? 'workspace-write',
@@ -83,7 +110,17 @@ export function resolvePolicy(input: SessionPolicyInput, driver: DriverDescripto
   }
 }
 
-/** True when the effective sub-agent behaviour of the session is "enabled". */
+/** True when the provider's own sub-agents may run (enabled and not delegated to Core). */
+export function nativeSubagentsAllowed(policy: SessionPolicy): boolean {
+  return policy.subagents === 'enabled' && policy.subagentRuntime.mode === 'native'
+}
+
+/** True when Core launches this session's sub-agents itself. */
+export function delegatedSubagents(policy: SessionPolicy): policy is SessionPolicy & { subagentRuntime: Extract<SubagentRuntime, { mode: 'delegated' }> } {
+  return policy.subagents === 'enabled' && policy.subagentRuntime.mode === 'delegated'
+}
+
+/** True when the effective native sub-agent behaviour of the session is "enabled". */
 export function subagentsActive(policy: SessionPolicy, driver: DriverDescriptor): boolean {
-  return policy.subagents === 'enabled' && driver.capabilities.subagents === 'supported'
+  return nativeSubagentsAllowed(policy) && driver.capabilities.subagents === 'supported'
 }

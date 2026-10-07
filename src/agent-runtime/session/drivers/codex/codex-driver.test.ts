@@ -171,6 +171,11 @@ describe('Codex argv and config discovery', () => {
       'mcp_servers.local.env.A="1"',
     ])
     expect(codexArgs(resolvePolicy({ subagents: 'enabled', mcp: { inheritUserScope: true } }, CODEX_DESCRIPTOR), ['blender'])).toEqual(['app-server', '--listen', 'stdio://'])
+    // Native overrides (verified live) and delegated mode.
+    const native = codexArgs(resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', model: 'gpt-5.6-terra', effort: 'low' }, mcp: { inheritUserScope: true } }, CODEX_DESCRIPTOR), [])
+    expect(native).toEqual(['-c', 'agents.default_subagent_model="gpt-5.6-terra"', '-c', 'agents.default_subagent_reasoning_effort="low"', 'app-server', '--listen', 'stdio://'])
+    const delegated = codexArgs(resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', model: 'sonnet' }, mcp: { inheritUserScope: true } }, CODEX_DESCRIPTOR), [])
+    expect(delegated).toEqual(['-c', 'features.multi_agent=false', 'app-server', '--listen', 'stdio://'])
     expect([codexSandbox('bypass'), codexSandbox('workspace-write'), codexSandbox('read-only')]).toEqual(['danger-full-access', 'workspace-write', 'read-only'])
   })
 

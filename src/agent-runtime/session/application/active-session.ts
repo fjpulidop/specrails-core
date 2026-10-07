@@ -2,7 +2,7 @@ import { SessionError, isSessionError } from '../domain/errors.js'
 import type { SessionEvent, SessionEventBody, SessionEventEnvelope } from '../domain/events.js'
 import { fingerprint } from '../domain/fingerprint.js'
 import { buildInterruptionNotice } from '../domain/interruption.js'
-import { subagentsActive } from '../domain/policy.js'
+import { nativeSubagentsAllowed, subagentsActive } from '../domain/policy.js'
 import { applyEvent, liveSubagents, type SessionSnapshot } from '../domain/snapshot.js'
 import { EMPTY_USAGE, type DriverDescriptor, type SessionPolicy, type SubagentPhase, type Usage } from '../domain/types.js'
 import { FRESH_BASELINE, UNKNOWN_BASELINE, computeTurnUsage, withEstimatedCost, type RateCard, type ReportedUsage, type UsageBaseline } from '../domain/usage.js'
@@ -332,7 +332,7 @@ export class ActiveSession {
         this.finishedSinceLastTurn.delete(event.subagentId)
         this.commit([{ type: 'subagent.started', subagentId: event.subagentId, parentId: event.parentId, kind: event.agentKind, description: event.description, ...(event.agentType ? { agentType: event.agentType } : {}), ...(event.prompt ? { prompt: event.prompt.slice(0, 8_000) } : {}) }])
         this.afterSubagentChange()
-        if (this.config.policy.subagents === 'disabled') void this.blockSubagent(event.subagentId)
+        if (!nativeSubagentsAllowed(this.config.policy)) void this.blockSubagent(event.subagentId)
         return
       case 'subagent.phase':
         // Only work that finished while the agent was not in a turn is news to it (it saw the rest via its own tools).

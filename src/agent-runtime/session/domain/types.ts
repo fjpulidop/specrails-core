@@ -72,8 +72,18 @@ export interface SessionLimits {
   settleDebounceMs: number
 }
 
+/**
+ * Who launches sub-agents. `native`: the provider's own tool, optionally with a
+ * model/effort override. `delegated`: Core launches each one as a child session
+ * on `driver` (the provider's own tool is then disabled).
+ */
+export type SubagentRuntime =
+  | { mode: 'native'; model?: string; effort?: string }
+  | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent: number }
+
 export interface SessionPolicy {
   subagents: 'enabled' | 'disabled'
+  subagentRuntime: SubagentRuntime
   onSubagentsSettled: 'provider-native' | 'resume-agent' | 'notify-only'
   tools: { mode: 'default' | 'read-only' | 'none'; allow?: string[]; deny?: string[] }
   permissions: 'bypass' | 'workspace-write' | 'read-only'
@@ -97,6 +107,10 @@ export interface DriverCapabilities {
   subagents: 'unsupported' | 'supported'
   /** `policy.subagents = 'disabled'` can be enforced natively. */
   subagentDisable: boolean
+  /** Native sub-agents can run on a model other than the parent's. */
+  subagentModel: boolean
+  /** Native sub-agents can run at a reasoning effort other than the parent's. */
+  subagentEffort: boolean
   /** The provider starts a turn by itself when a background sub-agent finishes. */
   autonomousContinuation: boolean
   /** Input can be delivered into a running turn. */

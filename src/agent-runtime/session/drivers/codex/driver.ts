@@ -15,6 +15,8 @@ export const CODEX_DESCRIPTOR: DriverDescriptor = Object.freeze({
     nativeInputQueue: false,
     subagents: 'supported' as const,
     subagentDisable: true,
+    subagentModel: true,
+    subagentEffort: true,
     // The parent only reacts to finished sub-agents through `wait` or new input.
     autonomousContinuation: false,
     steer: true,

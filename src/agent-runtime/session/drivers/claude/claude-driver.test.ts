@@ -10,7 +10,7 @@ import { FixtureReplayer } from '../../testing/fixture-replayer.js'
 import { MemoryJournal } from '../../testing/memory-journal.js'
 import { catalogOf } from '../../testing/scripted-driver.js'
 import type { ProcessSpawner } from '../common/process.js'
-import { claudeArgs } from './argv.js'
+import { claudeArgs, claudeEnv } from './argv.js'
 import { CLAUDE_DESCRIPTOR, ClaudeDriverFactory } from './driver.js'
 import { ClaudeTranslator } from './translator.js'
 
@@ -175,6 +175,22 @@ describe('Claude argv', () => {
     expect(args.slice(args.indexOf('--effort'), args.indexOf('--effort') + 2)).toEqual(['--effort', 'high'])
     expect(args).toContain('--system-prompt')
     expect(claudeArgs({ sessionId: 's', generation: 1, cwd: '/r', model: 'm', effort: null, systemPrompt: 'x', providerSessionRef: null, policy: resolvePolicy({ subagents: 'enabled' }, CLAUDE_DESCRIPTOR) }, { systemPromptFile: '/tmp/p.md' })).toContain('--system-prompt-file')
+  })
+
+  it('runs native sub-agents on another model through the environment, never inheriting a stale one', () => {
+    const native = resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', model: 'sonnet' } }, CLAUDE_DESCRIPTOR)
+    expect(claudeEnv(native, { PATH: '/bin', CLAUDE_CODE_SUBAGENT_MODEL: 'opus' })).toEqual({ PATH: '/bin', CLAUDE_CODE_SUBAGENT_MODEL: 'sonnet' })
+    expect(claudeEnv(resolvePolicy({ subagents: 'enabled' }, CLAUDE_DESCRIPTOR), { CLAUDE_CODE_SUBAGENT_MODEL: 'opus' })).toEqual({})
+  })
+
+  it('switches its own sub-agent tools off when Core launches sub-agents', () => {
+    const args = spec({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex' } })
+    expect(args[args.indexOf('--disallowedTools') + 1]).toBe('Agent,Task')
+    expect(claudeEnv(resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex', model: 'x' } }, CLAUDE_DESCRIPTOR), {})).toEqual({})
+  })
+
+  it('cannot give Claude sub-agents their own effort', () => {
+    expect(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', effort: 'low' } }, CLAUDE_DESCRIPTOR)).toThrow(/effort/)
   })
 })
 

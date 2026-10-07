@@ -18,6 +18,8 @@ export function executorDescriptor(id: string, displayName: string): DriverDescr
       nativeInputQueue: false,
       subagents: 'unsupported' as const,
       subagentDisable: false,
+    subagentModel: false,
+    subagentEffort: false,
       autonomousContinuation: false,
       steer: false,
       toolFiltering: false,

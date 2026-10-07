@@ -35,6 +35,12 @@ const policy = {
     permissions: { enum: ['bypass', 'workspace-write', 'read-only'] },
     mcp: { type: 'object', additionalProperties: false, properties: { servers: { type: 'array', maxItems: 32, items: mcpServer }, inheritUserScope: { type: 'boolean' } } },
     limits,
+    subagentRuntime: {
+      oneOf: [
+        { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { const: 'native' }, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', minLength: 1, maxLength: 50 } } },
+        { type: 'object', additionalProperties: false, required: ['mode', 'driver'], properties: { mode: { const: 'delegated' }, driver: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', minLength: 1, maxLength: 50 }, maxConcurrent: { type: 'integer', minimum: 1, maximum: 16 } } },
+      ],
+    },
   },
 }
 

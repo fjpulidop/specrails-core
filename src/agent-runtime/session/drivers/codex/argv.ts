@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
+import { nativeSubagentsAllowed } from '../../domain/policy.js'
 import type { McpServerSpec, SessionPolicy } from '../../domain/types.js'
 
 /** TOML string literal (basic string) for a `-c key=value` override. */
@@ -52,7 +53,12 @@ function serverOverrides(server: McpServerSpec): string[] {
  */
 export function codexArgs(policy: SessionPolicy, declaredServers: readonly string[]): string[] {
   const overrides: string[] = []
-  if (policy.subagents === 'disabled') overrides.push('features.multi_agent=false')
+  if (!nativeSubagentsAllowed(policy)) overrides.push('features.multi_agent=false')
+  else if (policy.subagentRuntime.mode === 'native') {
+    // Verified live (codex-cli 0.160.1): a luna parent ran a terra/low child.
+    if (policy.subagentRuntime.model) overrides.push(`agents.default_subagent_model=${tomlString(policy.subagentRuntime.model)}`)
+    if (policy.subagentRuntime.effort) overrides.push(`agents.default_subagent_reasoning_effort=${tomlString(policy.subagentRuntime.effort)}`)
+  }
   const wanted = new Set(policy.mcp.servers.map((server) => server.name))
   if (!policy.mcp.inheritUserScope) {
     for (const name of declaredServers) if (!wanted.has(name)) overrides.push(`mcp_servers.${tomlKey(name)}.enabled=false`)

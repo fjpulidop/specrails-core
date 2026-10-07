@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { SessionError } from './errors.js'
-import { DEFAULT_LIMITS, resolvePolicy, subagentsActive } from './policy.js'
+import { DEFAULT_LIMITS, DEFAULT_MAX_DELEGATED, delegatedSubagents, nativeSubagentsAllowed, resolvePolicy, subagentsActive } from './policy.js'
 import type { DriverCapabilities, DriverDescriptor } from './types.js'
 
 function driver(id: string, caps: Partial<DriverCapabilities> = {}): DriverDescriptor {
@@ -13,6 +13,8 @@ function driver(id: string, caps: Partial<DriverCapabilities> = {}): DriverDescr
       nativeInputQueue: true,
       subagents: 'supported',
       subagentDisable: true,
+      subagentModel: true,
+      subagentEffort: true,
       autonomousContinuation: true,
       steer: true,
       toolFiltering: true,
@@ -36,6 +38,7 @@ describe('session policy', () => {
   it('fills defaults from the driver declaration', () => {
     expect(resolvePolicy({ subagents: 'enabled' }, native)).toEqual({
       subagents: 'enabled',
+      subagentRuntime: { mode: 'native' },
       onSubagentsSettled: 'provider-native',
       tools: { mode: 'default' },
       permissions: 'workspace-write',
@@ -88,4 +91,40 @@ describe('session policy', () => {
     expect(policy.mcp.servers).toHaveLength(1)
     expect(policy.tools.allow).toEqual(['Read'])
   })
+
+  describe('sub-agent runtime', () => {
+    const modelOnly = driver('model-only', { subagentEffort: false })
+
+    it('keeps native sub-agents by default and applies supported overrides', () => {
+      const policy = resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', model: 'sonnet', effort: 'low' } }, native)
+      expect(policy.subagentRuntime).toEqual({ mode: 'native', model: 'sonnet', effort: 'low' })
+      expect(nativeSubagentsAllowed(policy)).toBe(true)
+      expect(delegatedSubagents(policy)).toBe(false)
+    })
+
+    it('refuses an override the driver cannot apply', () => {
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', effort: 'high' } }, modelOnly))).toBe('policy_unenforceable')
+      expect(resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'native', model: 'sonnet' } }, modelOnly).subagentRuntime).toEqual({ mode: 'native', model: 'sonnet' })
+    })
+
+    it('delegates with a bounded concurrency and turns the native tool off', () => {
+      const policy = resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', model: 'sonnet' } }, native)
+      expect(policy.subagentRuntime).toEqual({ mode: 'delegated', driver: 'claude', model: 'sonnet', maxConcurrent: DEFAULT_MAX_DELEGATED })
+      expect(delegatedSubagents(policy)).toBe(true)
+      expect(nativeSubagentsAllowed(policy)).toBe(false)
+      expect(subagentsActive(policy, native)).toBe(false)
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', maxConcurrent: 99 } }, native))).toBe('invalid_params')
+    })
+
+    it('cannot delegate when the parent cannot switch its own sub-agents off', () => {
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude' } }, noDisable))).toBe('policy_unenforceable')
+    })
+
+    it('treats disabled sub-agents as neither native nor delegated', () => {
+      const policy = resolvePolicy({ subagents: 'disabled', subagentRuntime: { mode: 'delegated', driver: 'claude' } }, native)
+      expect(nativeSubagentsAllowed(policy)).toBe(false)
+      expect(delegatedSubagents(policy)).toBe(false)
+    })
+  })
 })
+

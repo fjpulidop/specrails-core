@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { DriverDescriptor } from '../../domain/types.js'
 import type { CloseReason, DriverEventSink, DriverFactory, DriverInput, DriverOpenSpec, DriverSession } from '../../ports.js'
 import { spawnResidentProcess, type ProcessSpawner, type ProviderProcess } from '../common/process.js'
-import { claudeArgs } from './argv.js'
+import { claudeArgs, claudeEnv } from './argv.js'
 import { ClaudeTranslator } from './translator.js'
 
 export const CLAUDE_DESCRIPTOR: DriverDescriptor = Object.freeze({
@@ -18,6 +18,8 @@ export const CLAUDE_DESCRIPTOR: DriverDescriptor = Object.freeze({
     nativeInputQueue: true,
     subagents: 'supported' as const,
     subagentDisable: true,
+    subagentModel: true,
+    subagentEffort: false,
     autonomousContinuation: true,
     steer: true,
     toolFiltering: true,
@@ -106,7 +108,7 @@ export class ClaudeDriverFactory implements DriverFactory {
     let closed = false
     const spawner = this.options.spawner ?? spawnResidentProcess
     const child = spawner(
-      { command: this.options.binary ?? 'claude', args: claudeArgs(spec, systemPromptFile ? { systemPromptFile } : {}), cwd: spec.cwd, env: { ...(this.options.env ?? process.env) } },
+      { command: this.options.binary ?? 'claude', args: claudeArgs(spec, systemPromptFile ? { systemPromptFile } : {}), cwd: spec.cwd, env: claudeEnv(spec.policy, this.options.env ?? process.env) },
       {
         onLine: (line) => {
           if (closed) return

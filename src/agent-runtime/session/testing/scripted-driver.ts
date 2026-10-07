@@ -10,6 +10,8 @@ export function descriptor(id: string, capabilities: Partial<DriverCapabilities>
       nativeInputQueue: true,
       subagents: 'supported',
       subagentDisable: true,
+      subagentModel: true,
+      subagentEffort: true,
       autonomousContinuation: true,
       steer: true,
       toolFiltering: true,

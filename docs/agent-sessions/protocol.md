@@ -112,6 +112,9 @@ interface SessionPolicy {
   permissions: 'bypass' | 'workspace-write' | 'read-only'
   mcp: { servers: McpServerSpec[]; inheritUserScope: boolean }
   limits?: Partial<SessionLimits>   // idleMs, stallMs, backgroundMaxMs, turnInactivityMs, maxSettleHandoffs
+  subagentRuntime?:                  // who launches sub-agents (default: native)
+    | { mode: 'native'; model?: string; effort?: string }
+    | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent?: number }
 }
 
 interface McpServerSpec {
@@ -126,6 +129,12 @@ Set `autoApprove` only for servers the host authorizes itself, such as a
 capability-bound bridge. Codex otherwise refuses MCP tools it cannot classify
 under its non-interactive approval policy. Claude ignores the flag: its
 permissions come from `policy.permissions`.
+
+`subagentRuntime.mode = 'native'` keeps the provider's own sub-agents, with an
+optional model and effort when the driver declares `subagentModel` /
+`subagentEffort`. `'delegated'` makes Core launch each sub-agent as a child
+session on `driver` and switches the provider's own tool off (see
+[the delegation section](#delegated-sub-agents)).
 
 `session.open` fails with `policy_unenforceable` when the selected driver cannot
 enforce a requested value. For example, `subagents: 'disabled'` on a driver that

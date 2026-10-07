@@ -13,6 +13,8 @@ It adapts to each driver's declared capabilities.
 | Native input queue and receipts | yes | no; Core holds input while a turn runs | no |
 | Sub-agents | yes (`Agent`/`Task`, background tasks and their shells) | yes (child threads: `spawnAgent` on 0.153, `subAgentActivity` on 0.160) | no |
 | Disable sub-agents (`policy.subagents: 'disabled'`) | `--disallowedTools Agent,Task` | `features.multi_agent=false`; Core also stops any sub-agent the model starts anyway | always off |
+| Sub-agent model (`subagentRuntime.model`, native) | `CLAUDE_CODE_SUBAGENT_MODEL` | `agents.default_subagent_model` | — |
+| Sub-agent effort (`subagentRuntime.effort`, native) | not available (`policy_unenforceable`) | `agents.default_subagent_reasoning_effort` | — |
 | Reaction when sub-agents finish | the provider continues on its own (`provider-native`) | Core asks the agent to collect results (`resume-agent`, bounded) | — |
 | Steer into a running turn | yes | yes (`turn/steer`) | no |
 | Tool filtering (`policy.tools`) | yes | no (refused) | no (refused) |

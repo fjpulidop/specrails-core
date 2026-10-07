@@ -1,5 +1,6 @@
 import type { McpServerSpec } from '../../domain/types.js'
 import type { DriverOpenSpec } from '../../ports.js'
+import { nativeSubagentsAllowed } from '../../domain/policy.js'
 
 /** Tools that launch sub-agents in Claude Code; removed when policy disables sub-agents. */
 export const CLAUDE_SUBAGENT_TOOLS = ['Agent', 'Task'] as const
@@ -40,7 +41,7 @@ export function claudeArgs(spec: DriverOpenSpec, options: { systemPromptFile?: s
   if (policy.tools.mode === 'none') args.push('--tools', '')
   else if (policy.tools.mode === 'read-only') args.push('--tools', CLAUDE_READ_ONLY_TOOLS.join(','))
   if (policy.tools.allow?.length) args.push('--allowedTools', policy.tools.allow.join(','))
-  const denied = [...new Set([...(policy.tools.deny ?? []), ...(policy.subagents === 'disabled' ? CLAUDE_SUBAGENT_TOOLS : [])])]
+  const denied = [...new Set([...(policy.tools.deny ?? []), ...(!nativeSubagentsAllowed(policy) ? CLAUDE_SUBAGENT_TOOLS : [])])]
   if (denied.length) args.push('--disallowedTools', denied.join(','))
 
   if (policy.mcp.servers.length) args.push('--mcp-config', mcpConfig(policy.mcp.servers))
@@ -49,3 +50,16 @@ export function claudeArgs(spec: DriverOpenSpec, options: { systemPromptFile?: s
   if (spec.providerSessionRef) args.push('--resume', spec.providerSessionRef)
   return args
 }
+
+/**
+ * Environment for the Claude process. Native sub-agents run on another model
+ * through `CLAUDE_CODE_SUBAGENT_MODEL` (verified live: a haiku parent ran a
+ * sonnet sub-agent). Claude has no per-sub-agent effort.
+ */
+export function claudeEnv(policy: DriverOpenSpec['policy'], base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = { ...base }
+  delete env.CLAUDE_CODE_SUBAGENT_MODEL
+  if (nativeSubagentsAllowed(policy) && policy.subagentRuntime.mode === 'native' && policy.subagentRuntime.model) env.CLAUDE_CODE_SUBAGENT_MODEL = policy.subagentRuntime.model
+  return env
+}
+
