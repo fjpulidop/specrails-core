@@ -238,6 +238,33 @@ After any interruption the next user input is prefixed with a driver-neutral int
   - `createSessionRuntime` for in-process embedding in tests;
   - the conformance kit under a separate `./agent-runtime/session/testing` export.
 
+### D11. Hybrid sub-agent runtime: native by default, delegated on request
+
+Hosts let users choose who runs sub-agents. The policy gains an optional runtime:
+
+```ts
+subagentRuntime?:
+  | { mode: 'native'; model?: string; effort?: string }
+  | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent?: number }
+```
+
+- **Native (default).** The provider's own tool (Claude `Agent`, Codex `spawn_agent`) launches sub-agents; Core observes them as today. Optional model/effort overrides map per driver, verified live on 2026-10-07:
+  - Claude: env `CLAUDE_CODE_SUBAGENT_MODEL` (a haiku parent ran a sonnet sub-agent). No effort knob exists, so Claude declares `subagentEffort: false`.
+  - Codex: `-c agents.default_subagent_model` and `-c agents.default_subagent_reasoning_effort` (a luna parent ran a terra/low child).
+  - Drivers declare `subagentModel` / `subagentEffort` capabilities; an override a driver cannot apply is `policy_unenforceable`, never ignored.
+- **Delegated.** Core launches each sub-agent itself as a **child session** with another (or the same) driver:
+  - `session.delegate { sessionId, description, prompt, agentType?, contextTurns? }` returns `{ subagentId }` at once. Core opens a child session (`parentSessionId` metadata, same cwd, permissions and MCP servers; `subagents: 'disabled'`, depth 1) on the policy's driver/model/effort, and sends the prompt. The child is a full session (journaled, resumable), so it survives a parent process restart.
+  - The child appears in the **parent's** sub-agent tree: `subagent.started` (kind `background`, agentType `delegated:<driver>` or the requested type), its text/tools mirrored as `subagent.output`, its final answer as `subagent.result`, `subagent.phase` on completion/stop/failure. Hosts render one tree whatever the mode.
+  - **Results reach the parent.** Unlike native children, the parent cannot see delegated output, so when delegated children finish outside an explicit wait, Core starts a `system`-origin parent turn whose input carries each finished child's description and result (bounded by `maxSettleHandoffs`), for every driver, not only `resume-agent` ones.
+  - `session.waitSubagents { sessionId, subagentIds?, timeoutMs }` resolves with finished results (or what is still running at the timeout). Results returned through a wait are marked collected and are not injected again.
+  - Stop: `session.stopSubagents` interrupts and closes delegated children (`stopped`, reason `host_request`).
+  - **Usage is billed separately.** A delegated child's usage is its own provider's spend, not part of the parent's. `subagent.usage` carries `billing: 'separate'` (native children: `'included'`), so hosts add delegated spend to totals and keep excluding native breakdowns.
+  - The parent's native tool is disabled in delegated mode (same mapping as `subagents: 'disabled'`), and the provider-neutral blocker stops any native child that still appears, so the setting always holds.
+  - Limits: `maxConcurrent` (default 4) delegated children per parent; `session.delegate` beyond it fails with `limit_reached`.
+- **Mechanism, not surface.** Core provides the RPCs; the host decides how the agent invokes them. Desktop exposes them as actions of its capability-bound Specrails MCP, so no second bridge or credential is needed.
+
+*Alternative rejected:* translating one provider's spawn call into another provider's session. Native tools are model-trained, provider-internal, and cannot be redirected reliably.
+
 ## Risks / Trade-offs
 
 - [Provider wire formats are undocumented and drift] → Translators isolated per driver; unknown frames become `provider.unknown` diagnostic events, not failures; fixtures pinned per CLI version; opt-in live re-capture; descriptor declares tested CLI range and `initialize` reports detected versions.

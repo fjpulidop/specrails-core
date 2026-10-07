@@ -53,3 +53,13 @@
 - [x] 7.2 Update `docs/agent-runtime.md` capability table and CLAUDE.md layering note
 - [x] 7.3 Gates: `npm run typecheck`, `npm test`, `npm run ci` (coverage gates unchanged), `npm run check:package`
 - [ ] 7.4 Coordinate release with the paired Desktop change `core-agent-sessions-host` (Core released first; Desktop pins and negotiates `sessions`)
+
+## 8. Hybrid sub-agent runtime (D11)
+
+- [ ] 8.1 Policy: `subagentRuntime` (native/delegated) validated in `domain/policy.ts`; driver capabilities `subagentModel`, `subagentEffort`; protocol schema and docs
+- [ ] 8.2 Native overrides: Claude env `CLAUDE_CODE_SUBAGENT_MODEL`; Codex `agents.default_subagent_model` / `default_subagent_reasoning_effort`; argv/env tests; live re-check
+- [ ] 8.3 Delegation in the application layer: child sessions (`parentSessionId`), mirroring into the parent tree, `session.delegate`, `session.waitSubagents`, stop, `maxConcurrent`, restart survival
+- [ ] 8.4 Results to the parent: wait collection and `system` continuation with results for every driver; bounded handoffs
+- [ ] 8.5 Usage: `subagent.usage.billing` (`included` / `separate`); delegated child usage mirrored as separate spend
+- [ ] 8.6 Conformance and scripted-driver tests for delegation; live smoke Codex parent + Claude children and the reverse (Claude/Codex only)
+
