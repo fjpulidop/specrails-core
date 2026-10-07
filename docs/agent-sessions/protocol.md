@@ -27,7 +27,9 @@ A scope has at most one live host. A second host for the same scope fails
 | `session.open` | `{ sessionId?, resume?: { sessionId }, driver, model, effort?, cwd, systemPrompt?, policy: SessionPolicy, metadata? }` | `{ sessionId, snapshot: SessionSnapshot }` |
 | `session.send` | `{ sessionId, input: { inputId, text, attachments?, delivery: 'queue' \| 'steer' } }` | `{ inputId, state }` (idempotent by `inputId`) |
 | `session.interrupt` | `{ sessionId }` | `{ turnId \| null }` |
-| `session.stopSubagents` | `{ sessionId, subagentIds? }` | `{ stopped: string[] }` |
+| `session.stopSubagents` | `{ sessionId, subagentIds? }` | `{ stopped: string[] }` (native and delegated) |
+| `session.delegate` | `{ sessionId, description, prompt, agentType?, contextTurns? }` | `{ subagentId }`, or `limit_reached` |
+| `session.waitSubagents` | `{ sessionId, subagentIds?, timeoutMs }` | `{ results: [{ subagentId, description, status, result }], running: string[] }` |
 | `session.update` | `{ sessionId, model?, effort?, systemPrompt?, policy? }` | `{ outcome: 'applied' \| 'deferred' }` |
 | `session.close` | `{ sessionId, reason }` | `{}` |
 | `session.snapshot` | `{ sessionId }` | `SessionSnapshot` |
@@ -139,6 +141,17 @@ session on `driver` and switches the provider's own tool off (see
 `session.open` fails with `policy_unenforceable` when the selected driver cannot
 enforce a requested value. For example, `subagents: 'disabled'` on a driver that
 supports sub-agents but cannot turn them off.
+
+## Delegated sub-agents
+
+With `policy.subagentRuntime.mode = 'delegated'` (initialize advertises
+`capabilities.delegation: 1`), Core launches sub-agents itself:
+
+- `session.delegate` opens a **child session** on the runtime's driver, model and effort. The child has the parent's cwd, permissions and MCP servers, and its sub-agents are disabled. It returns the sub-agent id at once. The parent journals `subagent.started` with `delegated: { driver, model }`.
+- The child's text and tools appear in the parent as `subagent.output`. Its final answer becomes `subagent.result`, its spend `subagent.usage` with `billing: 'separate'` (native sub-agents report `'included'`). The child session then closes.
+- `session.waitSubagents` returns finished results; those are never sent to the agent again. Results nobody waited for are delivered to the parent in a `system` turn once its sub-agents settle, for every driver, bounded by `limits.maxSettleHandoffs`.
+- Delegated children outlive the parent's provider process. They end with their own session, an explicit `session.stopSubagents`, or the parent's `session.close`. After a host restart they are recorded as interrupted and their child sessions are closed.
+- At most `subagentRuntime.maxConcurrent` (default 4) run at once; further delegations fail with `limit_reached`.
 
 ## Errors
 

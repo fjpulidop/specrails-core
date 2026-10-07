@@ -184,7 +184,7 @@ describe('Claude argv', () => {
   })
 
   it('switches its own sub-agent tools off when Core launches sub-agents', () => {
-    const args = spec({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex' } })
+    const args = spec({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex', model: 'gpt-5.6-luna' } })
     expect(args[args.indexOf('--disallowedTools') + 1]).toBe('Agent,Task')
     expect(claudeEnv(resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex', model: 'x' } }, CLAUDE_DESCRIPTOR), {})).toEqual({})
   })

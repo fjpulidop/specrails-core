@@ -65,6 +65,8 @@ export interface SubagentNode {
   toolUses: number | null
   durationMs: number | null
   resultSummary: string | null
+  /** Set when Core launched it as a child session (delegated runtime); its spend is billed separately. */
+  delegated: { driver: string; model: string } | null
 }
 
 /** Bounded history kept in the snapshot; the journal keeps every event. */
@@ -240,6 +242,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
         parentId: event.parentId,
         kind: event.kind,
         agentType: event.agentType ?? null,
+        delegated: event.delegated ?? null,
         description: event.description,
         phase: 'running',
         reason: null,

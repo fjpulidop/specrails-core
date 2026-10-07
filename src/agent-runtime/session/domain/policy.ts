@@ -30,7 +30,7 @@ export interface SessionPolicyInput {
   limits?: Partial<SessionLimits>
   subagentRuntime?:
     | { mode: 'native'; model?: string; effort?: string }
-    | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent?: number }
+    | { mode: 'delegated'; driver: string; model: string; effort?: string; maxConcurrent?: number }
 }
 
 export const DEFAULT_MAX_DELEGATED = 4
@@ -53,7 +53,8 @@ function resolveRuntime(input: SessionPolicyInput, driver: DriverDescriptor): Su
   if (!Number.isInteger(maxConcurrent) || maxConcurrent < MAX_DELEGATED_BOUNDS[0] || maxConcurrent > MAX_DELEGATED_BOUNDS[1]) {
     throw new SessionError('invalid_params', `policy.subagentRuntime.maxConcurrent must be an integer in [${MAX_DELEGATED_BOUNDS[0]}, ${MAX_DELEGATED_BOUNDS[1]}]`, { path: 'policy.subagentRuntime.maxConcurrent' })
   }
-  return { mode: 'delegated', driver: runtime.driver, ...(runtime.model ? { model: runtime.model } : {}), ...(runtime.effort ? { effort: runtime.effort } : {}), maxConcurrent }
+  if (!runtime.model) throw new SessionError('invalid_params', 'Delegated sub-agents need a model', { path: 'policy.subagentRuntime.model' })
+  return { mode: 'delegated', driver: runtime.driver, model: runtime.model, ...(runtime.effort ? { effort: runtime.effort } : {}), maxConcurrent }
 }
 
 function unenforceable(message: string, detail: Record<string, unknown>): SessionError {

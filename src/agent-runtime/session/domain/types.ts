@@ -79,7 +79,7 @@ export interface SessionLimits {
  */
 export type SubagentRuntime =
   | { mode: 'native'; model?: string; effort?: string }
-  | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent: number }
+  | { mode: 'delegated'; driver: string; model: string; effort?: string; maxConcurrent: number }
 
 export interface SessionPolicy {
   subagents: 'enabled' | 'disabled'

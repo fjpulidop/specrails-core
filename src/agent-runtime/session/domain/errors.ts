@@ -13,6 +13,7 @@ export type SessionErrorCode =
   | 'journal_locked'
   | 'store_incompatible'
   | 'busy'
+  | 'limit_reached'
   | 'internal'
 
 const RETRYABLE: ReadonlySet<SessionErrorCode> = new Set(['journal_locked', 'busy', 'internal'])

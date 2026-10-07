@@ -39,10 +39,10 @@ export type SessionEventBody =
   | { type: 'turn.output'; turnId: string; channel: OutputChannel; delta: string }
   | ({ type: 'turn.tool'; turnId: string } & ToolActivity)
   | { type: 'turn.completed'; turnId: string; status: 'completed' | 'failed' | 'stopped' | 'interrupted'; text: string; error?: string; usage: Usage }
-  | { type: 'subagent.started'; subagentId: string; parentId: string | null; kind: SubagentKind; agentType?: string; description: string; prompt?: string }
+  | { type: 'subagent.started'; subagentId: string; parentId: string | null; kind: SubagentKind; agentType?: string; description: string; prompt?: string; delegated?: { driver: string; model: string } }
   | { type: 'subagent.phase'; subagentId: string; phase: SubagentPhase; reason?: string }
   | { type: 'subagent.output'; subagentId: string; channel: 'text' | 'tool'; delta?: string; tool?: ToolActivity }
-  | { type: 'subagent.usage'; subagentId: string; usage: Usage; toolUses?: number; durationMs?: number }
+  | { type: 'subagent.usage'; subagentId: string; usage: Usage; toolUses?: number; durationMs?: number; billing?: 'included' | 'separate' }
   | { type: 'subagent.result'; subagentId: string; summary: string }
   | { type: 'subagents.settled'; settled: boolean; live: number }
   | { type: 'output.truncated'; scope: { turnId: string } | { subagentId: string }; droppedEvents: number; droppedBytes: number }

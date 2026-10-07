@@ -6,6 +6,7 @@ import type { Attachment, DriverDescriptor } from '../domain/types.js'
 import type { RateCard } from '../domain/usage.js'
 import type { Clock, DriverCatalog, Ids, SessionJournal, SessionSummary } from '../ports.js'
 import { ActiveSession, type SessionConfig } from './active-session.js'
+import { DelegationCoordinator, type DelegateParams, type DelegatedResult } from './delegation.js'
 import type { OutputLimits } from './output-buffer.js'
 
 export interface SessionServiceOptions {
@@ -56,8 +57,20 @@ export class SessionService {
   private readonly locks = new Map<string, Promise<unknown>>()
   private readonly listeners = new Set<SessionListener>()
   private shuttingDown = false
+  private readonly delegation: DelegationCoordinator
 
-  constructor(private readonly options: SessionServiceOptions) {}
+  constructor(private readonly options: SessionServiceOptions) {
+    this.delegation = new DelegationCoordinator({
+      journal: options.journal,
+      ids: options.ids,
+      parent: (sessionId) => this.session(sessionId),
+      open: (params) => this.open(params),
+      send: (sessionId, input) => this.send(sessionId, input),
+      interrupt: (sessionId) => this.interrupt(sessionId),
+      close: (sessionId, reason) => this.close(sessionId, reason),
+      snapshot: (sessionId) => this.snapshot(sessionId),
+    })
+  }
 
   drivers(): DriverDescriptor[] {
     return this.options.drivers.descriptors()
@@ -81,6 +94,12 @@ export class SessionService {
       if (!factory) continue
       new ActiveSession(summary.sessionId, snapshot, this.configFrom(snapshot), this.deps(factory)).recoverAfterHostLoss(reason)
       recovered.push(summary.sessionId)
+    }
+    // A delegated child cannot outlive the host that ran it: close the orphans.
+    for (const summary of this.options.journal.list('open')) {
+      if (this.options.journal.getSession(summary.sessionId)?.metadata?.delegated !== true) continue
+      const envelopes = this.options.journal.append(summary.sessionId, [{ type: 'session.closed', reason: 'delegation_interrupted', at: this.options.clock.iso() }])
+      this.publish(envelopes)
     }
     return recovered
   }
@@ -119,7 +138,24 @@ export class SessionService {
   }
 
   async stopSubagents(sessionId: string, subagentIds?: string[]): Promise<{ stopped: string[] }> {
-    return this.exclusive(sessionId, async () => ({ stopped: await this.session(sessionId).stopSubagents(subagentIds) }))
+    return this.exclusive(sessionId, async () => {
+      const session = this.session(sessionId)
+      const native = subagentIds?.filter((id) => !this.delegation.isDelegated(id))
+      const delegated = await this.delegation.stop(sessionId, subagentIds)
+      const stopped = native?.length === 0 ? [] : await session.stopSubagents(native)
+      return { stopped: [...delegated, ...stopped] }
+    })
+  }
+
+  /** Launch a sub-agent as a child session (delegated runtime). */
+  async delegate(sessionId: string, params: DelegateParams): Promise<{ subagentId: string }> {
+    return this.exclusive(sessionId, () => this.delegation.delegate(sessionId, params))
+  }
+
+  /** Wait for delegated sub-agents; never holds the session lock while waiting. */
+  async waitSubagents(sessionId: string, subagentIds: string[] | undefined, timeoutMs: number): Promise<{ results: DelegatedResult[]; running: string[] }> {
+    this.session(sessionId)
+    return this.delegation.wait(sessionId, subagentIds, timeoutMs)
   }
 
   async update(sessionId: string, changes: { model?: string; effort?: string; systemPrompt?: string; policy?: SessionPolicyInput }): Promise<{ outcome: 'applied' | 'deferred' }> {
@@ -137,6 +173,7 @@ export class SessionService {
       const snapshot = this.options.journal.snapshot(sessionId)
       if (!snapshot) throw new SessionError('session_not_found', `Unknown session ${sessionId}`)
       if (snapshot.status === 'closed') return
+      await this.delegation.closeParent(sessionId)
       await this.session(sessionId).close(reason)
       this.active.delete(sessionId)
     })
@@ -239,6 +276,8 @@ export class SessionService {
   private publish(envelopes: SessionEventEnvelope[]): void {
     if (envelopes.length === 0) return
     for (const listener of this.listeners) listener(envelopes)
+    // Mirror delegated children into their parents (after hosts saw the child events).
+    this.delegation.observe(envelopes)
   }
 
   /** Serialize operations per session. */

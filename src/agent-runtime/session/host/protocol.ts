@@ -38,7 +38,7 @@ const policy = {
     subagentRuntime: {
       oneOf: [
         { type: 'object', additionalProperties: false, required: ['mode'], properties: { mode: { const: 'native' }, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', minLength: 1, maxLength: 50 } } },
-        { type: 'object', additionalProperties: false, required: ['mode', 'driver'], properties: { mode: { const: 'delegated' }, driver: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', minLength: 1, maxLength: 50 }, maxConcurrent: { type: 'integer', minimum: 1, maximum: 16 } } },
+        { type: 'object', additionalProperties: false, required: ['mode', 'driver', 'model'], properties: { mode: { const: 'delegated' }, driver: { type: 'string', pattern: '^[a-z0-9][a-z0-9-]{0,63}$' }, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', minLength: 1, maxLength: 50 }, maxConcurrent: { type: 'integer', minimum: 1, maximum: 16 } } },
       ],
     },
   },
@@ -66,6 +66,8 @@ export const METHOD_SCHEMAS: Readonly<Record<string, Schema>> = Object.freeze({
   'session.send': { type: 'object', additionalProperties: false, required: ['sessionId', 'input'], properties: { sessionId: id, input: { type: 'object', additionalProperties: false, required: ['inputId', 'text', 'delivery'], properties: { inputId: id, text, attachments: { type: 'array', maxItems: 32, items: attachment }, delivery: { enum: ['queue', 'steer'] } } } } },
   'session.interrupt': { type: 'object', additionalProperties: false, required: ['sessionId'], properties: { sessionId: id } },
   'session.stopSubagents': { type: 'object', additionalProperties: false, required: ['sessionId'], properties: { sessionId: id, subagentIds: { type: 'array', maxItems: 500, items: id } } },
+  'session.delegate': { type: 'object', additionalProperties: false, required: ['sessionId', 'description', 'prompt'], properties: { sessionId: id, description: { type: 'string', minLength: 1, maxLength: 200 }, prompt: { type: 'string', minLength: 1, maxLength: 64 * 1024 }, agentType: { type: 'string', minLength: 1, maxLength: 100 }, contextTurns: { type: 'integer', minimum: 0, maximum: 10 } } },
+  'session.waitSubagents': { type: 'object', additionalProperties: false, required: ['sessionId', 'timeoutMs'], properties: { sessionId: id, subagentIds: { type: 'array', maxItems: 500, items: id }, timeoutMs: { type: 'integer', minimum: 0, maximum: 30 * 60_000 } } },
   'session.update': { type: 'object', additionalProperties: false, required: ['sessionId'], minProperties: 2, properties: { sessionId: id, model: { type: 'string', minLength: 1, maxLength: 200 }, effort: { type: 'string', maxLength: 50 }, systemPrompt: text, policy } },
   'session.close': { type: 'object', additionalProperties: false, required: ['sessionId', 'reason'], properties: { sessionId: id, reason: { type: 'string', minLength: 1, maxLength: 200 } } },
   'session.snapshot': { type: 'object', additionalProperties: false, required: ['sessionId'], properties: { sessionId: id } },

@@ -409,6 +409,10 @@
         "output.truncated",
         "notice.interruption",
         "provider.diagnostic"
+      ],
+      "capabilities": [
+        "sessions",
+        "delegation"
       ]
     }
   },

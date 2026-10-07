@@ -113,15 +113,19 @@ describe('session policy', () => {
       expect(delegatedSubagents(policy)).toBe(true)
       expect(nativeSubagentsAllowed(policy)).toBe(false)
       expect(subagentsActive(policy, native)).toBe(false)
-      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', maxConcurrent: 99 } }, native))).toBe('invalid_params')
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', model: 'sonnet', maxConcurrent: 99 } }, native))).toBe('invalid_params')
+    })
+
+    it('needs a model to delegate (Core cannot guess another provider default)', () => {
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude' } as never }, native))).toBe('invalid_params')
     })
 
     it('cannot delegate when the parent cannot switch its own sub-agents off', () => {
-      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude' } }, noDisable))).toBe('policy_unenforceable')
+      expect(code(() => resolvePolicy({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'claude', model: 'sonnet' } }, noDisable))).toBe('policy_unenforceable')
     })
 
     it('treats disabled sub-agents as neither native nor delegated', () => {
-      const policy = resolvePolicy({ subagents: 'disabled', subagentRuntime: { mode: 'delegated', driver: 'claude' } }, native)
+      const policy = resolvePolicy({ subagents: 'disabled', subagentRuntime: { mode: 'delegated', driver: 'claude', model: 'sonnet' } }, native)
       expect(nativeSubagentsAllowed(policy)).toBe(false)
       expect(delegatedSubagents(policy)).toBe(false)
     })

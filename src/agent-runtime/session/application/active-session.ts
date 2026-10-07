@@ -1,5 +1,5 @@
 import { SessionError, isSessionError } from '../domain/errors.js'
-import type { SessionEvent, SessionEventBody, SessionEventEnvelope } from '../domain/events.js'
+import type { SessionEvent, SessionEventBody, SessionEventEnvelope, ToolActivity } from '../domain/events.js'
 import { fingerprint } from '../domain/fingerprint.js'
 import { buildInterruptionNotice } from '../domain/interruption.js'
 import { nativeSubagentsAllowed, subagentsActive } from '../domain/policy.js'
@@ -42,6 +42,15 @@ interface Teardown {
   error?: string
 }
 
+/** Delegated results the parent never saw: the agent receives them in a system turn. */
+function delegatedResultsPrompt(results: Array<{ description: string; status: string; result: string }>): string {
+  return [
+    '[Specrails session] Sub-agents you delegated have finished. Their results:',
+    ...results.map((item, index) => `\n${index + 1}. ${item.description} (${item.status})\n${item.result}`),
+    '\nContinue the task with these results, or report back to the user.',
+  ].join('\n')
+}
+
 const COLLECT_PROMPT = [
   '[Specrails session] Your sub-agents have finished.',
   'Collect their results (for example with your wait/agent tools), then continue the task or report back to the user.',
@@ -73,6 +82,8 @@ export class ActiveSession {
   private roster: string[] | null = null
   private handoffs = 0
   private finishedSinceLastTurn = new Set<string>()
+  /** Finished delegated sub-agents whose results the agent has not received yet. */
+  private readonly delegatedResults = new Map<string, { description: string; status: string; result: string }>()
   private lastUserTurnAt: number | null = null
   lastUsedAt: number
 
@@ -126,7 +137,8 @@ export class ActiveSession {
 
   async stopSubagents(ids?: string[]): Promise<string[]> {
     this.assertOpen()
-    const live = liveSubagents(this.state).map((node) => node.subagentId)
+    // Delegated sub-agents are stopped through their own sessions (DelegationCoordinator).
+    const live = liveSubagents(this.state).filter((node) => !node.delegated).map((node) => node.subagentId)
     const targets = ids ? live.filter((id) => ids.includes(id)) : live
     if (targets.length === 0 || !this.driver) return []
     const result = await this.driver.stopSubagents(ids ? targets : undefined)
@@ -195,6 +207,9 @@ export class ActiveSession {
    */
   recoverAfterHostLoss(reason: 'restart' | 'host_lost'): void {
     const hadProcess = this.state.process.alive
+    // Delegated children ran in the host that is gone: they were interrupted too.
+    const delegated = this.delegatedLive()
+    if (delegated.length > 0) this.commit(delegated.map((subagentId) => ({ type: 'subagent.phase' as const, subagentId, phase: 'interrupted' as const, reason })))
     this.endRunningWork({ turnStatus: 'interrupted', subagentPhase: 'interrupted', reason })
     if (hadProcess) this.commit([{ type: 'session.process', state: 'exited', generation: this.state.process.generation, reason, exitCode: null }])
   }
@@ -371,7 +386,11 @@ export class ActiveSession {
     const system = inputIds.length > 0 && inputIds.every((id) => this.systemInputIds.has(id))
     const origin = trigger === 'continuation' ? 'subagent' : system ? 'system' : 'user'
     const triggeredBy = origin === 'user' ? undefined : [...this.finishedSinceLastTurn]
-    if (origin === 'user') this.lastUserTurnAt = this.deps.clock.now()
+    if (origin === 'user') {
+      this.lastUserTurnAt = this.deps.clock.now()
+      // The handoff bound is per settle cycle: a user turn starts a new one.
+      this.handoffs = 0
+    }
     this.finishedSinceLastTurn.clear()
     this.timers.cancel('idle', 'stall')
     this.commit([
@@ -415,6 +434,8 @@ export class ActiveSession {
     else this.enterIdle()
     // Sub-agents that finished during the turn still need their settle point.
     if (!this.state.settled.settled && !this.timers.isArmed('settle')) this.afterSubagentChange()
+    // Delegated results that arrived while the agent was busy are delivered now.
+    else if (live === 0) this.maybeDeliverDelegatedResults()
   }
 
   // ── Sub-agent settlement ──────────────────────────────────────────────────
@@ -443,7 +464,7 @@ export class ActiveSession {
       this.commit([{ type: 'session.phase', phase: 'idle' }])
       this.enterIdle()
     }
-    this.maybeResumeAgent()
+    if (!this.maybeDeliverDelegatedResults()) this.maybeResumeAgent()
   }
 
   /** Live = running in our tree and, when the provider reports a roster, still on it. */
@@ -462,6 +483,67 @@ export class ActiveSession {
     this.systemInputIds.add(inputId)
     this.commit([{ type: 'input.accepted', inputId, delivery: 'queue', text: COLLECT_PROMPT }])
     void this.deliver({ inputId, text: COLLECT_PROMPT, delivery: 'queue', origin: 'system' }).catch(() => undefined)
+  }
+
+  /** Give the agent the results of delegated sub-agents it has not seen. */
+  private maybeDeliverDelegatedResults(): boolean {
+    if (this.delegatedResults.size === 0 || this.state.openTurn || this.state.status === 'closed' || this.closing) return false
+    if (this.handoffs >= this.config.policy.limits.maxSettleHandoffs) return false
+    const results = [...this.delegatedResults.values()]
+    this.delegatedResults.clear()
+    this.handoffs += 1
+    const inputId = this.deps.ids.input()
+    const text = delegatedResultsPrompt(results)
+    this.systemInputIds.add(inputId)
+    this.commit([{ type: 'input.accepted', inputId, delivery: 'queue', text }])
+    void this.deliver({ inputId, text, delivery: 'queue', origin: 'system' }).catch(() => undefined)
+    return true
+  }
+
+  // ── Delegated sub-agents (child sessions Core launched for this one) ──────
+
+  /** Running sub-agents Core launched for this session. */
+  delegatedLive(): string[] {
+    return liveSubagents(this.state).filter((node) => node.delegated !== null).map((node) => node.subagentId)
+  }
+
+  delegatedStarted(child: { subagentId: string; description: string; agentType: string; prompt: string; driver: string; model: string }): void {
+    this.assertOpen()
+    this.commit([{ type: 'subagent.started', subagentId: child.subagentId, parentId: null, kind: 'background', agentType: child.agentType, description: child.description, prompt: child.prompt.slice(0, 8_000), delegated: { driver: child.driver, model: child.model } }])
+    this.afterSubagentChange()
+  }
+
+  delegatedOutput(subagentId: string, event: { channel: 'text'; delta: string } | { channel: 'tool'; tool: ToolActivity }): void {
+    if (this.state.status === 'closed' || this.state.subagents[subagentId]?.phase !== 'running') return
+    if (event.channel === 'text') this.commitBuffered(this.output.add({ type: 'subagent.output', subagentId, channel: 'text', delta: event.delta }))
+    else this.commit([{ type: 'subagent.output', subagentId, channel: 'tool', tool: event.tool }])
+  }
+
+  /**
+   * A delegated child ended. Its usage is its own provider's spend (billed
+   * separately); unless a host already collected the result, the agent gets it
+   * when the session next settles.
+   */
+  delegatedFinished(subagentId: string, outcome: { status: 'completed' | 'failed' | 'stopped' | 'interrupted'; text: string; usage: Usage | null; reason?: string; collected: boolean }): void {
+    const node = this.state.subagents[subagentId]
+    if (this.state.status === 'closed' || node?.phase !== 'running') return
+    const phase: SubagentPhase = outcome.status === 'completed' ? 'idle' : outcome.status === 'failed' ? 'failed' : outcome.status === 'interrupted' ? 'interrupted' : 'stopped'
+    const result = outcome.text.trim()
+    this.commit([
+      ...this.output.drainSubagent(subagentId),
+      ...(outcome.usage ? [{ type: 'subagent.usage' as const, subagentId, usage: outcome.usage, billing: 'separate' as const }] : []),
+      ...(result ? [{ type: 'subagent.result' as const, subagentId, summary: result.slice(0, 4_096) }] : []),
+      { type: 'subagent.phase', subagentId, phase, ...(outcome.reason ? { reason: outcome.reason } : {}) },
+    ])
+    if (!outcome.collected && (result || phase !== 'idle')) {
+      this.delegatedResults.set(subagentId, { description: node.description, status: phase === 'idle' ? 'completed' : phase, result: result || `It ended without a result (${outcome.reason ?? phase}).` })
+    }
+    this.afterSubagentChange()
+  }
+
+  /** A host received these results through a wait; never inject them again. */
+  collectDelegated(subagentIds: readonly string[]): void {
+    for (const id of subagentIds) this.delegatedResults.delete(id)
   }
 
   // ── Phases and limits ─────────────────────────────────────────────────────
@@ -533,6 +615,9 @@ export class ActiveSession {
       bodies.push({ type: 'turn.completed', turnId: turn.turnId, status: teardown.turnStatus, text: turn.text, usage: EMPTY_USAGE, ...(teardown.error ? { error: teardown.error } : {}) })
     }
     for (const node of Object.values(this.state.subagents)) {
+      // Delegated sub-agents are independent child sessions: they outlive this
+      // provider process and end through their own session (or an explicit stop).
+      if (node.delegated) continue
       if (node.phase === 'running' || node.phase === 'idle') {
         // Idle sub-agents are finished for the provider; only running ones were cut short.
         if (node.phase === 'running') bodies.push({ type: 'subagent.phase', subagentId: node.subagentId, phase: teardown.subagentPhase, reason: teardown.reason })
@@ -545,8 +630,11 @@ export class ActiveSession {
       }
     }
     this.heldInputs.length = 0
-    if (this.state.phase !== 'idle' || turn) bodies.push({ type: 'session.phase', phase: 'idle' })
-    if (!this.state.settled.settled) bodies.push({ type: 'subagents.settled', settled: true, live: 0 })
+    // With delegated work still running the session stays in the background.
+    const nextPhase = this.delegatedLive().length > 0 ? 'background' : 'idle'
+    if (this.state.phase !== nextPhase || turn) bodies.push({ type: 'session.phase', phase: nextPhase })
+    const delegatedLive = this.delegatedLive().length
+    if (delegatedLive === 0 && !this.state.settled.settled) bodies.push({ type: 'subagents.settled', settled: true, live: 0 })
     this.roster = null
     if (bodies.length > 0) this.commit(bodies)
   }

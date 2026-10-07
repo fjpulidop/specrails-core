@@ -64,6 +64,13 @@ export class SessionHost {
       'session.open': async (params) => service.open(params as never),
       'session.send': async (params) => service.send(String(params.sessionId), params.input as never),
       'session.interrupt': async (params) => service.interrupt(String(params.sessionId)),
+      'session.delegate': async (params) => service.delegate(String(params.sessionId), {
+        description: String(params.description),
+        prompt: String(params.prompt),
+        ...(typeof params.agentType === 'string' ? { agentType: params.agentType } : {}),
+        ...(typeof params.contextTurns === 'number' ? { contextTurns: params.contextTurns } : {}),
+      }),
+      'session.waitSubagents': async (params) => service.waitSubagents(String(params.sessionId), Array.isArray(params.subagentIds) ? params.subagentIds.map(String) : undefined, Number(params.timeoutMs)),
       'session.stopSubagents': async (params) => service.stopSubagents(String(params.sessionId), params.subagentIds as string[] | undefined),
       'session.update': async (params) => { const { sessionId, ...changes } = params; return service.update(String(sessionId), changes as never) },
       'session.close': async (params) => { await service.close(String(params.sessionId), String(params.reason)); return {} },
@@ -170,7 +177,8 @@ export class SessionHost {
       protocolVersion: Math.max(...requested),
       scope: this.runtime.scope,
       runtime: this.runtime.identity,
-      capabilities: { sessions: 1 },
+      // `delegation`: session.delegate / session.waitSubagents and subagentRuntime.mode 'delegated'.
+      capabilities: { sessions: 1, delegation: 1 },
       drivers: this.runtime.service.drivers(),
     }
   }
