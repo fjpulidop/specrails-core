@@ -66,7 +66,10 @@ async function runSessionHost(flags: Record<string, string | boolean>): Promise<
 export function runtimeFailure(error: unknown) {
   return { type: 'runtime-result', status: 'failed', error: error instanceof EngineError
     ? { code: error.code, message: error.message, ...(error.details === undefined ? {} : { details: error.details }) }
-    : error instanceof Error ? error.message : String(error) }
+    // Session errors keep their code so hosts can react (e.g. `journal_locked` must not be retried).
+    : error instanceof Error && error.name === 'SessionError' && typeof (error as unknown as { code?: unknown }).code === 'string'
+      ? { code: (error as unknown as { code: string }).code, message: error.message }
+      : error instanceof Error ? error.message : String(error) }
 }
 
 /** Machine operations are mirrored in integration-contract.json; help is presentation-only. */

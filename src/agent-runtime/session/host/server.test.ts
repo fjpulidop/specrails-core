@@ -199,4 +199,27 @@ describe('runtime host binary', () => {
     await call(3, 'host.shutdown')
     expect(await exited, stderr).toBe(0)
   })
+
+  it.skipIf(!existsSync(cli))('refuses a second host on the same scope with a machine-readable journal_locked', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'session host lock ')); roots.push(home)
+    const env = { ...process.env, SPECRAILS_REGISTRY_HOME: home }
+    const first = spawn(process.execPath, [cli, 'host', '--stdio', '--scope', 'locked'], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+    const firstExit = new Promise<number | null>((resolve) => first.once('exit', resolve))
+    let firstOut = ''
+    first.stdout.on('data', (chunk) => { firstOut += String(chunk) })
+    first.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersions: [1], host: { name: 'a', version: '1' }, scope: 'locked' } })}\n`)
+    for (let attempt = 0; attempt < 400 && !firstOut.includes('"id":1'); attempt++) await new Promise((resolve) => setTimeout(resolve, 25))
+
+    const second = spawn(process.execPath, [cli, 'host', '--stdio', '--scope', 'locked'], { env, stdio: ['pipe', 'pipe', 'pipe'] })
+    let secondOut = ''
+    second.stdout.on('data', (chunk) => { secondOut += String(chunk) })
+    const secondExit = await new Promise<number | null>((resolve) => second.once('exit', resolve))
+    expect(secondExit).not.toBe(0)
+    const failure = secondOut.split('\n').filter(Boolean).map((line) => JSON.parse(line) as Json).find((line) => line.type === 'runtime-result')
+    expect(failure).toMatchObject({ status: 'failed', error: { code: 'journal_locked' } })
+
+    first.stdin.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'host.shutdown', params: {} })}\n`)
+    expect(await firstExit).toBe(0)
+  })
 })
+
