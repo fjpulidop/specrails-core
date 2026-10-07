@@ -7,12 +7,12 @@
 
 ## 2. Domain (pure)
 
-- [ ] 2.1 Event union and value types (`domain/events.ts`, `domain/types.ts`) with schema definitions shared by host validation
-- [ ] 2.2 State machines as transition tables for session, turn, input and sub-agent (re-entrant), with exhaustive transition tests
-- [ ] 2.3 Reducers folding events into snapshot, sub-agent tree and settled state (debounce window), with live-vs-replay equivalence property tests
-- [ ] 2.4 `domain/policy.ts` validation against driver descriptors (`policy_unenforceable`) and defaults module for limits
-- [ ] 2.5 `domain/usage.ts` per-declaration usage math (session-cumulative USD, per-thread cumulative tokens, per-turn tokens; null preservation; estimated flag) with tests derived from fixture numbers
-- [ ] 2.6 `domain/interruption.ts` one-time interruption notice builder
+- [x] 2.1 Event union and value types (`domain/events.ts`, `domain/types.ts`) with schema definitions shared by host validation
+- [x] 2.2 State machines as transition tables for session, turn, input and sub-agent (re-entrant), with exhaustive transition tests
+- [x] 2.3 Reducers folding events into snapshot, sub-agent tree and recorded settled state, with live-vs-replay equivalence tests (the time-based settle debounce lives in the application, task 3.3)
+- [x] 2.4 `domain/policy.ts` validation against driver descriptors (`policy_unenforceable`) and defaults module for limits
+- [x] 2.5 `domain/usage.ts` per-declaration usage math (session-cumulative USD, per-thread cumulative tokens, per-turn tokens; null preservation; estimated flag) with tests derived from fixture numbers
+- [x] 2.6 `domain/interruption.ts` one-time interruption notice builder
 
 ## 3. Ports, application and supervision
 

@@ -58,6 +58,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `session.opened` | `driver, model, effort?, policy, resumed, providerSessionRef \| null` |
 | `session.phase` | `phase: 'idle' \| 'turn' \| 'background'` |
 | `session.process` | `state: 'started' \| 'retired' \| 'exited', generation, reason?, exitCode?` |
+| `session.provider-ref` | `providerSessionRef` (provider session/thread id, learned after the first turn) |
 | `session.updated` | `changes, outcome: 'applied' \| 'deferred'` |
 | `session.closed` | `reason` |
 | `input.accepted` | `inputId, delivery, text, attachments?` |
