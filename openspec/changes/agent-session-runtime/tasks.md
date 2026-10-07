@@ -32,12 +32,12 @@
 ## 5. Drivers and conformance kit
 
 - [x] 5.1 `testing/fixture-replayer.ts` implementing `ProcessSpawner` from recorded transcripts (time-compressed), plus synthetic edge fixtures
-- [ ] 5.2 `testing/driver-conformance.ts` shared suite (descriptor, ordering, receipts, turn delimitation, interrupt, close idempotency, policy, usage semantics, no events after close, sub-agent invariants)
-- [ ] 5.3 `drivers/registry.ts` closed frozen registry with descriptor validation
+- [x] 5.2 `testing/driver-conformance.ts` shared suite (descriptor, ordering, receipts, turn delimitation, interrupt, close idempotency, policy, usage semantics, no events after close, sub-agent invariants)
+- [x] 5.3 `drivers/registry.ts` closed frozen registry with descriptor validation
 - [x] 5.4 Claude driver: transport via `cli-process.ts`, pure translator, policy mapping (`--disallowedTools Agent Task`, tools, MCP strict config), SIGTERM capture of stopped/killed notifications; passes conformance + fixture scenarios
 - [x] 5.5 Codex driver: app-server JSON-RPC client, thread demux, pure translator, policy mapping (`features.multi_agent`, sandbox, approvals, MCP overrides — verify isolation with a new fixture), resume via `thread/resume`; passes conformance + fixture scenarios
-- [ ] 5.6 Executor-backed driver adapting `AgentExecutor` for Gemini, Kimi and OpenAI-compatible (non-resident, sub-agents unsupported); passes conformance
-- [ ] 5.7 Opt-in live re-capture script (`SPECRAILS_LIVE_PROVIDER_SMOKE=1`) documented, excluded from CI
+- [x] 5.6 Executor-backed driver adapting `AgentExecutor` for Gemini, Kimi and OpenAI-compatible (non-resident, sub-agents unsupported); passes conformance
+- [x] 5.7 Opt-in live re-capture script (`SPECRAILS_LIVE_PROVIDER_SMOKE=1`) documented, excluded from CI
 
 ## 6. Host and contract
 
