@@ -3,6 +3,9 @@
 For immutable definitions, composition, forks and steering, see the
 [engine v2 guide](engine-v2/README.md). The built-in implementation workflow
 described here remains available through its retained runtime identity.
+Interactive, multi-turn agent sessions (missions, chats, sub-agents) use the
+separate [agent session runtime](agent-sessions/architecture.md) and its
+[session protocol](agent-sessions/protocol.md).
 
 Core executes implementation as a local TypeScript workflow:
 

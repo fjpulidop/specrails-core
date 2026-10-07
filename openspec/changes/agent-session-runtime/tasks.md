@@ -1,9 +1,9 @@
 ## 1. Foundations
 
 - [x] 1.1 Capture real Claude (2.1.285) and Codex (0.153.4) sub-agent transcripts; store sanitized fixtures and findings in `reference/`
-- [ ] 1.2 Write `docs/agent-sessions/protocol.md` (methods, notifications, event union, error codes, versioning) and `docs/agent-sessions/architecture.md` (layers, patterns, extension rules); link from `docs/agent-runtime.md`
-- [ ] 1.3 Add `src/shared/specrails-home.ts` (`specrailsHome()`, `sessionsRoot(scope)`) honouring `SPECRAILS_REGISTRY_HOME`; adopt in `src/installer/util/registry.ts` with unchanged behaviour and tests
-- [ ] 1.4 Extend `src/architecture.test.ts` with session layering rules (domain isolation, application → domain/ports only, drivers/journal/host mutually isolated, only `cli.ts` imports `host/`, no provider-id comparisons outside drivers)
+- [x] 1.2 Write `docs/agent-sessions/protocol.md` (methods, notifications, event union, error codes, versioning) and `docs/agent-sessions/architecture.md` (layers, patterns, extension rules); link from `docs/agent-runtime.md`
+- [x] 1.3 Add `src/shared/specrails-home.ts` (`specrailsHome()`, `sessionsRoot(scope)`) honouring `SPECRAILS_REGISTRY_HOME`; adopt in `src/installer/util/registry.ts` with unchanged behaviour and tests
+- [x] 1.4 Extend `src/architecture.test.ts` with session layering rules (domain isolation, application → domain/ports only, drivers/journal/host mutually isolated, only `cli.ts` imports `host/`, no provider-id comparisons outside drivers)
 
 ## 2. Domain (pure)
 
