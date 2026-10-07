@@ -57,7 +57,11 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
     ] }
     case 'codex': {
       const sandbox = readOnly ? 'read-only' : 'workspace-write'
-      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...model,
+      // Writers need the network the legacy step and the Claude developer have:
+      // installs, and test servers on 127.0.0.1 (Codex's workspace-write
+      // seatbelt otherwise denies even a localhost listen with EPERM).
+      const network = readOnly ? [] : ['-c', 'sandbox_workspace_write.network_access=true']
+      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...network, ...model,
         ...(request.effort === undefined ? [] : ['-c', 'model_reasoning_effort=' + JSON.stringify(request.effort)]),
         ...(options.openspecBridge ? ['-c', 'mcp_servers.specrails_openspec.command=' + JSON.stringify(options.openspecBridge.command), '-c', 'mcp_servers.specrails_openspec.args=' + JSON.stringify(options.openspecBridge.args), '-c', 'mcp_servers.specrails_openspec.default_tools_approval_mode="approve"', '-c', 'mcp_servers.specrails_openspec.required=true'] : []),
       ]

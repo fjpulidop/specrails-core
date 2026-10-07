@@ -54,6 +54,10 @@ describe('four CLI execution contracts', () => {
     expect(developer.slice(developer.indexOf('--setting-sources'), developer.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'project,local'])
     expect(buildCliInvocation('gemini', request()).args).toContain('--yolo')
     expect(buildCliInvocation('codex', request()).args).toContain('workspace-write')
+    // Writers may start local test servers and install packages; readers stay offline.
+    expect(buildCliInvocation('codex', request()).args).toContain('sandbox_workspace_write.network_access=true')
+    expect(buildCliInvocation('codex', request({ resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.network_access=true')
+    expect(buildCliInvocation('codex', request({ role: 'reviewer' })).args).not.toContain('sandbox_workspace_write.network_access=true')
     for (const role of ['architect', 'reviewer'] as const) {
       const readOnly = buildCliInvocation('claude', request({ role })).args
       expect(readOnly).not.toContain('--dangerously-skip-permissions')
