@@ -172,16 +172,17 @@ interface DriverSession {
 
 ### D6. Journal (per-project SQLite, epoch-fenced, bounded)
 
-- **Location:** `~/.specrails/sessions/<scope>/sessions.sqlite`, plus `blobs/` for large outputs referenced by hash. `<scope>` is the host-provided project key (Desktop's project slug, the same key as `~/.specrails/projects/<slug>`) or `global`. It is resolved through the new `src/shared/specrails-home.ts`, honouring `SPECRAILS_REGISTRY_HOME`. Private permissions come from `engine/storage/private-path.ts`.
+- **Location:** `~/.specrails/sessions/<scope>/sessions.sqlite`. `<scope>` is the host-provided project key (Desktop's project slug, the same key as `~/.specrails/projects/<slug>`) or `global`. It is resolved through the new `src/shared/specrails-home.ts`, honouring `SPECRAILS_REGISTRY_HOME`. Private permissions come from `engine/storage/private-path.ts`.
 - **Schema:**
   - `PRAGMA user_version`; WAL; `synchronous=FULL`; `foreign_keys=ON`.
-  - Tables: `sessions`, `events (session_id, seq, type, payload, committed_at)`, `inputs`, `subagents` (projection), `usage_baselines (session_id, provider_session_ref, cumulative_cost_usd, per-thread token totals)`, `host_lease`.
+  - Tables: `sessions`, `events (session_id, seq, type, payload, committed_at)`, `inputs`, `subagents` (projection), `usage_baselines (provider_ref, baseline_json)`, `host_lease`.
   - Unlike run databases, the journal is long-lived. It therefore uses an **ordered forward-only migration list** keyed by `user_version`. Each migration runs in `BEGIN IMMEDIATE`, and an unknown future version is refused. This is the only new storage pattern in the change, and the README justifies it.
 - **Ownership:** one host per scope. `host_lease` is epoch-fenced, with the same TTL and heartbeat as engine leases. A second host for the same scope gets `journal_locked`. A stale owner is fenced and its live sessions are marked `interrupted` (`host_lost`).
 - **Bounds:**
-  - per-sub-agent output events are capped (count/bytes), with an explicit `output.truncated` event;
-  - session retention is configurable;
-  - blobs are garbage-collected by reference.
+  - per-turn and per-sub-agent output is capped, with an explicit `output.truncated` event;
+  - snapshots keep the latest 100 turns and 500 terminal inputs (the journal keeps every event);
+  - closed-session retention is configurable.
+  - Content-addressed blobs were considered and dropped: capped output leaves nothing that needs them.
 - **Crash semantics:**
   - events are committed before notification;
   - provider writes (`send`) happen after `input.accepted` is committed, so a crash between them yields `input.interrupted`, never a replay;

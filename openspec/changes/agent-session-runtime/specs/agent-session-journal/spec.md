@@ -54,9 +54,14 @@ The journal SHALL evolve through ordered forward-only migrations keyed by `PRAGM
 - **THEN** it MUST fail with `store_incompatible` without modifying the file
 
 ### Requirement: Retention and storage are bounded
-The journal SHALL apply configurable retention to closed sessions, SHALL store large outputs as content-addressed blobs, and SHALL garbage-collect unreferenced blobs.
+The journal SHALL bound stored output per turn and per sub-agent (see output truncation), SHALL bound the history kept in each session snapshot while counting all of it, and SHALL apply configurable retention to closed sessions.
 
 #### Scenario: Retention sweep
 - **WHEN** a closed session is older than the retention window
-- **THEN** its events and unreferenced blobs MUST be removed
+- **THEN** its record and events MUST be removed
 - **AND** open sessions MUST never be removed by retention
+
+#### Scenario: Long conversation
+- **WHEN** a session accumulates more turns than the snapshot history bound
+- **THEN** the snapshot MUST keep the most recent turns and the total turn count
+- **AND** every event MUST remain readable through cursor replay

@@ -24,10 +24,10 @@
 
 ## 4. Journal
 
-- [ ] 4.1 SQLite adapter (`journal/`): private path, WAL/FULL/foreign keys, forward-only ordered migrations by `user_version`, refusal of newer versions
-- [ ] 4.2 Epoch-fenced host lease (TTL/heartbeat as engine), `journal_locked`, stale-owner fencing with `host_lost` interruption
-- [ ] 4.3 Atomic event + projection commits, gap-free per-session sequence, cursor reads, usage baselines, bounded sub-agent output with truncation event, content-addressed blobs, retention sweep
-- [ ] 4.4 Crash tests (child process + SIGKILL during commit) and `journal/README.md` (owns, invariants, bounds, crash semantics, tests)
+- [x] 4.1 SQLite adapter (`journal/`): private path, WAL/FULL/foreign keys, forward-only ordered migrations by `user_version`, refusal of newer versions
+- [x] 4.2 Epoch-fenced host lease (TTL/heartbeat as engine), `journal_locked`, stale-owner fencing with `host_lost` interruption
+- [x] 4.3 Atomic event + snapshot commits, gap-free per-session sequence, cursor reads, usage baselines, retention sweep (output caps live in the application; blobs dropped, see design D6)
+- [x] 4.4 Crash tests (child process + SIGKILL during commit) and `journal/README.md` (owns, invariants, bounds, crash semantics, tests)
 
 ## 5. Drivers and conformance kit
 

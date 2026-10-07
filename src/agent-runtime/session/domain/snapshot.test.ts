@@ -130,6 +130,24 @@ describe('session snapshot', () => {
     expect(liveSubagents(state).map((node) => node.subagentId)).toEqual(['a1', 'a1.1'])
   })
 
+  it('bounds turn and terminal-input history while counting every turn', () => {
+    const bodies: SessionEventBody[] = [backgroundRun[0]!, { type: 'session.phase', phase: 'turn' }]
+    for (let index = 0; index < 120; index++) {
+      bodies.push({ type: 'input.accepted', inputId: `i${index}`, delivery: 'queue', text: 'x' })
+      bodies.push({ type: 'input.state', inputId: `i${index}`, state: 'started' })
+      bodies.push({ type: 'turn.started', turnId: `t${index}`, origin: 'user', inputIds: [`i${index}`] })
+      bodies.push({ type: 'turn.completed', turnId: `t${index}`, status: 'completed', text: '', usage: EMPTY_USAGE })
+      bodies.push({ type: 'input.state', inputId: `i${index}`, state: 'completed' })
+    }
+    bodies.push({ type: 'input.accepted', inputId: 'live', delivery: 'queue', text: 'pending' })
+    const state = fold(bodies)
+    expect(state.turnCount).toBe(120)
+    expect(state.turns).toHaveLength(100)
+    expect(state.turns[0]?.turnId).toBe('t20')
+    expect(Object.keys(state.inputs)).toHaveLength(121)
+    expect(state.inputs.live?.state).toBe('accepted')
+  })
+
   it('applies only non-deferred updates', () => {
     const base = backgroundRun.slice(0, 1)
     expect(fold([...base, { type: 'session.updated', changes: { model: 'sonnet' }, outcome: 'deferred' }]).model).toBe('haiku')

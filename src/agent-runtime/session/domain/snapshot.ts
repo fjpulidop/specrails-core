@@ -67,6 +67,10 @@ export interface SubagentNode {
   resultSummary: string | null
 }
 
+/** Bounded history kept in the snapshot; the journal keeps every event. */
+export const SNAPSHOT_TURN_HISTORY = 100
+export const SNAPSHOT_TERMINAL_INPUTS = 500
+
 export interface SessionSnapshot {
   sessionId: string
   lastSeq: number
@@ -80,7 +84,9 @@ export interface SessionSnapshot {
   phase: SessionPhase
   process: { generation: number; alive: boolean }
   openTurn: OpenTurn | null
+  /** Most recent turns (bounded); `turnCount` counts all of them. */
   turns: TurnRecord[]
+  turnCount: number
   inputs: Record<string, InputRecord>
   subagents: Record<string, SubagentNode>
   settled: { settled: boolean; live: number }
@@ -104,6 +110,7 @@ export function emptySnapshot(sessionId: string): SessionSnapshot {
     process: { generation: 0, alive: false },
     openTurn: null,
     turns: [],
+    turnCount: 0,
     inputs: {},
     subagents: {},
     settled: { settled: true, live: 0 },
@@ -187,7 +194,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
         : state.pendingInterruptions
       return {
         ...state,
-        inputs: { ...state.inputs, [event.inputId]: { ...input, state: event.state, turnId: event.turnId ?? input.turnId } },
+        inputs: pruneInputs({ ...state.inputs, [event.inputId]: { ...input, state: event.state, turnId: event.turnId ?? input.turnId } }),
         pendingInterruptions: pending,
       }
     }
@@ -197,7 +204,8 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       return {
         ...state,
         openTurn: { turnId: event.turnId, origin: event.origin, inputIds: [...event.inputIds], startedAt: event.at, text: '' },
-        turns: [...state.turns, { turnId: event.turnId, origin: event.origin, status: 'running', startedAt: event.at, endedAt: null, usage: null }],
+        turns: [...state.turns, { turnId: event.turnId, origin: event.origin, status: 'running' as const, startedAt: event.at, endedAt: null, usage: null }].slice(-SNAPSHOT_TURN_HISTORY),
+        turnCount: state.turnCount + 1,
       }
     case 'turn.output': {
       const turn = requireOpenTurn(state, event.turnId)
@@ -280,6 +288,16 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
     case 'provider.diagnostic':
       return state
   }
+}
+
+const TERMINAL_INPUT: ReadonlySet<InputState> = new Set(['completed', 'rejected', 'interrupted'])
+
+/** Keep every live input and only the most recent terminal ones (insertion order). */
+function pruneInputs(inputs: Record<string, InputRecord>): Record<string, InputRecord> {
+  const terminal = Object.values(inputs).filter((input) => TERMINAL_INPUT.has(input.state))
+  if (terminal.length <= SNAPSHOT_TERMINAL_INPUTS) return inputs
+  const drop = new Set(terminal.slice(0, terminal.length - SNAPSHOT_TERMINAL_INPUTS).map((input) => input.inputId))
+  return Object.fromEntries(Object.entries(inputs).filter(([id]) => !drop.has(id)))
 }
 
 function withSubagent(state: SessionSnapshot, node: SubagentNode): SessionSnapshot {
