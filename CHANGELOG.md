@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.5.0](https://github.com/fjpulidop/specrails-core/compare/v6.4.0...v6.5.0) (2026-10-08)
+
+
+### Features
+
+* **sessions:** agent session runtime (Core as the agent engine) ([#412](https://github.com/fjpulidop/specrails-core/issues/412)) ([7970762](https://github.com/fjpulidop/specrails-core/commit/7970762b1b207e8934343d855b9bd597cee564cb))
+
 ## [6.4.0](https://github.com/fjpulidop/specrails-core/compare/v6.3.0...v6.4.0) (2026-10-07)
 
 
