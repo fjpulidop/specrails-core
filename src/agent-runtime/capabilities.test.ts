@@ -23,7 +23,10 @@ describe('installed transport capability introspection', () => {
     const cache = { fetched_at: new Date().toISOString(), client_version: '0.153.4', models: [{ slug: 'test-model', supported_reasoning_levels: [{ effort: 'medium' }, { effort: 'high' }] }] }
     const save = () => writeFileSync(path.join(root, 'models_cache.json'), JSON.stringify(cache))
     save()
-    const runProcess = vi.fn(async (invocation: { args: string[] }) => ({ stdout: invocation.args[0] === '--version' ? 'codex-cli 0.153.4\n' : '--config <key=value>', stderr: '', exitCode: 0 }))
+    // A client without `codex debug models` falls back to the shared cache.
+    const runProcess = vi.fn(async (invocation: { args: string[] }) => invocation.args[0] === 'debug'
+      ? { stdout: '', stderr: "error: unrecognized subcommand 'debug'", exitCode: 2 }
+      : { stdout: invocation.args[0] === '--version' ? 'codex-cli 0.153.4\n' : '--config <key=value>', stderr: '', exitCode: 0 })
     const options = { runProcess, env: { CODEX_HOME: root } }
     expect(await cliCapabilities('codex', 'test-model', options)).toMatchObject({ supportedEfforts: ['medium', 'high'] })
     expect(await cliCapabilities('codex', 'other-model', options)).toMatchObject({ effortSupport: 'unknown' })
@@ -33,6 +36,23 @@ describe('installed transport capability introspection', () => {
     expect(await cliCapabilities('codex', 'test-model', options)).toMatchObject({ effortSupport: 'unknown' })
     const invocation = buildCliInvocation('codex', { role: 'developer', prompt: 'task', model: 'test-model', effort: 'medium', cwd: root, allowedRoots: [root] })
     expect(invocation.args).toContain('model_reasoning_effort="medium"')
+  })
+  it("prefers the installed Codex client's own catalog over a cache another client rewrote", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'effort-')); scratch.push(root)
+    // The desktop app's newer app-server daemon wrote the shared cache.
+    writeFileSync(path.join(root, 'models_cache.json'), JSON.stringify({ fetched_at: new Date().toISOString(), client_version: '0.161.0', models: [] }))
+    const catalog = { models: [{ slug: 'gpt-6.1-sol', supported_reasoning_levels: [{ effort: 'low' }, { effort: 'medium' }, { effort: 'low' }] }] }
+    const runProcess = vi.fn(async (invocation: { args: string[] }) => {
+      if (invocation.args[0] === 'debug') return { stdout: JSON.stringify(catalog), stderr: '', exitCode: 0 }
+      if (invocation.args[0] === '--version') return { stdout: 'codex-cli 0.160.1\n', stderr: '', exitCode: 0 }
+      return { stdout: '--config <key=value>', stderr: '', exitCode: 0 }
+    })
+    const options = { runProcess, env: { CODEX_HOME: root } }
+    const result = await cliCapabilities('codex', 'gpt-6.1-sol', options)
+    expect(result).toMatchObject({ effortSupport: 'supported', supportedEfforts: ['low', 'medium'] })
+    expect(() => assertEffortSupported({ effort: 'low' }, result)).not.toThrow()
+    // A model the client does not list stays unknown (the stale cache is not trusted either).
+    expect(await cliCapabilities('codex', 'gpt-unknown', options)).toMatchObject({ effortSupport: 'unknown' })
   })
   it('does not infer Kimi ACP support from legacy print mode', async () => {
     const runProcess = vi.fn()

@@ -39,6 +39,7 @@ npm run ci             # typecheck, script tests, coverage, package check
 ## Conventions
 
 - Dependency direction is `shared ← pipeline ← agent-runtime ← installer`, enforced by `src/architecture.test.ts`. The installer loads the runtime lazily for the `runtime` command only.
+- The agent session runtime (`src/agent-runtime/session/`) is layered `domain ← application ← drivers | journal | host ← index.ts ← cli.ts`; provider vocabulary stays in its driver folder. See [docs/agent-sessions/architecture.md](docs/agent-sessions/architecture.md).
 - Conventional commits (`feat:`, `fix:`, `docs:`, `chore:`); kebab-case files; tests next to their subject as `*.test.ts`.
 - Spawn processes through `src/installer/util/exec.ts` or `src/agent-runtime/cli-process.ts` (Windows quoting and tree-kill); never assume POSIX paths.
 - `templates/commands/specrails/*.md` are the single source for every provider's workflow entry points.

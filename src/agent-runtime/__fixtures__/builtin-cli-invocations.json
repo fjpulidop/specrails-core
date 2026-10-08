@@ -180,7 +180,7 @@
           "--model",
           "fixture-model",
           "--sandbox",
-          "workspace-write",
+          "danger-full-access",
           "--add-dir",
           "/other workspace",
           "-"

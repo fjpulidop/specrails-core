@@ -31,8 +31,9 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
+
+import { userHome } from '../../shared/specrails-home.js'
 
 /** Registry schema version. A reader that sees a higher value MUST treat all
  *  entries as absent (legacy fallback), never mis-parse. */
@@ -325,9 +326,9 @@ export function slugify(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 }
 
-/** `$HOME` for the registry, overridable for tests. */
+/** `$HOME` for the registry, overridable for tests (shared with session journals). */
 function resolveHome(home?: string): string {
-  return home ?? process.env.SPECRAILS_REGISTRY_HOME ?? os.homedir()
+  return userHome(home)
 }
 
 /** Absolute path to `registry.json`. */

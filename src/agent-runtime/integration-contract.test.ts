@@ -6,8 +6,10 @@ import { NODE_KINDS_VERSION } from './engine/piece-registry.js'
 import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
+import { SESSION_EVENT_TYPES } from './session/domain/events.js'
+import { SESSION_PROTOCOL_VERSIONS } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -69,6 +71,15 @@ describe('Desktop integration contract', () => {
     expect(listed.nodeKindsVersion).toBe(NODE_KINDS_VERSION)
     expect(listed.nodeKinds.map(piece => piece.kind)).toEqual(contract.agentRuntime.nodeKinds)
     expect(listed.builtins).toEqual(contract.agentRuntime.builtins)
+  })
+
+  it('describes the agent session host exactly as the code implements it', () => {
+    const sessions = contract.agentRuntime.sessions
+    expect(sessions).toMatchObject({ version: 1, capability: 'sessions', cliOperation: 'host', moduleExport: './agent-runtime/session' })
+    expect(sessions.protocolVersions).toEqual([...SESSION_PROTOCOL_VERSIONS])
+    expect(sessions.eventTypes).toEqual([...SESSION_EVENT_TYPES])
+    expect(RUNTIME_CLI_OPERATIONS).toContain(sessions.cliOperation)
+    expect(existsSync(new URL('../../' + sessions.documentation, import.meta.url))).toBe(true)
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

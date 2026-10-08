@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -43,6 +43,74 @@ describe('source architecture', () => {
         .map((target) => `${file} → ${target}`),
     )
     expect(violations).toEqual([])
+  })
+
+  describe('agent session runtime layering', () => {
+    // domain ← application ← (drivers | journal | host) ← session/index.ts ← cli.ts
+    // Adapters meet only in the composition root; provider vocabulary stays in its driver.
+    const SESSION = 'agent-runtime/session/'
+    const posix = (file: string) => file.split(path.sep).join('/')
+    const existing = (dir: string) => existsSync(path.join(SRC, dir)) ? sources(dir) : []
+    const relativeTargets = (file: string) => imports(file).filter((s) => s.startsWith('.')).map((s) => resolved(file, s))
+    const outside = (file: string, allowed: string[]) =>
+      relativeTargets(file).filter((target) => !allowed.some((prefix) => target === prefix || target.startsWith(prefix))).map((target) => `${file} → ${target}`)
+
+    it('keeps the domain pure', () => {
+      const violations = existing(`${SESSION}domain`).flatMap((file) => [
+        ...outside(file, [`${SESSION}domain/`, 'shared/']),
+        ...imports(file).filter((s) => !s.startsWith('.')).map((s) => `${file} → ${s}`),
+      ])
+      expect(violations).toEqual([])
+    })
+
+    it('lets application code see only the domain and ports', () => {
+      const violations = existing(`${SESSION}application`).flatMap((file) => [
+        ...outside(file, [`${SESSION}domain/`, `${SESSION}application/`, `${SESSION}ports.js`, 'shared/']),
+        ...imports(file).filter((s) => !s.startsWith('.')).map((s) => `${file} → ${s}`),
+      ])
+      expect(violations).toEqual([])
+    })
+
+    it.each([
+      ['drivers', ['journal/', 'host/', 'application/']],
+      ['journal', ['drivers/', 'host/', 'application/']],
+      ['host', ['drivers/', 'journal/']],
+    ])('keeps session/%s isolated from %j', (adapter, forbidden) => {
+      const violations = existing(`${SESSION}${adapter}`).flatMap((file) =>
+        relativeTargets(file)
+          .filter((target) => forbidden.some((prefix) => target.startsWith(`${SESSION}${prefix}`)))
+          .map((target) => `${file} → ${target}`))
+      expect(violations).toEqual([])
+    })
+
+    it('keeps each provider driver independent of the others', () => {
+      // agent-runtime/session/drivers/<driver>/<file>: a driver may use `common/`, never
+      // another driver. Top-level files (the registry) may wire every driver.
+      const driverOf = (p: string) => { const parts = p.split('/'); return parts.length > 4 ? parts[3]! : null }
+      const violations = existing(`${SESSION}drivers`).flatMap((file) => {
+        const own = driverOf(posix(file))
+        if (!own || own === 'common') return []
+        return relativeTargets(file)
+          .filter((target) => { const other = target.startsWith(`${SESSION}drivers/`) ? driverOf(target) : null; return other !== null && other !== own && other !== 'common' })
+          .map((target) => `${posix(file)} → ${target}`)
+      })
+      expect(violations).toEqual([])
+    })
+
+    it('exposes the host only to the runtime CLI', () => {
+      const violations = sources('.')
+        .filter((file) => !posix(file).startsWith(`${SESSION}host/`) && posix(file) !== 'agent-runtime/cli.ts')
+        .flatMap((file) => relativeTargets(file).filter((target) => target.startsWith(`${SESSION}host/`)).map((target) => `${file} → ${target}`))
+      expect(violations).toEqual([])
+    })
+
+    it('never branches on provider ids outside the drivers', () => {
+      const providerCheck = /[=!]==?\s*['"](?:claude|codex|gemini|kimi|openai-compatible)['"]|['"](?:claude|codex|gemini|kimi|openai-compatible)['"]\s*[=!]==?/
+      const violations = ['domain', 'application', 'journal', 'host']
+        .flatMap((dir) => existing(`${SESSION}${dir}`))
+        .filter((file) => providerCheck.test(readFileSync(path.join(SRC, file), 'utf8')))
+      expect(violations).toEqual([])
+    })
   })
 
   it('keeps the copied pipeline runtime free of package dependencies', () => {

@@ -42,6 +42,7 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 - Outcomes: `next`, `failed`; with `structuredOutput` also `invalid` (returned after the single failed repair, `error.code: 'invalid_role_output'`). Provider errors with a classified code are rethrown for retry classification; other role failures return `failed` with `error.code: 'role_failed'`.
 - Effect: the role's configured `access`. `requiresAI`. `storeAccess: 'write'`: a read role without a live session receives a bounded prior review note (≤ 4,000 characters) keyed by role, tier, candidate, scope and repositories; the piece stores session metadata and, for read roles, its note. Memory failures are advisory and never repeat a provider call.
 - Writes: `$outputs[nodeId] = { text, structured?, candidateHash }`, one `$history` entry, `$sessions[nodeId]` when `sessionContinuity` is not `'none'`.
+- Host environment (write roles, `guardrails['environment-repair'] !== false`): agents run sandboxed and cannot install what the repository needs (Codex cannot write the Playwright browser cache), so before the turn the host runs `prepareEnvironment` for every repository in scope: the Node dependencies a manifest declares but `node_modules` lacks, then the browser builds the installed Playwright pins when `playwright install --dry-run <browsers>` names an install location that does not exist (browsers read from `playwright.config.*`, chromium by default; never downloads a Playwright package). Other ecosystems keep their failure-driven repair in `verify`. A browser download that times out on the network is retried once with an IPv4-first DNS preload (hosts that resolve AAAA records without an IPv6 route make Node's family auto-selection abort Playwright's download). What was installed or refused is appended to the task under `## Host environment` and narrated on `verification-output`. If the turn still returns a structured `blocker` of kind `toolchain`, `setup` or `environment`, the host plans installs from its text plus the preparation above and, when any install succeeds, reruns the turn exactly once with a note naming what it installed; otherwise the blocker stands for the graph to route.
 
 ### `decider`
 
@@ -530,7 +531,13 @@ checkboxes may change. Missing, empty, changed or incomplete artifacts emit
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement
-repositories lacking configured commands. The normal scoped command validation,
+repositories lacking configured commands. A repository with configured checks
+gains only proposals that run exactly one package script it declares in its
+`package.json` (`npm test`, `npm run <script>`, `pnpm|yarn [run] <script>`, no
+extra arguments), so a change whose acceptance needs, say, `npm run test:e2e`
+gets host evidence for it; other proposals and duplicates are ignored
+(`verification-proposals.ts`, shared with the plan `role-turn` shows writers via
+`verificationProposalsFrom`). The normal scoped command validation,
 subprocess execution and full receipt requirements apply. This cannot accept an
 agent's claim that tests passed.
 
