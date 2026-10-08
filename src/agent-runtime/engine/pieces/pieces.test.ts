@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -352,6 +352,67 @@ describe('free prompts and declared roles', () => {
     expect(f.invocations).toHaveLength(1)
     expect(f.invocations[0]).toMatchObject({ status: 'failed', usage: unknownUsage() })
   })
+  describe('host environment for writer turns', () => {
+    /** A repository whose local Playwright CLI is a fake: dry-run names `cache/chromium-1`, install creates it. */
+    function withPlaywright(f: ReturnType<typeof fixture>) {
+      writeFileSync(path.join(f.root, 'package.json'), JSON.stringify({ devDependencies: { '@playwright/test': '^1.0.0' } }))
+      mkdirSync(path.join(f.root, 'node_modules/.bin'), { recursive: true })
+      mkdirSync(path.join(f.root, 'node_modules/@playwright/test'), { recursive: true })
+      const browser = path.join(f.root, 'cache/chromium-1')
+      const cli = path.join(f.root, 'node_modules/.bin/playwright')
+      writeFileSync(cli, `#!/usr/bin/env node\nconst args = process.argv.slice(2)\nif (args.includes('--dry-run')) console.log('  Install location:    ' + ${JSON.stringify(browser)})\nelse if (args[0] === 'install') require('node:fs').mkdirSync(${JSON.stringify(browser)}, { recursive: true })\n`)
+      chmodSync(cli, 0o755)
+      return browser
+    }
+    const blockerSchema = { type: 'object', additionalProperties: false, required: ['summary'], properties: { summary: { type: 'string' }, blocker: { type: 'object' } } }
+
+    it.skipIf(process.platform === 'win32')('installs a missing browser build before the turn and tells the agent', async () => {
+      const f = fixture()
+      const browser = withPlaywright(f)
+      await f.run('role-turn', { roleId: 'writer', prompt: 'Implement the selector' })
+      expect(existsSync(browser)).toBe(true)
+      expect(f.requests[0].prompt).toContain('## Host environment')
+      expect(f.requests[0].prompt).toContain('The host installed Playwright chromium for this workspace before this turn.')
+      expect(vi.mocked(f.execution.progress).mock.calls.map(([event]) => (event.payload as { text: string }).text)).toContain('Environment: installed Playwright chromium in ' + path.basename(f.root))
+      // Ready environments add nothing; read-only roles never prepare.
+      await f.run('role-turn', { roleId: 'writer', prompt: 'Next task' })
+      expect(f.requests[1].prompt).not.toContain('## Host environment')
+      rmSync(browser, { recursive: true })
+      await f.run('role-turn', { roleId: 'analyst', prompt: 'Inspect' })
+      expect(existsSync(browser)).toBe(false)
+    }, 30_000)
+
+    it.skipIf(process.platform === 'win32')('repairs an environment blocker the agent reports and reruns the turn once', async () => {
+      let browser = ''
+      const f = fixture((_request, call) => {
+        // The first turn loses the browser (e.g. a cache cleanup) and reports it; the rerun finishes.
+        if (call === 1) { rmSync(browser, { recursive: true, force: true }); return { text: JSON.stringify({ summary: 'blocked', blocker: { kind: 'toolchain', evidence: 'chromium executable missing', requiredAction: 'Install Chromium' } }), usage: unknownUsage() } }
+        return { text: JSON.stringify({ summary: 'done' }), usage: unknownUsage() }
+      })
+      browser = withPlaywright(f)
+      mkdirSync(browser, { recursive: true })
+      const result = await f.run('role-turn', { roleId: 'writer', prompt: 'Implement', structuredOutput: blockerSchema })
+      expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'done' } } })
+      expect(f.requests).toHaveLength(2)
+      expect(existsSync(browser)).toBe(true)
+      expect(f.requests[1].prompt).toContain('Your previous turn reported an environment blocker. The host installed Playwright chromium for this workspace: continue the remaining work')
+    }, 30_000)
+
+    it.skipIf(process.platform === 'win32')('keeps a blocker the host cannot repair, and never reruns more than once', async () => {
+      const f = fixture(() => ({ text: JSON.stringify({ summary: 'blocked', blocker: { kind: 'credential', requiredAction: 'Log in to the registry' } }), usage: unknownUsage() }))
+      withPlaywright(f)
+      const result = await f.run('role-turn', { roleId: 'writer', prompt: 'Implement', structuredOutput: blockerSchema })
+      expect(result).toMatchObject({ output: { structured: { blocker: { kind: 'credential' } } } })
+      expect(f.requests).toHaveLength(1)
+      const toolchain = fixture(() => ({ text: JSON.stringify({ summary: 'blocked', blocker: { kind: 'toolchain', requiredAction: 'Install Chromium' } }), usage: unknownUsage() }))
+      const browser = withPlaywright(toolchain)
+      mkdirSync(browser, { recursive: true })
+      // Nothing to install: the blocker stands after the single turn.
+      expect(await toolchain.run('role-turn', { roleId: 'writer', prompt: 'Implement', structuredOutput: blockerSchema })).toMatchObject({ output: { structured: { blocker: { kind: 'toolchain' } } } })
+      expect(toolchain.requests).toHaveLength(1)
+    }, 30_000)
+  })
+
   it('repairs structured custom output exactly once and isolates sessions by node', async () => {
     const f = fixture((_request, call) => ({ text: call === 1 ? '{"ok":"wrong"}' : '{"ok":true}', sessionId: 'session-1', usage: { inputTokens: 3, outputTokens: 1, costUsd: 0 } }))
     const params = { roleId: 'analyst', prompt: 'Inspect', structuredOutput: { type: 'object', additionalProperties: false, required: ['ok'], properties: { ok: { type: 'boolean' } } } }

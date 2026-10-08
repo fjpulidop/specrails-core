@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { detectCheckCommand, hostPreconditionFailure, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
+import { configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -253,5 +253,68 @@ describe('Playwright browser builds', () => {
     expect(events).toContain(`Environment: installed Playwright chromium in ${path.basename(dir)}`)
     const offline = vi.fn(() => ({ status: 1, stdout: '', stderr: 'Failed to download Chromium 131.0.6778.33 (playwright build v1148), caused by\nError: getaddrinfo ENOTFOUND cdn.playwright.dev', pid: 1, output: [], signal: null })) as never
     expect(installEnvironment([dir], { spawn: offline, failureOutput: missing })[0]).toMatchObject({ ok: false, precondition: expect.stringContaining('CDN') })
+  })
+})
+
+describe('host preparation before writer turns', () => {
+  const manifest = JSON.stringify({ devDependencies: { '@playwright/test': '^1.63.0' } })
+  /** A repository with Playwright installed; `browsers` are the dry-run install locations. */
+  function playwrightRepo(config = '') {
+    const dir = root({ 'package.json': manifest, ...(config ? { 'playwright.config.ts': config } : {}) }, ['node_modules/.bin', 'node_modules/@playwright/test'])
+    writeFileSync(path.join(dir, 'node_modules/.bin/playwright'), '')
+    return dir
+  }
+  function dryRun(locations: string[]) {
+    return vi.fn((command: string, args: readonly string[]) => ({ status: 0, stdout: args.includes('--dry-run') ? locations.map(location => `Browser (playwright v1)\n  Install location:    ${location}\n  Download url: https://cdn\n`).join('\n') : '', stderr: '', pid: 1, output: [], signal: null }))
+  }
+
+  it('reads the browsers a Playwright config runs, defaulting to chromium', () => {
+    expect(configuredPlaywrightBrowsers(playwrightRepo())).toEqual(['chromium'])
+    expect(configuredPlaywrightBrowsers(playwrightRepo("projects: [{ name: 'firefox', use: devices['Desktop Firefox'] }, { name: 'Mobile Safari', use: devices['iPhone 15'] }]"))).toEqual(['firefox', 'webkit'])
+    expect(configuredPlaywrightBrowsers(playwrightRepo("use: { browserName: 'chromium' }, projects: [{ use: devices['Desktop Safari'] }]"))).toEqual(['chromium', 'webkit'])
+  })
+
+  it('reports browsers only when a pinned build is missing, without downloading', () => {
+    const dir = playwrightRepo()
+    const present = path.join(dir, 'cache/chromium-1243')
+    mkdirSync(present, { recursive: true })
+    const missing = dryRun([present, path.join(dir, 'cache/chromium_headless_shell-1243')])
+    expect(missingPlaywrightBrowsers(dir, missing as never)).toEqual(['chromium'])
+    expect(missing).toHaveBeenCalledWith('npx', ['--no', 'playwright', 'install', '--dry-run', 'chromium'], expect.objectContaining({ cwd: dir }))
+    expect(missingPlaywrightBrowsers(dir, dryRun([present]) as never)).toEqual([])
+    // Unknown is never an install: a failing dry-run, no parsable location, or no local Playwright package.
+    expect(missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 1, stdout: '', stderr: 'boom' })) as never)).toEqual([])
+    expect(missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 0, stdout: 'nothing', stderr: '' })) as never)).toEqual([])
+    const uninstalled = root({ 'package.json': manifest })
+    const spawn = dryRun([path.join(dir, 'nope')])
+    expect(missingPlaywrightBrowsers(uninstalled, spawn as never)).toEqual([])
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it('installs missing dependencies first, then the missing browser builds, and nothing when ready', () => {
+    const dir = root({ 'package.json': manifest })
+    const calls: string[] = []
+    const spawn = vi.fn((command: string, args: readonly string[]) => {
+      calls.push([command, ...args].join(' '))
+      // npm install creates the local Playwright package the browser check needs.
+      if (command === 'npm') { mkdirSync(path.join(dir, 'node_modules/.bin'), { recursive: true }); mkdirSync(path.join(dir, 'node_modules/@playwright/test'), { recursive: true }); writeFileSync(path.join(dir, 'node_modules/.bin/playwright'), '') }
+      const stdout = args.includes('--dry-run') ? `  Install location:    ${path.join(dir, 'cache/chromium-1243')}\n` : ''
+      if (args[2] === 'install' && !args.includes('--dry-run')) mkdirSync(path.join(dir, 'cache/chromium-1243'), { recursive: true })
+      return { status: 0, stdout, stderr: '', pid: 1, output: [], signal: null }
+    })
+    const outcomes = prepareEnvironment([dir], { spawn: spawn as never })
+    expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error', 'npx --no playwright install chromium'])
+    expect(outcomes.every(outcome => outcome.ok)).toBe(true)
+    expect(outcomes[1]).toMatchObject({ installs: 'Playwright chromium', timeoutMs: 10 * 60_000 })
+    calls.length = 0
+    expect(prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
+    expect(calls).toEqual(['npx --no playwright install --dry-run chromium'])
+  })
+
+  it('never prepares other ecosystems ahead of a failure', () => {
+    const dir = root({ 'requirements.txt': 'pytest\n', 'go.mod': 'module x\n' })
+    const spawn = vi.fn()
+    expect(prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
+    expect(spawn).not.toHaveBeenCalled()
   })
 })

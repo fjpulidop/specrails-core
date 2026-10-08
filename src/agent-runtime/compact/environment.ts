@@ -195,11 +195,14 @@ function relaxManifestPin(root: string, name: string, version: string): boolean 
 }
 
 /** Runs each planned install once, bounded; never throws. */
-export function installEnvironment(roots: readonly string[], io: { spawn?: typeof spawnSync; timeoutMs?: number; failureOutput?: string; lockfileRepair?: boolean; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void } = {}): InstallOutcome[] {
+export interface InstallIo { spawn?: typeof spawnSync; timeoutMs?: number; failureOutput?: string; lockfileRepair?: boolean; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void
+  /** The installs for one root; the failure-driven plan by default. */
+  plan?: (root: string) => EnvironmentInstall[] }
+export function installEnvironment(roots: readonly string[], io: InstallIo = {}): InstallOutcome[] {
   const spawn = io.spawn ?? defaultSpawn
   const outcomes: InstallOutcome[] = []
   for (const root of roots) {
-    for (const plan of plannedInstalls(root, io.failureOutput ?? '')) {
+    for (const plan of io.plan ? io.plan(root) : plannedInstalls(root, io.failureOutput ?? '')) {
       io.onEvent?.({ kind: 'tool-start', tool: plan.command, detail: `${plan.args.join(' ')} (${path.basename(root)})` })
       const run = (): SpawnSyncReturns<string> => {
         try { return spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env }) }
@@ -233,6 +236,65 @@ export function installEnvironment(roots: readonly string[], io: { spawn?: typeo
     }
   }
   return outcomes
+}
+
+const PLAYWRIGHT_CONFIGS = ['playwright.config.ts', 'playwright.config.mts', 'playwright.config.cts', 'playwright.config.js', 'playwright.config.mjs', 'playwright.config.cjs']
+type PlaywrightBrowser = 'chromium' | 'firefox' | 'webkit'
+/** Browsers the repository's Playwright config runs (by project names, devices or browserName); chromium when it names none. */
+export function configuredPlaywrightBrowsers(root: string): PlaywrightBrowser[] {
+  const file = PLAYWRIGHT_CONFIGS.map(name => path.join(root, name)).find(candidate => existsSync(candidate))
+  let source = ''
+  try { if (file) source = readFileSync(file, 'utf8').slice(0, 200_000) } catch { /* unreadable config: the default browser */ }
+  const browsers: PlaywrightBrowser[] = []
+  if (/\b(?:chromium|chrome|edge|pixel|galaxy)\b/i.test(source)) browsers.push('chromium')
+  if (/\bfirefox\b/i.test(source)) browsers.push('firefox')
+  if (/\b(?:webkit|safari|iphone|ipad)\b/i.test(source)) browsers.push('webkit')
+  return browsers.length ? browsers : ['chromium']
+}
+/** How to run the repository's own Playwright CLI; undefined until its package is installed (never downloads one). */
+function playwrightCli(root: string): { command: string; args: string[] } | undefined {
+  const bin = path.join(root, 'node_modules', '.bin')
+  if (!['playwright', 'playwright.cmd'].some(name => existsSync(path.join(bin, name)))) return undefined
+  if (existsSync(path.join(root, 'pnpm-lock.yaml'))) return { command: 'pnpm', args: ['exec', 'playwright'] }
+  if (existsSync(path.join(root, 'yarn.lock'))) return { command: 'yarn', args: ['playwright'] }
+  return { command: 'npx', args: ['--no', 'playwright'] }
+}
+/**
+ * The configured browsers when any build the installed Playwright pins is
+ * missing from the host cache. `install --dry-run` names the exact install
+ * locations without downloading; an unreadable answer means "unknown", never
+ * an install.
+ */
+export function missingPlaywrightBrowsers(root: string, spawn: typeof spawnSync = defaultSpawn): PlaywrightBrowser[] {
+  if (!declaresPlaywright(root)) return []
+  const cli = playwrightCli(root)
+  if (!cli) return []
+  const browsers = configuredPlaywrightBrowsers(root)
+  let result: SpawnSyncReturns<string>
+  try { result = spawn(cli.command, [...cli.args, 'install', '--dry-run', ...browsers], { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true, env: process.env }) }
+  catch { return [] }
+  if (result.status !== 0) return []
+  const locations = [...String(result.stdout ?? '').matchAll(/Install location:\s+(.+?)\s*$/gm)].map(match => match[1]!)
+  return locations.length && locations.some(location => !existsSync(location)) ? browsers : []
+}
+
+/**
+ * Host preparation before an agent edits a repository: the dependencies its
+ * manifest declares but are not installed, then the browser builds its
+ * Playwright pins. Agents run sandboxed (Codex cannot write the browser cache
+ * or reach it at all), so what they need must already be there. Only cheap,
+ * idempotent, project-local work happens here; other ecosystems keep their
+ * failure-driven repair at verification.
+ */
+export function prepareEnvironment(roots: readonly string[], io: Omit<InstallIo, 'plan' | 'failureOutput'> = {}): InstallOutcome[] {
+  const spawn = io.spawn ?? defaultSpawn
+  const dependencies = installEnvironment(roots, { ...io, plan: root => plannedInstalls(root).filter(plan => plan.ecosystem === 'node') })
+  const browsers = installEnvironment(roots, { ...io, plan: root => {
+    const missing = missingPlaywrightBrowsers(root, spawn)
+    const cli = missing.length ? playwrightCli(root) : undefined
+    return cli ? [{ ecosystem: 'node', root, command: cli.command, args: [...cli.args, 'install', ...missing], timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${missing.join(', ')}` }] : []
+  } })
+  return [...dependencies, ...browsers]
 }
 
 /** The repository's own test command, judged from its manifest (npm/pnpm/yarn `test` script, pytest, go, cargo); undefined when none. */
