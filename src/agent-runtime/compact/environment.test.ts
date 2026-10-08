@@ -265,7 +265,7 @@ describe('host preparation before writer turns', () => {
     return dir
   }
   function dryRun(locations: string[]) {
-    return vi.fn((command: string, args: readonly string[]) => ({ status: 0, stdout: args.includes('--dry-run') ? locations.map(location => `Browser (playwright v1)\n  Install location:    ${location}\n  Download url: https://cdn\n`).join('\n') : '', stderr: '', pid: 1, output: [], signal: null }))
+    return vi.fn((_command: string, args: readonly string[]) => ({ status: 0, stdout: args.includes('--dry-run') ? locations.map(location => `Browser (playwright v1)\n  Install location:    ${location}\n  Download url: https://cdn\n`).join('\n') : '', stderr: '', pid: 1, output: [], signal: null }))
   }
 
   it('reads the browsers a Playwright config runs, defaulting to chromium', () => {
@@ -314,7 +314,7 @@ describe('host preparation before writer turns', () => {
   it('retries a browser download that timed out over IPv4, once, and only for Playwright', () => {
     const dir = playwrightRepo()
     const envs: Array<string | undefined> = []
-    const spawn = vi.fn((command: string, args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
+    const spawn = vi.fn((_command: string, args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
       if (args.includes('--dry-run')) return { status: 0, stdout: `  Install location:    ${path.join(dir, 'cache/chromium-1243')}\n`, stderr: '', pid: 1, output: [], signal: null }
       envs.push(options.env?.NODE_OPTIONS)
       // A host with an AAAA record but no IPv6 route: only the IPv4-first retry connects.
