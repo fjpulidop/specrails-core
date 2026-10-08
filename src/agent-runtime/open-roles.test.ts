@@ -68,7 +68,7 @@ describe('open role contracts', () => {
     expect(buildCliInvocation('gemini', input, { geminiPolicyFile: '/policy.toml' }).args).toContain('plan')
     expect(buildCliInvocation('kimi', input, { kimiAgentFile: '/readonly.md' }).args).toContain('--agent-file')
     expect(() => buildCliInvocation('kimi', input)).toThrow('read-only')
-    expect(buildCliInvocation('codex', { ...input, access: 'write' }).args).toContain('workspace-write')
+    expect(buildCliInvocation('codex', { ...input, access: 'write' }).args).toContain('danger-full-access')
     const workspace = new WorkspaceTools(input.cwd, input.allowedRoots, input.access!)
     expect(() => workspace.execute('write_file', { path: 'forbidden.ts', content: 'bad' })).toThrow('unavailable')
     expect(existsSync(path.join(input.cwd, 'forbidden.ts'))).toBe(false)

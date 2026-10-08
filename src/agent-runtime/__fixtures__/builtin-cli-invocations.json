@@ -177,12 +177,10 @@
           "--skip-git-repo-check",
           "-c",
           "approval_policy=\"never\"",
-          "-c",
-          "sandbox_workspace_write.network_access=true",
           "--model",
           "fixture-model",
           "--sandbox",
-          "workspace-write",
+          "danger-full-access",
           "--add-dir",
           "/other workspace",
           "-"

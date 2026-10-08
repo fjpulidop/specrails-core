@@ -53,11 +53,10 @@ describe('four CLI execution contracts', () => {
     expect(developer).not.toContain('--safe-mode')
     expect(developer.slice(developer.indexOf('--setting-sources'), developer.indexOf('--setting-sources') + 2)).toEqual(['--setting-sources', 'project,local'])
     expect(buildCliInvocation('gemini', request()).args).toContain('--yolo')
-    expect(buildCliInvocation('codex', request()).args).toContain('workspace-write')
-    // Writers may start local test servers and install packages; readers stay offline.
-    expect(buildCliInvocation('codex', request()).args).toContain('sandbox_workspace_write.network_access=true')
-    expect(buildCliInvocation('codex', request({ resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.network_access=true')
-    expect(buildCliInvocation('codex', request({ role: 'reviewer' })).args).not.toContain('sandbox_workspace_write.network_access=true')
+    // Writers run unsandboxed like the Claude developer (servers, browsers, caches); readers stay read-only.
+    expect(buildCliInvocation('codex', request()).args).toEqual(expect.arrayContaining(['--sandbox', 'danger-full-access']))
+    expect(buildCliInvocation('codex', request({ resumeSessionId: 'thread-1' })).args).toContain('sandbox_mode="danger-full-access"')
+    expect(buildCliInvocation('codex', request({ role: 'reviewer' })).args).toEqual(expect.arrayContaining(['--sandbox', 'read-only']))
     for (const role of ['architect', 'reviewer'] as const) {
       const readOnly = buildCliInvocation('claude', request({ role })).args
       expect(readOnly).not.toContain('--dangerously-skip-permissions')
@@ -73,11 +72,11 @@ describe('four CLI execution contracts', () => {
     expect(claude[claude.indexOf('--json-schema') + 1]).toBe(JSON.stringify(schema))
     const codex = buildCliInvocation('codex', request({ resumeSessionId: 'thread-1' }))
     expect(codex.args.slice(0, 2)).toEqual(['exec', 'resume'])
-    expect(codex.args).toContain('sandbox_mode="workspace-write"')
+    expect(codex.args).toContain('sandbox_mode="danger-full-access"')
     expect(codex.args).not.toContain('--sandbox')
     const roots = ['/repo/front', '/repo/back with spaces']
-    expect(buildCliInvocation('codex', request({ allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=' + JSON.stringify(roots))
-    expect(buildCliInvocation('codex', request({ role: 'reviewer', allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toContain('sandbox_workspace_write.writable_roots=[]')
+    expect(buildCliInvocation('codex', request({ allowedRoots: roots, resumeSessionId: 'thread-1' })).args.some(arg => arg.startsWith('sandbox_workspace_write.'))).toBe(false)
+    expect(buildCliInvocation('codex', request({ role: 'reviewer', allowedRoots: roots, resumeSessionId: 'thread-1' })).args).toEqual(expect.arrayContaining(['sandbox_mode="read-only"', 'sandbox_workspace_write.writable_roots=[]']))
     expect(codex.args.slice(-2)).toEqual(['thread-1', '-'])
     expect(codex.stdin).toBe(codex.stdin)
     expect(buildCliInvocation('codex', request({ role: 'reviewer' }), { codexSchemaFile: '/tmp/schema.json' }).args).toContain('--output-schema')

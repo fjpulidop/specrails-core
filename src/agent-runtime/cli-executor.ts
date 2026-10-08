@@ -56,17 +56,18 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
       ...(resume ? ['--resume', resume] : []),
     ] }
     case 'codex': {
-      const sandbox = readOnly ? 'read-only' : 'workspace-write'
-      // Writers need the network the legacy step and the Claude developer have:
-      // installs, and test servers on 127.0.0.1 (Codex's workspace-write
-      // seatbelt otherwise denies even a localhost listen with EPERM).
-      const network = readOnly ? [] : ['-c', 'sandbox_workspace_write.network_access=true']
-      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...network, ...model,
+      // Writers run without Codex's OS sandbox, like the Claude developer
+      // (--dangerously-skip-permissions) and Desktop's legacy rail runs: the
+      // workspace-write seatbelt denies what real verification needs (a
+      // localhost listen, Chromium's Mach bootstrap registration, the browser
+      // cache). Read-only roles keep the read-only sandbox.
+      const sandbox = readOnly ? 'read-only' : 'danger-full-access'
+      const common = ['--json', '--skip-git-repo-check', '-c', 'approval_policy="never"', ...model,
         ...(request.effort === undefined ? [] : ['-c', 'model_reasoning_effort=' + JSON.stringify(request.effort)]),
         ...(options.openspecBridge ? ['-c', 'mcp_servers.specrails_openspec.command=' + JSON.stringify(options.openspecBridge.command), '-c', 'mcp_servers.specrails_openspec.args=' + JSON.stringify(options.openspecBridge.args), '-c', 'mcp_servers.specrails_openspec.default_tools_approval_mode="approve"', '-c', 'mcp_servers.specrails_openspec.required=true'] : []),
       ]
       // `codex exec resume` has no --sandbox flag; the same policy travels as a config override.
-      if (resume) return { command: 'codex', stdin: request.prompt, args: ['exec', 'resume', ...common, '-c', `sandbox_mode="${sandbox}"`, '-c', 'sandbox_workspace_write.writable_roots=' + JSON.stringify(readOnly ? [] : request.allowedRoots), resume, '-'] }
+      if (resume) return { command: 'codex', stdin: request.prompt, args: ['exec', 'resume', ...common, '-c', `sandbox_mode="${sandbox}"`, ...(readOnly ? ['-c', 'sandbox_workspace_write.writable_roots=[]'] : []), resume, '-'] }
       return { command: 'codex', stdin: request.prompt, args: [
         'exec', ...common, '--sandbox', sandbox,
         ...(options.codexSchemaFile ? ['--output-schema', options.codexSchemaFile] : []),
