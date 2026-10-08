@@ -344,4 +344,8 @@ describe('Claude Sonnet generation', () => {
       expect(args[args.indexOf('--model') + 1]).toBe('claude-sonnet-5-5')
     }
   })
+  it('pins Haiku 5.5 for the haiku alias', () => {
+    const args = buildCliInvocation('claude', request({ model: 'haiku' })).args
+    expect(args[args.indexOf('--model') + 1]).toBe('claude-haiku-5-5')
+  })
 })
