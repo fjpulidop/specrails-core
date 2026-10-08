@@ -10,6 +10,7 @@
 import type { spawnSync, SpawnSyncReturns } from 'node:child_process'
 import crossSpawn from 'cross-spawn'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
@@ -227,6 +228,17 @@ export function installEnvironment(roots: readonly string[], io: InstallIo = {})
         io.onEvent?.({ kind: 'text', text: `Environment: ${unpublished[1]}@${unpublished[2]} is not published; relaxed the pin in package.json and retrying ${plan.command} ${plan.args.join(' ')}` })
         result = run()
       }
+      // Playwright's downloader tries IPv6 first; on a host whose DNS returns
+      // an AAAA record without an IPv6 route, Node's family auto-selection
+      // times the request out before IPv4 is tried. Retry once preferring IPv4.
+      if (result.status !== 0 && plan.installs?.startsWith('Playwright') && NETWORK_TIMEOUT.test(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)) {
+        const preload = ipv4FirstPreload()
+        if (preload) {
+          io.onEvent?.({ kind: 'text', text: `Environment: the browser download timed out; retrying ${plan.command} ${plan.args.join(' ')} over IPv4` })
+          try { result = spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(preload)}`.trim() } }) }
+          catch (error) { result = { status: null, error: error as Error, stdout: '', stderr: '', pid: 0, output: [], signal: null } }
+        }
+      }
       io.onEvent?.({ kind: 'tool-end', tool: plan.command })
       const ok = result.status === 0
       const detail = ok ? `installed ${plan.installs ?? `${plan.ecosystem} dependencies`} in ${path.basename(root)}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
@@ -295,6 +307,33 @@ export function prepareEnvironment(roots: readonly string[], io: Omit<InstallIo,
     return cli ? [{ ecosystem: 'node', root, command: cli.command, args: [...cli.args, 'install', ...missing], timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${missing.join(', ')}` }] : []
   } })
   return [...dependencies, ...browsers]
+}
+
+const NETWORK_TIMEOUT = /timed out after \d+ ?ms|ETIMEDOUT|ENETUNREACH|EHOSTUNREACH/i
+/**
+ * A Node preload that answers IPv6 lookups with nothing when the host has an
+ * IPv4 address, so dual-stack clients connect over IPv4. Written once to the
+ * temp directory; undefined when it cannot be written.
+ */
+export function ipv4FirstPreload(): string | undefined {
+  const file = path.join(tmpdir(), 'specrails-ipv4-first-v1.cjs')
+  if (existsSync(file)) return file
+  try {
+    writeFileSync(file, [
+      "const dns = require('node:dns')",
+      'const lookup = dns.promises.lookup.bind(dns.promises)',
+      'dns.promises.lookup = async (hostname, options) => {',
+      "  const family = typeof options === 'number' ? options : options && options.family",
+      '  if (family === 6) {',
+      '    const v4 = await lookup(hostname, { all: true, family: 4 }).catch(() => [])',
+      "    if (v4.length) { if (options && typeof options === 'object' && options.all) return []; throw Object.assign(new Error('IPv6 skipped: ' + hostname), { code: 'ENOTFOUND' }) }",
+      '  }',
+      '  return lookup(hostname, options)',
+      '}',
+      '',
+    ].join('\n'))
+    return file
+  } catch { return undefined }
 }
 
 /** The repository's own test command, judged from its manifest (npm/pnpm/yarn `test` script, pytest, go, cargo); undefined when none. */

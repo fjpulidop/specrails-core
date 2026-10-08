@@ -311,6 +311,32 @@ describe('host preparation before writer turns', () => {
     expect(calls).toEqual(['npx --no playwright install --dry-run chromium'])
   })
 
+  it('retries a browser download that timed out over IPv4, once, and only for Playwright', () => {
+    const dir = playwrightRepo()
+    const envs: Array<string | undefined> = []
+    const spawn = vi.fn((command: string, args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
+      if (args.includes('--dry-run')) return { status: 0, stdout: `  Install location:    ${path.join(dir, 'cache/chromium-1243')}\n`, stderr: '', pid: 1, output: [], signal: null }
+      envs.push(options.env?.NODE_OPTIONS)
+      // A host with an AAAA record but no IPv6 route: only the IPv4-first retry connects.
+      return options.env?.NODE_OPTIONS?.includes('specrails-ipv4-first')
+        ? { status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null }
+        : { status: 1, stdout: '', stderr: 'Error: Request to https://cdn.playwright.dev/builds/x.zip timed out after 30000ms', pid: 1, output: [], signal: null }
+    })
+    const events: string[] = []
+    const [outcome] = prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    expect(outcome).toMatchObject({ ok: true, installs: 'Playwright chromium' })
+    expect(envs).toHaveLength(2)
+    expect(envs[1]).toContain('--require')
+    expect(existsSync(JSON.parse(envs[1]!.slice(envs[1]!.indexOf('--require') + 10)))).toBe(true)
+    expect(events).toContain('Environment: the browser download timed out; retrying npx --no playwright install chromium over IPv4')
+    // Other failures are not retried.
+    const other = vi.fn((_command: string, args: readonly string[]) => args.includes('--dry-run')
+      ? { status: 0, stdout: `  Install location:    ${path.join(dir, 'cache/x')}\n`, stderr: '', pid: 1, output: [], signal: null }
+      : { status: 1, stdout: '', stderr: 'ENOSPC: no space left on device', pid: 1, output: [], signal: null })
+    expect(prepareEnvironment([dir], { spawn: other as never })[0]).toMatchObject({ ok: false })
+    expect(other.mock.calls.filter(([, args]) => !args.includes('--dry-run'))).toHaveLength(1)
+  })
+
   it('never prepares other ecosystems ahead of a failure', () => {
     const dir = root({ 'requirements.txt': 'pytest\n', 'go.mod': 'module x\n' })
     const spawn = vi.fn()
