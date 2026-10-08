@@ -112,6 +112,23 @@ describe('reviewed piece catalog and control', () => {
     f.execution.state.$outputs.plan = { structured: { verification: [{ repositoryId: 'outside', command: process.execPath, args: [] }] } }
     await expect(f.run('verify', { commands: 'configured', additionalCommandsFrom: 'plan' })).rejects.toThrow('Unknown verification repository')
   })
+  it('adds a proposed run of a script the configured repository declares, and nothing else', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.root, 'package.json'), JSON.stringify({ scripts: { 'test:e2e': 'node -e "console.log(\'browser suite ran\')"' } }))
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'process.exit(0)'] }]
+    f.execution.state.$outputs.plan = { structured: { verification: [
+      { repositoryId: 'repo', command: 'npm', args: ['run', 'test:e2e'] },
+      // Not declared, not a package script, or a duplicate: the configured plan stays authoritative.
+      { repositoryId: 'repo', command: 'npm', args: ['run', 'missing'] },
+      { repositoryId: 'repo', command: 'npx', args: ['playwright', 'test'] },
+      { repositoryId: 'repo', command: 'npm', args: ['run', 'test:e2e', '--', '--grep', 'x'] },
+      { repositoryId: 'repo', command: process.execPath, args: ['-e', 'process.exit(0)'] },
+    ] } }
+    const result = await f.run('verify', { commands: 'configured', additionalCommandsFrom: 'plan' })
+    expect(result).toMatchObject({ outcome: 'pass', receipt: { valid: true } })
+    expect(f.receipts.at(-1)!.commands.map(command => [command.command, ...command.args].join(' '))).toEqual([`${process.execPath} -e process.exit(0)`, 'npm run test:e2e'])
+    expect(f.receipts.at(-1)!.commands[1].output).toContain('browser suite ran')
+  }, 60_000)
   it('executes proposed verification for an uncovered repository through the real host checker', async () => {
     const f = fixture()
     f.execution.state.$outputs.plan = { structured: { verification: [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("actual verification")'] }] } }

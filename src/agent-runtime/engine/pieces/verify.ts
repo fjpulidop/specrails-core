@@ -1,3 +1,4 @@
+import { admitVerificationProposals } from '../../verification-proposals.js'
 import { stripVTControlCharacters } from 'node:util'
 import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
@@ -94,7 +95,6 @@ const verificationCommandList = { type: 'array', maxItems: 100, items: verificat
 export function resolveVerificationPlan(deps: PieceDependencies, context: PieceExecutionContext, params: JsonObject): VerificationCommand[] {
   const configured = params.commands === undefined || params.commands === 'configured' ? deps.config.verification : params.commands as unknown as VerificationCommand[]
   const commands = configured.map(command => withScopeDefault(deps.context, command))
-  const hostRepositories = new Set(commands.map(command => command.repositoryId))
   if (typeof params.additionalCommandsFrom === 'string') {
     const source = context.state.$outputs[params.additionalCommandsFrom] as { structured?: { verification?: unknown } } | undefined
     const proposals = source?.structured?.verification
@@ -103,10 +103,9 @@ export function resolveVerificationPlan(deps: PieceDependencies, context: PieceE
     // applies to these actual subprocesses and to configured checks below.
     for (const proposal of proposals) {
       if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) throw new Error('Invalid verification proposal')
-      const raw = proposal as VerificationCommand
-      if (!deps.context.repositories.some(repository => repository.id === raw.repositoryId)) throw new Error('Unknown verification repository')
-      if (!hostRepositories.has(raw.repositoryId)) commands.push(withScopeDefault(deps.context, raw))
+      if (!deps.context.repositories.some(repository => repository.id === (proposal as VerificationCommand).repositoryId)) throw new Error('Unknown verification repository')
     }
+    commands.push(...admitVerificationProposals(deps.context, commands, proposals as VerificationCommand[], raw => withScopeDefault(deps.context, raw)))
   }
   return commands
 }

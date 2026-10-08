@@ -531,7 +531,13 @@ checkboxes may change. Missing, empty, changed or incomplete artifacts emit
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement
-repositories lacking configured commands. The normal scoped command validation,
+repositories lacking configured commands. A repository with configured checks
+gains only proposals that run exactly one package script it declares in its
+`package.json` (`npm test`, `npm run <script>`, `pnpm|yarn [run] <script>`, no
+extra arguments), so a change whose acceptance needs, say, `npm run test:e2e`
+gets host evidence for it; other proposals and duplicates are ignored
+(`verification-proposals.ts`, shared with the plan `role-turn` shows writers via
+`verificationProposalsFrom`). The normal scoped command validation,
 subprocess execution and full receipt requirements apply. This cannot accept an
 agent's claim that tests passed.
 

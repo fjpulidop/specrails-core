@@ -6,6 +6,7 @@ import { resolveRoleDescriptor } from '../../config.js'
 import { AgentExecutionError } from '../../executor-types.js'
 import type { VerificationCommand } from '../../../pipeline/pipeline-state.js'
 import { createRoleInvoker } from '../../graph/roles.js'
+import { admitVerificationProposals } from '../../verification-proposals.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
 import { roleInstructions } from '../../prompts.js'
@@ -124,29 +125,18 @@ function environmentNote(installs: readonly InstallOutcome[], when: 'prepared' |
 }
 
 /** The complete plan the host will run for the repositories in scope: configured checks plus, when `verificationProposalsFrom`
- * names a committed output, its proposals for repositories without a configured check (the rule the verify piece applies). */
+ * names a committed output, the proposals the verify piece admits (see admitVerificationProposals). */
 function hostVerificationPlan(deps: PieceDependencies, context: PieceExecutionContext, params: JsonObject): VerificationCommand[] {
   const inScope = new Set(deps.context.repositories.map(repository => repository.id))
   const commands = deps.config.verification.filter(command => inScope.has(command.repositoryId)).map(command => withScopeDefault(deps.context, command))
-  const configured = new Set(commands.map(command => command.repositoryId))
-  const seen = new Set(commands.map(planKey))
   if (typeof params.verificationProposalsFrom === 'string') {
     const source = context.state.$outputs[params.verificationProposalsFrom] as { structured?: { verification?: unknown } } | undefined
-    const proposals = Array.isArray(source?.structured?.verification) ? source.structured.verification.slice(0, 20) : []
-    for (const proposal of proposals) {
-      if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) continue
+    const proposals = (Array.isArray(source?.structured?.verification) ? source.structured.verification.slice(0, 20) : []).filter((proposal): proposal is VerificationCommand => {
+      if (!proposal || typeof proposal !== 'object' || Array.isArray(proposal)) return false
       const raw = proposal as Partial<VerificationCommand>
-      if (typeof raw.repositoryId !== 'string' || typeof raw.command !== 'string' || !Array.isArray(raw.args) || !raw.args.every(arg => typeof arg === 'string')) continue
-      if (!inScope.has(raw.repositoryId) || configured.has(raw.repositoryId)) continue
-      const command = withScopeDefault(deps.context, { repositoryId: raw.repositoryId, command: raw.command, args: raw.args, ...(typeof raw.cwd === 'string' ? { cwd: raw.cwd } : {}) })
-      const key = planKey(command)
-      if (seen.has(key)) continue
-      seen.add(key)
-      commands.push(command)
-    }
+      return typeof raw.repositoryId === 'string' && inScope.has(raw.repositoryId) && typeof raw.command === 'string' && Array.isArray(raw.args) && raw.args.every(arg => typeof arg === 'string')
+    })
+    commands.push(...admitVerificationProposals(deps.context, commands, proposals, raw => withScopeDefault(deps.context, { repositoryId: raw.repositoryId, command: raw.command, args: raw.args, ...(typeof raw.cwd === 'string' ? { cwd: raw.cwd } : {}) })))
   }
   return commands
-}
-function planKey(command: VerificationCommand): string {
-  return JSON.stringify([command.repositoryId, command.cwd ?? '', command.command, command.args])
 }
