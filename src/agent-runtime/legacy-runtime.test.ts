@@ -1,7 +1,7 @@
 import ts from 'typescript'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -17,6 +17,10 @@ it('continues a real v4 request/checkpoint with its original executable without 
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'legacy workflow ')))
   try {
     execFileSync('tar', ['-xzf', fixture, '-C', extracted])
+    // The frozen package declares js-yaml ^4 (default export); the current
+    // tree ships js-yaml 5 (named exports only). Give it its own declared
+    // major, as a real retained install would have, from the js-yaml-4 alias.
+    cpSync(path.join(packageRoot, 'node_modules/js-yaml-4'), path.join(extracted, 'package/node_modules/js-yaml'), { recursive: true })
     const repo = path.join(root, 'repo'), backlog = path.join(root, 'backlog')
     mkdirSync(repo); mkdirSync(backlog)
     for (const args of [['init', '-q'], ['config', 'user.name', 'Fixture'], ['config', 'user.email', 'fixture@example.invalid']]) execFileSync('git', args, { cwd: repo })
