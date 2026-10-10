@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync } from 'node:fs'
 import path from 'node:path'
-import { fingerprintCandidate, persistCheckEvidence, readCandidateScope, pipelineStateDirectory,
+import { candidateChangedReceipt, candidateManifest, candidateManifestHash, fingerprintCandidate, persistCheckEvidence, readCandidateScope, pipelineStateDirectory,
   type CandidateScope, type PipelineContext, type VerificationEvidencePort, type VerificationReceipt } from '../../pipeline/pipeline-state.js'
 import { resolveRoleDescriptor } from '../config.js'
 import type { RuntimeConfig } from '../executor-types.js'
@@ -215,11 +215,11 @@ export class RunPieceDependencies implements PieceDependencies {
   }
 
   verification(context: PieceExecutionContext): VerificationEvidencePort {
-    const candidateHash = this.fingerprint(), scope = this.candidateScope()
+    const scope = this.candidateScope(), manifest = candidateManifest(scope), candidateHash = candidateManifestHash(manifest)
     const row = this.ledger.db.sqlite.prepare("SELECT receipt_json FROM receipts WHERE run_id=? AND valid=1 AND candidate_hash=? ORDER BY created_at DESC LIMIT 1").get(this.ledger.runId, candidateHash)
     const previous = row ? (JSON.parse(String(row.receipt_json)) as { evidence: VerificationReceipt }).evidence : undefined
     return {
-      candidateHash, scopeHash: scope.scopeHash, ...(previous ? { previous } : {}),
+      candidateHash, candidateManifest: manifest, currentManifest: () => candidateManifest(this.candidateScope()), scopeHash: scope.scopeHash, ...(previous ? { previous } : {}),
       isCurrent: () => { this.ledger.lease.assert(this.ledger.token); return this.fingerprint() === candidateHash },
       persistCheck: (result, planHash, candidate) => {
         this.ledger.lease.assert(this.ledger.token)
@@ -231,7 +231,7 @@ export class RunPieceDependencies implements PieceDependencies {
       },
       commitReceipt: receipt => {
         this.ledger.lease.assert(this.ledger.token)
-        const result = this.fingerprint() === candidateHash ? receipt : { ...receipt, valid: false, reason: 'Candidate changed during verification' }
+        const result = this.fingerprint() === candidateHash ? receipt : candidateChangedReceipt(receipt, manifest, () => candidateManifest(this.candidateScope()))
         this.ledger.writePieceState(context.frame, 'evidence:receipt:' + receipt.id, json(result))
         return result
       },

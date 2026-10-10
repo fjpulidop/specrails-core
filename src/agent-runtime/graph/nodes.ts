@@ -4,16 +4,16 @@ import { addDeveloperChecks, bindPlan, expandedPlanCommands, initializeVerificat
 import path from 'node:path'
 import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
-  candidateManifest, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
-  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type PipelineContext, type VerificationCommand,
+  candidateManifest, describeModifiedFiles, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
+  type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type CandidateFileChange, type PipelineContext, type VerificationCommand,
 } from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
 import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
-import { isEnvironmentFailure } from '../compact/environment.js'
-import { hostPreconditionMessage, preconditionBlock, repairEnvironment } from '../verification-repair.js'
+import { describeDrift } from '../compact/environment.js'
+import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
 import { exitCodeContradiction, exitHonestyReason } from '../compact/exit-code-honesty.js'
 import type { RoleInvoker } from './roles.js'
@@ -364,7 +364,10 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
       // the model's — for every developer: a fresh worktree has no
       // node_modules whatever wrote the code. Install once where the failing
       // command runs and re-verify; only a second failure becomes feedback.
-      if (!receipt.valid && guardrailEnabled(config.guardrails, 'environment-repair') && receipt.commands.some(command => isEnvironmentFailure(command.exitCode, command.output))) {
+      const environment = !receipt.valid && guardrailEnabled(config.guardrails, 'environment-repair') ? environmentFailure(context, receipt) : undefined
+      if (environment) {
+        const drift = environment.drift.flatMap(item => item.drift)
+        if (drift.length) note('developer', `Installed dependencies do not satisfy their declared ranges (${describeDrift(drift)}); the host reinstalls them before judging the failure.`)
         const repair = repairEnvironment(context, receipt, config.guardrails, text => note('developer', text))
         if (repair.refused) return hostBlocked(blockerMessage(repair.refused))
         if (repair.installs.some(outcome => outcome.ok)) {
@@ -374,9 +377,30 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
           if (precondition) return hostBlocked(blockerMessage(precondition))
         }
       }
+      // Verification that rewrote candidate files itself is not a code failure
+      // for the fixer: reverting a regenerated file only makes the next run
+      // regenerate it. Same rule as the engine `verify` piece: adopt and verify
+      // once more, or stop with the typed blocker when the output keeps moving.
+      let adopted: CandidateFileChange[] = []
+      if (selfMutationOnly(receipt) && !step.signal?.aborted) {
+        const nondeterministic = (adoption: boolean): Result => {
+          const blocker = nondeterministicOutputBlocker(context, receipt, adoption)
+          note('fixer', 'Verification keeps modifying candidate files itself; stopping for the host instead of starting a correction round.')
+          return { status: 'blocked', error: `Verification output is not deterministic: ${blocker.reason}. ${blocker.requiredAction} (verification_nondeterministic_output)`, usage: NO_SPEND }
+        }
+        if (!guardrailEnabled(config.guardrails, 'verification-output-adoption')) return nondeterministic(false)
+        const first = receipt.selfMutation!
+        note('developer', `Verification commands modified ${describeModifiedFiles(first)}; keeping them in the candidate and verifying once more.`)
+        receipt = await run()
+        if (receipt.valid) { adopted = first.files; note('developer', adoptedOutputNote(first)) }
+        else if (selfMutationOnly(receipt)) return nondeterministic(true)
+        else if ((precondition = preconditionBlock(context, receipt))) return hostBlocked(blockerMessage(precondition))
+      }
+      const adoptedOutputs = [...new Map([...(state.verifyResult?.adoptedOutputs ?? []), ...adopted].map(file => [file.repositoryId + '\0' + file.path, file])).values()].slice(0, 200)
       const evidence: VerificationRecord = {
         valid: receipt.valid, ...(receipt.reason ? { reason: receipt.reason } : {}), receiptId: receipt.id, unverifiedRepositories: uncovered,
         commands: receipt.commands.map(command => ({ ...(command.evidenceId ? { evidenceId: command.evidenceId } : {}), repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, exitCode: command.exitCode, failureSummary: verificationFailureSummary(command), output: command.output.slice(-2000) })),
+        ...(receipt.selfMutation ? { selfMutation: receipt.selfMutation } : {}), ...(adoptedOutputs.length ? { adoptedOutputs } : {}),
       }
       const outcome = (passed: boolean, finding?: string): VerifyOutcome => ({ at: new Date().toISOString(), candidateHash: receipt.candidateHash, planHash: effective.planHash, passed, ...(passed ? {} : describeFailure(receipt, roots, finding)) })
       /** Hands a failure to the fixer unless the correction loop has stopped converging. */

@@ -3,6 +3,7 @@ import { createRoleInvoker } from './graph/roles.js'
 import { resolveRoleDescriptor, roleIds } from './config.js'
 import { roleInstructions } from './prompts.js'
 import { OpenSpecTools } from './openspec.js'
+import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -446,6 +447,76 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(rechecked.steps.archive?.visits).toBe(2)
     expect((await runCoreWorkflow(opts(registry, { resume: true, approve: ['archive'] }))).status).toBe('succeeded')
   })
+
+  it('adopts output the verification regenerates itself and tells the reviewer and fixer not to revert it', async () => {
+    // A lint pre-step that rewrites a committed mapping file, identically on every run.
+    config.verification = context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath,
+      args: ['-e', 'require("fs").writeFileSync("mappings.js","regenerated");if(require("./code.cjs")!==2)process.exit(9)'] }))
+    for (const repository of context.repositories) { write(path.join(repository.path, 'mappings.js'), 'committed'); git(repository.path, ['add', '.']); git(repository.path, ['-c', 'user.name=F', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'mapping']) }
+    let reviews = 0
+    const { registry, calls } = fake(async request => {
+      if (request.role === 'architect') return result(architecture)
+      if (request.role === 'developer') { develop(); return result('Implemented') }
+      return result(++reviews === 1 ? { ...review, approved: false, issues: ['Add regression coverage'] } : review)
+    })
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status, state.error).toBe('succeeded')
+    const reviewers = calls.filter(call => call.role === 'reviewer'), fixer = calls.find(call => call.stance === 'fixer')!
+    for (const prompt of [reviewers[0]!.prompt, fixer.prompt, reviewers[1]!.prompt]) {
+      expect(prompt).toContain('## Host-adopted verification output')
+      expect(prompt).toContain('`front`: `mappings.js`')
+    }
+    expect(reviewers[0]!.prompt).toContain('other than the host-adopted verification output listed below')
+    expect(readFileSync(path.join(context.repositories[0]!.path, 'mappings.js'), 'utf8')).toBe('regenerated')
+    expect(state.history.filter(attempt => attempt.stepId === 'verify')).toHaveLength(2)
+  })
+
+  it('blocks with the typed cause instead of a correction round when verification output never converges', async () => {
+    config.verification = context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath,
+      args: ['-e', 'require("fs").writeFileSync("build-info.js",String(Date.now()+Math.random()))'] }))
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('blocked')
+    expect(state.error).toContain('verification_nondeterministic_output')
+    expect(state.error).toContain('build-info.js')
+    expect(state.error).toContain('make the generator idempotent')
+    expect(calls.some(call => call.stance === 'fixer')).toBe(false)
+    expect(calls.some(call => call.role === 'reviewer')).toBe(false)
+  })
+
+  it('blocks without a re-run when the verification-output-adoption guardrail is off', async () => {
+    config.guardrails = { 'verification-output-adoption': false }
+    config.verification = context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['-e', 'require("fs").writeFileSync("stable.js","same")'] }))
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry))
+    expect(state.status).toBe('blocked')
+    expect(state.error).toContain('verification-output-adoption guardrail')
+    expect(calls.some(call => call.stance === 'fixer')).toBe(false)
+  })
+
+  it('reinstalls a drifted dependency at verification instead of handing the failure to the fixer', async () => {
+    // node_modules/exp holds 1.0.0 against ^2.0.0; the lockfile resolves 2.1.0 from a local tarball, so npm runs offline.
+    const front = context.repositories[0]!.path
+    write(path.join(root, 'pack', 'package', 'package.json'), JSON.stringify({ name: 'exp', version: '2.1.0' }))
+    mkdirSync(path.join(front, 'vendor'), { recursive: true })
+    spawnSync('tar', ['-czf', path.join(front, 'vendor', 'exp-2.1.0.tgz'), '-C', path.join(root, 'pack'), 'package'])
+    const integrity = 'sha512-' + createHash('sha512').update(readFileSync(path.join(front, 'vendor', 'exp-2.1.0.tgz'))).digest('base64')
+    write(path.join(front, 'package.json'), JSON.stringify({ name: 'front', version: '1.0.0', dependencies: { exp: '^2.0.0' } }))
+    write(path.join(front, 'package-lock.json'), JSON.stringify({ name: 'front', version: '1.0.0', lockfileVersion: 3, requires: true, packages: {
+      '': { name: 'front', version: '1.0.0', dependencies: { exp: '^2.0.0' } }, 'node_modules/exp': { version: '2.1.0', resolved: 'file:vendor/exp-2.1.0.tgz', integrity } } }))
+    write(path.join(front, '.gitignore'), 'node_modules/\n')
+    git(front, ['add', '.']); git(front, ['-c', 'user.name=F', '-c', 'user.email=f@example.invalid', 'commit', '-qm', 'manifest'])
+    write(path.join(front, 'node_modules', 'exp', 'package.json'), JSON.stringify({ name: 'exp', version: '1.0.0' }))
+    config.verification[0] = { repositoryId: 'front', command: process.execPath, args: ['-e', 'if(require("./node_modules/exp/package.json").version!=="2.1.0"){console.error("src/untouched.ts 3:7 error Unsafe call no-unsafe-call");process.exit(1)}if(require("./code.cjs")!==2)process.exit(9)'] }
+    vi.stubEnv('npm_config_offline', 'true')
+    const notes: string[] = []
+    const { registry, calls } = fake()
+    const state = await runCoreWorkflow(opts(registry, { onAgentEvent: (_role, event) => { if (event.text) notes.push(event.text) } }))
+    expect(state.status, state.error).toBe('succeeded')
+    expect(calls.some(call => call.stance === 'fixer')).toBe(false)
+    expect(JSON.parse(readFileSync(path.join(front, 'node_modules', 'exp', 'package.json'), 'utf8')).version).toBe('2.1.0')
+    expect(notes.join('\n')).toContain('exp 1.0.0 does not satisfy ^2.0.0')
+  }, 120_000)
 
   it('uses deterministic verification failures as bounded developer feedback', async () => {
     let development = 0

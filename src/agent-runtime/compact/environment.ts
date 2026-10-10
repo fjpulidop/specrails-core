@@ -12,16 +12,19 @@ import crossSpawn from 'cross-spawn'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import semver from 'semver'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
 // install/check round in circles. cross-spawn resolves the shim on every OS.
 const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
 
-/** `timeoutMs` overrides the default bound for one plan (a browser download is far larger than a dependency install). */
-export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[]; timeoutMs?: number; installs?: string }
-/** `precondition`: the install failed for a reason only the host can repair (see hostPreconditionFailure). */
-export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string; precondition?: string }
+/** `timeoutMs` overrides the default bound for one plan (a browser download is far larger than a dependency install). `drift`: installed direct dependencies the install must bring back inside their declared ranges. */
+export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[]; timeoutMs?: number; installs?: string; drift?: DriftedDependency[] }
+/** `precondition`: the install failed for a reason only the host can repair (see hostPreconditionFailure). `driftPersists`: drifted packages a successful install left drifted (the lockfile pins them). */
+export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail: string; precondition?: string; driftPersists?: DriftedDependency[] }
+/** An installed direct dependency whose version does not satisfy the range package.json declares. */
+export interface DriftedDependency { name: string; declared: string; installed: string }
 
 export type HostPreconditionKind = 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment'
 export interface HostPrecondition { kind: HostPreconditionKind; reason: string; requiredAction: string }
@@ -134,6 +137,40 @@ export function missingNodeDependencies(root: string): string[] {
   }
   return [...declared].filter(name => !existsSync(path.join(root, 'node_modules', name))).slice(0, 20)
 }
+// Specifiers with no installed-version contract to check locally; reporting
+// them would plan an install on every run.
+const NON_SEMVER_SPECIFIER = /^(?:workspace:|file:|link:|portal:|patch:|npm:|catalog:|git[+:]|github:|gitlab:|bitbucket:|https?:|ssh:)|\//
+/**
+ * Installed direct dependencies whose version fails the range package.json
+ * declares (bounded, never throws): a tree installed for other inputs, such as
+ * a warm link from a base checkout or a manifest edited after the install,
+ * passes `missingNodeDependencies` and then fails lint on an untouched file.
+ * Absent packages are `missingNodeDependencies`' to report.
+ */
+export function driftedNodeDependencies(root: string): DriftedDependency[] {
+  let manifest: Record<string, unknown>
+  try { manifest = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')) as Record<string, unknown> } catch { return [] }
+  const drifted = new Map<string, DriftedDependency>()
+  for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+    const block = manifest[field]
+    if (!block || typeof block !== 'object' || Array.isArray(block)) continue
+    for (const [name, declared] of Object.entries(block as Record<string, unknown>)) {
+      if (drifted.has(name) || typeof declared !== 'string' || NON_SEMVER_SPECIFIER.test(declared.trim())) continue
+      const range = semver.validRange(declared)
+      if (!range) continue
+      let installed: unknown
+      try { installed = (JSON.parse(readFileSync(path.join(root, 'node_modules', name, 'package.json'), 'utf8')) as { version?: unknown }).version } catch { continue }
+      if (typeof installed !== 'string' || !semver.valid(installed)) continue
+      if (!semver.satisfies(installed, range, { includePrerelease: false })) drifted.set(name, { name, declared, installed })
+      if (drifted.size >= 20) return [...drifted.values()]
+    }
+  }
+  return [...drifted.values()]
+}
+/** `@busuu/experiments 5.23.0 does not satisfy ^5.24.0, …` for up to five packages. */
+export function describeDrift(drift: readonly DriftedDependency[]): string {
+  return drift.slice(0, 5).map(item => `${item.name} ${item.installed} does not satisfy ${item.declared}`).join(', ') + (drift.length > 5 ? ` and ${drift.length - 5} more` : '')
+}
 /** Browser builds are ~150 MB each; the default 5-minute install bound is too short on a slow link. */
 const PLAYWRIGHT_INSTALL_TIMEOUT_MS = 10 * 60_000
 /** True when package.json declares `@playwright/test` or `playwright`; only those repositories get a browser install plan. */
@@ -157,9 +194,12 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
   // A manifest edited after the first install (a later task group adds
   // jest-extended) leaves node_modules present but incomplete; verify then
   // fails on the environment, not the code. Declared-but-absent ⇒ reinstall.
-  if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length)) {
+  // A version outside its declared range (a stale warm-linked tree) is the
+  // same kind of gap: the same install brings it back in range.
+  const drift = has('package.json') && has('node_modules') ? driftedNodeDependencies(root) : []
+  if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length || drift.length)) {
     const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error'] : ['install'] })
+    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error'] : ['install'], ...(drift.length ? { drift } : {}) })
   }
   // After the dependency plan: a fresh worktree needs node_modules before
   // `playwright install` can run at all.
@@ -241,10 +281,14 @@ export function installEnvironment(roots: readonly string[], io: InstallIo = {})
       }
       io.onEvent?.({ kind: 'tool-end', tool: plan.command })
       const ok = result.status === 0
-      const detail = ok ? `installed ${plan.installs ?? `${plan.ecosystem} dependencies`} in ${path.basename(root)}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
+      const detail = ok ? `installed ${plan.installs ?? `${plan.ecosystem} dependencies`} in ${path.basename(root)}${plan.drift?.length ? ` (${describeDrift(plan.drift)})` : ''}` : `${plan.command} ${plan.args.join(' ')} failed in ${path.basename(root)}: ${String(result.stderr || result.error?.message || `exit ${result.status}`).trim().slice(0, 400)}`
       io.onEvent?.({ kind: 'text', text: `Environment: ${detail}` })
+      // An install that leaves the drift in place means the lockfile itself
+      // resolves the old version: a code change, never a second install.
+      const persisting = ok && plan.drift?.length ? driftedNodeDependencies(root).filter(item => plan.drift!.some(before => before.name === item.name)) : []
+      if (persisting.length) io.onEvent?.({ kind: 'text', text: `Environment: ${describeDrift(persisting)} after installing in ${path.basename(root)}; the lockfile still resolves the drifted version, so update the lockfile or the declared range.` })
       const precondition = ok ? undefined : hostPreconditionFailure(`${result.stdout ?? ''}\n${result.stderr ?? ''}`)
-      outcomes.push({ ...plan, ok, detail, ...(precondition ? { precondition } : {}) })
+      outcomes.push({ ...plan, ok, detail, ...(precondition ? { precondition } : {}), ...(persisting.length ? { driftPersists: persisting } : {}) })
     }
   }
   return outcomes

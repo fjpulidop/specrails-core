@@ -9,14 +9,14 @@
 import type { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import type { CommandReceipt, PipelineContext, VerificationReceipt } from '../pipeline/pipeline-state.js'
-import { hostPrecondition, installEnvironment, type InstallOutcome } from './compact/environment.js'
+import { describeModifiedFiles, type CommandReceipt, type PipelineContext, type VerificationReceipt, type VerificationSelfMutation } from '../pipeline/pipeline-state.js'
+import { driftedNodeDependencies, hostPrecondition, installEnvironment, isEnvironmentFailure, type DriftedDependency, type InstallOutcome } from './compact/environment.js'
 import type { HostBlocker } from './engine/contracts.js'
 import { guardrailEnabled, type GuardrailSettings } from './guardrails.js'
 
 export type { HostBlocker } from './engine/contracts.js'
 
-const BLOCKER_KINDS: ReadonlySet<string> = new Set(['network', 'credential', 'environment-variable', 'toolchain', 'setup', 'environment', 'scope'])
+const BLOCKER_KINDS: ReadonlySet<string> = new Set(['network', 'credential', 'environment-variable', 'toolchain', 'setup', 'environment', 'scope', 'nondeterministic-output'])
 const BLOCKER_TEXT_LIMIT = 2_000
 
 /** Where a missing dependency install belongs: the nearest directory with a lockfile or manifest above the failing command, else the repository root. */
@@ -41,6 +41,32 @@ export function installRoots(context: PipelineContext, commands: readonly Comman
   return [...new Set([...roots, ...context.repositories.map(repository => repository.path)])]
 }
 
+/**
+ * Installed dependencies out of their declared ranges in any package root that
+ * contains a failing command's cwd (from the cwd up to its repository). The
+ * failure such drift causes is arbitrary (a lint error on an untouched file),
+ * so the drift itself, not the output, marks the failure as environmental.
+ */
+export function driftedFailureRoots(context: PipelineContext, receipt: VerificationReceipt): Array<{ root: string; drift: DriftedDependency[] }> {
+  const roots = new Set<string>()
+  for (const command of receipt.commands) {
+    const repository = command.exitCode === 0 ? undefined : context.repositories.find(repo => repo.id === command.repositoryId)
+    if (!repository) continue
+    for (let directory = command.cwd || repository.path; ; directory = path.dirname(directory)) {
+      const relative = path.relative(repository.path, directory)
+      if (relative.startsWith('..') || path.isAbsolute(relative)) break
+      if (existsSync(path.join(directory, 'package.json'))) roots.add(directory)
+      if (!relative) break
+    }
+  }
+  return [...roots].map(root => ({ root, drift: driftedNodeDependencies(root) })).filter(item => item.drift.length > 0)
+}
+/** Why a failed receipt is the host's environment to repair: a missing tool or dependency in the output, or installed versions out of their declared ranges. */
+export function environmentFailure(context: PipelineContext, receipt: VerificationReceipt): { drift: Array<{ root: string; drift: DriftedDependency[] }> } | undefined {
+  const drift = driftedFailureRoots(context, receipt)
+  return drift.length || receipt.commands.some(command => isEnvironmentFailure(command.exitCode, command.output)) ? { drift } : undefined
+}
+
 /** A directory as the log should name it: relative to the checkout that contains it. */
 export function checkoutRelative(context: PipelineContext, directory: string): string {
   const repository = context.repositories.find(repo => { const relative = path.relative(repo.path, directory); return !relative.startsWith('..') && !path.isAbsolute(relative) })
@@ -63,6 +89,31 @@ export function preconditionBlock(context: PipelineContext, receipt: Verificatio
   return undefined
 }
 
+/** Error code of a verification whose commands keep rewriting the candidate: the repository's or operator's to fix, never the fixer's. */
+export const NONDETERMINISTIC_OUTPUT_CODE = 'verification_nondeterministic_output'
+/**
+ * Every command exited 0 and ran to completion, and the receipt is invalid only
+ * because the commands modified the candidate themselves: deterministic tool
+ * output (a regenerated mapping) the host may adopt, never a code failure.
+ */
+export function selfMutationOnly(receipt: VerificationReceipt): boolean {
+  return !receipt.valid && !!receipt.selfMutation?.files.length && receipt.commands.length > 0 && !receipt.notRunEvidenceIds?.length
+    && receipt.commands.every(command => command.exitCode === 0 && (command.outcome === undefined || command.outcome === 'passed'))
+}
+/** The typed blocker for output that did not converge on the adoption re-run, or that the `verification-output-adoption` guardrail keeps out of the candidate. */
+export function nondeterministicOutputBlocker(context: PipelineContext, receipt: VerificationReceipt, adoption: boolean): HostBlocker {
+  const mutation = receipt.selfMutation ?? { files: [], commands: [] }
+  const command = receipt.commands.find(item => item.repositoryId === mutation.files[0]?.repositoryId && item.disposition !== 'reused') ?? receipt.commands[0]
+  return { kind: 'nondeterministic-output', reason: (adoption ? `the verification commands modified ${describeModifiedFiles(mutation)}, and modified them again when the host verified the adopted output once more`
+    : `the verification commands modified ${describeModifiedFiles(mutation)}, and the verification-output-adoption guardrail keeps verification output out of the candidate`).slice(0, BLOCKER_TEXT_LIMIT),
+  command: command?.command.slice(0, 512) ?? '', args: (command?.args ?? []).slice(0, 16).map(arg => arg.slice(0, 256)), cwd: command ? checkoutRelative(context, command.cwd) : '.',
+  requiredAction: 'Commit the generated output on the base branch or make the generator idempotent, then retry the run.' }
+}
+/** The progress line naming the files the host adopted into the candidate. */
+export function adoptedOutputNote(mutation: VerificationSelfMutation): string {
+  return `[verification] adopted ${mutation.files.length + (mutation.omittedFiles ?? 0)} generated file(s): ${describeModifiedFiles(mutation).replace(/^\d+ candidate files?: /, '')}`
+}
+
 export interface EnvironmentRepair { installs: InstallOutcome[]; refused?: HostBlocker }
 /**
  * Runs the planned installs for the failed commands' roots once, narrating each
@@ -72,7 +123,8 @@ export interface EnvironmentRepair { installs: InstallOutcome[]; refused?: HostB
  */
 export function repairEnvironment(context: PipelineContext, receipt: VerificationReceipt, guardrails: GuardrailSettings | undefined, note: (text: string) => void, spawn?: typeof spawnSync): EnvironmentRepair {
   const failed = receipt.commands.filter(command => command.exitCode !== 0)
-  const installs = installEnvironment(installRoots(context, failed), { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(guardrails, 'lockfile-repair'),
+  const roots = [...new Set([...installRoots(context, failed), ...driftedFailureRoots(context, receipt).map(item => item.root)])]
+  const installs = installEnvironment(roots, { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(guardrails, 'lockfile-repair'),
     ...(spawn ? { spawn } : {}), onEvent: event => note(event.kind === 'text' ? event.text ?? '' : `[environment] ${event.tool ?? ''} ${event.detail ?? ''}`.trim()) })
   const refused = installs.find(outcome => outcome.precondition)
   if (!refused) return { installs }

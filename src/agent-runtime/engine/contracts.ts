@@ -111,7 +111,8 @@ export interface ReceiptEvidence {
  * is reserved for a correction role that diagnoses the cause outside the change.
  */
 export interface HostBlocker {
-  kind: 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment' | 'scope'
+  /** `nondeterministic-output`: verification rewrites candidate files differently on every run (error code `verification_nondeterministic_output`). */
+  kind: 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment' | 'scope' | 'nondeterministic-output'
   reason: string
   command: string
   args: string[]

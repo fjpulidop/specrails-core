@@ -14,6 +14,13 @@ describe('guardrails', () => {
     expect(guardrailEnabled({ 'empty-write': true }, 'empty-write')).toBe(true)
     expect(guardrailEnabled({ 'empty-write': false }, 'empty-write')).toBe(false)
   })
+  it('catalogs verification-output-adoption as a host guardrail that is on by default', () => {
+    expect(GUARDRAIL_CATALOG.find(item => item.id === 'verification-output-adoption')).toEqual({ id: 'verification-output-adoption', phase: 'host' })
+    expect(guardrailEnabled({}, 'verification-output-adoption')).toBe(true)
+    expect(guardrailEnabled({ 'verification-output-adoption': false }, 'verification-output-adoption')).toBe(false)
+    expect(validateGuardrailSettings({ 'verification-output-adoption': false })).toEqual({ 'verification-output-adoption': false })
+    expect(() => validateGuardrailSettings({ 'verification-output-adoption': 'off' })).toThrow(/boolean/)
+  })
   it('validates settings: known ids, booleans only', () => {
     expect(validateGuardrailSettings({ 'plan-validation': false })).toEqual({ 'plan-validation': false })
     expect(() => validateGuardrailSettings({ nope: false })).toThrow(/unknown guardrail/)

@@ -97,12 +97,14 @@
     "cross-spawn": "7.0.6",
     "js-yaml": "^4.1.0",
     "picocolors": "^1.1.1",
+    "semver": "^7.8.5",
     "zod": "4.6.2"
   },
   "devDependencies": {
     "@types/cross-spawn": "6.0.6",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.2",
+    "@types/semver": "^7.8.0",
     "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^5.7.2",
     "vitest": "^4.1.5"

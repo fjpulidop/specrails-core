@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
+import { describeDrift, driftedNodeDependencies, configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -344,3 +346,99 @@ describe('host preparation before writer turns', () => {
     expect(spawn).not.toHaveBeenCalled()
   })
 })
+
+/** A package root whose manifest declares `declared` and whose node_modules holds `installed` (name → version, or raw manifest text). */
+function nodeRoot(declared: Record<string, Record<string, string>>, installed: Record<string, string>): string {
+  const dir = root({ 'package.json': JSON.stringify(declared) }, ['node_modules'])
+  for (const [name, version] of Object.entries(installed)) {
+    mkdirSync(path.join(dir, 'node_modules', name), { recursive: true })
+    writeFileSync(path.join(dir, 'node_modules', name, 'package.json'), version.startsWith('{') || version.startsWith('<') ? version : JSON.stringify({ name, version }))
+  }
+  return dir
+}
+
+describe('driftedNodeDependencies', () => {
+  it('reports a stale minor version and accepts a satisfied range', () => {
+    expect(driftedNodeDependencies(nodeRoot({ dependencies: { '@busuu/experiments': '^5.24.0' } }, { '@busuu/experiments': '5.23.0' })))
+      .toEqual([{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }])
+    expect(driftedNodeDependencies(nodeRoot({ dependencies: { '@busuu/experiments': '^5.24.0' } }, { '@busuu/experiments': '5.26.1' }))).toEqual([])
+  })
+  it('checks dev and optional dependencies, `||` ranges and prereleases with npm semantics', () => {
+    const dir = nodeRoot({ devDependencies: { either: '^1.2.0 || ^2.0.0', old: '~3.1.0' }, optionalDependencies: { pre: '^1.2.0', ok: '1.x' } },
+      { either: '2.4.0', old: '3.0.9', pre: '1.3.0-beta.1', ok: '1.9.9' })
+    expect(driftedNodeDependencies(dir)).toEqual([{ name: 'old', declared: '~3.1.0', installed: '3.0.9' }, { name: 'pre', declared: '^1.2.0', installed: '1.3.0-beta.1' }])
+  })
+  it('ignores specifiers without a locally checkable version contract', () => {
+    const specifiers = { ws: 'workspace:*', file: 'file:../lib', link: 'link:../lib', portal: 'portal:../p', patch: 'patch:x@1.0.0#p.patch', alias: 'npm:other@^9.0.0',
+      git: 'git+https://github.com/acme/x.git#v2', short: 'acme/x', url: 'https://example.com/x.tgz', tag: 'latest', next: 'next' }
+    expect(driftedNodeDependencies(nodeRoot({ dependencies: specifiers }, Object.fromEntries(Object.keys(specifiers).map(name => [name, '0.0.1']))))).toEqual([])
+  })
+  it('never reports absent packages or unreadable manifests, never throws and stays bounded', () => {
+    expect(driftedNodeDependencies(nodeRoot({ dependencies: { absent: '^1.0.0', broken: '^1.0.0', noversion: '^1.0.0', bad: '^1.0.0' } }, { broken: '<not json', noversion: '{"name":"noversion"}', bad: '{"version":"banana"}' }))).toEqual([])
+    expect(driftedNodeDependencies(root())).toEqual([])
+    expect(driftedNodeDependencies(root({ 'package.json': '{ nope' }))).toEqual([])
+    const many = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`pkg${index}`, '^2.0.0']))
+    expect(driftedNodeDependencies(nodeRoot({ dependencies: many }, Object.fromEntries(Object.keys(many).map(name => [name, '1.0.0']))))).toHaveLength(20)
+  })
+})
+
+describe('drift-driven installs', () => {
+  const stale = () => nodeRoot({ dependencies: { '@busuu/experiments': '^5.24.0', react: '^18.2.0' } }, { '@busuu/experiments': '5.23.0', react: '18.3.1' })
+  it('plans the runner install on drift and names the packages in the outcome detail', () => {
+    const dir = stale()
+    writeFileSync(path.join(dir, 'yarn.lock'), '')
+    expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
+    expect(describeDrift([...Array(6)].map((_, index) => ({ name: `p${index}`, declared: '^2', installed: '1.0.0' })))).toBe('p0 1.0.0 does not satisfy ^2, p1 1.0.0 does not satisfy ^2, p2 1.0.0 does not satisfy ^2, p3 1.0.0 does not satisfy ^2, p4 1.0.0 does not satisfy ^2 and 1 more')
+  })
+  it('repairs a drifted tree once before the first role turn and plans nothing for a healthy one', () => {
+    const dir = stale()
+    const spawn = vi.fn((_command: string, _args: string[], options: { cwd: string }) => {
+      writeFileSync(path.join(options.cwd, 'node_modules', '@busuu', 'experiments', 'package.json'), JSON.stringify({ version: '5.24.2' }))
+      return { status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null }
+    })
+    const events: string[] = []
+    const outcomes = prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    expect(spawn.mock.calls.filter(([command]) => command === 'npm')).toHaveLength(1)
+    expect(outcomes[0]).toMatchObject({ ok: true, detail: `installed node dependencies in ${path.basename(dir)} (@busuu/experiments 5.23.0 does not satisfy ^5.24.0)` })
+    expect(outcomes[0]).not.toHaveProperty('driftPersists')
+    expect(events.some(text => text.includes('lockfile'))).toBe(false)
+    expect(prepareEnvironment([dir], { spawn: spawn as never }).filter(outcome => outcome.command === 'npm')).toEqual([])
+    expect(plannedInstalls(nodeRoot({ dependencies: { react: '^18.2.0' } }, { react: '18.3.1' }))).toEqual([])
+  })
+  it('reports drift a successful install leaves in place as a lockfile problem, without installing again', () => {
+    const dir = stale()
+    const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null }))
+    const events: string[] = []
+    const [outcome] = installEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    expect(spawn).toHaveBeenCalledTimes(1)
+    expect(outcome).toMatchObject({ ok: true, driftPersists: [{ name: '@busuu/experiments', installed: '5.23.0' }] })
+    expect(events).toContain(`Environment: @busuu/experiments 5.23.0 does not satisfy ^5.24.0 after installing in ${path.basename(dir)}; the lockfile still resolves the drifted version, so update the lockfile or the declared range.`)
+  })
+})
+
+describe('drift repair over a warm-linked package entry', () => {
+  it('replaces the symlinked entry with the declared version and leaves the link target untouched', () => {
+    // The warm-link shape: node_modules/exp links into a base checkout outside the root.
+    const dir = realpathSync(root({}, ['app/vendor', 'app/node_modules', 'base/exp', 'pack/package']))
+    const app = path.join(dir, 'app'), base = path.join(dir, 'base', 'exp')
+    writeFileSync(path.join(dir, 'pack', 'package', 'package.json'), JSON.stringify({ name: 'exp', version: '2.1.0' }))
+    execFileSync('tar', ['-czf', path.join(app, 'vendor', 'exp-2.1.0.tgz'), '-C', path.join(dir, 'pack'), 'package'])
+    const integrity = 'sha512-' + createHash('sha512').update(readFileSync(path.join(app, 'vendor', 'exp-2.1.0.tgz'))).digest('base64')
+    writeFileSync(path.join(base, 'package.json'), JSON.stringify({ name: 'exp', version: '1.0.0' }))
+    symlinkSync(base, path.join(app, 'node_modules', 'exp'), 'junction')
+    writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'app', version: '1.0.0', dependencies: { exp: '^2.0.0' } }))
+    writeFileSync(path.join(app, 'package-lock.json'), JSON.stringify({ name: 'app', version: '1.0.0', lockfileVersion: 3, requires: true, packages: {
+      '': { name: 'app', version: '1.0.0', dependencies: { exp: '^2.0.0' } }, 'node_modules/exp': { version: '2.1.0', resolved: 'file:vendor/exp-2.1.0.tgz', integrity } } }))
+    expect(driftedNodeDependencies(app)).toEqual([{ name: 'exp', declared: '^2.0.0', installed: '1.0.0' }])
+    vi.stubEnv('npm_config_offline', 'true')
+    try {
+      const outcomes = installEnvironment([app])
+      expect(outcomes, outcomes.map(outcome => outcome.detail).join('\n')).toMatchObject([{ command: 'npm', ok: true, drift: [{ name: 'exp' }] }])
+      expect(outcomes[0]).not.toHaveProperty('driftPersists')
+    } finally { vi.unstubAllEnvs() }
+    expect(driftedNodeDependencies(app)).toEqual([])
+    expect(JSON.parse(readFileSync(path.join(base, 'package.json'), 'utf8'))).toEqual({ name: 'exp', version: '1.0.0' })
+    expect(readdirSync(base)).toEqual(['package.json'])
+  }, 120_000)
+})
+

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { validatePipelineContext, type CommandReceipt, type PipelineContext, type VerificationReceipt } from '../pipeline/pipeline-state.js'
-import { boundedBlocker, checkoutRelative, hostPreconditionMessage, installRoots, preconditionBlock, repairEnvironment } from './verification-repair.js'
+import { adoptedOutputNote, boundedBlocker, driftedFailureRoots, environmentFailure, checkoutRelative, hostPreconditionMessage, installRoots, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from './verification-repair.js'
 
 const roots: string[] = []
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }) })
@@ -102,3 +102,36 @@ describe('boundedBlocker', () => {
     expect(boundedBlocker(null)).toBeUndefined()
   })
 })
+
+describe('verification self-mutation', () => {
+  const mutated = (exitCode: number, extra: Partial<VerificationReceipt> = {}): VerificationReceipt => ({ ...receipt([{ output: 'ok', exitCode, cwd: '' }]), valid: false,
+    selfMutation: { files: [{ repositoryId: 'app', path: 'gen/a.js', change: 'modified' }], commands: [{ repositoryId: 'app', label: 'npm test' }] }, ...extra })
+  it('is adoptable only when every command passed and ran, and the receipt is invalid because of the mutation', () => {
+    expect(selfMutationOnly(mutated(0))).toBe(true)
+    expect(selfMutationOnly(mutated(1))).toBe(false)
+    expect(selfMutationOnly(mutated(0, { notRunEvidenceIds: ['x'] }))).toBe(false)
+    expect(selfMutationOnly(mutated(0, { selfMutation: undefined }))).toBe(false)
+    expect(selfMutationOnly({ ...mutated(0), commands: [{ ...mutated(0).commands[0]!, outcome: 'timed-out' }] })).toBe(false)
+  })
+  it('builds the typed blocker and the adoption note, and keeps the blocker kind through boundedBlocker', () => {
+    const { root, context } = fixture()
+    const blocker = nondeterministicOutputBlocker(context, { ...mutated(0), commands: [{ ...mutated(0).commands[0]!, cwd: root }] }, true)
+    expect(blocker).toMatchObject({ kind: 'nondeterministic-output', command: 'npm', args: ['test'], cwd: '.', requiredAction: 'Commit the generated output on the base branch or make the generator idempotent, then retry the run.' })
+    expect(blocker.reason).toBe('the verification commands modified 1 candidate file: gen/a.js, and modified them again when the host verified the adopted output once more')
+    expect(boundedBlocker(blocker)).toEqual(blocker)
+    expect(adoptedOutputNote(mutated(0).selfMutation!)).toBe('[verification] adopted 1 generated file(s): gen/a.js')
+  })
+})
+
+describe('version drift classification', () => {
+  it('marks a failure environmental when a package root containing the failing cwd has drifted dependencies', () => {
+    const { root, context } = fixture({ 'package.json': JSON.stringify({ dependencies: { exp: '^2.0.0' } }), 'node_modules/exp/package.json': JSON.stringify({ version: '1.4.0' }),
+      'packages/web/package.json': JSON.stringify({ dependencies: { ok: '^1.0.0' } }), 'packages/web/node_modules/ok/package.json': JSON.stringify({ version: '1.2.0' }) })
+    const failing = receipt([{ output: 'error  Unsafe call  no-unsafe-call', cwd: path.join(root, 'packages', 'web') }])
+    expect(driftedFailureRoots(context, failing)).toEqual([{ root, drift: [{ name: 'exp', declared: '^2.0.0', installed: '1.4.0' }] }])
+    expect(environmentFailure(context, failing)).toEqual({ drift: [{ root, drift: [{ name: 'exp', declared: '^2.0.0', installed: '1.4.0' }] }] })
+    expect(environmentFailure(context, receipt([{ output: 'ok', exitCode: 0, cwd: root }]))).toBeUndefined()
+    expect(environmentFailure(context, receipt([{ output: 'sh: jest: command not found', cwd: path.join(root, 'packages', 'web') }]))).toBeDefined()
+  })
+})
+

@@ -16,6 +16,16 @@ describe('describeFailure', () => {
     expect(first.summary).toBe('yarn test exited 1: Tests: 1 failed, 20 passed')
     expect(describeFailure({ commands: [], reason: 'Candidate changed during verification' }, []).summary).toBe('Candidate changed during verification')
   })
+  it('names the files a green run modified and keys the identity on the sorted paths', () => {
+    const mutated = (paths: string[], exitCode = 0) => ({ commands: [command('Done in 4.2s', exitCode)], reason: 'Verification commands modified …',
+      selfMutation: { files: paths.map(path => ({ repositoryId: 'app', path, change: 'modified' as const })), commands: [{ repositoryId: 'app', label: 'yarn test' }] } })
+    const first = describeFailure(mutated(['eslint-config/styled-component-mappings.js']), ['/w/app'])
+    expect(first.summary).toBe('verification commands modified 1 candidate file: eslint-config/styled-component-mappings.js')
+    expect(describeFailure(mutated(['eslint-config/styled-component-mappings.js']), ['/w/app']).signature).toBe(first.signature)
+    expect(describeFailure(mutated(['b.js', 'a.js']), []).signature).toBe(describeFailure(mutated(['a.js', 'b.js']), []).signature)
+    expect(describeFailure(mutated(['other.js']), []).signature).not.toBe(first.signature)
+    expect(describeFailure(mutated(['a.js'], 2), []).summary).toBe('yarn test exited 2: Done in 4.2s')
+  })
 })
 
 describe('divergence', () => {

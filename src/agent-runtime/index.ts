@@ -16,11 +16,12 @@ export { parseAgentObject } from './graph/artifacts.js'
 export { FileCheckpointSaver, type GraphStoreIO, type SerializedGraphStore } from './graph-checkpointer.js'
 export {
   ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, ROLE_INSTRUCTIONS_VERSION,
-  rolePromptDefaults, correctionInstructions, deepenInstructions, repairInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback, type RoleInstructionOptions,
+  rolePromptDefaults, correctionInstructions, deepenInstructions, repairInstructions, roleInstructions, type AdoptedOutput, type FrozenCriterion, type RoleFeedback, type RoleInstructionOptions,
 } from './prompts.js'
 
 export { OPENSPEC_VERSION, ROLE_SKILLS, type OpenSpecRoleContext } from './openspec.js'
 
 export * from './efficiency-summary.js'
-export { readVerificationEvidence, type VerificationEvidenceQuery } from '../pipeline/pipeline-state.js'
+export { readVerificationEvidence, type CandidateFileChange, type VerificationEvidenceQuery, type VerificationSelfMutation } from '../pipeline/pipeline-state.js'
+export { NONDETERMINISTIC_OUTPUT_CODE } from './verification-repair.js'
 export { runRecovery, recoveryRequestSchema, type RecoveryRequest } from './recovery.js'
