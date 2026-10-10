@@ -1,7 +1,7 @@
-import ts from 'typescript'
 import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { stripTypeScriptTypes } from 'node:module'
 import path from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -37,7 +37,7 @@ it('continues a real v4 request/checkpoint with its original executable without 
     if (process.env.SPECRAILS_EFFICIENCY_DESKTOP_ROOT) {
       const source = readFileSync(path.join(process.env.SPECRAILS_EFFICIENCY_DESKTOP_ROOT, 'server/agent-runtime-package.ts'), 'utf8')
       const helper = path.join(root, 'desktop-retainer.mjs')
-      writeFileSync(helper, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+      writeFileSync(helper, stripTypeScriptTypes(source))
       retainer = await import(pathToFileURL(helper).href)
       cli = retainer!.retainAgentRuntime(cli, contextFile)
     }

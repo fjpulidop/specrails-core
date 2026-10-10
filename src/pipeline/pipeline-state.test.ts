@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { stripTypeScriptTypes } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
@@ -480,7 +480,7 @@ describe('concurrent journal recovery', () => {
     write(path.join(dir, 'journal.lock'), JSON.stringify({ pid: dead.pid, token: 'dead-owner' }))
     const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
     const module = path.join(root, 'runtime.mjs')
-    write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+    write(module, stripTypeScriptTypes(source))
     const contextFile = path.join(root, 'context.json')
     write(contextFile, JSON.stringify(context))
     const barrier = path.join(root, 'start-workers')
@@ -545,7 +545,7 @@ describe('application environment evidence', () => {
     initializePipeline(context, change)
     const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
     const module = path.join(root, 'runtime.mjs')
-    write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+    write(module, stripTypeScriptTypes(source))
     const contextFile = path.join(root, 'context.json')
     write(contextFile, JSON.stringify(context))
     const sessionKeys = ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_EFFORT', 'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION']
