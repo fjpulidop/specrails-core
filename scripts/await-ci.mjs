@@ -14,7 +14,7 @@ export async function isCurrentMain({ repository, sha, token, fetchImpl = fetch 
   if (!/^[a-f0-9]{40}$/.test(ref.object?.sha ?? '')) throw new Error('GitHub returned no valid main SHA')
   return ref.object.sha === sha
 }
-export async function awaitCi({ repository, sha, token, fetchImpl = fetch, sleep = delay, maxAttempts = 180 }) {
+export async function awaitCi({ repository, sha, token, fetchImpl = fetch, sleep = delay, maxAttempts = 360 }) {
   if (!/^[\w.-]+\/[\w.-]+$/.test(repository ?? '') || !/^[a-f0-9]{40}$/.test(sha ?? '') || !token) throw new Error('Missing repository, SHA or read-only GitHub token')
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const response = await fetchImpl(`https://api.github.com/repos/${repository}/actions/workflows/ci.yml/runs?head_sha=${sha}&event=push&per_page=100`, {
