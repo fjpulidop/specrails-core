@@ -66,7 +66,12 @@ export interface VerificationReceipt {
   commands: CommandReceipt[]; notRunEvidenceIds?: string[]; completedAt: string; valid: boolean; reason?: string
   /** Repositories in scope that this receipt ran no command for (explicitly admitted by the request). */
   unverifiedRepositories?: string[]
+  /** Candidate files the verification commands themselves added, modified or removed (absent when the candidate did not move). */
+  selfMutation?: VerificationSelfMutation
 }
+export interface CandidateFileChange { repositoryId: string; path: string; change: 'added' | 'modified' | 'removed' }
+/** What verification wrote into its own candidate: the files (bounded, `omittedFiles` counts the rest) and the commands that executed in the run. */
+export interface VerificationSelfMutation { files: CandidateFileChange[]; omittedFiles?: number; commands: Array<{ repositoryId: string; label: string }> }
 export interface AcceptanceCriterion {
   specId: string
   criterionIndex: number
@@ -441,7 +446,42 @@ export function candidateManifest(state: CandidateScope): CandidateManifest {
   }))
   return { schemaVersion: 1, scopeHash: state.scopeHash, repositories: entries }
 }
-export function fingerprintCandidate(state: CandidateScope): string { return digest(canonical(candidateManifest(state).repositories)) }
+export function candidateManifestHash(manifest: CandidateManifest): string { return digest(canonical(manifest.repositories)) }
+export function fingerprintCandidate(state: CandidateScope): string { return candidateManifestHash(candidateManifest(state)) }
+/** Files that differ between two manifests of the same scope, sorted by repository, then path. */
+export function diffCandidateManifests(before: CandidateManifest, after: CandidateManifest): CandidateFileChange[] {
+  const changes: CandidateFileChange[] = []
+  for (const repositoryId of [...new Set([...before.repositories, ...after.repositories].map(repo => repo.id))].sort()) {
+    const old = new Map(before.repositories.find(repo => repo.id === repositoryId)?.files ?? [])
+    const current = new Map(after.repositories.find(repo => repo.id === repositoryId)?.files ?? [])
+    for (const file of [...new Set([...old.keys(), ...current.keys()])].sort()) {
+      const change = !old.has(file) ? 'added' : !current.has(file) ? 'removed' : old.get(file) !== current.get(file) ? 'modified' : undefined
+      if (change) changes.push({ repositoryId, path: file, change })
+    }
+  }
+  return changes
+}
+const SELF_MUTATION_FILE_LIMIT = 200
+/** `1 candidate file: a` / `4 candidate files: a, b, c and 1 more`, shared by receipts and failure summaries. */
+export function describeModifiedFiles(mutation: Pick<VerificationSelfMutation, 'files' | 'omittedFiles'>): string {
+  const total = mutation.files.length + (mutation.omittedFiles ?? 0), shown = mutation.files.slice(0, 3).map(file => file.path)
+  return `${total} candidate file${total === 1 ? '' : 's'}: ${shown.join(', ')}${total > shown.length ? ` and ${total - shown.length} more` : ''}`
+}
+/**
+ * A receipt whose candidate moved while it ran. During a verify step no role
+ * turn runs, so a manifest diff around the run attributes the change to the
+ * verification commands themselves (a lint pre-step regenerating a tracked
+ * file); without both manifests the generic reason stays.
+ */
+export function candidateChangedReceipt(receipt: VerificationReceipt, before: CandidateManifest | undefined, after: (() => CandidateManifest) | undefined): VerificationReceipt {
+  if (receipt.selfMutation) return { ...receipt, valid: false }
+  const files = before && after ? diffCandidateManifests(before, after()) : []
+  if (!files.length) return { ...receipt, valid: false, reason: 'Candidate changed during verification' }
+  const selfMutation: VerificationSelfMutation = { files: files.slice(0, SELF_MUTATION_FILE_LIMIT), ...(files.length > SELF_MUTATION_FILE_LIMIT ? { omittedFiles: files.length - SELF_MUTATION_FILE_LIMIT } : {}),
+    commands: receipt.commands.filter(command => command.disposition !== 'reused' && command.disposition !== 'not-run').map(command => ({ repositoryId: command.repositoryId, label: command.label ?? command.key ?? [command.command, ...command.args].join(' ').slice(0, 256) })) }
+  const failed = receipt.commands.some(command => command.exitCode !== 0)
+  return { ...receipt, valid: false, reason: `${failed ? 'A verification command failed. ' : ''}Verification commands modified ${describeModifiedFiles(selfMutation)}`, selfMutation }
+}
 function activeArtifactPath(state: PipelineState): string { return state.archivePath ?? path.join(state.context.artifactRoot, 'openspec', 'changes', state.change) }
 function artifactFingerprint(state: PipelineState): string {
   const root = activeArtifactPath(state)
@@ -1000,6 +1040,9 @@ export interface VerificationRunOptions {
 /** Persistence and candidate ownership are bound by the host, never inferred from a journal path. */
 export interface VerificationEvidencePort {
   candidateHash: string
+  /** The manifest `candidateHash` was computed from; with `currentManifest`, an invalidated receipt names the files verification modified. */
+  candidateManifest?: CandidateManifest
+  currentManifest?(): CandidateManifest
   scopeHash: string
   planHash?: string
   previous?: VerificationReceipt
@@ -1025,18 +1068,18 @@ export async function verifyPipeline(contextInput: unknown, raw: unknown, log: (
   })
   const identityProblems = planReasons(state, typeof request.planHash === 'string' ? request.planHash : undefined)
   if (identityProblems.length) fail(identityProblems.join('; '))
-  const candidateHash = fingerprintCandidate(state)
+  const manifest = candidateManifest(state), candidateHash = candidateManifestHash(manifest)
   const isCurrent = (): boolean => {
     const current = readState(context)
     return fingerprintCandidate(current) === candidateHash && current.revision === state.revision && planReasons(current, request.planHash as string | undefined).length === 0
   }
   return executeVerification(context, raw, {
-    candidateHash, scopeHash: state.scopeHash, planHash: state.verificationPlan?.hash, previous,
+    candidateHash, candidateManifest: manifest, currentManifest: () => candidateManifest(readState(context)), scopeHash: state.scopeHash, planHash: state.verificationPlan?.hash, previous,
     isCurrent: () => locked(context, isCurrent),
     persistCheck: (result, planHash, candidate) => persistCheckEvidence(context, result, planHash, candidate),
     commitReceipt: receipt => locked(context, () => {
       const current = readState(context)
-      if (!isCurrent()) receipt = { ...receipt, valid: false, reason: 'Candidate changed during verification' }
+      if (!isCurrent()) receipt = candidateChangedReceipt(receipt, manifest, () => candidateManifest(current))
       atomicJson(safeChild(pipelineStateDirectory(context), 'receipts/' + receipt.id + '.json'), receipt)
       if (receipt.kind === 'full' || !receipt.valid || !current.verification) current.verification = receipt
       else if (previous?.valid && previous.candidateHash === candidateHash) current.verification = previous
@@ -1100,12 +1143,13 @@ export async function executeVerification(contextInput: unknown, raw: unknown, e
     notRunEvidenceIds.push(id)
   }
   const changed = !evidence.isCurrent()
-  const receipt = await evidence.commitReceipt({
+  const draft: VerificationReceipt = {
     id: randomUUID(), ...(evidence.planHash ? { planHash: evidence.planHash } : {}), kind: request.kind as 'full' | 'scoped', scopeHash: evidence.scopeHash, candidateHash, commands: results, ...(notRunEvidenceIds.length ? { notRunEvidenceIds } : {}),
-    completedAt: new Date().toISOString(), valid: !changed && !signal?.aborted && (options.deadline === undefined || Date.now() <= options.deadline) && results.length === commands.length && results.every((result) => result.exitCode === 0),
-    ...(changed ? { reason: 'Candidate changed during verification' } : results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
+    completedAt: new Date().toISOString(), valid: !signal?.aborted && (options.deadline === undefined || Date.now() <= options.deadline) && results.length === commands.length && results.every((result) => result.exitCode === 0),
+    ...(results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
     ...(unverifiedRepositories.length ? { unverifiedRepositories } : {}),
-  })
+  }
+  const receipt = await evidence.commitReceipt(changed ? candidateChangedReceipt(draft, evidence.candidateManifest, evidence.currentManifest && (() => evidence.currentManifest!())) : draft)
   if (!receipt.valid) for (const result of results) {
     await options.onEvidence?.('check-invalidated', { executionId: result.evidenceId ?? '', repositoryId: result.repositoryId, checkId: result.key ?? '', label: result.label ?? result.command, reason: receipt.reason ?? 'Verification did not complete successfully' })
   }

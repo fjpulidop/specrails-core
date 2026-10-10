@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fingerprintCandidate, pipelineStateDirectory, validatePipelineContext, type CommandReceipt, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
+import { candidateManifest, fingerprintCandidate, pipelineStateDirectory, validatePipelineContext, type CommandReceipt, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
 import { unknownUsage, type AgentRequest, type RuntimeConfig } from '../../executor-types.js'
 import type { ProviderInvocation } from '../../efficiency-types.js'
 import { ExecutorRegistry } from '../../executors.js'
@@ -63,7 +63,7 @@ function fixture() {
     settleResult: (ctx, key, value, invocation) => { invocations.push(invocation); notes.set(ctx.frame.attemptId + ':' + key, structuredClone(value)) },
     executionSnapshot: () => ({ candidate: candidate(), verified: execution.state.$verified }), artifactDirectory: () => path.join(pipelineStateDirectory(context), 'node-artifacts'),
     bindImplementation: (execution, change) => deriveImplementationBinding(context, execution, change),
-    verification: () => { const hash = candidate().hash; return { candidateHash: hash, scopeHash: 'scope', isCurrent: () => candidate().hash === hash,
+    verification: () => { const hash = candidate().hash; return { candidateHash: hash, candidateManifest: candidateManifest(scope), currentManifest: () => candidateManifest(scope), scopeHash: 'scope', isCurrent: () => candidate().hash === hash,
       persistCheck: value => { evidence.push(structuredClone(value)) }, commitReceipt: value => { receipts.push(structuredClone(value)); return value } } },
   }
   const pieces = createPieceRegistry(deps)
@@ -177,6 +177,132 @@ describe('engine v2 environment repair', () => {
       if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress' })
       Object.assign(f.execution.state.$vars, result.vars)
     }
+  })
+})
+
+describe('verification repair of version drift', () => {
+  /** busuu-courses: lint fails on an untouched file because node_modules holds 5.23.0 against ^5.24.0. */
+  const drifted = (f: ReturnType<typeof fixture>) => {
+    writeFileSync(path.join(f.root, 'package.json'), JSON.stringify({ dependencies: { '@busuu/experiments': '^5.24.0' } }))
+    mkdirSync(path.join(f.root, 'node_modules', '@busuu', 'experiments'), { recursive: true })
+    const manifest = path.join(f.root, 'node_modules', '@busuu', 'experiments', 'package.json')
+    writeFileSync(manifest, JSON.stringify({ version: '5.23.0' }))
+    writeFileSync(path.join(f.root, 'lint.cjs'), `const v=require(${JSON.stringify(manifest)}).version;if(v!=='5.24.1'){process.stderr.write('src/untouched.ts\\n  3:7  error  Unsafe call of an any typed value  @typescript-eslint/no-unsafe-call');process.exitCode=1}`)
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['lint.cjs'] }]
+    return manifest
+  }
+
+  it('installs once, verifies again and records the drifted packages when lint fails on a stale package', async () => {
+    const f = fixture()
+    const manifest = drifted(f)
+    installs.handler = (command, args) => { expect([command, ...args]).toEqual(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error']); writeFileSync(manifest, JSON.stringify({ version: '5.24.1' })); return { status: 0, stdout: '', stderr: '' } }
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'pass', output: { valid: true, environmentRepair: { attempted: true, reverified: true, installs: [{ command: 'npm', ok: true }],
+      drift: [{ root: '.', name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] } } })
+    expect(installs.calls).toHaveLength(1)
+    expect(f.receipts.map(receipt => receipt.valid)).toEqual([false, true])
+    expect(f.progressText().some(line => line.includes('@busuu/experiments 5.23.0 does not satisfy ^5.24.0'))).toBe(true)
+  })
+
+  it('does not install twice when the lockfile keeps the drifted version, and says so', async () => {
+    const f = fixture()
+    drifted(f)
+    installs.handler = () => ({ status: 0, stdout: '', stderr: '' })
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'fail', output: { valid: false, environmentRepair: { reverified: true, drift: [{ name: '@busuu/experiments' }] } } })
+    expect(installs.calls).toHaveLength(1)
+    expect(f.receipts).toHaveLength(2)
+    expect(f.progressText().some(line => line.includes('the lockfile still resolves the drifted version'))).toBe(true)
+  })
+
+  it('changes nothing with the environment-repair guardrail off or without drift', async () => {
+    const off = fixture()
+    off.deps.config.guardrails = { 'environment-repair': false }
+    drifted(off)
+    const unrepaired = await off.run({ commands: 'configured', hostBlockers: true })
+    expect(unrepaired).toMatchObject({ outcome: 'fail' })
+    expect(unrepaired.output).not.toHaveProperty('environmentRepair')
+    expect(installs.calls).toEqual([])
+    const healthy = fixture()
+    const manifest = drifted(healthy)
+    writeFileSync(manifest, JSON.stringify({ version: '5.24.0' }))
+    const plain = await healthy.run({ commands: 'configured', hostBlockers: true })
+    expect(plain).toMatchObject({ outcome: 'fail' })
+    expect(plain.output).not.toHaveProperty('environmentRepair')
+    expect(installs.calls).toEqual([])
+  })
+})
+
+describe('verification output adoption', () => {
+  /** A check that exits 0 after writing `gen/mappings.js`: the same content every run (idempotent) or a fresh one (timestamp). */
+  const generator = (f: ReturnType<typeof fixture>, stable: boolean, exitCode = 0) => {
+    writeFileSync(path.join(f.root, 'lint.cjs'), `const fs=require('fs');fs.mkdirSync('gen',{recursive:true});fs.writeFileSync('gen/mappings.js',${stable ? "'module.exports = {}'" : 'String(Date.now()+Math.random())'});process.exitCode=${exitCode}`)
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['lint.cjs'], label: 'yarn test' }]
+  }
+
+  it('adopts deterministic output: one more run on the mutated candidate passes and certifies it', async () => {
+    const f = fixture()
+    generator(f, true)
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'pass', receipt: { valid: true }, output: { valid: true, noProgressCount: 0, adoptedOutputs: [{ repositoryId: 'repo', path: 'gen/mappings.js', change: 'added' }] } })
+    expect(f.receipts.map(receipt => receipt.valid)).toEqual([false, true])
+    expect(f.receipts[0].selfMutation).toMatchObject({ files: [{ path: 'gen/mappings.js' }], commands: [{ repositoryId: 'repo', label: 'yarn test' }] })
+    expect(result.verified).toMatchObject({ receiptId: f.receipts[1].id, candidateHash: f.receipts[1].candidateHash })
+    expect((result.output as { candidateHash: string }).candidateHash).toBe(f.receipts[1].candidateHash)
+    expect(f.progressText()).toContain('[verification] adopted 1 generated file(s): gen/mappings.js')
+    // Adopted output stays adopted on later passes that no longer mutate, so no role is invited to revert it.
+    Object.assign(f.execution.state.$vars, result.vars)
+    const later = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(later).toMatchObject({ outcome: 'pass', output: { adoptedOutputs: [{ path: 'gen/mappings.js' }] } })
+    expect(later.output).not.toHaveProperty('selfMutation')
+    expect(f.receipts).toHaveLength(3)
+  })
+
+  it('returns the typed blocker when the re-run modifies the candidate again, with and without host blockers', async () => {
+    const f = fixture()
+    generator(f, false)
+    const blocked = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(blocked).toMatchObject({ outcome: 'blocked', status: 'blocked', verified: null, error: { code: 'verification_nondeterministic_output' },
+      output: { valid: false, selfMutation: { files: [{ path: 'gen/mappings.js', change: 'modified' }] },
+        blocker: { kind: 'nondeterministic-output', command: process.execPath, args: ['lint.cjs'], cwd: '.', requiredAction: 'Commit the generated output on the base branch or make the generator idempotent, then retry the run.' } } })
+    expect((blocked.output as { blocker: { reason: string } }).blocker.reason).toContain('gen/mappings.js')
+    expect(blocked.output).not.toHaveProperty('adoptedOutputs')
+    expect(f.receipts).toHaveLength(2)
+    const failed = await f.run({ commands: 'configured' })
+    expect(failed).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_nondeterministic_output' }, output: { blocker: { kind: 'nondeterministic-output' } } })
+    expect(f.receipts).toHaveLength(4)
+  })
+
+  it('blocks without a re-run when the verification-output-adoption guardrail is off', async () => {
+    const f = fixture()
+    f.deps.config.guardrails = { 'verification-output-adoption': false }
+    generator(f, true)
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'blocked', error: { code: 'verification_nondeterministic_output' }, output: { blocker: { kind: 'nondeterministic-output' } } })
+    expect((result.output as { blocker: { reason: string } }).blocker.reason).toContain('verification-output-adoption guardrail')
+    expect(f.receipts).toHaveLength(1)
+  })
+
+  it('never masks a failing command: no adoption re-run, the fixer gets the failure and the mutation stays recorded', async () => {
+    const f = fixture()
+    generator(f, true, 1)
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'fail', verified: null, output: { valid: false, noProgressCount: 1, selfMutation: { files: [{ path: 'gen/mappings.js' }] }, commands: [{ exitCode: 1 }] } })
+    expect((result.output as { reason: string }).reason).toMatch(/^A verification command failed\. Verification commands modified 1 candidate file: gen\/mappings\.js/)
+    expect(result).not.toHaveProperty('status')
+    expect(result.output).not.toHaveProperty('blocker')
+    expect(result.output).not.toHaveProperty('adoptedOutputs')
+    expect(f.receipts).toHaveLength(1)
+  })
+
+  it('leaves a run without mutation exactly as before', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'console.log("ok")'] }]
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'pass', output: { valid: true } })
+    for (const field of ['selfMutation', 'adoptedOutputs', 'blocker']) expect(result.output).not.toHaveProperty(field)
+    expect(f.receipts).toHaveLength(1)
+    expect(f.progressText().some(line => line.startsWith('[verification]'))).toBe(false)
   })
 })
 

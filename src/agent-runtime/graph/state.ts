@@ -38,6 +38,10 @@ export interface VerificationRecord {
   incompleteTasks?: string[]
   unverifiedRepositories: string[]
   commands: Array<{ evidenceId?: string; repositoryId: string; command: string; args: string[]; cwd?: string; exitCode: number | null; failureSummary?: string[]; output: string }>
+  /** Candidate files the verification commands modified in this run (receipt `selfMutation`). */
+  selfMutation?: import('../../pipeline/pipeline-state.js').VerificationSelfMutation
+  /** Files verification regenerated that the host kept in the candidate; roles must not revert them. Sticky for the run. */
+  adoptedOutputs?: import('../../pipeline/pipeline-state.js').CandidateFileChange[]
 }
 export interface ReviewRecord {
   sessionId?: string

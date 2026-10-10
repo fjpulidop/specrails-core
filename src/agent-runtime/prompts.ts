@@ -38,7 +38,10 @@ export interface RoleInstructionOptions {
   planning?: 'full' | 'proportional'
   /** The change so far, measured by Core from git against the run's base (rendered lines). */
   changeSet?: string[]
+  /** Files the host verification regenerated and kept in the candidate; merged with `feedback.verification.adoptedOutputs`. */
+  adoptedOutputs?: AdoptedOutput[]
 }
+export interface AdoptedOutput { repositoryId?: string; path: string }
 
 const stringArray = { type: 'array', items: { type: 'string' } }
 export const ARCHITECT_OUTPUT_SCHEMA: Record<string, unknown> = {
@@ -214,7 +217,7 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
 }
 
 /** The FIXER stance: the developer role on a correction round — repair the exact failure, never re-implement. Shares the developer's verification tail and output contract. */
-function fixerSection(verification: VerificationCommand[] | undefined, definition?: string): string[] {
+function fixerSection(verification: VerificationCommand[] | undefined, definition?: string, adopted = false): string[] {
   const lines = definition === undefined ? [
     '## Your task: correction',
     '',
@@ -223,7 +226,7 @@ function fixerSection(verification: VerificationCommand[] | undefined, definitio
     '',
     '1. Read the host failure facts first: command, cwd, original exit code, failureSummary, expected assertion and application file/line. If the excerpt is truncated, use read_verification_evidence with the command\'s evidenceId for complete stdout/stderr and source. Read the failing test and the implementation it exercises.',
     '2. Reproduce the failure with the narrowest test command. Compare the assertion, intended behavior, current implementation and actual diff. An unchanged file or a pre-existing test does not prove the failure is unrelated: changes can break existing tests indirectly. Classify the cause as an implementation defect, a test compatibility assumption, or an external/scope blocker. A claim that the failure existed before this change needs baseline or historical evidence; otherwise state that it is unconfirmed.',
-    '3. Patch exactly the files and lines the failure names; touch neighbouring code only when the failure cannot be fixed otherwise. Rewrite a file only when a patch cannot express the change. A correction never grows the blast radius: no new files, dependencies, renames, reformatting or clean-ups; after your turn the diff must be the previous change plus the minimal repair.',
+    '3. Patch exactly the files and lines the failure names; touch neighbouring code only when the failure cannot be fixed otherwise. Rewrite a file only when a patch cannot express the change. A correction never grows the blast radius: no new files, dependencies, renames, reformatting or clean-ups; after your turn the diff must be the previous change plus the minimal repair.' + (adopted ? ' Never revert the host-adopted verification output listed below.' : ''),
     '4. Fix the cause, not the symptom: a repair that satisfies the assertion while leaving the defect, or that special-cases the test input, is not a fix. Fix incorrect implementation behavior. A failing mandatory host test inside the admitted repository/workspace may also receive a minimal compatibility repair when you prove that its expected behavior is unchanged. For example, a source assertion broken only by formatting may tolerate whitespace while retaining every required operand and guard. This applies even to a pre-existing test outside the current changed-file list. Explain the original expectation and why the repair still rejects the prohibited behavior. Never weaken an assertion, delete or skip a test, hardcode success, change acceptance criteria, add dependencies or widen the repair beyond the diagnosed failure.',
     '5. A test file the host reports as never executed must be wired into the repository\'s test command (the test script or runner configuration) and then made to pass.',
     '6. Confirm the repair with the focused test command and a negative case for any repaired assertion: removing a required safety guard or returning the wrong value must still fail. Preserve the original test exit status; never pipe test execution through grep/head or another command that masks it. Capture stdout/stderr in a temporary log and inspect that log separately. Core runs the complete verification plan after your turn.',
@@ -232,7 +235,7 @@ function fixerSection(verification: VerificationCommand[] | undefined, definitio
   ] : [definition, '']
   return [...lines, ...developerTail(verification)]
 }
-function developerSection(verification: VerificationCommand[] | undefined, corrections: boolean, definition?: string): string[] {
+function developerSection(verification: VerificationCommand[] | undefined, corrections: boolean, definition?: string, adopted = false): string[] {
   const lines = definition === undefined ? [
     '## Your task: implementation',
     '',
@@ -245,7 +248,7 @@ function developerSection(verification: VerificationCommand[] | undefined, corre
     '2. Work task by task in order. Use test-driven development: write or extend the test first, make it pass with the smallest correct change, then tidy up. Run only focused tests that cover what you touched while iterating. Core owns the complete verification plan and runs it after your turn; do not duplicate that full run. Fix the precise failures Core returns on a correction pass.',
     '3. Immediately after completing each task, mark it `- [x]` in `tasks.md`; do not postpone all progress updates until the end of the phase. Only mark tasks whose code and tests are complete. Change nothing else in `tasks.md`, and never edit `proposal.md`, `design.md` or the specs: those documents are frozen, and editing them invalidates the run. If a task cannot be completed, leave it `- [ ]` and list it under `incomplete` with the reason.',
     '4. Keep the implementation consistent with the repository: naming, error handling, import style, formatting and existing utilities. Do not add dependencies unless the design requires them. Change only what the tasks require: the diff should contain the requested change and its tests, nothing else. Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. When a required tool is missing, install it through the project\'s documented command or report it as a blocker.',
-    'Blast radius: the files design.md and tasks.md name are your boundary. Touch a file outside it only when a task cannot be completed otherwise; keep that edit to the strict need and explain it in summary. Inside a file, change only the lines the task needs: no reformatting, import reordering, renames, type widening, comment rewrites or "while I am here" fixes. Leave an unrelated problem alone and mention it in summary. Keep public signatures, exported contracts, schemas and persisted formats as the design states. Never delete or rewrite a test a task does not name, and never regenerate lockfiles, snapshots or generated files unless the task\'s own change requires it.',
+    'Blast radius: the files design.md and tasks.md name are your boundary. Touch a file outside it only when a task cannot be completed otherwise; keep that edit to the strict need and explain it in summary. Inside a file, change only the lines the task needs: no reformatting, import reordering, renames, type widening, comment rewrites or "while I am here" fixes. Leave an unrelated problem alone and mention it in summary. Keep public signatures, exported contracts, schemas and persisted formats as the design states. Never delete or rewrite a test a task does not name, and never regenerate lockfiles, snapshots or generated files unless the task\'s own change requires it' + (adopted ? ' (the host-adopted verification output listed below is exempt: never revert it).' : '.'),
     'Quality bar: write code a senior maintainer would merge unchanged. Intention-revealing names from the domain vocabulary; small functions that do one thing at one level of abstraction; guard clauses over nested conditionals; no boolean flag parameters, magic values or hidden side effects; immutability by default and explicit types at module boundaries; parse and validate at the boundary, trust typed values inside; every error path handled the way neighbouring code handles it (fail fast at the boundary, never swallow, errors carry context); domain logic out of adapters and dependencies pointing inward as the repository already does; comments explain why, never what; no dead code, commented-out code, debug output, TODO placeholders or speculative options.',
     'Engineering judgement: understand before you change and never program by coincidence (if you cannot explain why it works, you are not done); never delete or bypass a guard, branch or workaround you cannot explain. Handle what tests rarely reach: empty, huge and malformed inputs, boundary values, time zones and Unicode, partial failures, retries with idempotency, races, cancellation, timeouts and resource cleanup (handles, listeners, subscriptions, temp files). Security hygiene is non-negotiable: parameterized queries, escaped output, no secrets or personal data in code or logs, least privilege, authorization where the repository enforces it. Logs and metrics follow the repository\'s conventions; migrations and persisted-format changes stay additive and backward compatible. Verify every API, signature and option against the source or installed types, never from memory. Do the simplest thing that fully works, then refactor only inside the blast radius. Tests are the specification: one behavior per test (arrange, act, assert) covering inputs, outputs, side effects and errors; no logic in tests; mock only at real boundaries; deterministic; failing without the change; in the repository\'s existing style. A task is done only when its code, tests and every artifact it makes stale (localized strings in every shipped locale, documentation, schemas, configuration examples) are updated and its focused checks pass.',
     'Investigation budget: consult the local reference patterns in design.md and equivalent application tests before framework internals or node_modules. After three unsuccessful experiments on the same failure, stop repeating commands: state the hypothesis, evidence and next discriminating experiment, then change approach. If three further experiments add no evidence, report the specific blocker under incomplete rather than consuming the remaining turn budget. Never weaken assertions or change acceptance criteria to make a test pass.',
@@ -291,7 +294,7 @@ function developerTail(verification: VerificationCommand[] | undefined): string[
   return lines
 }
 
-function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | undefined, definition?: string): string[] {
+function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | undefined, definition?: string, adopted = false): string[] {
   const aspects = REVIEW_ASPECTS.map(name => `\`${name}\` ≥ ${policy.aspects[name]}`).join(', ')
   const lines = definition === undefined ? [
     '## Your task: review',
@@ -303,7 +306,7 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '1. Spec completeness: every requirement in the change specs and every acceptance criterion is implemented. Cross-reference each one against the code.',
     '2. Task completion: every task in `tasks.md` is `- [x]` and is backed by real code and tests, not just a ticked box.',
     '3. Test quality: new behavior has tests that assert on behavior, cover error paths, and would fail without the change. Missing tests for production code, tests without assertions and tests that restate the implementation are blocking issues.',
-    '4. Blast radius: compare the change set below with the files design.md and tasks.md name. A file the plan did not name, a hunk no task explains (reformatting, import reordering, renames, comment rewrites, type widening, deleted or rewritten tests outside the tasks, regenerated lockfiles, snapshots or generated files, new dependencies, widened public signatures) or an edit to a shared module without a stated reason is an issue to REVERT, not to polish: name the file and the hunk. Trace every criterion to the narrowest code that satisfies it; code beyond that is suspect. Unjustified blast radius lowers `architectural_alignment` and `pattern_adherence`.',
+    '4. Blast radius: compare the change set below with the files design.md and tasks.md name. A file the plan did not name, a hunk no task explains (reformatting, import reordering, renames, comment rewrites, type widening, deleted or rewritten tests outside the tasks, regenerated lockfiles, snapshots or generated files' + (adopted ? ' other than the host-adopted verification output listed below' : '') + ', new dependencies, widened public signatures) or an edit to a shared module without a stated reason is an issue to REVERT, not to polish: name the file and the hunk. Trace every criterion to the narrowest code that satisfies it; code beyond that is suspect. Unjustified blast radius lowers `architectural_alignment` and `pattern_adherence`.',
     '5. Correctness and conventions: types and signatures fit the codebase, patterns match the repository, imports and error handling are consistent, no dead code, debug output or placeholders. Architecture: the change respects the dependency direction and boundaries the repository already follows; domain logic placed in an adapter, an adapter imported from the domain, a bypassed existing port or helper, a duplicated utility that already exists, or a new abstraction with one implementation and no variation point is an issue when it breaks a convention the code enforces and a finding otherwise. Platform correctness as far as the change touches it: web state, accessibility, loading and error states; mobile lifecycle, offline and permissions; backend transactions, idempotency and validation at the boundary.',
     '6. Security: no secrets, injection, path traversal, unsafe deserialization, missing authorization or new attack surface. Scale scrutiny to what the change touches.',
     '7. Performance: no obvious N+1, unbounded loops or blocking work on hot paths introduced by the change.',
@@ -369,6 +372,28 @@ function changeSetSection(role: AgentRole, stance: 'fixer' | undefined, changeSe
 function discardedSection(developer: DeveloperRecord | null | undefined): string[] {
   if (!developer?.discarded?.length) return []
   return ['## Edits Core undid', '', 'The previous turn edited files outside the repository scope; Core restored them because they are not part of this change. Do not redo them:', ...developer.discarded.slice(0, 50).map(file => `- \`${file}\``), '']
+}
+
+/** Host-adopted verification output from the options and the verification feedback, deduplicated and bounded. */
+function adoptedOutputs(feedback: RoleFeedback | undefined, extra: AdoptedOutput[] | undefined): AdoptedOutput[] {
+  const raw = record(feedback?.verification)?.adoptedOutputs
+  const listed = [...(extra ?? []), ...(Array.isArray(raw) ? raw : [])].map(record).filter((item): item is Record<string, unknown> => typeof item?.path === 'string' && item.path.length > 0)
+  return [...new Map(listed.map(item => [String(item.repositoryId ?? '') + '\0' + String(item.path), { ...(typeof item.repositoryId === 'string' ? { repositoryId: item.repositoryId } : {}), path: String(item.path).slice(0, 512) }])).values()].slice(0, 50)
+}
+/** Files the verification commands regenerated themselves: reverting them only makes the next verification regenerate them. */
+function adoptedOutputSection(role: AgentRole, adopted: AdoptedOutput[]): string[] {
+  if (!adopted.length || (role !== 'reviewer' && role !== 'developer')) return []
+  return [
+    '## Host-adopted verification output',
+    '',
+    'The host verification commands regenerated these files themselves; the host kept them in the candidate and verified it again, so they belong to the change. They are exempt from the blast-radius rule on regenerated generated files:',
+    ...adopted.map(file => `- ${file.repositoryId ? '`' + file.repositoryId + '`: ' : ''}\`${file.path}\``),
+    '',
+    role === 'reviewer'
+      ? 'Never ask for one of them to be reverted to the base version. You may still raise an issue when an adopted file\'s content is wrong for this change.'
+      : 'Never revert them to the base version (no checkout, restore or deletion): the next verification would regenerate them. Edit one only when a reported failure lies in its content.',
+    '',
+  ]
 }
 
 function feedbackSection(feedback: RoleFeedback | undefined, focused = false): string[] {
@@ -468,8 +493,9 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
   }
   const feedback = feedbackSection(options.feedback)
   const corrections = role === 'developer' && feedback.length > 0
+  const adopted = role === 'architect' ? [] : adoptedOutputs(options.feedback, options.adoptedOutputs)
   const sections = [
-    ...(role === 'architect' ? architectSection(options.verification, options.definition) : role === 'developer' ? (options.stance === 'fixer' ? fixerSection(options.verification, options.definition) : developerSection(options.verification, corrections, options.definition)) : reviewerSection(options.policy ?? DEFAULT_REVIEW_POLICY, options.criteria, options.definition)),
+    ...(role === 'architect' ? architectSection(options.verification, options.definition) : role === 'developer' ? (options.stance === 'fixer' ? fixerSection(options.verification, options.definition, adopted.length > 0) : developerSection(options.verification, corrections, options.definition, adopted.length > 0)) : reviewerSection(options.policy ?? DEFAULT_REVIEW_POLICY, options.criteria, options.definition, adopted.length > 0)),
     ...boundarySection(role),
     ...conventionsSection(),
     ...scopeSection(context, change),
@@ -479,6 +505,7 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...changeSetSection(role, options.stance, options.changeSet),
     ...(role === 'developer' ? discardedSection(options.developer) : []),
     ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
+    ...adoptedOutputSection(role, adopted),
     ...feedback,
   ]
   return sections.join('\n').trimEnd() + '\n'
@@ -490,7 +517,7 @@ export function correctionInstructions(role: AgentRole, feedback: RoleFeedback |
   const instruction = extra.focusedEvidence
     ? `Continue the ${role} role with unchanged permissions and obligations. Fix the feedback, preserve correct work, finish all tasks and mark them \`- [x]\`. Return only the same JSON summary (summary, files, tests, verification, incomplete).`
     : 'Continue the same ' + role + ' role in this session. Address the feedback below precisely, keep the already-correct work, finish every remaining task, mark completed tasks `- [x]` in `tasks.md`, and finish with the same JSON summary object as before (summary, files, tests, verification, incomplete), with nothing after it.'
-  const lines = [instruction, '', ...(role === 'developer' ? [...changeSetSection(role, undefined, extra.changeSet), ...discardedSection(extra.developer)] : []), ...feedbackSection(feedback, extra.focusedEvidence)]
+  const lines = [instruction, '', ...(role === 'developer' ? [...changeSetSection(role, undefined, extra.changeSet), ...discardedSection(extra.developer)] : []), ...adoptedOutputSection(role, adoptedOutputs(feedback, undefined)), ...feedbackSection(feedback, extra.focusedEvidence)]
   return lines.join('\n').trimEnd() + '\n'
 }
 

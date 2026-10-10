@@ -2,15 +2,15 @@ import { admitVerificationProposals } from '../../verification-proposals.js'
 import { stripVTControlCharacters } from 'node:util'
 import { contentDigest } from '../canonical-json.js'
 import { advisoryMemory } from './project-memory.js'
-import { executeVerification, validateVerificationRequest, type CommandReceipt, type VerificationCommand, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
+import { describeModifiedFiles, executeVerification, validateVerificationRequest, type CandidateFileChange, type CommandReceipt, type VerificationCommand, type VerificationReceipt } from '../../../pipeline/pipeline-state.js'
 import { withScopeDefault } from '../../change-scope.js'
 import { verificationDiagnosticPriority, verificationFailureSummary } from '../../verification-diagnostics.js'
 import type { HostBlocker, JsonObject, Piece, PieceExecutionContext, PieceResult, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
-import { isEnvironmentFailure } from '../../compact/environment.js'
+import { describeDrift } from '../../compact/environment.js'
 import { guardrailEnabled } from '../../guardrails.js'
-import { checkoutRelative, preconditionBlock, repairEnvironment } from '../../verification-repair.js'
+import { NONDETERMINISTIC_OUTPUT_CODE, adoptedOutputNote, checkoutRelative, environmentFailure, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../../verification-repair.js'
 
 /** Keep real subprocess diagnostics in committed outputs for subsequent agents.
  * The full command evidence remains in the receipt; prioritize failed checks
@@ -170,16 +170,38 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       // fresh worktree has no node_modules whatever wrote the code. Install
       // once where the failing command runs and verify again; only the second
       // receipt becomes feedback.
-      let environmentRepair: { attempted: true; installs: Array<{ command: string; args: string[]; root: string; ok: boolean; detail: string }>; reverified: boolean } | undefined
-      if (!blocker && !receipt.valid && guardrailEnabled(deps.config.guardrails, 'environment-repair') && receipt.commands.some(command => isEnvironmentFailure(command.exitCode, command.output))) {
+      // Installed versions outside their declared ranges (a stale warm-linked
+      // tree) count as environmental whatever the failing output says.
+      let environmentRepair: { attempted: true; installs: Array<{ command: string; args: string[]; root: string; ok: boolean; detail: string }>; reverified: boolean; drift?: Array<{ root: string; name: string; declared: string; installed: string }> } | undefined
+      const environment = !blocker && !receipt.valid && guardrailEnabled(deps.config.guardrails, 'environment-repair') ? environmentFailure(deps.context, receipt) : undefined
+      if (environment) {
+        const drift = environment.drift.flatMap(item => item.drift.map(entry => ({ root: checkoutRelative(deps.context, item.root), ...entry }))).slice(0, 20)
+        if (drift.length) progress(`[environment] Installed dependencies do not satisfy their declared ranges (${describeDrift(drift)}); the host reinstalls them before judging the failure.`)
         const repair = repairEnvironment(deps.context, receipt, deps.config.guardrails, progress)
-        environmentRepair = { attempted: true, reverified: false, installs: repair.installs.map(install => ({ command: install.command, args: install.args, root: checkoutRelative(deps.context, install.root), ok: install.ok, detail: boundedText(install.detail, 1_000) })) }
+        environmentRepair = { attempted: true, reverified: false, installs: repair.installs.map(install => ({ command: install.command, args: install.args, root: checkoutRelative(deps.context, install.root), ok: install.ok, detail: boundedText(install.detail, 1_000) })), ...(drift.length ? { drift } : {}) }
         if (repair.refused) blocker = repair.refused
         else if (repair.installs.some(install => install.ok)) {
           progress('[environment] Verification failed on the environment (missing dependencies or tools); the host installed them and is verifying again.')
           receipt = await run(request, concurrency)
           environmentRepair.reverified = true
           blocker = receipt.valid ? undefined : preconditionBlock(deps.context, receipt)
+        }
+      }
+      // Verification that rewrote candidate files itself (a lint pre-step
+      // regenerating a tracked mapping) is not a code failure: reverting the
+      // file only makes the next run regenerate it. Keep it in the candidate
+      // and verify once more; output that changes again is the repository's
+      // or operator's to fix, never a correction round.
+      let adopted: CandidateFileChange[] | undefined, nondeterministic: HostBlocker | undefined
+      if (!blocker && selfMutationOnly(receipt) && !context.signal.aborted && (verificationDeadline(deps, context) ?? Infinity) > Date.now()) {
+        const first = receipt.selfMutation!
+        if (!guardrailEnabled(deps.config.guardrails, 'verification-output-adoption')) nondeterministic = nondeterministicOutputBlocker(deps.context, receipt, false)
+        else {
+          progress(`[verification] Verification commands modified ${describeModifiedFiles(first)}; keeping them in the candidate and verifying once more.`)
+          receipt = await run(request, concurrency)
+          if (receipt.valid) { adopted = first.files; progress(adoptedOutputNote(first)) }
+          else if (selfMutationOnly(receipt)) nondeterministic = nondeterministicOutputBlocker(deps.context, receipt, true)
+          else blocker = preconditionBlock(deps.context, receipt)
         }
       }
       await advisoryMemory(context, () => deps.memory(context).put(['verification', 'known-commands'], memoryKey, {
@@ -192,13 +214,18 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       const progressKey = 'verification-' + contentDigest(context.frame.nodePath).slice(0, 20)
       const fingerprint = contentDigest(json({ candidateHash: identity.candidateHash,
         failures: receipt.commands.filter(command => command.exitCode !== 0).map(command => ({ repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, exitCode: command.exitCode })) }))
-      const previous = context.state.$vars[progressKey] as { fingerprint?: string; count?: number } | undefined
+      const previous = context.state.$vars[progressKey] as { fingerprint?: string; count?: number; adopted?: CandidateFileChange[] } | undefined
+      // Adopted output stays adopted for the rest of the run: a later pass that no longer mutates must not invite its revert.
+      const adoptedOutputs = [...new Map([...(Array.isArray(previous?.adopted) ? previous.adopted : []), ...(adopted ?? [])].map(file => [file.repositoryId + '\0' + file.path, file])).values()].slice(0, 200)
       const count = receipt.valid ? 0 : previous?.fingerprint === fingerprint ? (previous.count ?? 0) + 1 : 1
       const stalled = !infrastructure && !receipt.valid && count >= 3
       const verified = receipt.valid && receipt.commands.length > 0 && !receipt.unverifiedRepositories?.length
-      const output = { receiptId: receipt.id, valid: receipt.valid, candidateHash: identity.candidateHash, noProgressCount: count, ...(receipt.reason ? { reason: receipt.reason } : {}), ...(stalled ? { reason: 'Verification failed three times without candidate changes' } : {}),
-        ...(setup ? { setup } : {}), ...(environmentRepair ? { environmentRepair } : {}), ...verificationDiagnostics(receipt) }
-      const vars = { [progressKey]: { fingerprint, count } }
+      const output = { receiptId: receipt.id, valid: receipt.valid, candidateHash: adopted ? receipt.candidateHash : identity.candidateHash, noProgressCount: count, ...(receipt.reason ? { reason: receipt.reason } : {}), ...(stalled ? { reason: 'Verification failed three times without candidate changes' } : {}),
+        ...(setup ? { setup } : {}), ...(environmentRepair ? { environmentRepair } : {}), ...(receipt.selfMutation ? { selfMutation: json(receipt.selfMutation) } : {}),
+        ...(adoptedOutputs.length ? { adoptedOutputs: json(adoptedOutputs) } : {}), ...verificationDiagnostics(receipt) }
+      const vars = { [progressKey]: { fingerprint, count, ...(adoptedOutputs.length ? { adopted: json(adoptedOutputs) } : {}) } }
+      if (nondeterministic) return { outcome: params.hostBlockers === true ? 'blocked' : 'failed', status: params.hostBlockers === true ? 'blocked' : 'failed', vars, receipt: receiptEvidence(receipt), verified: null,
+        error: { code: NONDETERMINISTIC_OUTPUT_CODE, message: `${nondeterministic.reason}. ${nondeterministic.requiredAction}` }, output: { ...output, valid: false, blocker: json(nondeterministic) } }
       // Without the opt-in outcome a blocker still travels in the output, and the no-progress stop keeps bounding the loop.
       if (blocker && (params.hostBlockers === true || !stalled)) return { ...blocked(blocker, output), vars, receipt: receiptEvidence(receipt) }
       return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections; inspect the failed checks.' } } : {}), ...(infrastructure ? executionError(receipt) : {}),

@@ -1,6 +1,6 @@
 import path from 'node:path'
 
-import yaml from 'js-yaml'
+import { dump, loadAll } from 'js-yaml'
 
 import { FilesystemError, InstallerError } from '../util/errors.js'
 import { pathExists, readTextFile, writeFileLf } from '../util/fs.js'
@@ -123,7 +123,14 @@ export function loadInstallConfig(configPath: string): InstallConfig | null {
   const raw = readTextFile(configPath)
   let parsed: unknown
   try {
-    parsed = yaml.load(raw)
+    // js-yaml 5 `load()` throws on a stream with no document (empty or
+    // comment-only file). Keep reporting that as a non-mapping config, and
+    // keep rejecting multi-document streams as `load()` did.
+    const documents = loadAll(raw)
+    if (documents.length > 1) {
+      throw new Error('expected a single document in the stream, but found more')
+    }
+    parsed = documents[0]
   } catch (err) {
     throw new InvalidConfigError([`YAML parse error: ${(err as Error).message}`])
   }
@@ -361,7 +368,7 @@ function isExactModelIdentifier(value: unknown): value is string {
  */
 export function writeInstallConfig(configPath: string, config: InstallConfig): void {
   try {
-    const text = yaml.dump(config, { lineWidth: 120, noRefs: true })
+    const text = dump(config, { lineWidth: 120, noRefs: true })
     writeFileLf(configPath, text)
   } catch (err) {
     throw new FilesystemError(

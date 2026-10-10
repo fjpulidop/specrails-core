@@ -145,4 +145,30 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('Fix the failing behavior')
     expect(prompt).toContain('## Output contract')
   })
+  it('lists host-adopted verification output for the reviewer and fixer and exempts it from the revert rules', () => {
+    const adopted = [{ repositoryId: 'app', path: 'eslint-config/styled-component-mappings.js', change: 'modified' }]
+    const verification = { valid: true, commands: [{ repositoryId: 'app', command: 'yarn', args: ['test'], exitCode: 0, output: 'ok' }], adoptedOutputs: adopted }
+    const reviewer = roleInstructions('reviewer', context, 'change', { feedback: { verification } })
+    expect(reviewer).toContain('## Host-adopted verification output')
+    expect(reviewer).toContain('- `app`: `eslint-config/styled-component-mappings.js`')
+    expect(reviewer).toContain('regenerated lockfiles, snapshots or generated files other than the host-adopted verification output listed below')
+    expect(reviewer).toContain('Never ask for one of them to be reverted to the base version. You may still raise an issue when an adopted file\'s content is wrong')
+    const fixer = roleInstructions('developer', context, 'change', { stance: 'fixer', feedback: { verification, review: { summary: 'Fix it', issues: ['x'] } } })
+    expect(fixer).toContain('Never revert the host-adopted verification output listed below.')
+    expect(fixer).toContain('Never revert them to the base version')
+    expect(roleInstructions('developer', context, 'change', { adoptedOutputs: [{ path: 'gen/a.js' }] })).toContain('(the host-adopted verification output listed below is exempt: never revert it).')
+    expect(correctionInstructions('reviewer', { verification })).toContain('eslint-config/styled-component-mappings.js')
+    expect(roleInstructions('architect', context, 'change', { adoptedOutputs: [{ path: 'gen/a.js' }] })).not.toContain('Host-adopted')
+  })
+  it.each<BuiltinAgentRole>(['developer', 'reviewer'])('keeps the %s prompt byte-identical without adopted output', role => {
+    const verification = { valid: true, commands: [{ repositoryId: 'app', command: 'yarn', args: ['test'], exitCode: 0, output: 'ok' }] }
+    for (const stance of role === 'developer' ? [undefined, 'fixer' as const] : [undefined]) {
+      const base = roleInstructions(role, context, 'change', { feedback: { verification }, ...(stance ? { stance } : {}) })
+      expect(roleInstructions(role, context, 'change', { feedback: { verification: { ...verification, adoptedOutputs: [] } }, adoptedOutputs: [], ...(stance ? { stance } : {}) })).toBe(base)
+      expect(base).not.toContain('Host-adopted')
+      expect(base).not.toContain('host-adopted')
+    }
+    expect(correctionInstructions(role, { verification })).not.toContain('Host-adopted')
+    expect(rolePromptDefaults()[role]).not.toContain('host-adopted')
+  })
 })

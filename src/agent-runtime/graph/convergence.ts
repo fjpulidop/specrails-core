@@ -4,7 +4,7 @@
 // the checks cannot change their outcome. The host stops and says why instead
 // of spending another round (observed: verify ↔ fixer ↔ review cycling on a
 // credential problem until the requester cancelled the run).
-import type { VerificationReceipt } from '../../pipeline/pipeline-state.js'
+import { describeModifiedFiles, type VerificationReceipt } from '../../pipeline/pipeline-state.js'
 import { fingerprint } from '../durable-store.js'
 import type { WorkflowState } from '../workflow-types.js'
 
@@ -39,9 +39,12 @@ function headline(output: string): string {
   return (telling ?? lines.at(-1) ?? '').slice(0, 300)
 }
 /** Identity and one-line description of a failed receipt (or of a host finding that failed a green receipt). */
-export function describeFailure(receipt: Pick<VerificationReceipt, 'commands' | 'reason'>, roots: readonly string[], finding?: string): { signature: string; summary: string } {
+export function describeFailure(receipt: Pick<VerificationReceipt, 'commands' | 'reason' | 'selfMutation'>, roots: readonly string[], finding?: string): { signature: string; summary: string } {
   if (finding) return { signature: fingerprint({ finding: normalized(finding, roots) }), summary: finding.slice(0, 300) }
   const failed = receipt.commands.find(command => command.exitCode !== 0)
+  // A green run that rewrote its own candidate: the same files again is the same failure, whatever their content.
+  if (!failed && receipt.selfMutation?.files.length) return { signature: fingerprint({ selfMutation: receipt.selfMutation.files.map(file => file.repositoryId + ':' + file.path).sort() }),
+    summary: `verification commands modified ${describeModifiedFiles(receipt.selfMutation)}`.slice(0, 400) }
   if (!failed) return { signature: fingerprint({ reason: receipt.reason ?? 'verification failed' }), summary: receipt.reason ?? 'verification failed' }
   const name = failed.label ?? [failed.command, ...failed.args].join(' ')
   const detail = headline(failed.output)

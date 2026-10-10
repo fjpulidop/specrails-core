@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { stripTypeScriptTypes } from 'node:module'
 import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
-import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -169,7 +169,25 @@ describe('pipeline runtime journal and verification receipts', () => {
     initializePipeline(context, change)
     const receipt = await verifyPipeline(context, request('require("fs").writeFileSync("code.js","changed during checks")'))
     expect(receipt.commands.every((command) => command.exitCode === 0)).toBe(true)
-    expect(receipt).toMatchObject({ valid: false, reason: 'Candidate changed during verification' })
+    expect(receipt).toMatchObject({ valid: false, reason: 'Verification commands modified 2 candidate files: code.js, code.js',
+      selfMutation: { files: [{ repositoryId: 'back', path: 'code.js', change: 'modified' }, { repositoryId: 'front', path: 'code.js', change: 'modified' }],
+        commands: [{ repositoryId: 'front', label: expect.stringContaining(process.execPath) }, { repositoryId: 'back', label: expect.stringContaining(process.execPath) }] } })
+  })
+
+  it('names a tracked file a lint pre-step regenerates, but not ignored, generated-output or excluded scope paths', async () => {
+    initializePipeline(context, change)
+    const front = { repositoryId: 'front', command: process.execPath }
+    const regenerate = 'const fs=require("fs");fs.mkdirSync("eslint-config",{recursive:true});fs.writeFileSync("eslint-config/styled-component-mappings.js","regenerated")'
+    write(path.join(context.repositories[0]!.path, 'eslint-config', 'styled-component-mappings.js'), 'committed')
+    spawnSync('git', ['-C', context.repositories[0]!.path, 'add', '.'])
+    const receipt = await verifyPipeline(context, { kind: 'scoped', commands: [{ ...front, args: ['-e', regenerate], label: 'yarn test' }] })
+    expect(receipt.commands[0]!.exitCode).toBe(0)
+    expect(receipt).toMatchObject({ valid: false, reason: 'Verification commands modified 1 candidate file: eslint-config/styled-component-mappings.js',
+      selfMutation: { files: [{ repositoryId: 'front', path: 'eslint-config/styled-component-mappings.js', change: 'modified' }], commands: [{ repositoryId: 'front', label: 'yarn test' }] } })
+    const outputs = 'const fs=require("fs");for(const d of ["coverage","build",' + JSON.stringify('openspec/changes/' + change) + '])fs.mkdirSync(d,{recursive:true});fs.writeFileSync("coverage/lcov.info","TN:");fs.writeFileSync("build/out.js","x");fs.writeFileSync(' + JSON.stringify('openspec/changes/' + change + '/notes.md') + ',"owned")'
+    const clean = await verifyPipeline(context, { kind: 'scoped', commands: [{ ...front, args: ['-e', outputs] }] })
+    expect(clean.valid).toBe(true)
+    expect(clean).not.toHaveProperty('selfMutation')
   })
 
   it('keeps completed development reusable when a blocked reviewer resumes', async () => {
@@ -462,7 +480,7 @@ describe('concurrent journal recovery', () => {
     write(path.join(dir, 'journal.lock'), JSON.stringify({ pid: dead.pid, token: 'dead-owner' }))
     const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
     const module = path.join(root, 'runtime.mjs')
-    write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+    write(module, stripTypeScriptTypes(source))
     const contextFile = path.join(root, 'context.json')
     write(contextFile, JSON.stringify(context))
     const barrier = path.join(root, 'start-workers')
@@ -527,7 +545,7 @@ describe('application environment evidence', () => {
     initializePipeline(context, change)
     const source = readFileSync(new URL('./pipeline-state.ts', import.meta.url), 'utf8')
     const module = path.join(root, 'runtime.mjs')
-    write(module, ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 } }).outputText)
+    write(module, stripTypeScriptTypes(source))
     const contextFile = path.join(root, 'context.json')
     write(contextFile, JSON.stringify(context))
     const sessionKeys = ['AI_AGENT', 'CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_EFFORT', 'CLAUDE_PID', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_MESSAGING_SOCKET', 'CLAUDE_CODE_MESSAGING_TOKEN', 'CLAUDE_CODE_CHILD_SESSION']
@@ -854,4 +872,31 @@ it('reports check activity only after its evidence and receipt are persisted', a
   })
   expect(receipt.valid).toBe(false)
   expect(events).toEqual(['check-started', 'check-finished', 'check-invalidated'])
+})
+
+describe('verification self-mutation', () => {
+  const manifest = (repositories: Record<string, Array<[string, string]>>): CandidateManifest => ({ schemaVersion: 1, scopeHash: 'scope', repositories: Object.entries(repositories).map(([id, files]) => ({ id, path: '/' + id, files })) })
+  it('diffs added, modified and removed files per repository, sorted by repository then path', () => {
+    const before = manifest({ web: [['a.js', '1'], ['b.js', '1'], ['same.js', 'x']], api: [['gone.ts', '1']] })
+    const after = manifest({ web: [['b.js', '2'], ['same.js', 'x'], ['c.js', '1']], api: [], docs: [['new.md', '1']] })
+    expect(diffCandidateManifests(before, after)).toEqual([
+      { repositoryId: 'api', path: 'gone.ts', change: 'removed' }, { repositoryId: 'docs', path: 'new.md', change: 'added' },
+      { repositoryId: 'web', path: 'a.js', change: 'removed' }, { repositoryId: 'web', path: 'b.js', change: 'modified' }, { repositoryId: 'web', path: 'c.js', change: 'added' },
+    ])
+    expect(diffCandidateManifests(before, before)).toEqual([])
+  })
+
+  it('bounds the recorded files, keeps the generic reason without manifests and names a failed command first', () => {
+    const receipt = (exitCode: number): VerificationReceipt => ({ id: 'r', kind: 'full', scopeHash: 's', candidateHash: 'c', completedAt: '', valid: exitCode === 0,
+      commands: [{ repositoryId: 'web', command: 'npm', args: ['test'], cwd: '/web', environmentHash: '', environmentKeys: [], environmentOverrideKeys: [], environmentOverridesHash: '', exitCode, durationMs: 1, output: '', disposition: 'executed' },
+        { repositoryId: 'web', key: 'lint', command: 'npm', args: ['run', 'lint'], cwd: '/web', environmentHash: '', environmentKeys: [], environmentOverrideKeys: [], environmentOverridesHash: '', exitCode: 0, durationMs: 0, output: '', disposition: 'reused' }] })
+    expect(candidateChangedReceipt(receipt(0), undefined, undefined)).toMatchObject({ valid: false, reason: 'Candidate changed during verification' })
+    const many = manifest({ web: Array.from({ length: 205 }, (_, index): [string, string] => [`gen/${String(index).padStart(3, '0')}.js`, 'new']) })
+    const marked = candidateChangedReceipt(receipt(1), manifest({ web: [] }), () => many)
+    expect(marked.selfMutation).toMatchObject({ omittedFiles: 5, commands: [{ repositoryId: 'web', label: 'npm test' }] })
+    expect(marked.selfMutation!.files).toHaveLength(200)
+    expect(marked.reason).toBe('A verification command failed. Verification commands modified 205 candidate files: gen/000.js, gen/001.js, gen/002.js and 202 more')
+    expect(candidateChangedReceipt(marked, undefined, () => { throw new Error('not read again') })).toEqual(marked)
+    expect(describeModifiedFiles({ files: [{ repositoryId: 'web', path: 'a.js', change: 'added' }] })).toBe('1 candidate file: a.js')
+  })
 })

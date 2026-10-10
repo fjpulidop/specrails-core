@@ -74,6 +74,17 @@ the opt-in `blocked` outcome (`hostBlockers: true`, `status: 'blocked'`,
 `verification_host_precondition`) or, without the flag, to `fail` with the same
 output so older definitions keep their exact `ends`.
 
+Verification that rewrites candidate files itself (a lint pre-step that
+regenerates a tracked mapping) is not a code failure. The receipt names the
+files (`selfMutation`, from a manifest diff around the run); when every command
+exited 0 and the `verification-output-adoption` guardrail is on, the piece keeps
+the files in the candidate and verifies once more. A valid second receipt passes
+with `output.adoptedOutputs`, which role turns show the reviewer and fixer as
+host-adopted output they must not revert. Output that changes again, or the
+guardrail switched off, is a `nondeterministic-output` blocker
+(`verification_nondeterministic_output`) routed to `blocked` or `failed`, never
+to a correction round.
+
 Optional `setup` commands (`'configured'` reads `config.setup`; an inline list
 has the `verification` shape) run sequentially in the admitted workspace before
 the first verification of every visit. Their scoped receipt is evidence only:

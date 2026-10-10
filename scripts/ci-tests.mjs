@@ -65,7 +65,10 @@ export function runPartition(partition, { listOnly = false, spawnProcess = spawn
   try {
     const collect = (filters, name) => {
       const output = path.join(temp, name + '.json')
-      invoke(['list', ...filters, '--includeTaskLocation', '--json', output], 120_000)
+      // Vitest 5 lists by static parsing by default, which reports `expect(…)`
+      // calls and unexpanded `each` titles as tests; `run file:line` then finds
+      // no test there. Collect by executing the files, as `run` does.
+      invoke(['list', ...filters, '--staticParse=false', '--includeTaskLocation', '--json', output], 120_000)
       return JSON.parse(readFileSync(output, 'utf8'))
     }
     const inventory = collect(RUNTIME_FILES, 'all')

@@ -385,6 +385,20 @@ describe('install-config', () => {
       writeFileLf(p, 'version: 1\nprovider: claude\n  bad indent')
       expect(() => loadInstallConfig(p)).toThrow(InvalidConfigError)
     })
+
+    it('reports an empty or comment-only file as a non-mapping config', () => {
+      for (const content of ['', '# nothing configured yet\n']) {
+        const p = path.join(tmpDir, 'empty.yaml')
+        writeFileLf(p, content)
+        expect(() => loadInstallConfig(p)).toThrow('config must be a YAML mapping')
+      }
+    })
+
+    it('rejects a multi-document stream', () => {
+      const p = path.join(tmpDir, 'multi.yaml')
+      writeFileLf(p, 'version: 1\nprovider: claude\n---\nversion: 1\n')
+      expect(() => loadInstallConfig(p)).toThrow(/YAML parse error: expected a single document/)
+    })
   })
 
   describe('writeInstallConfig', () => {

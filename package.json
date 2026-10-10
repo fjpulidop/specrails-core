@@ -89,23 +89,25 @@
   },
   "dependencies": {
     "@fission-ai/openspec": "1.4.1",
-    "@langchain/core": "1.2.10",
-    "@langchain/langgraph": "1.4.14",
+    "@langchain/core": "1.2.14",
+    "@langchain/langgraph": "1.4.18",
     "@langchain/langgraph-checkpoint": "1.1.5",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "ajv": "^8.20.0",
     "cross-spawn": "7.0.6",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.4.3",
     "picocolors": "^1.1.1",
-    "zod": "4.6.2"
+    "semver": "^7.8.5",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/cross-spawn": "6.0.6",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.10.2",
-    "@vitest/coverage-v8": "^4.1.5",
-    "typescript": "^5.7.2",
-    "vitest": "^4.1.5"
+    "@types/node": "^26.6.5",
+    "@types/semver": "^7.8.0",
+    "@vitest/coverage-v8": "^5.0.3",
+    "js-yaml-4": "npm:js-yaml@^4.3.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
   },
   "license": "MIT",
   "author": "fjpulidop"

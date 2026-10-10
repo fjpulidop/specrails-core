@@ -5,7 +5,8 @@
 // artifacts, one test file per module, evidence before a task is ticked, an
 // environment repaired by the host instead of the model, a hanging test
 // stopped by silence, a test file the verify command never runs, a runner
-// that prints failures but exits 0. All are ON by default; a project may switch one off in
+// that prints failures but exits 0, a file the verify commands regenerate
+// themselves adopted into the candidate instead of reverted. All are ON by default; a project may switch one off in
 // its runtime configuration (`guardrails: { <id>: false }`) to tune the
 // process. Pure bug fixes (candidate fingerprint, correction counter, argument
 // repair) are deliberately NOT here: they are correctness, not tuning.
@@ -30,6 +31,7 @@ export const GUARDRAIL_IDS = [
   'environment-repair',
   'lockfile-repair',
   'verify-idle-timeout',
+  'verification-output-adoption',
 ] as const
 export type GuardrailId = (typeof GUARDRAIL_IDS)[number]
 type GuardrailPhase = 'architect' | 'developer' | 'host'
@@ -56,6 +58,7 @@ export const GUARDRAIL_CATALOG: readonly GuardrailDescriptor[] = [
   { id: 'environment-repair', phase: 'host' },
   { id: 'lockfile-repair', phase: 'host' },
   { id: 'verify-idle-timeout', phase: 'host' },
+  { id: 'verification-output-adoption', phase: 'host' },
 ]
 
 function isGuardrailId(value: unknown): value is GuardrailId {
