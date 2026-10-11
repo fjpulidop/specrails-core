@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.0](https://github.com/fjpulidop/specrails-core/compare/v6.5.0...v6.6.0) (2026-10-11)
+
+
+### Features
+
+* **runtime:** adopt verification output, repair version drift + Dependabot updates ([#414](https://github.com/fjpulidop/specrails-core/issues/414)) ([544860b](https://github.com/fjpulidop/specrails-core/commit/544860b45cf5db0df68152ab774ef932727fd1f1))
+
 ## [6.5.0](https://github.com/fjpulidop/specrails-core/compare/v6.4.0...v6.5.0) (2026-10-08)
 
 
