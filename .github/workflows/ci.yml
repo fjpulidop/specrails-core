@@ -15,6 +15,132 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Every OS/Node combination runs one complete partition set (validated by
+  # scripts/ci-tests.test.mjs). Vitest parallelizes files, not tests within a
+  # file, so the runtime suites are split by test line; Windows also shards the
+  # remaining suites and isolates the serial recovery suite. Ubuntu/Node 24 is
+  # covered by the coverage partitions below. Slowest jobs are listed first so
+  # they start first when the runner pool is saturated.
+  test:
+    name: test (${{ matrix.os }}, ${{ matrix.node }}, ${{ matrix.partition }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, node: '22.22.3', partition: runtime-1/3 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-2/3 }
+          - { os: windows-latest, node: '22.22.3', partition: runtime-3/3 }
+          - { os: windows-latest, node: '22.22.3', partition: general-1/2 }
+          - { os: windows-latest, node: '22.22.3', partition: general-2/2 }
+          - { os: windows-latest, node: '22.22.3', partition: recovery }
+          - { os: windows-latest, node: '24', partition: runtime-1/3 }
+          - { os: windows-latest, node: '24', partition: runtime-2/3 }
+          - { os: windows-latest, node: '24', partition: runtime-3/3 }
+          - { os: windows-latest, node: '24', partition: general-1/2, package: true }
+          - { os: windows-latest, node: '24', partition: general-2/2 }
+          - { os: windows-latest, node: '24', partition: recovery }
+          - { os: macos-latest, node: '22.22.3', partition: runtime-1/2 }
+          - { os: macos-latest, node: '22.22.3', partition: runtime-2/2 }
+          - { os: macos-latest, node: '22.22.3', partition: general }
+          - { os: macos-latest, node: '24', partition: runtime-1/2 }
+          - { os: macos-latest, node: '24', partition: runtime-2/2 }
+          - { os: macos-latest, node: '24', partition: general, package: true }
+          - { os: ubuntu-latest, node: '22.22.3', partition: runtime-1/2 }
+          - { os: ubuntu-latest, node: '22.22.3', partition: runtime-2/2 }
+          - { os: ubuntu-latest, node: '22.22.3', partition: general }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Release guard regressions (portable Node test invocation)
+        run: node --test scripts/release-utils.test.mjs scripts/ci-tests.test.mjs
+      - run: node scripts/ci-tests.mjs "${{ matrix.partition }}"
+      - name: Install and exercise the actual npm package on this OS
+        if: matrix.package
+        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
+
+  # Coverage runs the same complete set on Ubuntu/Node 24, recording v8 coverage
+  # and a Vitest blob per partition. The `coverage` job merges them, enforces
+  # the configured thresholds on the merged report and only then verifies and
+  # uploads the exact package approved for release.
+  coverage-partition:
+    name: coverage (${{ matrix.partition }})
+    strategy:
+      fail-fast: false
+      matrix:
+        partition: [runtime-1/3, runtime-2/3, runtime-3/3, general]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: node scripts/ci-tests.mjs "${{ matrix.partition }}" --blob "${{ runner.temp }}/coverage-blobs"
+      - name: Name the blob artifact after the partition
+        id: slug
+        env:
+          PARTITION: ${{ matrix.partition }}
+        run: echo "slug=${PARTITION//\//-of-}" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-blob-${{ steps.slug.outputs.slug }}
+          path: ${{ runner.temp }}/coverage-blobs/blob-*.json
+          if-no-files-found: error
+          retention-days: 3
+
+  coverage:
+    needs: coverage-partition
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:scripts
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: coverage-blob-*
+          path: ${{ runner.temp }}/coverage-blobs
+          merge-multiple: true
+      - name: Merge partition coverage and enforce thresholds
+        run: node scripts/ci-tests.mjs merge "${{ runner.temp }}/coverage-blobs"
+      - run: npm run build
+      - name: Install and exercise the exact package approved for release
+        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
+      - name: Preserve the exact package approved for release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: core-package
+          path: ${{ runner.temp }}/core-package/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
+
   workflow-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -65,75 +191,6 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-
-  test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        node: ['22.22.3', '24']
-        partition: [full]
-        # The coverage job executes this exact combination once and supplies
-        # the verified release package; do not repeat its complete suite here.
-        exclude:
-          - { os: ubuntu-latest, node: '24', partition: full }
-        include:
-          - { os: windows-latest, node: '22.22.3', partition: general }
-          - { os: windows-latest, node: '22.22.3', partition: runtime-1 }
-          - { os: windows-latest, node: '22.22.3', partition: runtime-2 }
-          - { os: windows-latest, node: '22.22.3', partition: runtime-3 }
-          - { os: windows-latest, node: '24', partition: general }
-          - { os: windows-latest, node: '24', partition: runtime-1 }
-          - { os: windows-latest, node: '24', partition: runtime-2 }
-          - { os: windows-latest, node: '24', partition: runtime-3 }
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm run build
-      - name: Release guard regressions (portable Node test invocation)
-        run: node --test scripts/release-utils.test.mjs scripts/ci-tests.test.mjs
-      - run: node scripts/ci-tests.mjs "${{ matrix.partition }}"
-      - name: Install and exercise the actual npm package on this OS
-        if: matrix.node == '24' && (matrix.partition == 'full' || matrix.partition == 'general')
-        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
-  coverage:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-        with:
-          node-version: '24'
-          cache: npm
-      - run: npm ci
-      - run: npm run test:scripts
-      - run: npm run test:coverage
-      - name: Install and exercise the exact package approved for release
-        run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
-      - name: Preserve the exact package approved for release
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: core-package
-          path: ${{ runner.temp }}/core-package/
-          if-no-files-found: error
-          retention-days: 14
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: coverage-report
-          path: coverage/
-          retention-days: 14
 
   engine-robustness:
     name: Installed engine recovery (${{ matrix.os }})
