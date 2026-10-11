@@ -41,20 +41,19 @@ The package check reuses the npm dependency cache (including the cache populated
 2. An additional current-main check skips obsolete pushes before changing release metadata. Release Please opens/updates the release PR, or creates the release/tag after that PR was merged. It has only the repository/PR write permissions it needs. The CI jobs do not receive those permissions.
 3. Before publishing, the workflow verifies that the stable `vX.Y.Z` tag points at the tested commit, that this commit is in `origin/main`, and that the tag, package.json, both root lockfile version fields and Release Please manifest agree. If main advanced while Release Please was working and it tagged a different SHA, publication fails closed.
 4. It downloads the tarball from that successful CI run and verifies its identity and integrity. It refuses to move npm `latest` backwards. An existing version is accepted only when its published integrity matches the verified artifact exactly.
-5. It publishes the `.tgz` with `--ignore-scripts --provenance --access public`, then sends downstream notifications. Only the publication job has `id-token: write`; the npm token is exposed only to the final publish step.
+5. It publishes the `.tgz` with `--ignore-scripts --provenance --access public`. Only the publication job has `id-token: write`; the npm token is exposed only to the final publish step.
 
 All automatic and manual releases share one non-cancelling concurrency group, so simultaneous runs cannot race the stable dist-tag.
 
-## Credentials and notifications
+## Credentials
 
 - `RELEASE_PAT` (recommended): a repository-scoped token with permission to maintain release branches, PRs and releases (Contents and Pull requests write). Release Please prefers this secret, allowing its generated PR events to start the normal required CI. A GitHub App installation token with equivalent permissions is also suitable if the workflow is configured to mint one; this workflow does not create an App or credentials.
 - `GITHUB_TOKEN` fallback: retained so existing installations can maintain release metadata without a new secret. GitHub currently creates runs for token-generated PR `opened`, `synchronize` and `reopened` events **in an approval-required state**. The workflow warns when using this fallback: a maintainer with write access must select **Approve workflows to run** on the release PR after bot updates. Configure `RELEASE_PAT` for automatic CI without that approval prompt; do not bypass required checks or branch protection. Other token-generated events, including tag pushes, remain suppressed. Repository settings must permit Actions to create PRs. Publication is in this same workflow and does not depend on a new tag-triggered run. See [GitHub's current event-triggering rules](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow). [Release Please also recommends a separate CI-capable credential](https://github.com/googleapis/release-please-action#other-actions-on-release-please-prs).
 - `NPM_TOKEN`: existing token authentication remains supported; use a narrowly scoped token that can publish `specrails-core`. Do not remove it until npm trusted publishing has been configured for this repository and **`release.yml`**. Publishing runs on Node 24 and enforces npm >=11.5.1. The workflow requests OIDC and provenance but does not change npm account settings. See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/).
-- `CROSS_REPO_TOKEN`: must permit repository dispatch to `fjpulidop/specrails-desktop` and `fjpulidop/specrails-web`. It is available only to the notification job.
 
-Both consumers receive `repository_dispatch` event `specrails-core-released`. Desktop receives `{"core_version":"X.Y.Z"}` and validates the exact released integration contract; the website retains its historical `{"core_version":"vX.Y.Z"}` convention. Notification failure leaves a visible failed workflow, even when npm publication already succeeded.
+No cross-repository notification is sent. Desktop pins Core deliberately (bundled version and paired-engine commit) and validates the contract in the pull request that advances that pin.
 
-## Recover a failed publication or notification
+## Recover a failed publication
 
 Use **Actions → Release → Run workflow**, from the trusted main workflow, and provide an **existing** stable tag (`vX.Y.Z`). This path does not create a tag or bump versions. It checks main ancestry/version agreement, runs typecheck, release-guard tests and the full suite with coverage, then rebuilds, packs and consumer-tests that exact tag on Linux/Node 24 in a read-only preparation job. A separate publication job downloads those verified bytes; dependency installs and tests never have OIDC or npm credentials.
 
