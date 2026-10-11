@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Retry publication/notifications for an existing stable tag (vX.Y.Z)'
+        description: 'Retry publication for an existing stable tag (vX.Y.Z)'
         type: string
         required: true
 
@@ -208,25 +208,3 @@ jobs:
           RELEASE_SHA: ${{ steps.release.outputs.sha }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: node scripts/publish-package.mjs "${{ runner.temp }}/core-package"
-
-  notify:
-    needs: publish
-    if: always() && needs.publish.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Notify Desktop to check the exact released integration contract
-        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
-        with:
-          token: ${{ secrets.CROSS_REPO_TOKEN }}
-          repository: fjpulidop/specrails-desktop
-          event-type: specrails-core-released
-          client-payload: '{"core_version":"${{ needs.publish.outputs.version }}"}'
-      - name: Notify the website (legacy version tag convention)
-        if: '!cancelled()'
-        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4.0.1
-        with:
-          token: ${{ secrets.CROSS_REPO_TOKEN }}
-          repository: fjpulidop/specrails-web
-          event-type: specrails-core-released
-          client-payload: '{"core_version":"v${{ needs.publish.outputs.version }}"}'
