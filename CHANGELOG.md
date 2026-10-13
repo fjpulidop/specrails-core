@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.2](https://github.com/fjpulidop/specrails-core/compare/v6.6.1...v6.6.2) (2026-10-13)
+
+
+### Bug Fixes
+
+* **runtime:** catch unarchivable OpenSpec changes at validate ([#425](https://github.com/fjpulidop/specrails-core/issues/425)) ([02e2132](https://github.com/fjpulidop/specrails-core/commit/02e2132b2f3b6a969767d5fa448638778632d898))
+
 ## [6.6.1](https://github.com/fjpulidop/specrails-core/compare/v6.6.0...v6.6.1) (2026-10-13)
 
 
