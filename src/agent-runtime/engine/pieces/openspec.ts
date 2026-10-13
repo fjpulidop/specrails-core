@@ -1,4 +1,5 @@
 import { archivedOpenSpecChange, archiveOpenSpecChange } from '../../graph/artifacts.js'
+import { describeArchivePreflight, previewOpenSpecArchive } from '../../graph/archive-preflight.js'
 import { OpenSpecCommandError, resolveOpenSpecCli, runOpenSpec } from '../../openspec.js'
 import { EngineError, type Piece, type PieceResult } from '../contracts.js'
 import type { PieceDependencyProvider } from './ports.js'
@@ -26,12 +27,20 @@ export function openSpecPieces(bindings: PieceDependencyProvider): Piece[] {
         stdout = error.stdout
         exited = false
       }
-      let report: { items?: Array<{ id?: string; type?: string; valid?: boolean }> }
+      let report: { items?: Array<{ id?: string; type?: string; valid?: boolean; issues?: Array<{ level?: string; path?: string; message?: string }> }> }
       try { report = JSON.parse(stdout) as typeof report }
       catch { throw new EngineError('openspec_invalid_output', 'OpenSpec did not return its validation report') }
       const item = report.items?.find(entry => entry.id === change && entry.type === 'change')
       if (!item || typeof item.valid !== 'boolean') throw new EngineError('openspec_invalid_output', 'OpenSpec validation did not report the requested change')
-      return { outcome: exited && item.valid ? 'pass' : 'fail', output: json(report) }
+      // The planning role only learns why it was sent back through history.
+      const note = (suffix: string, value: string): PieceResult['history'] => [{ id: context.frame.attemptId + ':' + suffix, transition: context.frame.transition, attempt: context.frame.attempt, ordinal: 0, nodePath: context.frame.nodePath, text: boundedText(value) }]
+      if (!exited || !item.valid) {
+        const issues = (item.issues ?? []).filter(issue => issue.level === 'ERROR').slice(0, 20).map(issue => `- ${issue.path ? issue.path + ': ' : ''}${issue.message ?? 'invalid'}`)
+        return { outcome: 'fail', output: json(report), history: note('validate', [`OpenSpec validation failed for change ${change}.`, ...issues].join('\n')) }
+      }
+      const preflight = await previewOpenSpecArchive(deps.context.artifactRoot, change, context.signal)
+      if (!preflight.valid) return { outcome: 'fail', output: json({ ...report, archivePreflight: preflight }), history: note('archive-preflight', describeArchivePreflight(change, preflight)) }
+      return { outcome: 'pass', output: json(report) }
     },
   }, {
     descriptor: { kind: 'openspec-archive', paramsSchema: { ...schema, properties: { ...(schema.properties as import('../contracts.js').JsonObject), requiresVerified: { type: 'boolean' }, reviewedCandidate: { type: 'string' }, approvedCandidate: { type: 'string' } } }, outcomes: ['next', 'failed'], effect: 'write', requiresAI: false },
