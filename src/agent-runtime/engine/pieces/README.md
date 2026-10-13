@@ -106,6 +106,16 @@ saved write set and archive tree. The Quick SDD fixture validates, applies,
 verifies, archives and verifies the final candidate again. It does not infer
 success from a provider sentinel alone.
 
+`openspec-validate` also dry-runs `openspec archive` on a disposable copy of
+`openspec/` once the delta validates (`graph/archive-preflight.ts`). OpenSpec's
+delta check skips `**Key**:` metadata lines, but rebuilding a main spec reads only
+the first body line of every requirement, including requirements the change does
+not touch. A change can therefore validate and still abort its archive. The
+preflight turns that into a `fail` outcome with `archivePreflight` in its output
+and a history entry naming each offending `path:line` requirement, so the
+planning role can fix it before the plan freezes. Both failure kinds add a history
+entry; the project tree is never written.
+
 ## Native implementation and recovery
 
 `implementation.ts` adapts the existing six Core nodes and their acceptance,
