@@ -318,7 +318,7 @@ export class CliExecutor implements AgentExecutor {
       request.onEvent?.({ kind: 'usage', usage: parsed.usage })
       if (parsed.failureKind) {
         const message = parsed.failureKind === 'max_turns'
-          ? `${this.provider} reached the configured limit of ${request.maxTurns ?? 100} turns for ${request.role}. Inspect partial changes before recovery; a higher limit requires a new run configuration.`
+          ? `${this.provider} reached the configured limit of ${request.maxTurns ?? 100} turns for ${request.role}. Raise maxTurns for role ${request.role}${request.maxTurns === undefined ? ' (unset: Core default 100)' : ''} and start a new run; partial changes stay in the worktree for inspection.`
           : parsed.failureKind === 'cost_budget' ? `${this.provider} reached its configured cost budget.` : `${this.provider} exhausted structured output retries.`
         throw new AgentExecutionError(message, parsed.failureKind, parsed.usage)
       }
