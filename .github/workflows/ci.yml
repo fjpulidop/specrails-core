@@ -95,7 +95,7 @@ jobs:
         env:
           PARTITION: ${{ matrix.partition }}
         run: echo "slug=${PARTITION//\//-of-}" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-blob-${{ steps.slug.outputs.slug }}
           path: ${{ runner.temp }}/coverage-blobs/blob-*.json
@@ -127,7 +127,7 @@ jobs:
       - name: Install and exercise the exact package approved for release
         run: node scripts/verify-package.mjs "${{ runner.temp }}/core-package"
       - name: Preserve the exact package approved for release
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: core-package
           path: ${{ runner.temp }}/core-package/
@@ -135,7 +135,7 @@ jobs:
           retention-days: 14
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report
           path: coverage/
@@ -220,7 +220,7 @@ jobs:
         run: node scripts/verify-package.mjs engine-robustness-results
       - name: Preserve acceptance and recovery evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: engine-robustness-${{ matrix.os }}-${{ matrix.arch }}
           path: engine-robustness-results/
@@ -249,7 +249,7 @@ jobs:
         env:
           DEFINITION_ID: ${{ matrix.definition }}
         run: node scripts/evaluate-definition-corpus.mjs "$DEFINITION_ID" definition-evaluation-results
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: definition-evaluation-${{ matrix.definition }}
@@ -299,7 +299,7 @@ jobs:
         run: node scripts/check-engine-spike-assembly.mjs --desktop engine-spike-desktop --dest "${{ runner.temp }}/core-engine-assembly" --output engine-spike-results/desktop-assembly.json
       - name: Preserve measured evidence, including failed gates
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: engine-spikes-${{ matrix.os }}-${{ matrix.arch }}
           path: engine-spike-results/
