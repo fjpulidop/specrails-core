@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.1](https://github.com/fjpulidop/specrails-core/compare/v6.6.0...v6.6.1) (2026-10-13)
+
+
+### Bug Fixes
+
+* **runtime:** say how to raise a role's turn limit ([#423](https://github.com/fjpulidop/specrails-core/issues/423)) ([19b0160](https://github.com/fjpulidop/specrails-core/commit/19b0160569c6cc6f7c1793020de2e5ddce8f8622))
+
 ## [6.6.0](https://github.com/fjpulidop/specrails-core/compare/v6.5.0...v6.6.0) (2026-10-11)
 
 
