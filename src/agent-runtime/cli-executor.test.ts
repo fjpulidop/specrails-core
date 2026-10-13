@@ -198,6 +198,11 @@ describe('four CLI execution contracts', () => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype, is_error: true, total_cost_usd: 2.422, usage: { input_tokens: 100, output_tokens: 20 } }), stderr: 'secret-provider-details', exitCode: 1 }))
     await expect(new CliExecutor('claude', { runProcess }).execute(request())).rejects.toMatchObject({ code, message: expect.stringContaining(message), usage: { costUsd: 2.422 } })
   })
+  it('names the role, its effective turn ceiling and the fix in a max-turns failure', async () => {
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype: 'error_max_turns', is_error: true, usage: { input_tokens: 1, output_tokens: 1 } }), stderr: '', exitCode: 1 }))
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer' }))).rejects.toMatchObject({ message: expect.stringMatching(/reached the configured limit of 100 turns for developer\. Raise maxTurns for role developer \(unset: Core default 100\)/) })
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer', maxTurns: 300 }))).rejects.toMatchObject({ message: expect.stringMatching(/limit of 300 turns for developer\. Raise maxTurns for role developer and start a new run/) })
+  })
   it('probes Kimi capability without billing and uses a disposable enforced read-only agent when available', async () => {
     const runProcess = vi.fn<CliProcessRunner>(async invocation => {
       if (invocation.args[0] === '--help') return { stdout: '--agent-file <path>', stderr: '', exitCode: 0 }
