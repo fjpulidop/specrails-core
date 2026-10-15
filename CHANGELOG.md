@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.3](https://github.com/fjpulidop/specrails-core/compare/v6.6.2...v6.6.3) (2026-10-15)
+
+
+### Bug Fixes
+
+* **runtime:** run host installs asynchronously so the lease stays alive ([#427](https://github.com/fjpulidop/specrails-core/issues/427)) ([9c06c31](https://github.com/fjpulidop/specrails-core/commit/9c06c31de3436b0a0e374c74fd307a70665f8f2f))
+
 ## [6.6.2](https://github.com/fjpulidop/specrails-core/compare/v6.6.1...v6.6.2) (2026-10-13)
 
 
