@@ -570,19 +570,19 @@ export async function runCompactDeveloper(env: CompactEnv, options: { taskToolBu
     const groupFiles = new Set(strings(result.files, 100, 500))
     for (const file of groupFiles) files.add(file)
     // Manifests written by this group get their dependencies installed by the host, so verify checks the code and not the environment.
-    if (on(env, 'environment-repair') && [...groupFiles].some(file => /(?:^|[\\/])(?:package\.json|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/.test(file))) for (const outcome of installEnvironment(env.toolset.roots, { onEvent: env.onEvent, lockfileRepair: on(env, 'lockfile-repair') })) verification.push(outcome.detail)
+    if (on(env, 'environment-repair') && [...groupFiles].some(file => /(?:^|[\\/])(?:package\.json|requirements\.txt|pyproject\.toml|go\.mod|Cargo\.toml)$/.test(file))) for (const outcome of await installEnvironment(env.toolset.roots, { onEvent: env.onEvent, lockfileRepair: on(env, 'lockfile-repair') })) verification.push(outcome.detail)
     for (const file of strings(result.tests, 100, 500)) tests.add(file)
     if (text(result.verification)) verification.push(text(result.verification).slice(0, 500))
     // verify-per-group: run the repository's own test command now and let the
     // SAME group fix a failure while its context is fresh (one bounded round),
     // instead of discovering five broken suites at the end of the step.
     if (on(env, 'verify-per-group') && groupFiles.size && !correction) {
-      const check = runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
+      const check = await runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
       if (check.ran && !check.ok) {
         env.onEvent?.({ kind: 'text', text: `Group ${group.index} check failed (${check.command}); fixing in place before the next group.` })
         const fixed = await fixGroupInPlace(env, group, check.output, budget, evidence, extraTools, languages)
         for (const file of fixed) { files.add(file); groupFiles.add(file) }
-        const again = runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
+        const again = await runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
         env.onEvent?.({ kind: 'text', text: again.ok ? `Group ${group.index} check passed after the fix.` : `Group ${group.index} check still failing (${again.command}); the host verify will report it.` })
         verification.push(`group ${group.index} check ${again.ok ? 'passed' : 'failed'}: ${again.command ?? ''}`)
       } else if (check.ran) {
@@ -598,7 +598,7 @@ export async function runCompactDeveloper(env: CompactEnv, options: { taskToolBu
             env.onEvent?.({ kind: 'text', text: `Group ${group.index} wrote ${unreached.join(', ')} but ${check.command} does not run ${unreached.length === 1 ? 'it' : 'them'}; asking the developer to wire ${unreached.length === 1 ? 'it' : 'them'} in.` })
             const fixed = await fixGroupInPlace(env, group, `${unreachedTestsReason(unreached)}\nThe repository's test command is: ${check.command}.`, budget, evidence, extraTools, languages, `The repository's test command does not execute test files you just wrote. Wire them into the test command (edit the package.json "test" script or the runner configuration so every test file runs), then make them pass; read only the manifest, the runner config and the test files named`)
             for (const file of fixed) { files.add(file); groupFiles.add(file) }
-            const again = runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
+            const again = await runGroupCheck(env.toolset.roots, { onEvent: env.onEvent })
             const still = unreachedGroupTests(env.toolset.roots, unreached)
             env.onEvent?.({ kind: 'text', text: still.length ? `Group ${group.index}: ${still.join(', ')} still not run by the test command; the host verify will report it.` : again.ok ? `Group ${group.index}: tests wired in and the check passed.` : `Group ${group.index}: tests wired in but the check now fails (${again.command}); the host verify will report it.` })
             verification.push(`group ${group.index} test reachability ${still.length ? `unresolved: ${still.join(', ')}` : 'ok'}${again.ran && !again.ok ? `; check failed: ${again.command ?? ''}` : ''}`)

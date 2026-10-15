@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { describeDrift, driftedNodeDependencies, configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
+import { describeDrift, driftedNodeDependencies, configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, hostSpawn, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -70,11 +70,11 @@ describe('plannedInstalls', () => {
 })
 
 describe('installEnvironment', () => {
-  it('runs each planned install once with a bounded spawn, reports outcomes and never throws', () => {
+  it('runs each planned install once with a bounded spawn, reports outcomes and never throws', async () => {
     const node = root({ 'package.json': '{}' })
     const spawn = vi.fn((command: string, _args?: string[], _options?: unknown) => ({ status: command === 'npm' ? 0 : 1, stdout: '', stderr: 'boom', pid: 1, output: [], signal: null }))
     const events: unknown[] = []
-    const outcomes = installEnvironment([node, root({ 'go.mod': '' })], { spawn: spawn as never, onEvent: event => events.push(event) })
+    const outcomes = await installEnvironment([node, root({ 'go.mod': '' })], { spawn: spawn as never, onEvent: event => events.push(event) })
     expect(spawn).toHaveBeenCalledTimes(2)
     expect(spawn.mock.calls[0]![1]).toEqual(['install', '--no-audit', '--no-fund', '--loglevel=error'])
     expect((spawn.mock.calls[0]![2] as { cwd: string; timeout: number }).cwd).toBe(node)
@@ -82,13 +82,13 @@ describe('installEnvironment', () => {
     expect(outcomes[1]!.detail).toContain('boom')
     expect(events.filter(event => (event as { kind: string }).kind === 'tool-start')).toHaveLength(2)
     const throwing = vi.fn(() => { throw new Error('spawn exploded') }) as never
-    expect(installEnvironment([node], { spawn: throwing })[0]).toMatchObject({ ok: false })
+    expect((await installEnvironment([node], { spawn: throwing }))[0]).toMatchObject({ ok: false })
   })
 })
 
 
 describe('suggested packages from failure output', () => {
-  it('recognises the TypeScript type-definition hint and installs exactly the named packages', () => {
+  it('recognises the TypeScript type-definition hint and installs exactly the named packages', async () => {
     const output = "error TS2582: Cannot find name 'test'. Do you need to install type definitions for a test runner? Try `npm i --save-dev @types/jest` or `npm i --save-dev @types/mocha`."
     expect(isEnvironmentFailure(1, output)).toBe(true)
     expect(suggestedPackages(output)).toEqual(['@types/jest', '@types/mocha'])
@@ -96,7 +96,7 @@ describe('suggested packages from failure output', () => {
     expect(plannedInstalls(node)).toEqual([])
     expect(plannedInstalls(node, output)).toMatchObject([{ command: 'npm', args: ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', '@types/jest', '@types/mocha'] }])
     const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null })) as never
-    expect(installEnvironment([node], { spawn, failureOutput: output })[0]).toMatchObject({ ok: true })
+    expect((await installEnvironment([node], { spawn, failureOutput: output }))[0]).toMatchObject({ ok: true })
     expect(suggestedPackages('FAIL: expect(received).toBe(expected)')).toEqual([])
   })
 })
@@ -135,7 +135,7 @@ describe('manifest drift + Jest option modules', () => {
 })
 
 describe('hand-written lockfiles', () => {
-  it('drops a lockfile npm rejects (EINTEGRITY) and retries the install once', () => {
+  it('drops a lockfile npm rejects (EINTEGRITY) and retries the install once', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'lock-'))
     try {
       writeFileSync(path.join(dir, 'package.json'), '{"devDependencies":{"jest":"^29"}}')
@@ -147,7 +147,7 @@ describe('hand-written lockfiles', () => {
         return { status: first ? 1 : 0, stderr: first ? 'npm error code EINTEGRITY\nnpm error sha512-fake integrity checksum failed' : '', stdout: '', pid: 1, output: [], signal: null } as never
       })
       const events: string[] = []
-      const outcomes = installEnvironment([dir], { spawn: spawn as never, onEvent: e => { if (e.kind === 'text') events.push(e.text ?? '') } })
+      const outcomes = await installEnvironment([dir], { spawn: spawn as never, onEvent: e => { if (e.kind === 'text') events.push(e.text ?? '') } })
       expect(calls).toHaveLength(2)
       expect(existsSync(path.join(dir, 'package-lock.json'))).toBe(false)
       expect(outcomes[0]?.ok).toBe(true)
@@ -157,7 +157,7 @@ describe('hand-written lockfiles', () => {
 })
 
 describe('unpublished pins', () => {
-  it('relaxes an exact version the registry never published and retries once', () => {
+  it('relaxes an exact version the registry never published and retries once', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'pin-'))
     try {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { '@babel/preset-env': '7.23.0', jest: '^29' } }))
@@ -168,7 +168,7 @@ describe('unpublished pins', () => {
         return { status: first ? 1 : 0, stderr: first ? 'npm error code ETARGET\nnpm error notarget No matching version found for @babel/preset-env@7.23.0.\nnpm error notarget In most cases you or one of your dependencies are requesting' : '', stdout: '', pid: 1, output: [], signal: null } as never
       })
       const events: string[] = []
-      const outcomes = installEnvironment([dir], { spawn: spawn as never, onEvent: e => { if (e.kind === 'text') events.push(e.text ?? '') } })
+      const outcomes = await installEnvironment([dir], { spawn: spawn as never, onEvent: e => { if (e.kind === 'text') events.push(e.text ?? '') } })
       expect(calls).toHaveLength(2)
       expect(JSON.parse(readFileSync(path.join(dir, 'package.json'), 'utf8')).devDependencies['@babel/preset-env']).toBe('^7.0.0')
       expect(outcomes[0]?.ok).toBe(true)
@@ -193,16 +193,16 @@ describe('group check', () => {
       expect(detectCheckCommand(dir)?.command).toBe('go')
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
-  it('runs the check once, bounded, and reports a failure with the output tail', () => {
+  it('runs the check once, bounded, and reports a failure with the output tail', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'check-'))
     try {
       writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ scripts: { test: 'node t.js' } }))
       const spawn = vi.fn(() => ({ status: 1, stdout: 'x'.repeat(10), stderr: 'AssertionError: expected 1 to be 2\n    at t.js:3:1', pid: 1, output: [], signal: null }) as never)
-      const outcome = runGroupCheck([dir], { spawn: spawn as never })
+      const outcome = await runGroupCheck([dir], { spawn: spawn as never })
       expect(outcome).toMatchObject({ ran: true, ok: false, command: 'npm test --silent' })
       expect(outcome.output).toContain('AssertionError')
       expect(spawn).toHaveBeenCalledWith('npm', ['test', '--silent'], expect.objectContaining({ cwd: dir }))
-      expect(runGroupCheck([mkdtempSync(path.join(tmpdir(), 'empty-'))])).toEqual({ ran: false, ok: true, output: '' })
+      expect(await runGroupCheck([mkdtempSync(path.join(tmpdir(), 'empty-'))])).toEqual({ ran: false, ok: true, output: '' })
     } finally { rmSync(dir, { recursive: true, force: true }) }
   })
 })
@@ -245,16 +245,16 @@ describe('Playwright browser builds', () => {
     expect(plannedInstalls(root({ 'package.json': manifest, 'pnpm-lock.yaml': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'pnpm', args: ['exec', 'playwright', 'install', 'chromium'] }])
     expect(plannedInstalls(root({ 'package.json': manifest, 'yarn.lock': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'yarn', args: ['playwright', 'install', 'chromium'] }])
   })
-  it('runs the browser install with the plan timeout and names what it installed', () => {
+  it('runs the browser install with the plan timeout and names what it installed', async () => {
     const dir = root({ 'package.json': JSON.stringify({ devDependencies: { '@playwright/test': '^1.48' } }) }, ['node_modules/@playwright/test'])
     const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null })) as never
     const events: string[] = []
-    const outcomes = installEnvironment([dir], { spawn, failureOutput: missing, onEvent: event => { if (event.kind === 'text') events.push(event.text ?? '') } })
+    const outcomes = await installEnvironment([dir], { spawn, failureOutput: missing, onEvent: event => { if (event.kind === 'text') events.push(event.text ?? '') } })
     expect(spawn).toHaveBeenCalledWith('npx', ['playwright', 'install', 'chromium'], expect.objectContaining({ cwd: dir, timeout: 600_000 }))
     expect(outcomes).toMatchObject([{ ok: true, detail: `installed Playwright chromium in ${path.basename(dir)}` }])
     expect(events).toContain(`Environment: installed Playwright chromium in ${path.basename(dir)}`)
     const offline = vi.fn(() => ({ status: 1, stdout: '', stderr: 'Failed to download Chromium 131.0.6778.33 (playwright build v1148), caused by\nError: getaddrinfo ENOTFOUND cdn.playwright.dev', pid: 1, output: [], signal: null })) as never
-    expect(installEnvironment([dir], { spawn: offline, failureOutput: missing })[0]).toMatchObject({ ok: false, precondition: expect.stringContaining('CDN') })
+    expect((await installEnvironment([dir], { spawn: offline, failureOutput: missing }))[0]).toMatchObject({ ok: false, precondition: expect.stringContaining('CDN') })
   })
 })
 
@@ -276,24 +276,24 @@ describe('host preparation before writer turns', () => {
     expect(configuredPlaywrightBrowsers(playwrightRepo("use: { browserName: 'chromium' }, projects: [{ use: devices['Desktop Safari'] }]"))).toEqual(['chromium', 'webkit'])
   })
 
-  it('reports browsers only when a pinned build is missing, without downloading', () => {
+  it('reports browsers only when a pinned build is missing, without downloading', async () => {
     const dir = playwrightRepo()
     const present = path.join(dir, 'cache/chromium-1243')
     mkdirSync(present, { recursive: true })
     const missing = dryRun([present, path.join(dir, 'cache/chromium_headless_shell-1243')])
-    expect(missingPlaywrightBrowsers(dir, missing as never)).toEqual(['chromium'])
+    expect(await missingPlaywrightBrowsers(dir, missing as never)).toEqual(['chromium'])
     expect(missing).toHaveBeenCalledWith('npx', ['--no', 'playwright', 'install', '--dry-run', 'chromium'], expect.objectContaining({ cwd: dir }))
-    expect(missingPlaywrightBrowsers(dir, dryRun([present]) as never)).toEqual([])
+    expect(await missingPlaywrightBrowsers(dir, dryRun([present]) as never)).toEqual([])
     // Unknown is never an install: a failing dry-run, no parsable location, or no local Playwright package.
-    expect(missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 1, stdout: '', stderr: 'boom' })) as never)).toEqual([])
-    expect(missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 0, stdout: 'nothing', stderr: '' })) as never)).toEqual([])
+    expect(await missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 1, stdout: '', stderr: 'boom' })) as never)).toEqual([])
+    expect(await missingPlaywrightBrowsers(dir, vi.fn(() => ({ status: 0, stdout: 'nothing', stderr: '' })) as never)).toEqual([])
     const uninstalled = root({ 'package.json': manifest })
     const spawn = dryRun([path.join(dir, 'nope')])
-    expect(missingPlaywrightBrowsers(uninstalled, spawn as never)).toEqual([])
+    expect(await missingPlaywrightBrowsers(uninstalled, spawn as never)).toEqual([])
     expect(spawn).not.toHaveBeenCalled()
   })
 
-  it('installs missing dependencies first, then the missing browser builds, and nothing when ready', () => {
+  it('installs missing dependencies first, then the missing browser builds, and nothing when ready', async () => {
     const dir = root({ 'package.json': manifest })
     const calls: string[] = []
     const spawn = vi.fn((command: string, args: readonly string[]) => {
@@ -304,16 +304,16 @@ describe('host preparation before writer turns', () => {
       if (args[2] === 'install' && !args.includes('--dry-run')) mkdirSync(path.join(dir, 'cache/chromium-1243'), { recursive: true })
       return { status: 0, stdout, stderr: '', pid: 1, output: [], signal: null }
     })
-    const outcomes = prepareEnvironment([dir], { spawn: spawn as never })
+    const outcomes = await prepareEnvironment([dir], { spawn: spawn as never })
     expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error', 'npx --no playwright install chromium'])
     expect(outcomes.every(outcome => outcome.ok)).toBe(true)
     expect(outcomes[1]).toMatchObject({ installs: 'Playwright chromium', timeoutMs: 10 * 60_000 })
     calls.length = 0
-    expect(prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
+    expect(await prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
     expect(calls).toEqual(['npx --no playwright install --dry-run chromium'])
   })
 
-  it('retries a browser download that timed out over IPv4, once, and only for Playwright', () => {
+  it('retries a browser download that timed out over IPv4, once, and only for Playwright', async () => {
     const dir = playwrightRepo()
     const envs: Array<string | undefined> = []
     const spawn = vi.fn((_command: string, args: readonly string[], options: { env?: NodeJS.ProcessEnv }) => {
@@ -325,7 +325,7 @@ describe('host preparation before writer turns', () => {
         : { status: 1, stdout: '', stderr: 'Error: Request to https://cdn.playwright.dev/builds/x.zip timed out after 30000ms', pid: 1, output: [], signal: null }
     })
     const events: string[] = []
-    const [outcome] = prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    const [outcome] = await prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
     expect(outcome).toMatchObject({ ok: true, installs: 'Playwright chromium' })
     expect(envs).toHaveLength(2)
     expect(envs[1]).toContain('--require')
@@ -335,14 +335,14 @@ describe('host preparation before writer turns', () => {
     const other = vi.fn((_command: string, args: readonly string[]) => args.includes('--dry-run')
       ? { status: 0, stdout: `  Install location:    ${path.join(dir, 'cache/x')}\n`, stderr: '', pid: 1, output: [], signal: null }
       : { status: 1, stdout: '', stderr: 'ENOSPC: no space left on device', pid: 1, output: [], signal: null })
-    expect(prepareEnvironment([dir], { spawn: other as never })[0]).toMatchObject({ ok: false })
+    expect((await prepareEnvironment([dir], { spawn: other as never }))[0]).toMatchObject({ ok: false })
     expect(other.mock.calls.filter(([, args]) => !args.includes('--dry-run'))).toHaveLength(1)
   })
 
-  it('never prepares other ecosystems ahead of a failure', () => {
+  it('never prepares other ecosystems ahead of a failure', async () => {
     const dir = root({ 'requirements.txt': 'pytest\n', 'go.mod': 'module x\n' })
     const spawn = vi.fn()
-    expect(prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
+    expect(await prepareEnvironment([dir], { spawn: spawn as never })).toEqual([])
     expect(spawn).not.toHaveBeenCalled()
   })
 })
@@ -390,26 +390,26 @@ describe('drift-driven installs', () => {
     expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
     expect(describeDrift([...Array(6)].map((_, index) => ({ name: `p${index}`, declared: '^2', installed: '1.0.0' })))).toBe('p0 1.0.0 does not satisfy ^2, p1 1.0.0 does not satisfy ^2, p2 1.0.0 does not satisfy ^2, p3 1.0.0 does not satisfy ^2, p4 1.0.0 does not satisfy ^2 and 1 more')
   })
-  it('repairs a drifted tree once before the first role turn and plans nothing for a healthy one', () => {
+  it('repairs a drifted tree once before the first role turn and plans nothing for a healthy one', async () => {
     const dir = stale()
     const spawn = vi.fn((_command: string, _args: string[], options: { cwd: string }) => {
       writeFileSync(path.join(options.cwd, 'node_modules', '@busuu', 'experiments', 'package.json'), JSON.stringify({ version: '5.24.2' }))
       return { status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null }
     })
     const events: string[] = []
-    const outcomes = prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    const outcomes = await prepareEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
     expect(spawn.mock.calls.filter(([command]) => command === 'npm')).toHaveLength(1)
     expect(outcomes[0]).toMatchObject({ ok: true, detail: `installed node dependencies in ${path.basename(dir)} (@busuu/experiments 5.23.0 does not satisfy ^5.24.0)` })
     expect(outcomes[0]).not.toHaveProperty('driftPersists')
     expect(events.some(text => text.includes('lockfile'))).toBe(false)
-    expect(prepareEnvironment([dir], { spawn: spawn as never }).filter(outcome => outcome.command === 'npm')).toEqual([])
+    expect((await prepareEnvironment([dir], { spawn: spawn as never })).filter(outcome => outcome.command === 'npm')).toEqual([])
     expect(plannedInstalls(nodeRoot({ dependencies: { react: '^18.2.0' } }, { react: '18.3.1' }))).toEqual([])
   })
-  it('reports drift a successful install leaves in place as a lockfile problem, without installing again', () => {
+  it('reports drift a successful install leaves in place as a lockfile problem, without installing again', async () => {
     const dir = stale()
     const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null }))
     const events: string[] = []
-    const [outcome] = installEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
+    const [outcome] = await installEnvironment([dir], { spawn: spawn as never, onEvent: event => { if (event.text) events.push(event.text) } })
     expect(spawn).toHaveBeenCalledTimes(1)
     expect(outcome).toMatchObject({ ok: true, driftPersists: [{ name: '@busuu/experiments', installed: '5.23.0' }] })
     expect(events).toContain(`Environment: @busuu/experiments 5.23.0 does not satisfy ^5.24.0 after installing in ${path.basename(dir)}; the lockfile still resolves the drifted version, so update the lockfile or the declared range.`)
@@ -417,7 +417,7 @@ describe('drift-driven installs', () => {
 })
 
 describe('drift repair over a warm-linked package entry', () => {
-  it('replaces the symlinked entry with the declared version and leaves the link target untouched', () => {
+  it('replaces the symlinked entry with the declared version and leaves the link target untouched', async () => {
     // The warm-link shape: node_modules/exp links into a base checkout outside the root.
     const dir = realpathSync(root({}, ['app/vendor', 'app/node_modules', 'base/exp', 'pack/package']))
     const app = path.join(dir, 'app'), base = path.join(dir, 'base', 'exp')
@@ -432,7 +432,7 @@ describe('drift repair over a warm-linked package entry', () => {
     expect(driftedNodeDependencies(app)).toEqual([{ name: 'exp', declared: '^2.0.0', installed: '1.0.0' }])
     vi.stubEnv('npm_config_offline', 'true')
     try {
-      const outcomes = installEnvironment([app])
+      const outcomes = await installEnvironment([app])
       expect(outcomes, outcomes.map(outcome => outcome.detail).join('\n')).toMatchObject([{ command: 'npm', ok: true, drift: [{ name: 'exp' }] }])
       expect(outcomes[0]).not.toHaveProperty('driftPersists')
     } finally { vi.unstubAllEnvs() }
@@ -442,3 +442,62 @@ describe('drift repair over a warm-linked package entry', () => {
   }, 120_000)
 })
 
+
+describe('hostSpawn', () => {
+  // Regression: a synchronous install blocked the event loop, so the engine's
+  // lease heartbeat (a timer on the same thread) could not renew and a ~50 s
+  // `yarn install` ended the run with `lease_lost`.
+  it('keeps the event loop free while a host command runs', async () => {
+    let ticks = 0
+    const timer = setInterval(() => { ticks++ }, 25)
+    try {
+      const result = await hostSpawn(process.execPath, ['-e', 'setTimeout(() => {}, 600)'], { cwd: process.cwd(), encoding: 'utf8', timeout: 10_000, env: process.env })
+      expect(result.status).toBe(0)
+    } finally {
+      clearInterval(timer)
+    }
+    expect(ticks).toBeGreaterThanOrEqual(10)
+  })
+
+  it('returns exit status and output like spawnSync', async () => {
+    const result = await hostSpawn(process.execPath, ['-e', 'process.stdout.write("out"); process.stderr.write("err"); process.exit(3)'], { cwd: process.cwd(), encoding: 'utf8', env: process.env })
+    expect(result).toMatchObject({ status: 3, stdout: 'out', stderr: 'err' })
+    expect(result.error).toBeUndefined()
+  })
+
+  it('kills a command that outlives its timeout and reports ETIMEDOUT', async () => {
+    const started = Date.now()
+    const result = await hostSpawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { cwd: process.cwd(), encoding: 'utf8', timeout: 200, env: process.env })
+    expect(Date.now() - started).toBeLessThan(10_000)
+    expect(result.status).toBeNull()
+    expect(result.error?.message).toContain('ETIMEDOUT')
+  })
+
+  it('keeps only the tail of very large output', async () => {
+    const result = await hostSpawn(process.execPath, ['-e', 'process.stdout.write("a".repeat(5000) + "END")'], { cwd: process.cwd(), encoding: 'utf8', env: process.env, maxBuffer: 100 })
+    expect(result.stdout).toHaveLength(100)
+    expect(result.stdout.endsWith('END')).toBe(true)
+  })
+
+  it('reports a missing command as an error result instead of throwing', async () => {
+    const result = await hostSpawn('specrails-no-such-command-xyz', [], { cwd: process.cwd(), encoding: 'utf8', env: process.env })
+    expect(result.status).toBeNull()
+    expect(result.error).toBeDefined()
+  })
+
+  it('lets installEnvironment run its install without blocking timers', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'host-spawn-'))
+    let ticks = 0
+    const timer = setInterval(() => { ticks++ }, 25)
+    try {
+      const outcomes = await installEnvironment([dir], {
+        plan: root => [{ ecosystem: 'node', root, command: process.execPath, args: ['-e', 'setTimeout(() => {}, 500)'], installs: 'slow dependencies' }],
+      })
+      expect(outcomes).toMatchObject([{ ok: true, detail: `installed slow dependencies in ${path.basename(dir)}` }])
+    } finally {
+      clearInterval(timer)
+      rmSync(dir, { recursive: true, force: true })
+    }
+    expect(ticks).toBeGreaterThanOrEqual(8)
+  })
+})

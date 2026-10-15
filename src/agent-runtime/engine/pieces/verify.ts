@@ -177,7 +177,7 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       if (environment) {
         const drift = environment.drift.flatMap(item => item.drift.map(entry => ({ root: checkoutRelative(deps.context, item.root), ...entry }))).slice(0, 20)
         if (drift.length) progress(`[environment] Installed dependencies do not satisfy their declared ranges (${describeDrift(drift)}); the host reinstalls them before judging the failure.`)
-        const repair = repairEnvironment(deps.context, receipt, deps.config.guardrails, progress)
+        const repair = await repairEnvironment(deps.context, receipt, deps.config.guardrails, progress)
         environmentRepair = { attempted: true, reverified: false, installs: repair.installs.map(install => ({ command: install.command, args: install.args, root: checkoutRelative(deps.context, install.root), ok: install.ok, detail: boundedText(install.detail, 1_000) })), ...(drift.length ? { drift } : {}) }
         if (repair.refused) blocker = repair.refused
         else if (repair.installs.some(install => install.ok)) {

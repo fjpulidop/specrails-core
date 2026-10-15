@@ -43,7 +43,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const note = (line: string): void => context.progress({ type: 'verification-output', payload: { text: line } })
   const environment = options.environmentRetry
     ? environmentNote(options.environmentRetry.installs, 'retry')
-    : hostRepairs ? environmentNote(prepareEnvironment(deps.context.repositories.map(repository => repository.path), environmentIo(deps, note)), 'prepared') : ''
+    : hostRepairs ? environmentNote(await prepareEnvironment(deps.context.repositories.map(repository => repository.path), environmentIo(deps, note)), 'prepared') : ''
   const schema = params.structuredOutput as JsonObject | undefined
   const validate = schema ? ajv.compile(schema) : undefined
   const roleState = deps.roleState(context)
@@ -84,7 +84,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   if (blocker) {
     const roots = deps.context.repositories.map(repository => repository.path)
     const io = environmentIo(deps, note)
-    const installs = [...installEnvironment(roots, { ...io, failureOutput: blocker }), ...prepareEnvironment(roots, io)]
+    const installs = [...await installEnvironment(roots, { ...io, failureOutput: blocker }), ...await prepareEnvironment(roots, io)]
     if (installs.some(install => install.ok)) {
       note('[environment] The agent reported a missing dependency or tool; the host installed it and runs the turn again.')
       return executeRoleTurn(deps, params, context, { ...options, environmentRetry: { installs } })

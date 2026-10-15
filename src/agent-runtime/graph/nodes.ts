@@ -368,7 +368,7 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
       if (environment) {
         const drift = environment.drift.flatMap(item => item.drift)
         if (drift.length) note('developer', `Installed dependencies do not satisfy their declared ranges (${describeDrift(drift)}); the host reinstalls them before judging the failure.`)
-        const repair = repairEnvironment(context, receipt, config.guardrails, text => note('developer', text))
+        const repair = await repairEnvironment(context, receipt, config.guardrails, text => note('developer', text))
         if (repair.refused) return hostBlocked(blockerMessage(repair.refused))
         if (repair.installs.some(outcome => outcome.ok)) {
           note('developer', 'Verification failed on the environment (missing dependencies or tools); the host installed them and is verifying again.')
