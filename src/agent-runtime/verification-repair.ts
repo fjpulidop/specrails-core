@@ -6,11 +6,10 @@
 // expired. The host classifies the failure first (a precondition it cannot
 // satisfy becomes a structured blocker), installs what it can once, and only a
 // failure that survives that becomes correction feedback.
-import type { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { describeModifiedFiles, type CommandReceipt, type PipelineContext, type VerificationReceipt, type VerificationSelfMutation } from '../pipeline/pipeline-state.js'
-import { driftedNodeDependencies, hostPrecondition, installEnvironment, isEnvironmentFailure, type DriftedDependency, type InstallOutcome } from './compact/environment.js'
+import { driftedNodeDependencies, hostPrecondition, installEnvironment, isEnvironmentFailure, type DriftedDependency, type HostSpawn, type InstallOutcome } from './compact/environment.js'
 import type { HostBlocker } from './engine/contracts.js'
 import { guardrailEnabled, type GuardrailSettings } from './guardrails.js'
 
@@ -121,10 +120,10 @@ export interface EnvironmentRepair { installs: InstallOutcome[]; refused?: HostB
  * install (app)`, `Environment: installed …`). An install the host cannot
  * complete for a precondition reason becomes `refused`.
  */
-export function repairEnvironment(context: PipelineContext, receipt: VerificationReceipt, guardrails: GuardrailSettings | undefined, note: (text: string) => void, spawn?: typeof spawnSync): EnvironmentRepair {
+export async function repairEnvironment(context: PipelineContext, receipt: VerificationReceipt, guardrails: GuardrailSettings | undefined, note: (text: string) => void, spawn?: HostSpawn): Promise<EnvironmentRepair> {
   const failed = receipt.commands.filter(command => command.exitCode !== 0)
   const roots = [...new Set([...installRoots(context, failed), ...driftedFailureRoots(context, receipt).map(item => item.root)])]
-  const installs = installEnvironment(roots, { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(guardrails, 'lockfile-repair'),
+  const installs = await installEnvironment(roots, { failureOutput: receipt.commands.map(command => command.output).join('\n'), lockfileRepair: guardrailEnabled(guardrails, 'lockfile-repair'),
     ...(spawn ? { spawn } : {}), onEvent: event => note(event.kind === 'text' ? event.text ?? '' : `[environment] ${event.tool ?? ''} ${event.detail ?? ''}`.trim()) })
   const refused = installs.find(outcome => outcome.precondition)
   if (!refused) return { installs }

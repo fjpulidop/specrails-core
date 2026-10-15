@@ -22,12 +22,28 @@ type SpawnResult = { status: number; stdout: string; stderr: string }
 const installs = vi.hoisted(() => ({ handler: undefined as ((command: string, args: string[], options: { cwd: string; timeout: number }) => SpawnResult | undefined) | undefined, calls: [] as string[][] }))
 vi.mock('cross-spawn', async importOriginal => {
   const actual = await importOriginal<{ default: typeof import('cross-spawn') }>()
+  const { EventEmitter } = await import('node:events'), { PassThrough } = await import('node:stream')
   const sync = (command: string, args: string[], options: { cwd: string; timeout: number }) => {
     installs.calls.push([command, ...args])
     const faked = installs.handler?.(command, args, options)
     return faked ? { ...faked, pid: 1, output: [], signal: null } : actual.default.sync(command, args, options)
   }
-  return { default: Object.assign((...parameters: Parameters<typeof actual.default>) => actual.default(...parameters), { sync, spawn: actual.default.spawn }) }
+  // Host installs spawn asynchronously (the event loop must stay free for the
+  // lease heartbeat): answer registered commands with a child that emits the
+  // faked result on the next tick.
+  const spawn = (command: string, args: string[], options: { cwd: string; timeout: number }) => {
+    installs.calls.push([command, ...args])
+    const faked = installs.handler?.(command, args, options)
+    if (!faked) return actual.default(command, args, options as never)
+    const child = Object.assign(new EventEmitter(), { stdout: new PassThrough(), stderr: new PassThrough(), kill: () => true })
+    setImmediate(() => {
+      child.stdout.end(faked.stdout)
+      child.stderr.end(faked.stderr)
+      setImmediate(() => child.emit('close', faked.status, null))
+    })
+    return child
+  }
+  return { default: Object.assign(spawn, { sync, spawn: actual.default.spawn }) }
 })
 
 const roots: string[] = []
@@ -97,7 +113,8 @@ describe('engine v2 environment repair', () => {
     const { marker } = playwrightRepository(f)
     installs.handler = (command, args, options) => {
       expect([command, ...args]).toEqual(['npx', 'playwright', 'install', 'chromium'])
-      expect(options).toMatchObject({ cwd: f.root, timeout: 600_000 })
+      // The plan's 10-minute bound is enforced by hostSpawn (asserted in environment.test.ts).
+      expect(options).toMatchObject({ cwd: f.root })
       writeFileSync(marker, 'browser')
       return { status: 0, stdout: 'Chromium 131.0.6778.33 downloaded', stderr: '' }
     }

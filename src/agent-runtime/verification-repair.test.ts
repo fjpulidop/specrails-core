@@ -58,33 +58,33 @@ describe('installRoots', () => {
 })
 
 describe('repairEnvironment', () => {
-  it('runs the planned installs once, narrates them like the legacy graph and reports what succeeded', () => {
+  it('runs the planned installs once, narrates them like the legacy graph and reports what succeeded', async () => {
     const { root, context } = fixture({ 'package.json': '{"devDependencies":{"jest":"^29"}}' })
     const spawn = vi.fn(() => spawnResult(0)) as never
     const notes: string[] = []
-    const repair = repairEnvironment(context, receipt([{ output: 'sh: jest: command not found', cwd: root }]), undefined, text => notes.push(text), spawn)
+    const repair = await repairEnvironment(context, receipt([{ output: 'sh: jest: command not found', cwd: root }]), undefined, text => notes.push(text), spawn)
     expect(repair.refused).toBeUndefined()
     expect(repair.installs).toMatchObject([{ command: 'npm', args: ['install', '--no-audit', '--no-fund', '--loglevel=error'], root, ok: true }])
     expect(notes[0]).toBe(`[environment] npm install --no-audit --no-fund --loglevel=error (${path.basename(root)})`)
     expect(notes.at(-1)).toBe(`Environment: installed node dependencies in ${path.basename(root)}`)
   })
-  it('refuses with a credential blocker when the install itself hits a precondition', () => {
+  it('refuses with a credential blocker when the install itself hits a precondition', async () => {
     const { root, context } = fixture({ 'package.json': '{"devDependencies":{"@acme/ui":"^1"}}' })
     const spawn = vi.fn(() => spawnResult(1, 'npm error code E401\nnpm error 401 Unauthorized - GET https://npm.pkg.github.com/@acme%2fui')) as never
-    const repair = repairEnvironment(context, receipt([{ output: "Error: Cannot find package '@acme/ui'", cwd: root }]), undefined, () => {}, spawn)
+    const repair = await repairEnvironment(context, receipt([{ output: "Error: Cannot find package '@acme/ui'", cwd: root }]), undefined, () => {}, spawn)
     expect(repair.refused).toMatchObject({ kind: 'credential', command: 'npm', cwd: '.', reason: 'installing its dependencies failed because the package registry rejected the credentials available to verification commands (HTTP 401/403)' })
     expect(repair.refused!.requiredAction).toContain('registry credentials')
   })
-  it('names the exact install to repeat with network access when a browser download fails offline', () => {
+  it('names the exact install to repeat with network access when a browser download fails offline', async () => {
     const { root, context } = fixture({ 'package.json': '{"devDependencies":{"@playwright/test":"^1.48"}}' }, ['node_modules/@playwright/test'])
     const spawn = vi.fn(() => spawnResult(1, 'Failed to download Chromium 131.0.6778.33 (playwright build v1148), caused by\nError: getaddrinfo ENOTFOUND cdn.playwright.dev')) as never
-    const repair = repairEnvironment(context, receipt([{ output: "browserType.launch: Executable doesn't exist at /Users/dev/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-mac-arm64/headless_shell", cwd: root }]), undefined, () => {}, spawn)
+    const repair = await repairEnvironment(context, receipt([{ output: "browserType.launch: Executable doesn't exist at /Users/dev/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-mac-arm64/headless_shell", cwd: root }]), undefined, () => {}, spawn)
     expect(repair.refused).toMatchObject({ kind: 'network', command: 'npx', args: ['playwright', 'install', 'chromium'], cwd: '.', requiredAction: 'Run `npx playwright install chromium` in . with network access, then retry the run.' })
   })
-  it('honors the lockfile-repair guardrail', () => {
+  it('honors the lockfile-repair guardrail', async () => {
     const { root, context } = fixture({ 'package.json': '{"devDependencies":{"jest":"^29"}}', 'package-lock.json': '{"lockfileVersion":3}' })
     const spawn = vi.fn(() => spawnResult(1, 'npm error code EINTEGRITY')) as never
-    const repair = repairEnvironment(context, receipt([{ output: 'sh: jest: command not found', cwd: root }]), { 'lockfile-repair': false }, () => {}, spawn)
+    const repair = await repairEnvironment(context, receipt([{ output: 'sh: jest: command not found', cwd: root }]), { 'lockfile-repair': false }, () => {}, spawn)
     expect(spawn).toHaveBeenCalledTimes(1)
     expect(existsSync(path.join(root, 'package-lock.json'))).toBe(true)
     expect(repair.installs[0]).toMatchObject({ ok: false })

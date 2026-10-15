@@ -7,7 +7,7 @@
 // feedback makes a small model "correct" healthy code until the attempt budget
 // is gone. The host owns the environment: it recognises these signatures,
 // installs once per ecosystem, and only then hands a real failure to the model.
-import type { spawnSync, SpawnSyncReturns } from 'node:child_process'
+import type { SpawnSyncOptionsWithStringEncoding, SpawnSyncReturns } from 'node:child_process'
 import crossSpawn from 'cross-spawn'
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -17,7 +17,67 @@ import semver from 'semver'
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
 // install/check round in circles. cross-spawn resolves the shim on every OS.
-const defaultSpawn: typeof spawnSync = crossSpawn.sync as unknown as typeof spawnSync
+//
+// Host commands run ASYNCHRONOUSLY. A synchronous spawn blocks the event loop
+// for the whole install, so the engine's execution-lease heartbeat (a timer on
+// the same thread) cannot renew: a ~50 s `yarn install` let the 60 s lease
+// expire and the run failed with `lease_lost` right after the install.
+
+/** The parts of a finished host command the environment logic reads. */
+export interface HostRun { status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string; error?: Error }
+/** Runs one host command. Injectable for tests; a synchronous result is accepted too. */
+export type HostSpawn = (command: string, args: readonly string[], options: SpawnSyncOptionsWithStringEncoding) => HostRun | SpawnSyncReturns<string> | Promise<HostRun>
+
+/** Bytes of each stream retained (the tail): installs can print far more than any caller reads. */
+const OUTPUT_TAIL_BYTES = 4 * 1024 * 1024
+
+/**
+ * Async counterpart of `spawnSync` with the same result shape: `status` null
+ * and an `ETIMEDOUT` error after `timeout` (the child is sent `killSignal`),
+ * stdout/stderr kept as bounded tails instead of failing with ENOBUFS.
+ */
+export const hostSpawn: HostSpawn = (command, args, options) => new Promise<HostRun>(resolve => {
+  let settled = false, timedOut = false, stdout = '', stderr = ''
+  const limit = options.maxBuffer ?? OUTPUT_TAIL_BYTES
+  const finish = (result: HostRun): void => {
+    if (settled) return
+    settled = true
+    if (timer) clearTimeout(timer)
+    resolve(result)
+  }
+  let child: ReturnType<typeof crossSpawn>
+  try {
+    child = crossSpawn(command, [...args], { cwd: options.cwd, env: options.env, windowsHide: options.windowsHide ?? true, stdio: ['ignore', 'pipe', 'pipe'] })
+  } catch (error) {
+    resolve({ status: null, signal: null, stdout: '', stderr: '', error: error as Error })
+    return
+  }
+  const timer = options.timeout ? setTimeout(() => {
+    timedOut = true
+    try { child.kill(options.killSignal as NodeJS.Signals | undefined ?? 'SIGTERM') } catch { /* already gone */ }
+  }, options.timeout) : undefined
+  const tail = (current: string, chunk: string): string => {
+    const next = current + chunk
+    return next.length > limit ? next.slice(next.length - limit) : next
+  }
+  child.stdout?.setEncoding('utf8').on('data', (chunk: string) => { stdout = tail(stdout, chunk) })
+  child.stderr?.setEncoding('utf8').on('data', (chunk: string) => { stderr = tail(stderr, chunk) })
+  child.on('error', error => finish({ status: null, signal: null, stdout, stderr, error }))
+  child.on('close', (code, signal) => finish({
+    status: timedOut ? null : code, signal, stdout, stderr,
+    ...(timedOut ? { error: Object.assign(new Error(`spawn ${command} ETIMEDOUT`), { code: 'ETIMEDOUT' }) } : {}),
+  }))
+})
+const defaultSpawn: HostSpawn = hostSpawn
+const failedRun = (error: unknown): HostRun => ({ status: null, signal: null, stdout: '', stderr: '', error: error as Error })
+async function runHost(spawn: HostSpawn, command: string, args: readonly string[], options: SpawnSyncOptionsWithStringEncoding): Promise<HostRun> {
+  try {
+    const result = await spawn(command, args, options)
+    return { status: result.status, signal: result.signal, stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), ...(result.error ? { error: result.error } : {}) }
+  } catch (error) {
+    return failedRun(error)
+  }
+}
 
 /** `timeoutMs` overrides the default bound for one plan (a browser download is far larger than a dependency install). `drift`: installed direct dependencies the install must bring back inside their declared ranges. */
 export interface EnvironmentInstall { ecosystem: 'node' | 'python' | 'go' | 'rust'; root: string; command: string; args: string[]; timeoutMs?: number; installs?: string; drift?: DriftedDependency[] }
@@ -236,20 +296,17 @@ function relaxManifestPin(root: string, name: string, version: string): boolean 
 }
 
 /** Runs each planned install once, bounded; never throws. */
-export interface InstallIo { spawn?: typeof spawnSync; timeoutMs?: number; failureOutput?: string; lockfileRepair?: boolean; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void
+export interface InstallIo { spawn?: HostSpawn; timeoutMs?: number; failureOutput?: string; lockfileRepair?: boolean; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void
   /** The installs for one root; the failure-driven plan by default. */
   plan?: (root: string) => EnvironmentInstall[] }
-export function installEnvironment(roots: readonly string[], io: InstallIo = {}): InstallOutcome[] {
+export async function installEnvironment(roots: readonly string[], io: InstallIo = {}): Promise<InstallOutcome[]> {
   const spawn = io.spawn ?? defaultSpawn
   const outcomes: InstallOutcome[] = []
   for (const root of roots) {
     for (const plan of io.plan ? io.plan(root) : plannedInstalls(root, io.failureOutput ?? '')) {
       io.onEvent?.({ kind: 'tool-start', tool: plan.command, detail: `${plan.args.join(' ')} (${path.basename(root)})` })
-      const run = (): SpawnSyncReturns<string> => {
-        try { return spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env }) }
-        catch (error) { return { status: null, error: error as Error, stdout: '', stderr: '', pid: 0, output: [], signal: null } }
-      }
-      let result = run()
+      const run = (): Promise<HostRun> => runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env })
+      let result = await run()
       // A model that writes package-lock.json by hand invents integrity hashes
       // (npm EINTEGRITY) or pins versions that never existed (ETARGET/E404 on a
       // locked entry). The lock is not candidate content: drop it and let npm
@@ -258,7 +315,7 @@ export function installEnvironment(roots: readonly string[], io: InstallIo = {})
       if (io.lockfileRepair !== false && result.status !== 0 && lock && /EINTEGRITY|ETARGET|E404|ENOTCACHED|Invalid: lock file/.test(String(result.stderr))) {
         try { unlinkSync(lock) } catch { /* the retry below then repeats the failure honestly */ }
         io.onEvent?.({ kind: 'text', text: `Environment: ${path.basename(lock)} did not match the registry; removed it and retrying ${plan.command} ${plan.args.join(' ')}` })
-        result = run()
+        result = await run()
       }
       // A pin the registry has never published ("No matching version found for
       // @babel/preset-env@7.23.0"): the model invented the version. Relax that
@@ -266,7 +323,7 @@ export function installEnvironment(roots: readonly string[], io: InstallIo = {})
       const unpublished = plan.ecosystem === 'node' && result.status !== 0 ? /No matching version found for ((?:@[\w.-]+\/)?[\w.-]+)@([^\s.]+(?:\.[^\s.]+)*)\.?(?:\n|$)/.exec(String(result.stderr)) : null
       if (unpublished && relaxManifestPin(root, unpublished[1]!, unpublished[2]!)) {
         io.onEvent?.({ kind: 'text', text: `Environment: ${unpublished[1]}@${unpublished[2]} is not published; relaxed the pin in package.json and retrying ${plan.command} ${plan.args.join(' ')}` })
-        result = run()
+        result = await run()
       }
       // Playwright's downloader tries IPv6 first; on a host whose DNS returns
       // an AAAA record without an IPv6 route, Node's family auto-selection
@@ -275,8 +332,7 @@ export function installEnvironment(roots: readonly string[], io: InstallIo = {})
         const preload = ipv4FirstPreload()
         if (preload) {
           io.onEvent?.({ kind: 'text', text: `Environment: the browser download timed out; retrying ${plan.command} ${plan.args.join(' ')} over IPv4` })
-          try { result = spawn(plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(preload)}`.trim() } }) }
-          catch (error) { result = { status: null, error: error as Error, stdout: '', stderr: '', pid: 0, output: [], signal: null } }
+          result = await runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(preload)}`.trim() } })
         }
       }
       io.onEvent?.({ kind: 'tool-end', tool: plan.command })
@@ -321,14 +377,12 @@ function playwrightCli(root: string): { command: string; args: string[] } | unde
  * locations without downloading; an unreadable answer means "unknown", never
  * an install.
  */
-export function missingPlaywrightBrowsers(root: string, spawn: typeof spawnSync = defaultSpawn): PlaywrightBrowser[] {
+export async function missingPlaywrightBrowsers(root: string, spawn: HostSpawn = defaultSpawn): Promise<PlaywrightBrowser[]> {
   if (!declaresPlaywright(root)) return []
   const cli = playwrightCli(root)
   if (!cli) return []
   const browsers = configuredPlaywrightBrowsers(root)
-  let result: SpawnSyncReturns<string>
-  try { result = spawn(cli.command, [...cli.args, 'install', '--dry-run', ...browsers], { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true, env: process.env }) }
-  catch { return [] }
+  const result = await runHost(spawn, cli.command, [...cli.args, 'install', '--dry-run', ...browsers], { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true, env: process.env })
   if (result.status !== 0) return []
   const locations = [...String(result.stdout ?? '').matchAll(/Install location:\s+(.+?)\s*$/gm)].map(match => match[1]!)
   return locations.length && locations.some(location => !existsSync(location)) ? browsers : []
@@ -342,14 +396,17 @@ export function missingPlaywrightBrowsers(root: string, spawn: typeof spawnSync 
  * idempotent, project-local work happens here; other ecosystems keep their
  * failure-driven repair at verification.
  */
-export function prepareEnvironment(roots: readonly string[], io: Omit<InstallIo, 'plan' | 'failureOutput'> = {}): InstallOutcome[] {
+export async function prepareEnvironment(roots: readonly string[], io: Omit<InstallIo, 'plan' | 'failureOutput'> = {}): Promise<InstallOutcome[]> {
   const spawn = io.spawn ?? defaultSpawn
-  const dependencies = installEnvironment(roots, { ...io, plan: root => plannedInstalls(root).filter(plan => plan.ecosystem === 'node') })
-  const browsers = installEnvironment(roots, { ...io, plan: root => {
-    const missing = missingPlaywrightBrowsers(root, spawn)
+  const dependencies = await installEnvironment(roots, { ...io, plan: root => plannedInstalls(root).filter(plan => plan.ecosystem === 'node') })
+  // The browser plan needs the async dry-run, so it is resolved per root first.
+  const browserPlans = new Map<string, EnvironmentInstall[]>()
+  for (const root of roots) {
+    const missing = await missingPlaywrightBrowsers(root, spawn)
     const cli = missing.length ? playwrightCli(root) : undefined
-    return cli ? [{ ecosystem: 'node', root, command: cli.command, args: [...cli.args, 'install', ...missing], timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${missing.join(', ')}` }] : []
-  } })
+    browserPlans.set(root, cli ? [{ ecosystem: 'node', root, command: cli.command, args: [...cli.args, 'install', ...missing], timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${missing.join(', ')}` }] : [])
+  }
+  const browsers = await installEnvironment(roots, { ...io, plan: root => browserPlans.get(root) ?? [] })
   return [...dependencies, ...browsers]
 }
 
@@ -406,16 +463,14 @@ interface GroupCheckOutcome { ran: boolean; ok: boolean; command?: string; outpu
  * groups (`verify-per-group`) so a broken group is fixed while its context is
  * still fresh instead of surfacing as five failed suites at the end.
  */
-export function runGroupCheck(roots: readonly string[], io: { spawn?: typeof spawnSync; timeoutMs?: number; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void } = {}): GroupCheckOutcome {
+export async function runGroupCheck(roots: readonly string[], io: { spawn?: HostSpawn; timeoutMs?: number; onEvent?: (event: { kind: 'tool-start' | 'tool-end' | 'text'; tool?: string; detail?: string; text?: string }) => void } = {}): Promise<GroupCheckOutcome> {
   const spawn = io.spawn ?? defaultSpawn
   for (const root of roots) {
     const check = detectCheckCommand(root)
     if (!check) continue
     const label = `${check.command} ${check.args.join(' ')}`
     io.onEvent?.({ kind: 'tool-start', tool: check.command, detail: `${check.args.join(' ')} (${path.basename(root)}, group check)` })
-    let result: SpawnSyncReturns<string>
-    try { result = spawn(check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...process.env, CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 }) }
-    catch (error) { result = { status: null, error: error as Error, stdout: '', stderr: '', pid: 0, output: [], signal: null } }
+    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...process.env, CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
     io.onEvent?.({ kind: 'tool-end', tool: check.command })
     const timedOut = result.error?.message?.includes('ETIMEDOUT') || result.signal === 'SIGKILL'
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.replace(/\u001b\[[0-9;]*m/g, '').trim().slice(-6000)
