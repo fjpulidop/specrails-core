@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.4](https://github.com/fjpulidop/specrails-core/compare/v6.6.3...v6.6.4) (2026-10-19)
+
+
+### Bug Fixes
+
+* **deps:** patch vulnerable transitive dependencies ([#431](https://github.com/fjpulidop/specrails-core/issues/431)) ([c831456](https://github.com/fjpulidop/specrails-core/commit/c831456befce6237e66ecf850c351a3a05b0a9c5))
+
 ## [6.6.3](https://github.com/fjpulidop/specrails-core/compare/v6.6.2...v6.6.3) (2026-10-15)
 
 
