@@ -377,6 +377,24 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.codex', 'skills', 'rails'))).toBe(false)
     })
 
+    it('codex provider keeps OpenSpec skills under .agents/skills on update', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-codex-openspec')
+      setupFakeSource(scriptDir)
+      const openspecSkill = path.join(repoRoot, '.agents', 'skills', 'openspec-apply-change', 'SKILL.md')
+      writeFileLf(openspecSkill, '---\nname: openspec-apply-change\n---\n')
+
+      scaffoldInstallation({
+        scriptDir,
+        artifactRoot: repoRoot,
+        codeRoot: repoRoot,
+        provider: 'codex',
+        providerDir: '.codex',
+      })
+
+      expect(readTextFile(openspecSkill)).toBe('---\nname: openspec-apply-change\n---\n')
+    })
+
     it('codex provider applies codex-config.toml + AGENTS.md (no rules.star)', () => {
       const scriptDir = path.join(tmpDir, 'core')
       const repoRoot = path.join(tmpDir, 'repo-codex-settings')

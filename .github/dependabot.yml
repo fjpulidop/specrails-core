@@ -11,7 +11,7 @@ updates:
     # the runtime guard ("OpenSpec <v> required") hold the same version, and
     # Desktop bundles that exact copy for offline project-add. A bot bump
     # (1.4.1 → 1.13.0 in #367) trips the guard in every test job; bump it by
-    # hand in both repos instead.
+    # hand in both repos instead, as 1.4.1 → 1.14.3 was.
     ignore:
       - dependency-name: "@fission-ai/openspec"
     groups:

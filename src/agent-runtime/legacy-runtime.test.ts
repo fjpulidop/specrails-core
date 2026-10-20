@@ -21,6 +21,12 @@ it('continues a real v4 request/checkpoint with its original executable without 
     // tree ships js-yaml 5 (named exports only). Give it its own declared
     // major, as a real retained install would have, from the js-yaml-4 alias.
     cpSync(path.join(packageRoot, 'node_modules/js-yaml-4'), path.join(extracted, 'package/node_modules/js-yaml'), { recursive: true })
+    // Its exact OpenSpec pin (1.4.1) is no longer Core's; a retained install
+    // keeps its own copy, supplied here from a pinned fixture (see README).
+    const openspecFixture = fileURLToPath(new URL('./fixtures/runtime-v4/openspec-1.4.1.tgz', import.meta.url))
+    expect(createHash('sha256').update(readFileSync(openspecFixture)).digest('hex')).toBe('782aa442c270becde35e7607ea5780d8e7c4f2ffe2efa557a9cb8780b1e95cf2')
+    mkdirSync(path.join(extracted, 'package/node_modules/@fission-ai'), { recursive: true })
+    execFileSync('tar', ['-xzf', openspecFixture, '-C', path.join(extracted, 'package/node_modules/@fission-ai')])
     const repo = path.join(root, 'repo'), backlog = path.join(root, 'backlog')
     mkdirSync(repo); mkdirSync(backlog)
     for (const args of [['init', '-q'], ['config', 'user.name', 'Fixture'], ['config', 'user.email', 'fixture@example.invalid']]) execFileSync('git', args, { cwd: repo })
