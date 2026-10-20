@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { describeArchivePreflight, previewOpenSpecArchive, requirementsWithoutKeyword } from './archive-preflight.js'
+import { describeArchivePreflight, previewOpenSpecArchive } from './archive-preflight.js'
 import { openSpecPieces } from '../engine/pieces/openspec.js'
 import type { PieceExecutionContext } from '../engine/contracts.js'
 import type { PieceDependencies } from '../engine/pieces/ports.js'
@@ -24,40 +24,35 @@ function project(delta: string, main = mainSpec): string {
   writeFileSync(path.join(change, 'specs/api/spec.md'), delta)
   return root
 }
+// Delta validation accepts this; archive cannot find the main-spec requirement it modifies.
+const modifiedMissing = `## MODIFIED Requirements\n### Requirement: Error codes\n\nFailures SHALL use the error envelope and stale_version.\n\n${scenario}`
 const modifiedErrors = `## MODIFIED Requirements\n### Requirement: Errors\n\nFailures SHALL use the error envelope and stale_version.\n\n${scenario}`
 const tree = (root: string) => readdirSync(path.join(root, 'openspec'), { recursive: true }).map(String).sort()
 
 describe('OpenSpec archive preflight', () => {
-  it('finds requirements whose first body line lacks SHALL or MUST', () => {
-    expect(requirementsWithoutKeyword(mainSpec)).toEqual([{ line: 17, requirement: 'Write boundary' }])
-    expect(requirementsWithoutKeyword('### Requirement: Id\n**ID**: R1\nThe API SHALL respond.\n')).toEqual([{ line: 2, requirement: 'Id' }])
-    expect(requirementsWithoutKeyword('### Requirement: Header only\n#### Scenario: x\n')).toEqual([{ line: 1, requirement: 'Header only' }])
-  })
-
-  it('reports a change that validates but whose rebuilt main spec cannot be archived, without touching the project', async () => {
-    const root = project(modifiedErrors), before = tree(root), spec = readFileSync(path.join(root, 'openspec/specs/api/spec.md'), 'utf8')
+  it('reports a change that validates but cannot be archived, without touching the project', async () => {
+    const root = project(modifiedMissing), before = tree(root), spec = readFileSync(path.join(root, 'openspec/specs/api/spec.md'), 'utf8')
     const preflight = await previewOpenSpecArchive(root, 'versions')
-    expect(preflight).toMatchObject({ valid: false, findings: [{ path: 'openspec/specs/api/spec.md', line: 17, requirement: 'Write boundary' }] })
-    expect(preflight.valid === false && preflight.reason).toContain('Requirement must contain SHALL or MUST keyword')
+    expect(preflight).toMatchObject({ valid: false })
+    expect(preflight.valid === false && preflight.reason).toContain('MODIFIED failed for header "### Requirement: Error codes" - not found')
     expect(tree(root)).toEqual(before)
     expect(readFileSync(path.join(root, 'openspec/specs/api/spec.md'), 'utf8')).toBe(spec)
     const text = describeArchivePreflight('versions', preflight as Extract<typeof preflight, { valid: false }>)
-    expect(text).toContain('openspec/specs/api/spec.md:17 "Write boundary"')
-    expect(text).toContain('## MODIFIED Requirements')
+    expect(text).toContain('archiving it would fail')
+    expect(text).toContain('MODIFIED and RENAMED headers must name an existing requirement exactly')
   })
 
-  it('passes once the delta restates the broken requirement with SHALL on its first line', async () => {
-    const fixed = `${modifiedErrors}\n### Requirement: Write boundary\n\nWhen writes are enabled, the gateway SHALL authorize every mutation.\n\n${scenario}`
-    expect(await previewOpenSpecArchive(project(fixed), 'versions')).toEqual({ valid: true })
+  it('passes once the delta modifies an existing requirement, including one whose SHALL wraps', async () => {
+    expect(await previewOpenSpecArchive(project(modifiedErrors), 'versions')).toEqual({ valid: true })
   })
 
   it('sends the planner back from validate with the archive reason in history', async () => {
-    const root = project(modifiedErrors)
+    const root = project(modifiedMissing)
     const deps = { context: { artifactRepositoryId: 'repo', artifactRoot: root } } as unknown as PieceDependencies
     const validate = openSpecPieces(() => deps).find(piece => piece.descriptor.kind === 'openspec-validate')!
     const context = { signal: new AbortController().signal, frame: { attemptId: 'a1', transition: 3, attempt: 1, nodePath: 'validate' } } as unknown as PieceExecutionContext
     const result = await validate.execute({ change: 'versions' }, context)
     expect(result).toMatchObject({ outcome: 'fail', output: { archivePreflight: { valid: false } } })
-    expect(result.history?.[0]).toMatchObject({ id: 'a1:archive-preflight', nodePath: 'validate', text: expect.stringContaining('"Write boundary"') })
+    expect(result.history?.[0]).toMatchObject({ id: 'a1:archive-preflight', nodePath: 'validate', text: expect.stringContaining('"### Requirement: Error codes" - not found') })
   })
 })

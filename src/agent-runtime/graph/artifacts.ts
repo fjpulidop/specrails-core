@@ -165,8 +165,8 @@ async function archiveWithOpenSpec(context: PipelineContext, change: string, act
         // created specification. Preserve that provenance during fork replay;
         // authored text and all byte-for-byte publication guards stay intact.
         if (sourceChange && before === null && after !== null) after = after.replace(
-          `\n## Purpose\nTBD - created by archiving change ${change}. Update Purpose after archive.\n## Requirements\n`,
-          `\n## Purpose\nTBD - created by archiving change ${sourceChange}. Update Purpose after archive.\n## Requirements\n`)
+          `\n## Purpose\nTBD - created by archiving change ${change}. Update Purpose after archive.\n`,
+          `\n## Purpose\nTBD - created by archiving change ${sourceChange}. Update Purpose after archive.\n`)
         return { path: 'openspec/specs/' + name, before, after }
       }).filter(item => item.before !== item.after) }
       write(receipt, JSON.stringify(plan))

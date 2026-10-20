@@ -8,8 +8,11 @@ import { fileURLToPath } from 'node:url'
 import { BUILTIN_ROLE_POLICY, isBuiltinRole, type AgentRole, type CliProvider, type RoleDescriptor, type AgentAccess, type ArtifactAccess, type OpenSpecSkill } from './executor-types.js'
 import { z } from 'zod'
 
-export const OPENSPEC_VERSION = '1.4.1'
+export const OPENSPEC_VERSION = '1.14.3'
 export const ROLE_SKILLS = { architect: 'openspec-ff-change', developer: 'openspec-apply-change', reviewer: 'openspec-verify-change' } as const
+/** Where `openspec init --tools` writes each provider's skills (Codex and Kimi moved in 1.14). */
+const OPENSPEC_SKILL_DIRECTORIES: Record<CliProvider, string> = { claude: '.claude', codex: '.agents', gemini: '.gemini', kimi: '.kimi-code' }
+const DEFAULT_PROJECT_CONFIG = 'schema: spec-driven\n'
 export interface OpenSpecRoleContext {
   evidenceScope?: { backlogRoot: string; runId: string }
   root: string
@@ -146,9 +149,9 @@ export function prepareOpenSpec(root: string, change: string, directory: string)
         cwd: target, encoding: 'utf8', timeout: 60_000,
         env: { ...process.env, XDG_CONFIG_HOME: config, OPENSPEC_TELEMETRY: '0', DO_NOT_TRACK: '1', CI: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
       })
-      for (const provider of ['claude', 'codex', 'gemini', 'kimi']) {
+      for (const provider of ['claude', 'codex', 'gemini', 'kimi'] as const) {
         for (const name of Object.values(ROLE_SKILLS)) {
-          const content = readFileSync(path.join(target, '.' + provider, 'skills', name, 'SKILL.md'), 'utf8')
+          const content = readFileSync(path.join(target, OPENSPEC_SKILL_DIRECTORIES[provider], 'skills', name, 'SKILL.md'), 'utf8')
           const destination = path.join(skillRoot, provider, name)
           mkdirSync(destination, { recursive: true })
           writeFileSync(path.join(destination, 'SKILL.md'), content, { mode: 0o600 })
@@ -162,8 +165,11 @@ export function prepareOpenSpec(root: string, change: string, directory: string)
     identity[`${provider}/${name}`] = hash(readFileSync(path.join(skillRoot, provider, name, 'SKILL.md'), 'utf8'))
   }
   if (existsSync(path.join(root, 'openspec/schemas/spec-driven'))) throw new Error('Custom spec-driven schema overrides are not supported by this runtime')
-  const config = artifactPath(root, 'openspec/config.yaml')
-  identity.projectConfig = existsSync(config) ? hash(readFileSync(config, 'utf8')) : 'absent'
+  // Same precedence as OpenSpec. `new change` scaffolds DEFAULT_PROJECT_CONFIG when no config exists;
+  // it is equivalent to none, so the architect's first write does not change the run's identity.
+  const config = ['openspec/config.yaml', 'openspec/config.yml'].map(file => artifactPath(root, file)).find(file => existsSync(file))
+  const projectConfig = config ? readFileSync(config, 'utf8') : undefined
+  identity.projectConfig = projectConfig === undefined || projectConfig === DEFAULT_PROJECT_CONFIG ? 'absent' : hash(projectConfig)
   return { cli, skillRoot, identity }
 }
 export function roleOpenSpecContext(prepared: ReturnType<typeof prepareOpenSpec>, root: string, change: string, directory: string, roleOrDescriptor: AgentRole | RoleDescriptor, provider: CliProvider): OpenSpecRoleContext {
@@ -308,7 +314,7 @@ export const OPENSPEC_TOOL_DEFINITION = { type: 'function', function: { name: 'o
 export function openSpecPrompt(context: OpenSpecRoleContext): string {
   if (!isBuiltinRole(context.role)) return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. Load action=load_skill using openspec_workflow and follow the pinned official skill. Use scoped tools for status, instructions, validation and permitted artifact writes. Workspace access: ${openSpecPolicy(context).access}; artifacts: ${openSpecPolicy(context).artifacts}. Read required artifact instructions before writing. Never archive or coordinate another role.\n`
 
-  return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
+  return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. This headless transport loads the official, version-pinned skill through the openspec_workflow tool (MCP server specrails_openspec, tool workflow on CLI providers). This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered, and so are the skill's store selection and project check: no store is selected (never pass --store or run store commands), and the host has admitted this repository as the OpenSpec project, so action=new may create its repo-local openspec/ root; do not run openspec list to check for one. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
 }
 export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: string): { command: string; args: string[] } {
   const file = path.join(directory, 'openspec-context.json')

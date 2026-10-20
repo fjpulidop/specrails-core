@@ -9,7 +9,7 @@ import { buildOpenSpecInvocation } from './init.js'
  */
 describe('buildOpenSpecInvocation', () => {
   const repoRoot = '/tmp/repo'
-  const pinned = '1.4.1'
+  const pinned = '1.14.3'
 
   it('form 1 (node-script): BIN + NODE set → runs `node <cli> init …`', () => {
     const env: NodeJS.ProcessEnv = {

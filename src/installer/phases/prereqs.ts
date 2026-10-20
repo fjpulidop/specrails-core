@@ -20,7 +20,7 @@ import {
 } from './provider-detect.js'
 
 /**
- * OpenSpec 1.4.1, which the installer invokes during the default init/update
+ * OpenSpec 1.14.3, which the installer invokes during the default init/update
  * flow, requires Node >=20.19.0. Keep this floor independent from Kimi's npm
  * package requirement: SpecRails launches an externally installed Kimi CLI and
  * does not require the Kimi npm distribution.
@@ -88,7 +88,7 @@ export async function checkPrerequisites(options: PrereqOptions): Promise<Prereq
   if (!isSupportedNodeVersion(nodeVersion)) {
     throw new PrerequisiteError(
       `Node.js ${nodeVersion} is unsupported. SpecRails requires Node.js ` +
-        `${MIN_NODE_VERSION} or newer because OpenSpec 1.4.1 uses that runtime floor. ` +
+        `${MIN_NODE_VERSION} or newer because OpenSpec 1.14.3 uses that runtime floor. ` +
         'Install a supported Node.js release from https://nodejs.org/',
     )
   }

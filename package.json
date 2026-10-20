@@ -88,7 +88,7 @@
     "ci": "npm run typecheck && npm run test:scripts && npm run test:coverage && npm run check:package"
   },
   "dependencies": {
-    "@fission-ai/openspec": "1.4.1",
+    "@fission-ai/openspec": "1.14.3",
     "@langchain/core": "1.2.14",
     "@langchain/langgraph": "1.4.18",
     "@langchain/langgraph-checkpoint": "1.1.5",

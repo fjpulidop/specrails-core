@@ -13,7 +13,7 @@ import {
 } from './prereqs.js'
 
 describe('Node.js runtime floor', () => {
-  it('matches the OpenSpec 1.4.1 minimum exactly', () => {
+  it('matches the OpenSpec 1.14.3 minimum exactly', () => {
     expect(MIN_NODE_VERSION).toBe('20.19.0')
     expect(isSupportedNodeVersion('20.18.9')).toBe(false)
     expect(isSupportedNodeVersion('20.19.0')).toBe(true)

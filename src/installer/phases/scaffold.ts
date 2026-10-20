@@ -204,9 +204,8 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   // --- Directory skeleton ---
   mk(path.join(input.artifactRoot, input.providerDir))
   if (input.provider === 'codex') {
-    // Codex skills live under <providerDir>/skills/ (e.g. .codex/skills/).
-    // The pre-§18 code wrote to `.agents/skills/` which codex doesn't read;
-    // that was a placeholder name from the gated state.
+    // Specrails' Codex skills live under <providerDir>/skills/ (e.g. .codex/skills/).
+    // OpenSpec's own Codex skills live under `.agents/skills/`.
     mk(path.join(input.artifactRoot, input.providerDir, 'skills'))
   } else if (input.provider === 'gemini') {
     // Gemini: TOML commands under .gemini/commands/specrails/ + OpenSpec
@@ -1264,9 +1263,7 @@ function pruneLegacyArtifacts(
   ]
 
   if (input.provider === 'codex') {
-    // Pre-§18 layout used `.agents/skills/` — prune any leftovers from a
-    // legacy install before settling on the canonical `.codex/skills/`.
-    legacyPaths.push(path.join(input.artifactRoot, '.agents'))
+    // `.agents/skills/` is not pruned: OpenSpec 1.14+ writes its Codex skills there.
     legacyPaths.push(path.join(input.artifactRoot, input.providerDir, 'skills', 'setup'))
   } else if (input.provider === 'gemini') {
     // OpenSpec and user skills survive updates; only retired setup commands are managed.

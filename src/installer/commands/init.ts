@@ -490,7 +490,7 @@ export function buildOpenSpecInvocation(
   repoRoot: string,
   provider: Provider,
   env: NodeJS.ProcessEnv = process.env,
-  pinnedVersion: string = readPinnedVersion(resolveScriptDir(), 'openspec', '1.4.1'),
+  pinnedVersion: string = readPinnedVersion(resolveScriptDir(), 'openspec', '1.14.3'),
 ): { bin: string; args: string[] } {
   const bin = env.SPECRAILS_OPENSPEC_BIN
   const node = env.SPECRAILS_OPENSPEC_NODE

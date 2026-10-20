@@ -45,7 +45,7 @@ describe('official OpenSpec CLI and confined role tools', () => {
   it('uses real project rules, metadata, dependency order, deltas and apply progress', async () => {
     await expect(architect.execute({ action: 'new' })).rejects.toThrow('Load the official')
     const skill = await architect.execute({ action: 'load_skill' })
-    expect(skill).toMatchObject({ name: 'openspec-ff-change', version: '1.4.1' })
+    expect(skill).toMatchObject({ name: 'openspec-ff-change', version: '1.14.3' })
     await architect.execute({ action: 'new' })
     const proposal = await architect.execute({ action: 'instructions', artifact: 'proposal' })
     expect(JSON.stringify(proposal)).toContain('Keep alerts informational')

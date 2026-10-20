@@ -165,7 +165,8 @@ describe('programmatic Core host with real evidence gates', () => {
     const failed = await runCoreWorkflow(opts(registry))
     expect(failed.status).toBe('failed')
     expect(failed.nextStep).toBe('archive')
-    expect(failed.error).toContain('OpenSpec did not create an archive')
+    // OpenSpec 1.14 exits non-zero here (1.4.1 exited 0 without archiving); either way its output survives.
+    expect(failed.error).toContain('OpenSpec archive failed')
     expect(failed.error).toContain('Purpose')
     expect(failed.error).not.toContain('ambiguous')
     expect(existsSync(active('tasks.md'))).toBe(true)
@@ -603,7 +604,9 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(state.error).toContain('continuation limit')
     expect(calls.filter(call => call.role === 'developer')).toHaveLength(2)
     expect(calls.some(call => call.role === 'reviewer')).toBe(false)
-    expect(existsSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive'))).toBe(false)
+    // `new change` scaffolds an empty changes/archive/ since OpenSpec 1.14.
+    const archived = path.join(context.artifactRoot, 'openspec', 'changes', 'archive')
+    expect(existsSync(archived) ? readdirSync(archived) : []).toEqual([])
   })
 
   it('returns unchecked tasks to the developer as feedback instead of failing, then blocks at the limit', async () => {
