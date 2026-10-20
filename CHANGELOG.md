@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.6.5](https://github.com/fjpulidop/specrails-core/compare/v6.6.4...v6.6.5) (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** upgrade OpenSpec to 1.14.3 ([#433](https://github.com/fjpulidop/specrails-core/issues/433)) ([5ec8b0e](https://github.com/fjpulidop/specrails-core/commit/5ec8b0e11af8208cf59fc444848dfc6a3f2dac56))
+
 ## [6.6.4](https://github.com/fjpulidop/specrails-core/compare/v6.6.3...v6.6.4) (2026-10-19)
 
 
