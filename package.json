@@ -89,16 +89,16 @@
   },
   "dependencies": {
     "@fission-ai/openspec": "1.14.3",
-    "@langchain/core": "1.2.14",
-    "@langchain/langgraph": "1.4.18",
-    "@langchain/langgraph-checkpoint": "1.1.5",
-    "@modelcontextprotocol/sdk": "1.31.0",
+    "@langchain/core": "1.2.18",
+    "@langchain/langgraph": "1.5.1",
+    "@langchain/langgraph-checkpoint": "1.2.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "ajv": "^8.20.0",
     "cross-spawn": "7.0.6",
     "js-yaml": "^5.4.3",
     "picocolors": "^1.1.1",
     "semver": "^7.8.5",
-    "zod": "4.6.5"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/cross-spawn": "6.0.6",
