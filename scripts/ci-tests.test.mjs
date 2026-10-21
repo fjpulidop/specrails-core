@@ -126,6 +126,20 @@ test('the coverage merge enforces configured thresholds on the merged report and
     assert.throws(() => mergeCoverage(dir, { spawnProcess: () => ({ status: 1 }) }), /coverage merge failed/)
   } finally { rmSync(dir, { recursive: true, force: true }) }
 })
+test('a composite partition runs each part in order and stops at the first failure', () => {
+  assert.deepEqual(record('general-1/2+recovery'), [
+    ['run', ...[...RUNTIME_FILES, RECOVERY_FILE].flatMap(file => ['--exclude', file]), '--shard=1/2'],
+    ['run', RECOVERY_FILE, '--maxWorkers', '1', '--maxConcurrency', '1'],
+  ])
+  let calls = 0
+  assert.throws(() => runPartition('general-1/2+recovery', { spawnProcess() { calls++; return { status: 3 } } }), /Vitest run failed \(3\)/)
+  assert.equal(calls, 1)
+  const blobDir = path.join(os.tmpdir(), 'blobs')
+  const outputs = record('general-1/2+recovery', { blobDir }).map(call => call.find(arg => arg.startsWith('--outputFile.blob=')))
+  assert.equal(new Set(outputs).size, 2, 'Each composite invocation writes its own blob')
+  assertCompletePartitionSet(['general-1/2+recovery', 'general-2/2', 'runtime-1/2', 'runtime-2/2'])
+  assert.throws(() => assertCompletePartitionSet(['general-1/2+recovery', 'general-2/2+recovery', 'runtime-1/1']))
+})
 test('partition names and sets fail closed', () => {
   assert.deepEqual(parsePartition('runtime-2/3'), { kind: 'runtime', part: 2, count: 3 })
   for (const name of ['runtime-1', 'runtime-0/3', 'runtime-4/3', 'general-1/0', 'everything', undefined]) assert.throws(() => parsePartition(name))

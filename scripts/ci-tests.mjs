@@ -18,6 +18,7 @@ const RECOVERY_ARGS = ['--maxWorkers', '1', '--maxConcurrency', '1']
  *   general-K/N                  vitest shard K/N of the non-runtime, non-recovery suites
  *   recovery                     the recovery suite alone, serially
  *   runtime-K/N                  line-balanced slice K of N of the runtime suites
+ *   A+B                          run partitions A then B in one job (balances job length)
  */
 export function parsePartition(name) {
   if (name === 'full' || name === 'general' || name === 'recovery') return { kind: name }
@@ -30,7 +31,7 @@ export function parsePartition(name) {
 
 /** A set of partitions must run every suite exactly once. */
 export function assertCompletePartitionSet(names) {
-  const parsed = names.map(parsePartition)
+  const parsed = names.flatMap(name => name.split('+')).map(parsePartition)
   const count = kind => parsed.filter(item => item.kind === kind).length
   const complete = kind => {
     const rows = parsed.filter(item => item.kind === kind && item.count)
@@ -82,7 +83,17 @@ export function assertSelection(expected, actual) {
   assert.deepEqual(actual.map(identity).sort(), expected.map(identity).sort(), 'Vitest line selection must execute exactly the assigned test inventory')
 }
 
-export function runPartition(partition, { listOnly = false, spawnProcess = spawnSync, blobDir } = {}) {
+export function runPartition(partition, options = {}) {
+  const parts = String(partition).split('+')
+  if (parts.length > 1) {
+    assert.ok(!options.listOnly, '--list-only takes a single runtime partition')
+    for (const part of parts) runSinglePartition(part, options)
+    return
+  }
+  runSinglePartition(partition, options)
+}
+
+function runSinglePartition(partition, { listOnly = false, spawnProcess = spawnSync, blobDir } = {}) {
   const spec = parsePartition(partition)
   const vitest = path.resolve('node_modules/vitest/vitest.mjs')
   let invocation = 0
