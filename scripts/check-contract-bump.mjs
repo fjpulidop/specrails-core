@@ -76,6 +76,11 @@ export function diffContract(base, head) {
   return result
 }
 
+/** Keys whose values are free-text documentation, exempt from the bump rule. */
+export const ANNOTATION_KEYS = ['description', 'note', 'notes', 'documentation']
+const ANNOTATION_PATH = new RegExp(`\\.(?:${ANNOTATION_KEYS.join('|')})$`)
+export const isAnnotationPath = (path) => ANNOTATION_PATH.test(path)
+
 const BREAKING_HEADER = /^[a-z]+(?:\([^)\n]*\))?!:/im
 const BREAKING_FOOTER = /^BREAKING[ -]CHANGE:/m
 export function declaresBreakingChange(messages) {
@@ -105,6 +110,20 @@ export function evaluateContractChange({ base, head, messages = [] }) {
   for (const list of Object.values(diff)) {
     const index = list.indexOf('$.schemaVersion')
     if (index !== -1) list.splice(index, 1)
+  }
+  // Free-text annotations are documentation for humans, not negotiated values:
+  // editing, adding or removing them needs no bump. Every other string,
+  // however prose-like (e.g. `specificationFormat`), states behaviour Desktop
+  // may rely on and needs a bump.
+  const annotations = []
+  for (const name of ['valueChanged', 'added', 'removed']) {
+    diff[name] = diff[name].filter((p) => (isAnnotationPath(p) ? (annotations.push(p), false) : true))
+  }
+  if (annotations.length) notes.push(`Free-text annotations changed (no bump required):\n  - ${annotations.join('\n  - ')}`)
+  if (!diff.valueChanged.length && !diff.added.length && !diff.removed.length && !diff.typeChanged.length) {
+    notes.push('Only free-text annotations or schemaVersion changed.')
+    if (baseVersion && headVersion && compareVersions(headVersion, baseVersion) < 0) errors.push(`schemaVersion must never decrease (${base.schemaVersion} -> ${head.schemaVersion}).`)
+    return { ok: errors.length === 0, changed: true, breaking: [], errors, notes, diff }
   }
   const breaking = [...diff.removed.map((p) => `removed ${p}`), ...diff.typeChanged.map((p) => `type changed ${p}`)]
   const bump = baseVersion && headVersion ? compareVersions(headVersion, baseVersion) : null

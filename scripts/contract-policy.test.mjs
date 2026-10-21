@@ -89,6 +89,20 @@ test('deleting the contract fails; a new contract passes when well formed', () =
   assert.equal(evaluateContractChange({ base: null, head: { schemaVersion: 'x' } }).ok, false)
 })
 
+test('free-text annotation edits need no bump; other prose-like values do', () => {
+  const annotated = with_((c) => { c.lifecycle.description = 'old'; c.agentRuntime.notes = 'n' })
+  const reworded = clone(annotated)
+  reworded.lifecycle.description = 'clearer wording'
+  delete reworded.agentRuntime.notes
+  reworded.agentRuntime.documentation = 'docs/agent-runtime.md'
+  const verdict = evaluateContractChange({ base: annotated, head: reworded })
+  assert.equal(verdict.ok, true, verdict.errors.join('\n'))
+  assert.match(verdict.notes.join('\n'), /annotations changed[\s\S]*lifecycle\.description/)
+  assert.equal(evaluateContractChange({ base: annotated, head: { ...reworded, schemaVersion: '5.1' } }).ok, false)
+  const semantic = with_((c) => { c.lifecycle.initCommand = 'install' })
+  assert.match(evaluateContractChange({ base, head: semantic }).errors.join(), /did not increase/)
+})
+
 test('detects BREAKING declarations in headers, footers and PR titles only', () => {
   assert.equal(declaresBreakingChange(['feat(api)!: x']), true)
   assert.equal(declaresBreakingChange(['feat: x\n\nBREAKING CHANGE: y']), true)
