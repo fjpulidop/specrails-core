@@ -52,10 +52,13 @@ the advisory instead of bypassing the guard.
 | Additive: new key, provider, capability, node kind, event type, CLI operation or optional field | minor (`5.2` → `5.3`) | normal `feat:`/`fix:` |
 | Removal of any key or array member (capability, node kind, event type, provider, builtin…) | major (`5.3` → `6.0`) | `!` in the header **or** a `BREAKING CHANGE:` footer |
 | Change of a value's type, or a value whose meaning narrows (fewer accepted values, stricter pattern, different default behaviour) | major | `!` or `BREAKING CHANGE:` |
-| Wording-only change in a `notes`/`description` string | minor | normal |
+| Editing, adding or removing a free-text annotation: a value under a `description`, `note`, `notes` or `documentation` key | none required | normal |
 
-Every content change bumps `schemaVersion`, including wording-only changes. The bump tells
-Desktop to re-read the contract.
+Every other content change bumps `schemaVersion`. The bump tells Desktop to re-read the
+contract. Annotations are documentation for humans. Desktop never parses them, so they are
+exempt. Any other string is a contract value, however prose-like it reads. For example,
+`agentRuntime.specificationFormat` states how specs are archived. Changing that meaning needs
+at least a minor bump, and a major bump when it narrows what Desktop can rely on.
 
 The `contract-policy` CI job runs [check-contract-bump.mjs](../scripts/check-contract-bump.mjs)
 on every pull request. It compares the contract at the PR base and head:
