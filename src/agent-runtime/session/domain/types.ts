@@ -8,7 +8,11 @@ export type SessionPhase = 'idle' | 'turn' | 'background'
 export type SessionStatus = 'open' | 'closed'
 export type TurnOrigin = 'user' | 'subagent' | 'system'
 export type TurnStatus = 'running' | 'completed' | 'failed' | 'stopped' | 'interrupted'
-export type InputDelivery = 'queue' | 'steer'
+/**
+ * `queue`: run as a later turn. `steer`: deliver into the running turn.
+ * `interrupt`: cut the running turn and run this input next (like `queue` when idle).
+ */
+export type InputDelivery = 'queue' | 'steer' | 'interrupt'
 export type InputState = 'accepted' | 'queued' | 'started' | 'completed' | 'rejected' | 'interrupted'
 export type SubagentKind = 'foreground' | 'background'
 export type SubagentPhase = 'running' | 'idle' | 'failed' | 'stopped' | 'killed' | 'interrupted'
@@ -117,6 +121,12 @@ export interface DriverCapabilities {
   steer: boolean
   /** The tool set can be restricted (`policy.tools` other than the default). */
   toolFiltering: boolean
+  /**
+   * How `delivery: 'interrupt'` cuts a running turn. `native`: the provider's own
+   * stop primitive, keeping its session. `emulated`: the runtime stops the turn
+   * as `session.interrupt` does, then runs the input next. Absent on older Cores.
+   */
+  interrupt?: 'native' | 'emulated'
   usage: UsageSemantics
 }
 

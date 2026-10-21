@@ -23,6 +23,7 @@ test enforces this: no code outside `drivers/` compares ids with provider names.
 | `subagents` / `subagentDisable` | supported / yes (`--disallowedTools Agent,Task`) | supported / yes (`features.multi_agent=false`) | unsupported |
 | `autonomousContinuation` | yes (task-notification turns) | no (policy `resume-agent` asks the agent to collect) | no |
 | `steer` | yes (`priority: next`) | yes (`turn/steer`) | no |
+| `interrupt` | `native` (receives `delivery: 'interrupt'`: `control_request interrupt` once per turn, input with `priority: now`) | `native` (application calls `interrupt()` = `turn/interrupt`, then releases the input as `turn/start`) | `emulated` (abort, then the input runs next) |
 | `toolFiltering` | yes (`--tools`, `--allowedTools`, `--disallowedTools`) | no | no |
 | `usage` | USD session-cumulative, tokens per turn | no USD, tokens cumulative per thread | per turn |
 

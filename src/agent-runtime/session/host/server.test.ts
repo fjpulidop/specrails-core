@@ -72,7 +72,7 @@ describe('SessionHost protocol', () => {
     expect(((await client.call('initialize', { protocolVersions: [99], host: { name: 't', version: '1' } })).error as Json).data).toMatchObject({ code: 'protocol_mismatch', detail: { supported: [1] } })
     expect(((await client.call('initialize', { protocolVersions: [1], host: { name: 't', version: '1' }, scope: 'other' })).error as Json).data).toMatchObject({ code: 'invalid_params' })
     const ok = (await client.call('initialize', { protocolVersions: [1, 2], host: { name: 't', version: '1' }, scope: 'proj' })).result as Json
-    expect(ok).toMatchObject({ protocolVersion: 1, scope: 'proj', capabilities: { sessions: 1 }, runtime: { coreVersion: 'test' } })
+    expect(ok).toMatchObject({ protocolVersion: 1, scope: 'proj', capabilities: { sessions: 1, delegation: 1, flowSessions: 1 }, runtime: { coreVersion: 'test' } })
     expect((ok.drivers as Json[]).map((driver) => driver.id)).toEqual(['scripted'])
   })
 

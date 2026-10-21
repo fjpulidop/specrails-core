@@ -10,6 +10,7 @@ import {
   RPC_INVALID_REQUEST,
   RPC_METHOD_NOT_FOUND,
   RPC_PARSE_ERROR,
+  SESSION_HOST_CAPABILITIES,
   SESSION_PROTOCOL_VERSIONS,
   validatorFor,
 } from './protocol.js'
@@ -177,8 +178,7 @@ export class SessionHost {
       protocolVersion: Math.max(...requested),
       scope: this.runtime.scope,
       runtime: this.runtime.identity,
-      // `delegation`: session.delegate / session.waitSubagents and subagentRuntime.mode 'delegated'.
-      capabilities: { sessions: 1, delegation: 1 },
+      capabilities: { ...SESSION_HOST_CAPABILITIES },
       drivers: this.runtime.service.drivers(),
     }
   }

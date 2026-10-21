@@ -149,6 +149,74 @@ describe('Claude driver against recorded transcripts', () => {
   })
 })
 
+describe('Claude interrupt delivery (recorded on 2.1.299)', () => {
+  it('stops the turn with control_request interrupt, runs the correction alone next with priority now, then the queued input', async () => {
+    const replayer = FixtureReplayer.fromFile(fixture('claude-interrupt-now'))
+    const ctx = setup(replayer)
+    const { sessionId } = await ctx.service.open({ driver: 'claude', model: 'haiku', cwd: '/repo', policy: { subagents: 'enabled' } })
+    await ctx.service.send(sessionId, { inputId: 'u1', text: 'Run a long command', delivery: 'queue' })
+    await drain(replayer)
+    await ctx.service.send(sessionId, { inputId: 'q1', text: 'Reply with exactly: Q-OK', delivery: 'queue' })
+    await drain(replayer)
+    expect(ctx.service.snapshot(sessionId).inputs.q1?.state).toBe('queued')
+    await ctx.service.send(sessionId, { inputId: 'i1', text: 'Reply with exactly: I-OK', delivery: 'interrupt' })
+    await drain(replayer)
+
+    const written = replayer.last.written
+    expect(written.map((line) => [line.type, (line.request as { subtype?: string } | undefined)?.subtype ?? line.priority ?? null])).toEqual([
+      ['user', null], ['user', null], ['control_request', 'interrupt'], ['user', 'now'],
+    ])
+    const events = ctx.events(sessionId)
+    expect(of(events, 'input.accepted').map((event) => [event.inputId, event.delivery])).toEqual([['u1', 'queue'], ['q1', 'queue'], ['i1', 'interrupt']])
+    expect(of(events, 'turn.started').map((event) => event.inputIds)).toEqual([['u1'], ['i1'], ['q1']])
+    expect(of(events, 'turn.completed').map((event) => [event.status, event.text])).toEqual([['interrupted', ''], ['completed', 'I-OK'], ['completed', 'Q-OK']])
+    const snapshot = ctx.service.snapshot(sessionId)
+    expect(['u1', 'i1', 'q1'].map((id) => snapshot.inputs[id]?.state)).toEqual(['completed', 'completed', 'completed'])
+    // The CLI's late `cancelled` for the cut turn's input and its control_response are not warnings.
+    expect(of(events, 'provider.diagnostic').filter((event) => event.level === 'warning')).toEqual([])
+    expect(of(events, 'provider.diagnostic').map((event) => event.message).join('\n')).not.toMatch(/control_response/)
+    expect(snapshot.pendingInterruptions).toEqual({ subagentIds: [], inputIds: [] })
+    expect(replayer.last.terminated).toBe(false)
+  })
+
+  it('stops a turn only once, writes every correction with priority now, and never stops an idle session', async () => {
+    const lines: Array<Record<string, unknown>> = []
+    let feed: (line: string) => void = () => undefined
+    const spawner: ProcessSpawner = (_spec, handlers) => {
+      feed = handlers.onLine
+      return { pid: 1, exited: new Promise(() => undefined), write: (line) => { lines.push(JSON.parse(line) as Record<string, unknown>); return true }, endInput: () => undefined, terminate: async () => ({ exitCode: 0, signal: null }) }
+    }
+    const policy = resolvePolicy({ subagents: 'enabled' }, CLAUDE_DESCRIPTOR)
+    const session = await new ClaudeDriverFactory({ spawner }).open({ sessionId: 's', generation: 1, cwd: '/r', model: 'haiku', effort: null, systemPrompt: null, providerSessionRef: null, policy }, () => undefined)
+    const shape = () => lines.map((frame) => frame.type === 'control_request' ? 'stop' : `${frame.uuid as string}:${(frame.priority as string | undefined) ?? 'default'}`)
+
+    await session.send({ inputId: 'a', text: 'hi', delivery: 'interrupt' })
+    expect(shape()).toEqual(['a:now'])
+    feed(JSON.stringify({ type: 'command_lifecycle', command_uuid: 'a', state: 'started' }))
+    feed(JSON.stringify({ type: 'system', subtype: 'init', session_id: 'p' }))
+    await session.send({ inputId: 'b', text: 'fix', delivery: 'interrupt' })
+    await session.send({ inputId: 'c', text: 'fix again', delivery: 'interrupt' })
+    await session.send({ inputId: 'd', text: 'steer', delivery: 'steer' })
+    expect(shape()).toEqual(['a:now', 'stop', 'b:now', 'c:now', 'd:next'])
+  })
+})
+
+describe('Claude translator interrupt receipts', () => {
+  it('ignores cancelled for a started input and still rejects a cancelled queued one', () => {
+    const translator = new ClaudeTranslator()
+    translator.noteInput('u1')
+    translator.noteInput('q1')
+    translator.translate({ type: 'command_lifecycle', command_uuid: 'u1', state: 'started' })
+    translator.translate({ type: 'system', subtype: 'init', session_id: 's' })
+    translator.noteInterrupt()
+    expect(translator.interruptible).toBe(false)
+    expect(translator.translate({ type: 'control_response', response: { subtype: 'success', response: { still_queued: ['q1'] } } })).toEqual([])
+    expect(translator.translate({ type: 'result', subtype: 'error_during_execution', is_error: true })[0]).toMatchObject({ kind: 'turn.completed', status: 'stopped', text: '' })
+    expect(translator.translate({ type: 'command_lifecycle', command_uuid: 'u1', state: 'cancelled' })).toEqual([])
+    expect(translator.translate({ type: 'command_lifecycle', command_uuid: 'q1', state: 'cancelled' })).toEqual([{ kind: 'input.receipt', inputId: 'q1', state: 'rejected', reason: 'cancelled' }])
+  })
+})
+
 describe('Claude argv', () => {
   const spec = (policy: Parameters<typeof resolvePolicy>[0], extra: Partial<Parameters<typeof claudeArgs>[0]> = {}) =>
     claudeArgs({ sessionId: 's', generation: 1, cwd: '/r', model: 'sonnet', effort: null, systemPrompt: null, providerSessionRef: null, policy: resolvePolicy(policy, CLAUDE_DESCRIPTOR), ...extra })

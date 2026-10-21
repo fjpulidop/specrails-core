@@ -7,9 +7,9 @@ import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
-import { SESSION_PROTOCOL_VERSIONS } from './session/host/protocol.js'
+import { SESSION_DELIVERIES, SESSION_HOST_CAPABILITIES, SESSION_PROTOCOL_VERSIONS, validatorFor } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'flowSessions'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -78,6 +78,11 @@ describe('Desktop integration contract', () => {
     expect(sessions).toMatchObject({ version: 1, capability: 'sessions', cliOperation: 'host', moduleExport: './agent-runtime/session' })
     expect(sessions.protocolVersions).toEqual([...SESSION_PROTOCOL_VERSIONS])
     expect(sessions.eventTypes).toEqual([...SESSION_EVENT_TYPES])
+    expect(sessions.capabilities).toEqual(Object.keys(SESSION_HOST_CAPABILITIES))
+    expect(sessions.deliveries).toEqual([...SESSION_DELIVERIES])
+    const send = validatorFor('session.send')!
+    for (const delivery of sessions.deliveries) expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery } })).toBe(true)
+    expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery: 'later' } })).toBe(false)
     expect(RUNTIME_CLI_OPERATIONS).toContain(sessions.cliOperation)
     expect(existsSync(new URL('../../' + sessions.documentation, import.meta.url))).toBe(true)
   })

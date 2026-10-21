@@ -8,6 +8,7 @@ export interface InterruptionNotice {
 
 const REASONS: Readonly<Record<string, string>> = Object.freeze({
   user_stop: 'stopped by the user',
+  user_interrupt: 'interrupted by a newer user message',
   host_request: 'stopped by the host',
   restart: 'interrupted by an application restart',
   shutdown: 'interrupted when the application closed',

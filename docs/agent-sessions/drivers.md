@@ -17,6 +17,7 @@ It adapts to each driver's declared capabilities.
 | Sub-agent effort (`subagentRuntime.effort`, native) | not available (`policy_unenforceable`) | `agents.default_subagent_reasoning_effort` | — |
 | Reaction when sub-agents finish | the provider continues on its own (`provider-native`) | Core asks the agent to collect results (`resume-agent`, bounded) | — |
 | Steer into a running turn | yes | yes (`turn/steer`) | no |
+| Interrupt delivery (`capabilities.interrupt`) | `native`: `control_request interrupt`, then the input with `priority: 'now'` | `native`: `turn/interrupt`, then `turn/start` once the turn completed (Core holds the input) | `emulated`: the invocation is aborted, the input runs next and resumes the provider session |
 | Tool filtering (`policy.tools`) | yes | no (refused) | no (refused) |
 | Billed USD | per session, cumulative; Core records per-turn deltas | none (estimated only with a host rate card) | as reported |
 | Tokens | per turn | cumulative per thread (deltas) | per turn |
@@ -32,7 +33,7 @@ it, marks it `stopped` with reason `policy` and journals a
 ## Behaviour verified against real CLIs
 
 The drivers are pinned by recorded transcripts of Claude Code 2.1.285 and
-codex-cli 0.153.4 and 0.160.1. The ones that matter most:
+2.1.299, and codex-cli 0.153.4 and 0.160.1. The ones that matter most:
 
 - **Claude:**
   - A sub-agent's status is re-entrant: it reports completion, then restarts when a shell it backgrounded finishes.
@@ -41,6 +42,10 @@ codex-cli 0.153.4 and 0.160.1. The ones that matter most:
   - A sub-agent keeps running after the parent's turn completes, as long as the resident process lives.
   - The parent only reacts when it calls `wait` or receives new input.
   - 0.160 announces a sub-agent with a `subAgentActivity` item (`started`, `interacted`, `interrupted`, `completed`). The item has a path name (`/root/run_tests`) and no prompt, and it arrives before the child's first turn.
+- **Interrupt delivery** (Claude Code 2.1.299, codex-cli 0.160.1):
+  - Claude answers `control_request interrupt` with `still_queued` and ends the turn with an `error_during_execution` result without text. It then reports the cut turn's input `cancelled`; the driver ignores that, because the result settled it.
+  - With the default or `next` priority, Claude batches an input written after the stop with the commands already queued, into one turn, queued ones first. With `priority: 'now'` the input runs alone in the next turn and queued commands follow in their own turn.
+  - Codex answers `turn/interrupt` with `{}` and reports `turn/completed { status: 'interrupted' }`; a `turn/start` sent afterwards starts the correction on the same thread.
 - **Both:** on Stop, Claude reports stopped tasks before it exits. Codex sub-agents stop individually by interrupting their own thread.
 
 ## Tests and fixtures

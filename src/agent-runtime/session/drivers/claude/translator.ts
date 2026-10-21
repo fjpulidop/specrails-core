@@ -22,7 +22,8 @@ const TASK_PHASE: Readonly<Record<string, SubagentPhase>> = Object.freeze({
 
 /** System subtypes that carry nothing the session model needs. */
 const IGNORED_SYSTEM = new Set(['thinking_tokens', 'task_summary', 'post_turn_summary', 'status', 'hook_response', 'hook_started', 'compact_boundary'])
-const IGNORED_TYPES = new Set(['rate_limit_event', 'stream_event', 'keep_alive'])
+// `control_response` acknowledges our interrupt (`still_queued` lists commands that survive it).
+const IGNORED_TYPES = new Set(['rate_limit_event', 'stream_event', 'keep_alive', 'control_response'])
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -43,6 +44,8 @@ export class ClaudeTranslator {
   private turnOpen = false
   private interruptRequested = false
   private readonly written = new Set<string>()
+  /** Inputs the CLI reported started; a later `cancelled` only echoes their interrupted turn. */
+  private readonly started = new Set<string>()
   private startedInputs: string[] = []
   /** tool_use id → task id of the agent that issued it (null = main agent). */
   private readonly toolOwner = new Map<string, string | null>()
@@ -55,6 +58,8 @@ export class ClaudeTranslator {
   /** The driver wrote this input; its receipts and replays belong to us. */
   noteInput(inputId: string): void { this.written.add(inputId) }
   noteInterrupt(): void { if (this.turnOpen) this.interruptRequested = true }
+  /** A turn is running and no stop was requested for it yet. */
+  get interruptible(): boolean { return this.turnOpen && !this.interruptRequested }
 
   translate(frame: Frame): DriverEvent[] {
     const type = str(frame.type)
@@ -157,7 +162,13 @@ export class ClaudeTranslator {
     const inputId = str(frame.command_uuid)
     const state = str(frame.state)
     if (!inputId || !this.written.has(inputId)) return []
-    if (state === 'started' && !this.turnOpen) this.startedInputs.push(inputId)
+    if (state === 'started') {
+      this.started.add(inputId)
+      if (!this.turnOpen) this.startedInputs.push(inputId)
+    }
+    if (state === 'completed') this.started.delete(inputId)
+    // After an interrupt the CLI reports the cut turn's input `cancelled`; the turn result already settled it.
+    if (state === 'cancelled' && this.started.has(inputId)) return []
     if (state === 'queued' || state === 'started' || state === 'completed') return [{ kind: 'input.receipt', inputId, state }]
     if (state === 'failed' || state === 'rejected' || state === 'cancelled') return [{ kind: 'input.receipt', inputId, state: 'rejected', reason: state }]
     return []

@@ -2,11 +2,14 @@ import { fileURLToPath } from 'node:url'
 
 import { describe, expect, it } from 'vitest'
 
-import type { AgentExecutor, AgentRequest } from '../../executor-types.js'
+import { AgentExecutionError, type AgentExecutor, type AgentRequest } from '../../executor-types.js'
+import { SessionService } from '../application/session-service.js'
 import { validateDescriptor } from '../domain/descriptor.js'
 import { DRIVER_CONFORMANCE, type ConformanceHarness } from '../testing/driver-conformance.js'
+import { FakeClock, SequentialIds } from '../testing/fake-clock.js'
 import { FixtureReplayer } from '../testing/fixture-replayer.js'
-import { descriptor } from '../testing/scripted-driver.js'
+import { MemoryJournal } from '../testing/memory-journal.js'
+import { catalogOf, descriptor } from '../testing/scripted-driver.js'
 import { ClaudeDriverFactory } from './claude/driver.js'
 import { CodexDriverFactory } from './codex/driver.js'
 import { ExecutorDriverFactory, executorDescriptor } from './executor/driver.js'
@@ -71,6 +74,7 @@ describe('driver registry', () => {
     const registry = createDriverRegistry({ executors: [{ id: 'gemini', displayName: 'Gemini CLI', executor: new EchoExecutor() }] })
     expect(registry.descriptors().map((item) => item.id)).toEqual(['claude', 'codex', 'gemini'])
     expect(registry.get('gemini')?.descriptor.capabilities).toMatchObject({ resident: false, subagents: 'unsupported' })
+    expect(registry.descriptors().map((item) => [item.id, item.capabilities.interrupt])).toEqual([['claude', 'native'], ['codex', 'native'], ['gemini', 'emulated']])
     expect(createDriverRegistry({ claude: false, codex: false }).descriptors()).toEqual([])
     expect(Object.isFrozen(registry)).toBe(true)
   })
@@ -82,10 +86,42 @@ describe('driver registry', () => {
     expect(() => validateDescriptor(descriptor('x', { subagents: 'unsupported', subagentDisable: true }))).toThrow(/sub-agent capabilities/)
     expect(() => validateDescriptor(descriptor('x', { resident: false }))).toThrow(/native input queue requires/)
     expect(() => validateDescriptor(descriptor('x', { resident: false, nativeInputQueue: false }))).toThrow(/autonomous continuation requires/)
+    expect(() => validateDescriptor(descriptor('x', { interrupt: 'sometimes' as never }))).toThrow(/interrupt must be/)
+    expect(() => validateDescriptor(descriptor('x', { resident: false, nativeInputQueue: false, autonomousContinuation: false, subagents: 'unsupported', subagentDisable: false, interrupt: 'native' }))).toThrow(/native interrupt requires/)
+    expect(() => validateDescriptor(descriptor('x', { interrupt: undefined }))).not.toThrow()
   })
 })
 
 describe('executor-backed driver', () => {
+  it('emulates interrupt delivery: aborts the running invocation, then resumes the provider session with the correction before held input', async () => {
+    const requests: AgentRequest[] = []
+    const executor: AgentExecutor = {
+      async execute(request) {
+        requests.push(request)
+        request.onEvent?.({ kind: 'session', sessionId: 'exec-1' })
+        if (request.prompt === 'long') {
+          request.onEvent?.({ kind: 'text', text: 'halfway' })
+          await new Promise((_, reject) => request.signal?.addEventListener('abort', () => reject(new AgentExecutionError('Agent cancelled', 'aborted'))))
+        }
+        return { text: `done: ${request.prompt}`, sessionId: 'exec-1', usage: { inputTokens: 1, outputTokens: 1, costUsd: null } }
+      },
+    }
+    const journal = new MemoryJournal()
+    const factory = new ExecutorDriverFactory(executorDescriptor('gemini', 'Gemini CLI'), executor)
+    expect(factory.descriptor.capabilities.interrupt).toBe('emulated')
+    const service = new SessionService({ journal, drivers: catalogOf(factory), clock: new FakeClock(), ids: new SequentialIds() })
+    const { sessionId } = await service.open({ driver: 'gemini', model: 'm', cwd: '/repo', policy: { subagents: 'disabled' } })
+    await service.send(sessionId, { inputId: 'u1', text: 'long', delivery: 'queue' })
+    await tick()
+    await service.send(sessionId, { inputId: 'q1', text: 'queued', delivery: 'queue' })
+    await service.send(sessionId, { inputId: 'i1', text: 'correction', delivery: 'interrupt' })
+    for (let index = 0; index < 10; index++) await tick()
+
+    expect(requests.map((request) => [request.prompt, request.resumeSessionId ?? null])).toEqual([['long', null], ['correction', 'exec-1'], ['queued', 'exec-1']])
+    const done = journal.events(sessionId).map((envelope) => envelope.event).filter((event) => event.type === 'turn.completed')
+    expect(done.map((event) => [event.status, event.text])).toEqual([['interrupted', 'halfway'], ['completed', 'done: correction'], ['completed', 'done: queued']])
+  })
+
   it('runs each input as one resumable executor invocation with the system prompt only once', async () => {
     const executor = new EchoExecutor()
     const events: unknown[] = []
@@ -103,7 +139,6 @@ describe('executor-backed driver', () => {
   })
 
   it('maps an aborted invocation to a stopped turn and failures to failed turns', async () => {
-    const { AgentExecutionError } = await import('../../executor-types.js')
     const events: Array<{ kind: string; status?: string; error?: string }> = []
     const executor: AgentExecutor = {
       async execute(request) {

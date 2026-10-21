@@ -4,7 +4,7 @@ import { fingerprint } from '../domain/fingerprint.js'
 import { buildInterruptionNotice } from '../domain/interruption.js'
 import { nativeSubagentsAllowed, subagentsActive } from '../domain/policy.js'
 import { applyEvent, liveSubagents, type SessionSnapshot } from '../domain/snapshot.js'
-import { EMPTY_USAGE, type DriverDescriptor, type SessionPolicy, type SubagentPhase, type Usage } from '../domain/types.js'
+import { EMPTY_USAGE, type DriverDescriptor, type InputDelivery, type SessionPolicy, type SubagentPhase, type Usage } from '../domain/types.js'
 import { FRESH_BASELINE, UNKNOWN_BASELINE, computeTurnUsage, withEstimatedCost, type RateCard, type ReportedUsage, type UsageBaseline } from '../domain/usage.js'
 import type { Clock, CloseReason, DriverEvent, DriverFactory, DriverInput, DriverSession, Ids, SessionJournal } from '../ports.js'
 import { OutputBuffer, type OutputLimits } from './output-buffer.js'
@@ -40,6 +40,10 @@ interface Teardown {
   subagentPhase: SubagentPhase
   reason: string
   error?: string
+  /** Inputs that survive the teardown because the application delivers them again. */
+  keepInputIds?: ReadonlySet<string>
+  /** The cut turn consumed its started inputs: complete them instead of reporting them unseen. */
+  completeStarted?: boolean
 }
 
 /** Delegated results the parent never saw: the agent receives them in a system turn. */
@@ -76,6 +80,13 @@ export class ActiveSession {
   private readonly descriptor: DriverDescriptor
   /** Inputs held back for drivers without a native input queue. */
   private readonly heldInputs: DriverInput[] = []
+  /** Interrupting inputs held for drivers without a native input queue; released before `heldInputs`. */
+  private readonly interruptQueue: DriverInput[] = []
+  /**
+   * The turn an `interrupt` delivery is cutting and the interrupting inputs that
+   * have not started yet. Cleared when one of them starts a turn.
+   */
+  private pendingInterrupt: { turnId: string; inputs: DriverInput[] } | null = null
   /** Inputs the application wrote on its own (policy-driven turns). */
   private readonly systemInputIds = new Set<string>()
   private pendingDeferred: Record<string, unknown> | null = null
@@ -104,7 +115,7 @@ export class ActiveSession {
 
   // ── Use cases ─────────────────────────────────────────────────────────────
 
-  async send(input: { inputId: string; text: string; attachments?: DriverInput['attachments']; delivery: 'queue' | 'steer' }): Promise<{ inputId: string; state: string }> {
+  async send(input: { inputId: string; text: string; attachments?: DriverInput['attachments']; delivery: InputDelivery }): Promise<{ inputId: string; state: string }> {
     this.assertOpen()
     const existing = this.state.inputs[input.inputId]
     if (existing) {
@@ -235,12 +246,89 @@ export class ActiveSession {
   // ── Delivery and process lifecycle ────────────────────────────────────────
 
   private async deliver(input: DriverInput): Promise<void> {
+    if (input.delivery === 'interrupt') return this.deliverInterrupt(input)
     const caps = this.descriptor.capabilities
     const turnRunning = this.state.openTurn !== null
     if (!caps.nativeInputQueue && turnRunning && !(input.delivery === 'steer' && caps.steer)) {
       this.heldInputs.push(input)
       return
     }
+    await this.write(input)
+  }
+
+  /**
+   * Cut the running turn and run `input` next. Idle sessions deliver it as a
+   * queued input. A driver with a native queue and a native primitive does both
+   * in one call; otherwise the application stops the turn and releases the
+   * input first when the turn ends (Codex: `turn/interrupt` then `turn/start`).
+   * A second interrupt while one is pending does not stop again: it follows the
+   * pending input, ahead of queued ones.
+   */
+  private async deliverInterrupt(input: DriverInput): Promise<void> {
+    const turn = this.state.openTurn
+    const driver = this.driver
+    const pending = this.pendingInterrupt
+    if (!pending && (!turn || !driver)) return this.deliver({ ...input, delivery: 'queue' })
+    const caps = this.descriptor.capabilities
+    if (pending) pending.inputs.push(input)
+    else this.pendingInterrupt = { turnId: turn!.turnId, inputs: [input] }
+    if (!caps.nativeInputQueue) {
+      this.interruptQueue.push(input)
+      // A later interrupt waits behind the pending one; it is released when that one's turn ends.
+      if (!pending) await this.stopForInterrupt(driver!, turn!.turnId)
+      return
+    }
+    if (caps.interrupt === 'native') {
+      if (!pending) this.armInterruptGrace(turn!.turnId)
+      await this.write(input)
+      return
+    }
+    if (!pending) await this.stopForInterrupt(driver!, turn!.turnId)
+    await this.write({ ...input, delivery: 'queue' })
+  }
+
+  private async stopForInterrupt(driver: DriverSession, turnId: string): Promise<void> {
+    this.armInterruptGrace(turnId)
+    try {
+      await driver.interrupt()
+    } catch (error) {
+      // The input is held either way: it runs when the turn ends, or after the grace retires the process.
+      this.commit([{ type: 'provider.diagnostic', level: 'warning', code: 'provider.interrupt_failed', message: (error as Error).message.slice(0, 2_000) }])
+    }
+  }
+
+  private armInterruptGrace(turnId: string): void {
+    this.timers.arm('interruptGrace', this.deps.interruptGraceMs ?? 5_000, () => {
+      if (this.state.openTurn?.turnId === turnId) void this.retireForInterrupt()
+    })
+  }
+
+  /**
+   * The provider did not end the cut turn in time: retire the process without
+   * losing the interrupting input or the inputs the application still holds,
+   * then deliver them to a fresh process (the provider session is resumed).
+   */
+  private async retireForInterrupt(): Promise<void> {
+    const caps = this.descriptor.capabilities
+    const waiting = (input: DriverInput) => {
+      const state = this.state.inputs[input.inputId]?.state
+      return state === 'accepted' || state === 'queued'
+    }
+    const held = caps.nativeInputQueue ? (this.pendingInterrupt?.inputs ?? []) : [...this.interruptQueue, ...this.heldInputs]
+    const carried = held.filter(waiting).map((input) => ({ ...input, delivery: input.delivery === 'interrupt' ? 'queue' as const : input.delivery }))
+    await this.retire('user_stop', { turnStatus: 'interrupted', subagentPhase: 'interrupted', reason: 'user_interrupt', completeStarted: true, keepInputIds: new Set(carried.map((input) => input.inputId)) })
+    if (this.state.status === 'closed' || carried.length === 0) return
+    if (caps.nativeInputQueue) {
+      for (const input of carried) await this.write(input).catch(() => undefined)
+      return
+    }
+    const [first, ...rest] = carried
+    this.heldInputs.push(...rest)
+    await this.write(first!).catch(() => undefined)
+  }
+
+  /** Write one input to the provider; a failed write leaves the input `interrupted`, never half-sent. */
+  private async write(input: DriverInput): Promise<void> {
     try {
       const driver = await this.ensureDriver()
       await driver.send(input)
@@ -249,6 +337,7 @@ export class ActiveSession {
       if (current === 'accepted' || current === 'queued') {
         this.commit([{ type: 'input.state', inputId: input.inputId, state: 'interrupted', reason: 'delivery_failed' }])
       }
+      this.forgetPendingInterrupt([input.inputId])
       throw isSessionError(error) ? error : new SessionError('internal', `Could not deliver input: ${(error as Error).message}`)
     }
   }
@@ -325,6 +414,7 @@ export class ActiveSession {
       case 'input.receipt': {
         const input = this.state.inputs[event.inputId]
         if (!input || input.state === event.state) return
+        if (event.state === 'rejected') this.forgetPendingInterrupt([event.inputId])
         this.commit([{ type: 'input.state', inputId: event.inputId, state: event.state, ...(this.state.openTurn && event.state !== 'queued' ? { turnId: this.state.openTurn.turnId } : {}), ...(event.reason ? { reason: event.reason } : {}) }])
         return
       }
@@ -392,6 +482,7 @@ export class ActiveSession {
       this.handoffs = 0
     }
     this.finishedSinceLastTurn.clear()
+    if (this.pendingInterrupt?.inputs.some((input) => inputIds.includes(input.inputId))) this.pendingInterrupt = null
     this.timers.cancel('idle', 'stall')
     this.commit([
       ...(this.state.phase === 'turn' ? [] : [{ type: 'session.phase' as const, phase: 'turn' as const }]),
@@ -400,13 +491,17 @@ export class ActiveSession {
     this.armTurnInactivity()
   }
 
-  private completeTurn(status: 'completed' | 'failed' | 'stopped', text: string, reported: ReportedUsage, error?: string): void {
+  private completeTurn(reportedStatus: 'completed' | 'failed' | 'stopped', reportedText: string, reported: ReportedUsage, error?: string): void {
     const turn = this.requireTurn()
     this.timers.cancel('turnInactivity', 'interruptGrace')
+    // A stop the application asked for to run an interrupting input is an interruption.
+    const status = reportedStatus === 'stopped' && this.pendingInterrupt?.turnId === turn.turnId ? 'interrupted' : reportedStatus
+    // Commit buffered deltas first so a cut turn keeps the partial text it streamed.
+    if (this.output.hasPending()) { this.timers.cancel('flush'); this.commit(this.output.flush()) }
+    const text = reportedText || (status === 'interrupted' ? this.state.openTurn?.text ?? '' : '')
     const { usage, baselineOption } = this.turnUsage(reported)
     this.commit(
       [
-        ...this.output.flush(),
         ...this.output.drainTurn(turn.turnId),
         { type: 'turn.completed', turnId: turn.turnId, status, text, usage, ...(error ? { error } : {}) },
         ...this.completeTurnInputs(turn.inputIds, turn.turnId),
@@ -478,6 +573,8 @@ export class ActiveSession {
     const policy = this.config.policy
     if (!subagentsActive(policy, this.descriptor) || policy.onSubagentsSettled !== 'resume-agent') return
     if (this.finishedSinceLastTurn.size === 0 || this.handoffs >= policy.limits.maxSettleHandoffs || !this.driver) return
+    // A user correction runs first; the next settle point collects the sub-agents.
+    if (this.pendingInterrupt) return
     this.handoffs += 1
     const inputId = this.deps.ids.input()
     this.systemInputIds.add(inputId)
@@ -488,6 +585,8 @@ export class ActiveSession {
   /** Give the agent the results of delegated sub-agents it has not seen. */
   private maybeDeliverDelegatedResults(): boolean {
     if (this.delegatedResults.size === 0 || this.state.openTurn || this.state.status === 'closed' || this.closing) return false
+    // A user correction runs first; the results follow at the next settle point.
+    if (this.pendingInterrupt) return false
     if (this.handoffs >= this.config.policy.limits.maxSettleHandoffs) return false
     const results = [...this.delegatedResults.values()]
     this.delegatedResults.clear()
@@ -600,8 +699,15 @@ export class ActiveSession {
 
   private async releaseHeldInput(): Promise<void> {
     if (this.state.openTurn) return
-    const next = this.heldInputs.shift()
-    if (next) await this.deliver(next).catch(() => undefined)
+    const next = this.interruptQueue.shift() ?? this.heldInputs.shift()
+    if (next) await this.deliver(next.delivery === 'interrupt' ? { ...next, delivery: 'queue' } : next).catch(() => undefined)
+  }
+
+  private forgetPendingInterrupt(inputIds: readonly string[]): void {
+    const pending = this.pendingInterrupt
+    if (!pending) return
+    pending.inputs = pending.inputs.filter((input) => !inputIds.includes(input.inputId))
+    if (pending.inputs.length === 0) this.pendingInterrupt = null
   }
 
   /** End whatever was running; used by retire and unexpected exits. */
@@ -625,11 +731,18 @@ export class ActiveSession {
       }
     }
     for (const input of Object.values(this.state.inputs)) {
+      if (teardown.keepInputIds?.has(input.inputId)) continue
+      if (input.state === 'started' && teardown.completeStarted) {
+        bodies.push({ type: 'input.state', inputId: input.inputId, state: 'completed', ...(input.turnId ? { turnId: input.turnId } : {}) })
+        continue
+      }
       if (input.state === 'accepted' || input.state === 'queued' || input.state === 'started') {
         bodies.push({ type: 'input.state', inputId: input.inputId, state: 'interrupted', reason: teardown.reason })
       }
     }
     this.heldInputs.length = 0
+    this.interruptQueue.length = 0
+    this.pendingInterrupt = null
     // With delegated work still running the session stays in the background.
     const nextPhase = this.delegatedLive().length > 0 ? 'background' : 'idle'
     if (this.state.phase !== nextPhase || turn) bodies.push({ type: 'session.phase', phase: nextPhase })

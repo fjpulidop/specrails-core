@@ -412,8 +412,15 @@
       ],
       "capabilities": [
         "sessions",
-        "delegation"
-      ]
+        "delegation",
+        "flowSessions"
+      ],
+      "deliveries": [
+        "queue",
+        "steer",
+        "interrupt"
+      ],
+      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions"
     }
   },
   "execution": {
