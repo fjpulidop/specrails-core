@@ -12,6 +12,7 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 - `general` runs every other suite, then the real CLI recovery suite with one worker and one concurrent case, so its thirty-node subprocess trees do not compete with other suites while waiting for the unchanged production lease TTL. Windows, which is CPU-bound there, instead uses `general-K/N` (Vitest file shards) plus a separate `recovery` job. `scripts/ci-tests.test.mjs` fails if any combination's set is incomplete, overlapping or mixed.
 - The slowest jobs are listed first in the workflow so they start first when the account's concurrent runner pool is saturated.
 - Coverage on Node 24 with the existing configured thresholds (not lowered). Coverage partitions record v8 coverage and a Vitest blob each; the `coverage` job merges them and enforces the thresholds on the merged report only.
+- On pull requests, `contract-policy` runs `scripts/check-contract-bump.mjs`: a changed `integration-contract.json` must bump `schemaVersion`, and removals or type changes need a major bump plus a `!`/`BREAKING CHANGE:` declaration. See the [release policy](release-policy.md#contract-versioning).
 - A checksum-verified actionlint binary validates workflow syntax, expressions and action inputs (shellcheck is not included).
 - A checksum-verified Gitleaks binary scans Git history with redacted output.
 - On Node 24 on each OS, `scripts/verify-package.mjs` packs the built package, checks its file inventory, installs the tarball into an isolated temporary consumer with lifecycle scripts disabled, and executes both published CLI entry points. It materializes/assembles all four providers and runs the assembled pipeline helper against four frozen fixture scopes. No global install, real project registry, provider login or model call is used.
@@ -44,6 +45,8 @@ The package check reuses the npm dependency cache (including the cache populated
 5. It publishes the `.tgz` with `--ignore-scripts --provenance --access public`. Only the publication job has `id-token: write`; the npm token is exposed only to the final publish step.
 
 All automatic and manual releases share one non-cancelling concurrency group, so simultaneous runs cannot race the stable dist-tag.
+
+The npm `stable` dist-tag is moved separately by the manual **Promote stable** workflow, monthly, to a version that has been `latest` for at least 7 days with green tag CI. It shares the same concurrency group and never publishes. See the [release policy](release-policy.md#promoting-stable).
 
 ## Credentials
 
