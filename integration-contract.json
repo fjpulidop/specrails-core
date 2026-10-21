@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.2",
+  "schemaVersion": "5.3",
   "providers": {
     "claude": {
       "cli": {
@@ -254,6 +254,16 @@
     "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event, verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
     "reviewGate": "review.minScore and review.aspects may only tighten Core's own gate (minScore 70, security 75, other aspects 60); the pipeline journal enforces the floor",
     "acceptance": "The reviewer certifies every frozen acceptance criterion by specId and criterionIndex; Core records the verification commands it ran as required checks and binds the report to the exact candidate before the reviewer verdict",
+    "reviewBrief": {
+      "version": 1,
+      "capability": "reviewBrief",
+      "advisory": "The reviewer's optional risk brief never changes the approval gate",
+      "runResult": "runtime-result.reviewBrief: {schemaVersion: 1, change, approved, score, recordedAt, brief | null, diagnostic?} | null (engine 1 builtin runs)",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/review-brief.json",
+      "confidenceScore": "openspec/changes/<change>/confidence-score.json brief (approved verdicts; archived with the change)",
+      "stepOutput": "reviewer step output brief / briefDiagnostic; engine 2 implementation output review.brief",
+      "documentation": "docs/agent-runtime.md#reviewer-risk-brief"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
@@ -294,7 +304,7 @@
     "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "14",
+    "instructionsVersion": "15",
     "workflowVersion": "7",
     "engines": [
       1,

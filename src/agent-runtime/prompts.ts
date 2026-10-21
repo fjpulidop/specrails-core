@@ -2,9 +2,10 @@ import { isBuiltinRole, type BuiltinAgentRole, type AgentRole, type RoleDescript
 import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-state.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
+import { REVIEW_BRIEF_RISK_LIMIT, REVIEW_BRIEF_SCHEMA, REVIEW_RISK_AREAS } from './graph/review-brief.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '14'
+export const ROLE_INSTRUCTIONS_VERSION = '15'
 const OUTPUT_TAIL = 6_000
 /** One senior engineer, rendered once per role prompt (never repeated inside it): the identity the implement pipeline's roles share. */
 const ENGINEER = 'a T-shaped principal engineer with decades of delivery across web, mobile and backend systems: deep in software design and testing, broad across product, UX, data, security, infrastructure and operations; fluent in hexagonal (ports and adapters) architecture, SOLID, design patterns, Clean Code, The Pragmatic Programmer, refactoring, legacy-code seams and AI-assisted development. You work for the user, the operator and the next maintainer, and you treat AI-generated code, including your own, with the scepticism owed to any untrusted contribution.'
@@ -110,6 +111,7 @@ export const REVIEW_OUTPUT_SCHEMA: Record<string, unknown> = {
         findings: stringArray,
       },
     },
+    brief: REVIEW_BRIEF_SCHEMA,
   },
 }
 
@@ -344,6 +346,21 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `acceptance.findings`: concrete conclusions, risks and resolutions; an empty array when there are none.',
     '- When corrections are required, set `approved` to false and list each issue as one concrete, actionable line naming the file and what must change: a file in the change set, or a test the change must add. The developer receives these lines verbatim.',
     '- Never raise a score or a criterion status to pass a gate, and never approve with open issues or unresolved criteria.',
+    '',
+    '## Risk brief (after the verdict)',
+    '',
+    'Decide the verdict first. Then add an optional `brief` object to the same JSON reply for the human who will merge this change. It is advisory: it never changes the verdict, the score or the gate, so do not soften or inflate either to match it. Every list may be empty; omit the brief only when you inspected nothing.',
+    '',
+    '```',
+    '"brief":{"behaviourChanges":[{"what":"…","where":"src/x.ts:41","userVisible":true}],"invariantsTouched":[{"invariant":"…","evidence":"src/q.ts:120-138","status":"kept"}],"untested":[{"path":"src/x.ts","why":"…"}],"risks":[{"severity":"high","area":"data","whatToLookAt":"…","ref":"src/x.ts:41"}],"humanChecks":["…"],"divergences":[]}',
+    '```',
+    '',
+    '- `behaviourChanges`: observable behaviour the change introduces or alters, each with `where` as `file:line`; `userVisible` is true when an end user or API client can notice it.',
+    '- `invariantsTouched`: rules the surrounding code relies on (ordering, idempotency, authorization, data shape) that the change reads or edits, with `evidence` as `file:line` or `file:start-end` and `status` `kept`, `changed` or `at-risk`.',
+    '- `untested`: code paths the diff touches that no test in the verification plan exercises, by repository-relative `path` with the reason.',
+    `- \`risks\`: at most ${REVIEW_BRIEF_RISK_LIMIT}, most severe first. Every risk names a \`ref\` as \`file:line\`, a \`severity\` (\`high\`, \`medium\`, \`low\`), an \`area\` (${REVIEW_RISK_AREAS.map(area => '`' + area + '`').join(', ')}) and \`whatToLookAt\`: the concrete thing a human should inspect. A risk is not an issue: blocking problems still go in \`issues\`.`,
+    '- `humanChecks`: what you cannot verify read-only (running the UI, real credentials, production data, performance under load, a manual flow), one concrete check per line.',
+    '- `divergences`: reserved; leave it an empty array.',
     '',
   )
   return lines
