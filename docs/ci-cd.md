@@ -46,7 +46,7 @@ The package check reuses the npm dependency cache (including the cache populated
 
 All automatic and manual releases share one non-cancelling concurrency group, so simultaneous runs cannot race the stable dist-tag.
 
-The npm `stable` dist-tag is moved separately by the manual **Promote stable** workflow, monthly, to a version that has been `latest` for at least 7 days with green tag CI. It shares the same concurrency group and never publishes. See the [release policy](release-policy.md#promoting-stable).
+The npm `stable` dist-tag is moved separately by the manual **Promote stable** workflow, monthly, to a version published at least 7 days ago with no quick follow-up patch and green tag CI. It shares the same concurrency group and never publishes. See the [release policy](release-policy.md#promoting-stable).
 
 ## Credentials
 

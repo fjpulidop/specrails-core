@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Published version to promote (X.Y.Z); it must have been latest for 7+ days with green tag CI'
+        description: 'Published version to promote (X.Y.Z); published 7+ days ago, no same-minor patch within that week, green tag CI'
         type: string
         required: true
       dry_run:

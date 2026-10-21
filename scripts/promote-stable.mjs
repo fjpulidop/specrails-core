@@ -5,37 +5,41 @@
 // Guards, all fail-closed:
 // - the version is a published stable X.Y.Z, not deprecated, not newer than
 //   `latest`, and newer than the current `stable` (stable never moves back);
-// - it was `latest` for at least MIN_LATEST_DAYS: publication is monotonic,
-//   so it was latest from its publish time until the next higher version was
-//   published (or until now);
+// - it was published at least MIN_AGE_DAYS ago and no newer patch of the same
+//   minor was published within those days (a quick follow-up patch signals an
+//   incident); newer minors do not disqualify it;
 // - the CI push run for its `vX.Y.Z` tag commit completed successfully.
 import { compareStableVersions } from './publish-package.mjs'
 import { selectCiRun } from './await-ci.mjs'
 import { isMain, npm, releaseVersion } from './release-utils.mjs'
 
-export const MIN_LATEST_DAYS = 7
+export const MIN_AGE_DAYS = 7
 const DAY_MS = 24 * 60 * 60 * 1000
 const STABLE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/
 
-/** Pure decision from the registry document. Returns { ok, noop, errors, latestDays }. */
-export function evaluatePromotion({ version, packument, now = Date.now(), minDays = MIN_LATEST_DAYS }) {
+/** Pure decision from the registry document. Returns { ok, noop, errors, ageDays }. */
+export function evaluatePromotion({ version, packument, now = Date.now(), minDays = MIN_AGE_DAYS }) {
   const errors = []
-  if (!STABLE.test(version ?? '')) return { ok: false, noop: false, errors: ['Version must be a stable X.Y.Z'], latestDays: 0 }
+  if (!STABLE.test(version ?? '')) return { ok: false, noop: false, errors: ['Version must be a stable X.Y.Z'], ageDays: 0 }
   const time = packument?.time ?? {}
   const tags = packument?.['dist-tags'] ?? {}
   const published = Date.parse(time[version])
-  if (!packument?.versions?.[version] || Number.isNaN(published)) return { ok: false, noop: false, errors: [`specrails-core@${version} is not published`], latestDays: 0 }
-  if (tags.stable === version) return { ok: true, noop: true, errors, latestDays: 0 }
+  if (!packument?.versions?.[version] || Number.isNaN(published)) return { ok: false, noop: false, errors: [`specrails-core@${version} is not published`], ageDays: 0 }
+  if (tags.stable === version) return { ok: true, noop: true, errors, ageDays: 0 }
   if (packument.versions[version].deprecated) errors.push(`specrails-core@${version} is deprecated`)
   if (!tags.latest || compareStableVersions(version, tags.latest) > 0) errors.push(`specrails-core@${version} is newer than latest (${tags.latest ?? 'none'})`)
   if (tags.stable && STABLE.test(tags.stable) && compareStableVersions(version, tags.stable) < 0) errors.push(`Refusing to move stable backwards (${tags.stable} -> ${version})`)
-  const supersededAt = Object.keys(packument.versions)
-    .filter((other) => STABLE.test(other) && compareStableVersions(other, version) > 0 && !Number.isNaN(Date.parse(time[other])))
-    .map((other) => Date.parse(time[other]))
-    .reduce((min, at) => Math.min(min, at), now)
-  const latestDays = Math.max(0, supersededAt - published) / DAY_MS
-  if (latestDays < minDays) errors.push(`specrails-core@${version} was latest for ${latestDays.toFixed(1)} days; stable requires at least ${minDays}`)
-  return { ok: errors.length === 0, noop: false, errors, latestDays }
+  const ageDays = Math.max(0, now - published) / DAY_MS
+  if (ageDays < minDays) errors.push(`specrails-core@${version} was published ${ageDays.toFixed(1)} days ago; stable requires at least ${minDays}`)
+  const [major, minor, patch] = version.split('.').map(Number)
+  const windowEnd = published + minDays * DAY_MS
+  for (const other of Object.keys(packument.versions)) {
+    const match = STABLE.exec(other)
+    const at = Date.parse(time[other])
+    if (!match || Number(match[1]) !== major || Number(match[2]) !== minor || Number(match[3]) <= patch || Number.isNaN(at)) continue
+    if (at <= windowEnd) errors.push(`specrails-core@${other} followed ${version} after ${(Math.max(0, at - published) / DAY_MS).toFixed(1)} days; a quick follow-up patch signals an incident`)
+  }
+  return { ok: errors.length === 0, noop: false, errors, ageDays }
 }
 
 const githubHeaders = (token) => ({ Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' })
@@ -74,7 +78,7 @@ if (isMain(import.meta.url)) {
     if (verdict.noop) console.log(`specrails-core@${version} is already stable; nothing to do`)
     else {
       const ci = await assertTagCiGreen({ version, repository: process.env.GITHUB_REPOSITORY, token: process.env.GH_TOKEN })
-      console.log(`specrails-core@${version}: latest for ${verdict.latestDays.toFixed(1)} days, CI run ${ci.runId} green at ${ci.sha}`)
+      console.log(`specrails-core@${version}: published ${verdict.ageDays.toFixed(1)} days ago with no follow-up patch, CI run ${ci.runId} green at ${ci.sha}`)
       if (dryRun) console.log(`Dry run: would run npm dist-tag add specrails-core@${version} stable`)
       else {
         npm(['dist-tag', 'add', `specrails-core@${version}`, 'stable'], { timeout: 120_000 })

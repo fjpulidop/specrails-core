@@ -128,16 +128,23 @@ const packument = (overrides = {}) => ({
   ...overrides,
 })
 
-test('promotes a version that was latest for at least seven days', () => {
+test('promotes a version published at least seven days ago without a quick follow-up patch', () => {
   const verdict = evaluatePromotion({ version: '6.6.4', packument: packument(), now })
   assert.equal(verdict.ok, true, verdict.errors.join('\n'))
-  assert.equal(Math.round(verdict.latestDays), 8)
+  assert.equal(Math.round(verdict.ageDays), 10)
 })
 
-test('refuses a version that was latest for less than seven days', () => {
-  assert.match(evaluatePromotion({ version: '6.6.5', packument: packument(), now }).errors.join(), /latest for 2\.0 days/)
-  const quick = packument({ time: { ...packument().time, '6.6.4': iso(10), '6.6.5': iso(6) } })
-  assert.equal(evaluatePromotion({ version: '6.6.4', packument: quick, now }).ok, false)
+test('a newer minor does not disqualify; a newer patch of the same minor within seven days does', () => {
+  const minor = packument({ 'dist-tags': { latest: '6.7.0' }, versions: { '6.6.4': {}, '6.7.0': {} }, time: { '6.6.4': iso(10), '6.7.0': iso(9) } })
+  assert.equal(evaluatePromotion({ version: '6.6.4', packument: minor, now }).ok, true)
+  const incident = packument({ time: { ...packument().time, '6.6.4': iso(10), '6.6.5': iso(6) } })
+  assert.match(evaluatePromotion({ version: '6.6.4', packument: incident, now }).errors.join(), /6\.6\.5 followed 6\.6\.4 after 4\.0 days/)
+  const lateFix = packument({ time: { ...packument().time, '6.6.4': iso(10), '6.6.5': iso(2.5) } })
+  assert.equal(evaluatePromotion({ version: '6.6.4', packument: lateFix, now }).ok, true)
+})
+
+test('refuses a version published less than seven days ago', () => {
+  assert.match(evaluatePromotion({ version: '6.6.5', packument: packument(), now }).errors.join(), /published 2\.0 days ago/)
 })
 
 test('refuses unpublished, malformed, deprecated, backwards or ahead-of-latest versions', () => {
@@ -149,7 +156,7 @@ test('refuses unpublished, malformed, deprecated, backwards or ahead-of-latest v
 })
 
 test('re-promoting the current stable is a no-op', () => {
-  assert.deepEqual(evaluatePromotion({ version: '6.6.2', packument: packument(), now }), { ok: true, noop: true, errors: [], latestDays: 0 })
+  assert.deepEqual(evaluatePromotion({ version: '6.6.2', packument: packument(), now }), { ok: true, noop: true, errors: [], ageDays: 0 })
 })
 
 const response = (status, body) => ({ status, ok: status >= 200 && status < 300, json: async () => body })

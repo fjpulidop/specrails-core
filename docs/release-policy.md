@@ -9,7 +9,7 @@ The release machinery itself is described in [CI and publishing](ci-cd.md).
 | npm dist-tag | What it points at | Who should use it |
 |---|---|---|
 | `latest` | Every release, published automatically by the `Release` workflow after a green CI run on `main`. | Desktop development builds and anyone who wants fixes first. |
-| `stable` | A release that has been `latest` for at least **7 days** and whose tag CI is green. Promoted **monthly**, by hand. | Teams that prefer fewer, settled upgrades. The Desktop `stable` channel pins this tag. |
+| `stable` | A release published at least **7 days** ago, with no follow-up patch of the same minor in that week, and whose tag CI is green. Promoted **monthly**, by hand. | Teams that prefer fewer, settled upgrades. The Desktop `stable` channel pins this tag. |
 
 ```sh
 npm install specrails-core@stable
@@ -27,13 +27,15 @@ only runs `npm dist-tag add specrails-core@<version> stable`, and only when all 
 
 - The version is a published `X.Y.Z` release and is not deprecated.
 - It is not newer than `latest` and not older than the current `stable`, so `stable` never moves backwards.
-- It was `latest` for at least 7 days. Publication is monotonic, so a version is `latest` from
-  its publish time until the next higher version is published. The workflow reads these
-  times from the npm registry document, the same data as `npm view specrails-core time --json`.
+- It was published at least 7 days ago.
+- No newer patch of the same minor was published within 7 days of it. A quick follow-up
+  patch signals an incident. For example, 6.6.4 is not eligible if 6.6.5 followed it within
+  that week. A newer minor does not disqualify it.
 - The `CI` push run on `main` for its `vX.Y.Z` tag commit completed successfully.
 
-Pick the newest version that passes. If a patch landed less than a week ago, the previous
-release may already qualify. If no version qualifies, skip that month. The job shares the
+The workflow reads publish times from the npm registry document, the same data as
+`npm view specrails-core time --json`.
+Pick the newest version that passes. If no version qualifies, skip that month. The job shares the
 `core-release` concurrency group with publication, so the two never race on npm dist-tags.
 It uses the `NPM_TOKEN` secret. The token needs permission to manage dist-tags for
 `specrails-core`, and is not exposed during a dry run.
