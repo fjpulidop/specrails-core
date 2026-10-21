@@ -15,7 +15,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.2')
+    expect(contract.schemaVersion).toBe('5.3')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
