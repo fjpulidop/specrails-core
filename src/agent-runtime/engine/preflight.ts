@@ -2,7 +2,7 @@ import { validatePipelineContext, validateVerificationRequest, type PipelineCont
 import { normalizeRuntimeConfig, resolveRoleDescriptor, roleIds } from '../config.js'
 import { assertEffortSupported } from '../capabilities.js'
 import { createExecutorRegistry, type ExecutorRegistry } from '../executors.js'
-import type { RuntimeConfig } from '../executor-types.js'
+import { ENGINE_ROLES, type RuntimeConfig } from '../executor-types.js'
 import { EngineError } from './contracts.js'
 import { intersectBudgets } from './budget.js'
 import type { RoleCatalog, WorkflowDefinition } from './definition-types.js'
@@ -16,8 +16,9 @@ export interface DefinitionRunRequest {
 }
 export interface DefinitionRunInput { context: unknown; config: unknown; definition: unknown; change?: string; registry?: ExecutorRegistry }
 
+/** Configured roles plus Core's engine roles (deriver), which definitions may declare without configuring them. */
 export function configuredRoles(config: RuntimeConfig): RoleCatalog {
-  return Object.fromEntries(roleIds(config).map(id => [id, { access: resolveRoleDescriptor(config, id).access }]))
+  return Object.fromEntries([...roleIds(config), ...ENGINE_ROLES].map(id => [id, { access: resolveRoleDescriptor(config, id).access }]))
 }
 
 /** Complete admission is read-only; no run, journal, provider turn or skill is created. */

@@ -18,6 +18,17 @@ export const BUILTIN_ROLE_POLICY = {
   developer: { access: 'write', artifacts: 'tasks-checkboxes', openspecSkill: 'openspec-apply-change' },
   reviewer: { access: 'read', artifacts: 'none', openspecSkill: 'openspec-verify-change' },
 } as const
+/**
+ * Engine-only built-in roles. Core owns their policy and their instructions
+ * (prompts.ts); they take the architect's provider assignment, are not legacy
+ * pipeline phases and cannot be redefined as custom roles.
+ */
+export const ENGINE_ROLES = ['deriver'] as const
+export type EngineRole = typeof ENGINE_ROLES[number]
+export function isEngineRole(role: string): role is EngineRole { return (ENGINE_ROLES as readonly string[]).includes(role) }
+export const ENGINE_ROLE_POLICY = {
+  deriver: { access: 'read', artifacts: 'all', openspecSkill: 'openspec-ff-change' },
+} as const
 /** Who an observer sees acting: a pipeline role, or the FIXER stance the developer step takes on a correction round. */
 export type AgentEventRole = AgentRole | 'fixer'
 export type CliProvider = 'claude' | 'codex' | 'gemini' | 'kimi'

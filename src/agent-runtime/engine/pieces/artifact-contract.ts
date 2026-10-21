@@ -5,6 +5,11 @@ import { EngineError, type JsonObject, type Piece, type PieceResult } from '../c
 import type { PieceDependencyProvider } from './ports.js'
 import { idSchema, paramsSchema, text } from './shared.js'
 
+/** Every checkbox task of an OpenSpec tasks.md, in order. */
+export function taskCheckboxes(tasks: string): Array<{ done: boolean; text: string }> {
+  return [...tasks.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm)].map(match => ({ done: match[1] !== ' ', text: match[2].trim() }))
+}
+
 /** A reusable artifact invariant, with no agent roles, phase order or successor policy. */
 export function artifactContractPiece(bindings: PieceDependencyProvider): Piece {
   return {
@@ -42,7 +47,7 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
         return { outcome: 'fail', output: { reason: 'required_artifacts_missing' } }
       }
       if (!Object.keys(files).some(name => name.startsWith('specs/')) || Object.values(files).some(source => !source.trim())) return { outcome: 'fail', output: { reason: 'empty_artifacts' } }
-      const tasks = [...files['tasks.md'].matchAll(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm)]
+      const tasks = taskCheckboxes(files['tasks.md'])
       if (!tasks.length) return { outcome: 'fail', output: { reason: 'tasks_missing' } }
       // Completion may change checkboxes, never the approved task descriptions.
       files['tasks.md'] = files['tasks.md'].replace(/^(\s*[-*]\s+\[)[ xX](\]\s+)/gm, '$1 $2')
@@ -52,7 +57,7 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
         const frozen = store.get(key) as JsonObject | undefined
         if (!frozen || frozen.fingerprint !== fingerprint) return { outcome: 'fail', output: { reason: frozen ? 'artifacts_changed' : 'contract_missing' } }
       }
-      const incomplete = tasks.filter(task => task[1] === ' ').length
+      const incomplete = tasks.filter(task => !task.done).length
       return { outcome: params.requireCompletedTasks && incomplete ? 'fail' : 'pass', output: { fingerprint, tasks: tasks.length, incomplete } }
     },
   }
