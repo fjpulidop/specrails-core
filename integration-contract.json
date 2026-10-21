@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.2",
+  "schemaVersion": "5.3",
   "providers": {
     "claude": {
       "cli": {
@@ -294,7 +294,7 @@
     "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "14",
+    "instructionsVersion": "15",
     "workflowVersion": "7",
     "engines": [
       1,
@@ -303,7 +303,7 @@
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 7
+      "nodeKindsVersion": 8
     },
     "nodeKinds": [
       "prompt",
@@ -324,7 +324,8 @@
       "component",
       "map",
       "implementation",
-      "join"
+      "join",
+      "derive-change"
     ],
     "implementationSteps": {
       "version": 1,
@@ -346,6 +347,45 @@
     "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
     "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget.",
     "defaultImplementationEngine": true,
+    "deriveChange": {
+      "version": 1,
+      "capability": "deriveChange",
+      "nodeKind": "derive-change",
+      "role": "deriver",
+      "roleAssignment": "Core engine role: access read, artifacts all, openspecSkill openspec-ff-change; takes agents.architect's provider assignment; instructions are Core's and the id is reserved for custom roles",
+      "params": {
+        "change": "required; the run's frozen change name ({{run.changeId}})",
+        "summaryPath": "optional; file relative to <backlogRoot>/.specrails/pipeline/<runId>/, at most 32768 bytes, no symlinks or .. segments; absent or empty derives from the diff alone; optional front matter 'transcriptTurns: <n>'",
+        "timeoutMs": "optional",
+        "idleTimeoutMs": "optional"
+      },
+      "outcomes": [
+        "pass",
+        "fail"
+      ],
+      "diff": "change-scope changeSet: repositories[].baseSha (or HEAD at first measurement) to the working tree; untracked files present at the first measurement are pre-existing; .specrails/ and the change's own openspec/changes/<change>/ are excluded",
+      "emptyChangeSet": "node fails with error code empty_change_set before any provider call",
+      "derivationArtifact": "<backlogRoot>/.specrails/pipeline/<runId>/agent-workflow/artifacts/<scope-node digest>/derivation.json; the absolute path is output.derivationPath and the report is output.derivation",
+      "derivationFields": [
+        "schemaVersion",
+        "change",
+        "base",
+        "head",
+        "files",
+        "explained",
+        "unexplainedFiles",
+        "tasks",
+        "requirementsAdded",
+        "requirementsModified",
+        "confidence",
+        "transcriptTurnsUsed",
+        "repositories",
+        "unexplainedOmitted"
+      ],
+      "verificationProposals": "output.structured.verification (at most 20, architect schema); bind them with verify additionalCommandsFrom: <derive node id>",
+      "reviewer": "A reviewer role-turn in the same run receives derivation.json; every unexplained file is an issue",
+      "referenceDefinition": "src/agent-runtime/engine/__fixtures__/flow-spec.json"
+    },
     "openRoles": {
       "version": 1,
       "builtinRoles": [

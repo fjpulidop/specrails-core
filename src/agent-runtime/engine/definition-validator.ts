@@ -95,6 +95,10 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
             if (typeof roleId !== 'string' || !Object.hasOwn(roles, roleId)) add('role_not_found', path + '/params/roleId', 'Used role is not configured')
             if (node.kind === 'decider' && typeof roleId === 'string' && roles[roleId]?.access !== 'read') add('invalid_role_access', path + '/params/roleId', 'Decider role must be read-only')
           }
+          // derive-change always invokes Core's engine role `deriver`.
+          if (node.kind === 'derive-change') {
+            if (!definition.roles.includes('deriver')) add('role_undeclared', path, 'derive-change requires the deriver role in definition.roles')
+          }
           const effect = effectOf(node)
           writes ||= effect === 'write'
           let outcomes = registry.outcomes(node.kind, node.params)

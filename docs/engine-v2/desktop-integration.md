@@ -21,3 +21,5 @@ its exact scope; never collapse parallel branches by node name. Compact status
 omits these payloads. An unfinished current attempt does not inherit an older
 visit's successful output. These outputs supplement, and never replace, the
 terminal completion/verification gate.
+
+For Flow (capability `deriveChange: 1`), reserve the worktree at a known commit and pass it as `repositories[].baseSha`; commit the Flow work before launch, because untracked files present at the first change-set measurement count as pre-existing. Write the bounded conversation summary (at most 32 KB, optional front matter `transcriptTurns: <n>`) inside `.specrails/pipeline/<runId>/` and name it with the `derive-change` `summaryPath` parameter. Read the coverage report from the committed `derive-change` output (`output.derivation`, also written to `output.derivationPath`). Older Cores lack the capability; hide Flow there.
