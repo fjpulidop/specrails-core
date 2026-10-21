@@ -52,6 +52,10 @@ export interface ReviewRecord {
   score: number
   aspects: Record<string, number>
   candidateHash?: string
+  /** Advisory risk brief (see review-brief.ts); never part of the approval gate. */
+  brief?: import('./review-brief.js').ReviewBrief
+  /** Why a malformed brief was dropped after the repair turn. */
+  briefDiagnostic?: string
 }
 export interface ArchiveRecord { archivePath: string; deliveryOwner: string }
 

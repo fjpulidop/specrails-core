@@ -15,7 +15,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.4')
+    expect(contract.schemaVersion).toBe('5.5')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -33,7 +33,7 @@ describe('Desktop integration contract', () => {
     expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
-    expect(contract.agentRuntime.instructionsVersion).toBe('14')
+    expect(contract.agentRuntime.instructionsVersion).toBe('15')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {
@@ -85,6 +85,14 @@ describe('Desktop integration contract', () => {
     expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery: 'later' } })).toBe(false)
     expect(RUNTIME_CLI_OPERATIONS).toContain(sessions.cliOperation)
     expect(existsSync(new URL('../../' + sessions.documentation, import.meta.url))).toBe(true)
+  })
+
+  it('announces the reviewer risk brief in the contract and the runtime api', async () => {
+    expect(contract.agentRuntime.reviewBrief).toMatchObject({ version: 1, capability: 'reviewBrief', recordPath: '<backlogRoot>/.specrails/pipeline/<runId>/review-brief.json' })
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewBrief).toBe(contract.agentRuntime.reviewBrief.version)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Reviewer risk brief')
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {
