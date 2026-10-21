@@ -1,14 +1,41 @@
 import { archivedOpenSpecChange, archiveOpenSpecChange } from '../../graph/artifacts.js'
 import { describeArchivePreflight, previewOpenSpecArchive } from '../../graph/archive-preflight.js'
 import { OpenSpecCommandError, resolveOpenSpecCli, runOpenSpec } from '../../openspec.js'
-import { EngineError, type Piece, type PieceResult } from '../contracts.js'
+import { EngineError, type JsonValue, type Piece, type PieceResult } from '../contracts.js'
 import type { PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, text } from './shared.js'
 
 const schema = paramsSchema({ change: { type: 'string', minLength: 1, maxLength: 128 }, allowArchived: { type: 'boolean' }, repositoryId: { type: 'string', minLength: 1, maxLength: 128 } }, ['change'])
-function changeId(value: string): string {
+export function changeId(value: string): string {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) || value.length > 64) throw new EngineError('invalid_arguments', 'Invalid OpenSpec change identifier')
   return value
+}
+
+export type OpenSpecCheck = { ok: true; output: JsonValue } | { ok: false; kind: 'validate' | 'archive-preflight'; output: JsonValue; note: string }
+/**
+ * `openspec validate --strict` through the pinned CLI, then a dry-run archive on a
+ * disposable copy. A failure carries the bounded note a planning role repairs from.
+ */
+export async function checkOpenSpecChange(root: string, change: string, signal?: AbortSignal): Promise<OpenSpecCheck> {
+  let stdout: string, exited = true
+  try { stdout = await runOpenSpec(resolveOpenSpecCli(), root, ['validate', change, '--strict', '--json'], signal) }
+  catch (error) {
+    if (!(error instanceof OpenSpecCommandError) || error.exitCode === undefined || error.exitCode < 1) throw error
+    stdout = error.stdout
+    exited = false
+  }
+  let report: { items?: Array<{ id?: string; type?: string; valid?: boolean; issues?: Array<{ level?: string; path?: string; message?: string }> }> }
+  try { report = JSON.parse(stdout) as typeof report }
+  catch { throw new EngineError('openspec_invalid_output', 'OpenSpec did not return its validation report') }
+  const item = report.items?.find(entry => entry.id === change && entry.type === 'change')
+  if (!item || typeof item.valid !== 'boolean') throw new EngineError('openspec_invalid_output', 'OpenSpec validation did not report the requested change')
+  if (!exited || !item.valid) {
+    const issues = (item.issues ?? []).filter(issue => issue.level === 'ERROR').slice(0, 20).map(issue => `- ${issue.path ? issue.path + ': ' : ''}${issue.message ?? 'invalid'}`)
+    return { ok: false, kind: 'validate', output: json(report), note: [`OpenSpec validation failed for change ${change}.`, ...issues].join('\n') }
+  }
+  const preflight = await previewOpenSpecArchive(root, change, signal)
+  if (!preflight.valid) return { ok: false, kind: 'archive-preflight', output: json({ ...report, archivePreflight: preflight }), note: describeArchivePreflight(change, preflight) }
+  return { ok: true, output: json(report) }
 }
 
 export function openSpecPieces(bindings: PieceDependencyProvider): Piece[] {
@@ -20,27 +47,10 @@ export function openSpecPieces(bindings: PieceDependencyProvider): Piece[] {
       const change = changeId(text(params.change))
       const archived = params.allowArchived === true ? archivedOpenSpecChange(deps.context, change) : undefined
       if (archived) return { outcome: 'pass', output: { change, archived, skipped: true } }
-      let stdout: string, exited = true
-      try { stdout = await runOpenSpec(resolveOpenSpecCli(), deps.context.artifactRoot, ['validate', change, '--strict', '--json'], context.signal) }
-      catch (error) {
-        if (!(error instanceof OpenSpecCommandError) || error.exitCode === undefined || error.exitCode < 1) throw error
-        stdout = error.stdout
-        exited = false
-      }
-      let report: { items?: Array<{ id?: string; type?: string; valid?: boolean; issues?: Array<{ level?: string; path?: string; message?: string }> }> }
-      try { report = JSON.parse(stdout) as typeof report }
-      catch { throw new EngineError('openspec_invalid_output', 'OpenSpec did not return its validation report') }
-      const item = report.items?.find(entry => entry.id === change && entry.type === 'change')
-      if (!item || typeof item.valid !== 'boolean') throw new EngineError('openspec_invalid_output', 'OpenSpec validation did not report the requested change')
+      const checked = await checkOpenSpecChange(deps.context.artifactRoot, change, context.signal)
       // The planning role only learns why it was sent back through history.
-      const note = (suffix: string, value: string): PieceResult['history'] => [{ id: context.frame.attemptId + ':' + suffix, transition: context.frame.transition, attempt: context.frame.attempt, ordinal: 0, nodePath: context.frame.nodePath, text: boundedText(value) }]
-      if (!exited || !item.valid) {
-        const issues = (item.issues ?? []).filter(issue => issue.level === 'ERROR').slice(0, 20).map(issue => `- ${issue.path ? issue.path + ': ' : ''}${issue.message ?? 'invalid'}`)
-        return { outcome: 'fail', output: json(report), history: note('validate', [`OpenSpec validation failed for change ${change}.`, ...issues].join('\n')) }
-      }
-      const preflight = await previewOpenSpecArchive(deps.context.artifactRoot, change, context.signal)
-      if (!preflight.valid) return { outcome: 'fail', output: json({ ...report, archivePreflight: preflight }), history: note('archive-preflight', describeArchivePreflight(change, preflight)) }
-      return { outcome: 'pass', output: json(report) }
+      if (!checked.ok) return { outcome: 'fail', output: checked.output, history: [{ id: context.frame.attemptId + ':' + checked.kind, transition: context.frame.transition, attempt: context.frame.attempt, ordinal: 0, nodePath: context.frame.nodePath, text: boundedText(checked.note) }] }
+      return { outcome: 'pass', output: checked.output }
     },
   }, {
     descriptor: { kind: 'openspec-archive', paramsSchema: { ...schema, properties: { ...(schema.properties as import('../contracts.js').JsonObject), requiresVerified: { type: 'boolean' }, reviewedCandidate: { type: 'string' }, approvedCandidate: { type: 'string' } } }, outcomes: ['next', 'failed'], effect: 'write', requiresAI: false },

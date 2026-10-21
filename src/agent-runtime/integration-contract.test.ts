@@ -9,7 +9,7 @@ import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_PROTOCOL_VERSIONS } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'deriveChange'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -44,7 +44,7 @@ describe('Desktop integration contract', () => {
 
   it('advertises the real engine v2 catalog: contract, runtime api and workflows list agree with the validation registry', async () => {
     const registry = validationPieceRegistry(), kinds = registry.kinds()
-    expect(kinds).toHaveLength(19)
+    expect(kinds).toHaveLength(20)
     expect(kinds).toEqual(registry.catalog().map(piece => piece.kind))
     expect(kinds.some(kind => /test|fixture|fake/.test(kind))).toBe(false)
     expect(contract.agentRuntime.engine).toEqual({ version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: NODE_KINDS_VERSION })
@@ -88,6 +88,15 @@ describe('Desktop integration contract', () => {
     expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewBrief).toBe(contract.agentRuntime.reviewBrief.version)
     expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Reviewer risk brief')
+  })
+
+  it('describes the derive-change operation exactly as the catalog registers it', () => {
+    const derive = contract.agentRuntime.deriveChange
+    const descriptor = validationPieceRegistry().catalog().find(piece => piece.kind === derive.nodeKind)!
+    expect(derive).toMatchObject({ version: 1, capability: 'deriveChange', role: 'deriver' })
+    expect(descriptor.outcomes).toEqual(derive.outcomes)
+    expect(Object.keys(descriptor.paramsSchema.properties as object).sort()).toEqual(Object.keys(derive.params).sort())
+    expect(existsSync(new URL('../../' + derive.referenceDefinition, import.meta.url))).toBe(true)
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

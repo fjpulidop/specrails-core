@@ -12,7 +12,7 @@ export const OPENSPEC_VERSION = '1.14.3'
 export const ROLE_SKILLS = { architect: 'openspec-ff-change', developer: 'openspec-apply-change', reviewer: 'openspec-verify-change' } as const
 /** Where `openspec init --tools` writes each provider's skills (Codex and Kimi moved in 1.14). */
 const OPENSPEC_SKILL_DIRECTORIES: Record<CliProvider, string> = { claude: '.claude', codex: '.agents', gemini: '.gemini', kimi: '.kimi-code' }
-const DEFAULT_PROJECT_CONFIG = 'schema: spec-driven\n'
+export const DEFAULT_PROJECT_CONFIG = 'schema: spec-driven\n'
 export interface OpenSpecRoleContext {
   evidenceScope?: { backlogRoot: string; runId: string }
   root: string

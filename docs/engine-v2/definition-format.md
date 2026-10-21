@@ -253,6 +253,164 @@ An invalid first preparation gets exactly one repair: `init` sets `artifactRepai
 }
 ```
 
+## Flow Spec
+
+Flow's handoff: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "flow-spec",
+  "title": "Flow Spec",
+  "journal": "ledger-only",
+  "change": "new",
+  "entry": "init",
+  "maxTransitions": 100,
+  "roles": [
+    "deriver",
+    "reviewer"
+  ],
+  "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "derivationRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "derive",
+        "failed": "failed"
+      }
+    },
+    "derive": {
+      "kind": "derive-change",
+      "params": {
+        "change": "{{run.changeId}}",
+        "summaryPath": "flow-summary.md"
+      },
+      "ends": {
+        "pass": "check",
+        "fail": "repair-guard"
+      }
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.derivationRepairs < 1"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "derivationRepairs": 1
+        }
+      },
+      "ends": {
+        "next": "derive",
+        "failed": "failed"
+      }
+    },
+    "check": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured",
+        "additionalCommandsFrom": "derive"
+      },
+      "ends": {
+        "pass": "review",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "review": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "reviewer",
+        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report.",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "approved",
+            "issues"
+          ],
+          "properties": {
+            "approved": {
+              "type": "boolean"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ends": {
+        "next": "review-policy",
+        "invalid": "failed",
+        "failed": "failed"
+      }
+    },
+    "review-policy": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.review.structured.approved == true"
+      },
+      "ends": {
+        "true": "archive",
+        "false": "failed"
+      }
+    },
+    "archive": {
+      "kind": "openspec-archive",
+      "params": {
+        "change": "{{run.changeId}}",
+        "requiresVerified": true
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured",
+        "additionalCommandsFrom": "derive"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "592f9fdf1dcc662e633f4f4c114fa76c1007bdb811f73878dfefabfbab8101da"
+}
+```
+
 ## Verify Fix
 
 Runs the configured host checks and repairs real failures with a write prompt, at most twice (`init`, `repair-guard`, `repair-count`), instead of cycling until `maxTransitions`.

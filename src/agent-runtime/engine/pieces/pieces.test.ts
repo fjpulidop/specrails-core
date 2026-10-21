@@ -68,7 +68,7 @@ function fixture(respond: (request: AgentRequest, call: number) => AgentResult |
 describe('reviewed piece catalog and control', () => {
   it('registers every implemented kind with exact parameter alternatives', () => {
     const f = fixture()
-    expect(f.pieces.catalog()).toHaveLength(19)
+    expect(f.pieces.catalog()).toHaveLength(20)
     expect(f.pieces.validateParams('prompt', { engine: { provider: 'fixture' }, text: 'hi', nativeCommand: { id: 'opsx:ff' }, access: 'write' }, '')).not.toEqual([])
     expect(f.pieces.validateParams('shell', { repositoryId: 'repo', argv: ['node'], commandLine: 'node' }, '')).not.toEqual([])
     expect(f.pieces.outcomes('prompt', { sentinel: 'verification' })).toEqual(['pass', 'fail', 'failed'])
