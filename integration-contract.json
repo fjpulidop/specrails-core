@@ -291,7 +291,7 @@
     },
     "recovery": "Explicit resume uses frozen configuration and revalidates Core evidence; interrupted writes require named recovery; grants persist until evidence invalidation.",
     "delivery": "Core implements through archive; the host owns worktrees, commits, pushes, PRs and backlog delivery. A standalone continuation does not restart Desktop delivery.",
-    "specificationFormat": "Architect specs contain complete main-spec replacements, including unchanged requirements; archive does not merge partial delta snippets.",
+    "specificationFormat": "Architect specs are OpenSpec delta specs authored through the official fast-forward skill (ADDED/MODIFIED/REMOVED/RENAMED requirements); existing requirements are preserved through delta semantics and merged into main specs by OpenSpec archive. Complete replacement specs are not fabricated.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
     "instructionsVersion": "14",

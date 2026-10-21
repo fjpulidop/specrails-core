@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---------|-----------|
-| Latest 5.x release | ✅ |
-| Older releases | ❌ |
+| Latest 6.x release | ✅ |
+| 5.x and older | ❌ |
 
 We only provide security fixes for the latest release. Please upgrade to the latest version before reporting a vulnerability.
 
