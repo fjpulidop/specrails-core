@@ -1,7 +1,7 @@
 ## 1. Clarifications
 
 - [x] 1.1 `graph/clarifications.ts`: schema, parser, blocking rule, question text, design-section detection and validation, host record.
-- [x] 1.2 `ARCHITECT_OUTPUT_SCHEMA.clarifications`; architect step 0, Non-Goals/Assumptions rule, output contract and policy line; repair text names artifacts; `ROLE_INSTRUCTIONS_VERSION` 16.
+- [x] 1.2 `ARCHITECT_OUTPUT_SCHEMA.clarifications`; architect step 0, Non-Goals/Assumptions rule, output contract and policy line; repair text names artifacts; `ROLE_INSTRUCTIONS_VERSION` 17 (one bump shared with spec-trace and baseline-on-touch).
 - [x] 1.3 `architect.clarifications` in `config.ts`, `executor-types.ts` and `schemas/agent-runtime.schema.json`.
 
 ## 2. Architect node
@@ -12,7 +12,7 @@
 
 ## 3. Contract and docs
 
-- [x] 3.1 `runtime api` capability `architectClarifications: 1`; `runtime-result.clarifications`; `integration-contract.json` 5.4; parity tests.
+- [x] 3.1 `runtime api` capability `architectClarifications: 1`; `runtime-result.clarifications`; `integration-contract.json` 5.7 (one bump for the whole local branch); parity tests.
 - [x] 3.2 `docs/agent-runtime.md` "Architect clarifications" section and config reference.
 
 ## 4. Tests

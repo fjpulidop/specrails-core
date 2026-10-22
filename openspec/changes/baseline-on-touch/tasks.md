@@ -8,12 +8,12 @@
 - [x] 2.1 `graph/baseline.ts`: blast radius parsing, coverage detection, plan validation, non-test edit check, host record.
 - [x] 2.2 Architect baseline turn (kind `baseline`) and `baseline.json` (`not-needed`, `planned`).
 - [x] 2.3 Developer baseline stage: test-only edits, reachability, full plan on the base code, blocker `baseline_characterization_failed`; `passed` with receipt.
-- [x] 2.4 Prompts: architect plan, developer stage, developer and reviewer `## Baseline`; `ROLE_INSTRUCTIONS_VERSION` 18.
+- [x] 2.4 Prompts: architect plan, developer stage, developer and reviewer `## Baseline`; `ROLE_INSTRUCTIONS_VERSION` 17 (shared bump).
 - [x] 2.5 `baselineOnTouch` in config and schema; invocation kind `baseline`; `efficiencySummary.baseline`.
 
 ## 3. Contract and docs
 
-- [x] 3.1 `runtime api` capability `baselineOnTouch: 1`; `runtime-result.baseline`; `integration-contract.json` 5.6; parity tests.
+- [x] 3.1 `runtime api` capability `baselineOnTouch: 1`; `runtime-result.baseline`; `integration-contract.json` 5.7 (shared bump); parity tests.
 - [x] 3.2 `docs/agent-runtime.md` "Baseline on touch".
 
 ## 4. Tests

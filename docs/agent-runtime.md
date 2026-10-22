@@ -230,7 +230,7 @@ Where hosts read it:
 | `runtime-result.clarifications` (engine 1 `runtime run`/`resume`) | The same record read at settle, or `null` when the architect has not recorded one. |
 | Architect step output (`runtime status`, non-compact) → `clarifications` | Graph state `architecture.clarifications` (omitted when empty). |
 
-The capability is announced as `architectClarifications: 1` by `runtime api` and as `agentRuntime.architectClarifications` in `integration-contract.json` (schema 5.4). A Core without the capability never pauses for clarifications and writes no record. Desktop copies `schemas/agent-runtime.schema.json` byte for byte; the new `architect.clarifications` key is optional.
+The capability is announced as `architectClarifications: 1` by `runtime api` and as `agentRuntime.architectClarifications` in `integration-contract.json` (since schema 5.7). A Core without the capability never pauses for clarifications and writes no record. Desktop copies `schemas/agent-runtime.schema.json` byte for byte; the new `architect.clarifications` key is optional.
 
 ## Recovery and durable state
 
@@ -302,7 +302,7 @@ Where hosts read it:
 | `openspec/changes/<change>/confidence-score.json` → `brief` | Approved verdicts only; archived with the change. Absent when there is no brief. |
 | Reviewer step output (`runtime status`, non-compact) → `brief`, `briefDiagnostic` | Graph state `review`; the engine 2 `implementation` piece output carries it as `review.brief`. |
 
-The capability is announced as `reviewBrief: 1` by `runtime api` and as `agentRuntime.reviewBrief` in `integration-contract.json` (since schema 5.3). Hosts must treat every field as optional.
+The capability is announced as `reviewBrief: 1` by `runtime api` and as `agentRuntime.reviewBrief` in `integration-contract.json` (since schema 5.5). Hosts must treat every field as optional.
 
 ## Requirement traceability
 
@@ -337,7 +337,7 @@ node .specrails/runtime/trace.mjs --check --tests-passed   # inside an installed
 
 **Drift sweep.** `src/agent-runtime/engine/__fixtures__/drift-sweep.json` is a read-only reference definition that runs check 9 across every capability on demand: one `role-turn` of a host-declared read role `drift-auditor` (`roles: {"drift-auditor": {provider, access: "read", artifacts: "none"}}`) with structured output `{divergences: [{capability, requirement, observed}], unchecked: [string]}`. Remove its `version`, bind the provider and publish it like any definition.
 
-The capability is announced as `specTrace: 1` by `runtime api` and as `agentRuntime.specTrace` in `integration-contract.json` (schema 5.5).
+The capability is announced as `specTrace: 1` by `runtime api` and as `agentRuntime.specTrace` in `integration-contract.json` (since schema 5.7).
 
 ## Baseline on touch
 
@@ -355,7 +355,7 @@ With `baselineOnTouch: true` in `.specrails/agent-runtime.json` (default `false`
 | `runtime-result.baseline` (engine 1 `runtime run`/`resume`) | The same record, or `null` when the setting is off. |
 | `efficiencySummary.invocations.byKind.baseline`, `efficiencySummary.baseline` | Baseline turns counted apart: `{invocations, roles, costUsd, inputTokens, outputTokens}` (null when a provider reported no value). The receipts of the base-code run are ordinary verification receipts. |
 
-The capability is announced as `baselineOnTouch: 1` by `runtime api` and as `agentRuntime.baselineOnTouch` in `integration-contract.json` (schema 5.6).
+The capability is announced as `baselineOnTouch: 1` by `runtime api` and as `agentRuntime.baselineOnTouch` in `integration-contract.json` (since schema 5.7).
 
 ## Budgets and provider capability differences
 
@@ -479,7 +479,7 @@ The summary contains `total` and `phases` (architect, developer, verify, reviewe
 - The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. In engine v2, the next fenced owner closes abandoned calls as interrupted and emits their unknown usage exactly once, retaining unreported budget reservations. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
 - Total execution duration accumulates active workflow time, excluding time parked for human approval between invocations. Phase time includes phase overhead; do not add agent time to phase time. A phase without an end timestamp has unknown duration.
 
-Role instructions are version 15 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
+Role instructions are version 17 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
 
 To evaluate the first efficiency changes, select a fixed set of representative tasks and reset each task to the same base revision. Keep provider/model settings and acceptance criteria fixed. Save status JSON for every run, including failures and manual recovery, and compare:
 

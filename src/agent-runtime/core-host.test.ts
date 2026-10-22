@@ -1136,7 +1136,8 @@ describe('programmatic Core host with real evidence gates', () => {
       const state = await runCoreWorkflow(opts(registry))
       expect(state.status, state.error).toBe('succeeded')
       expect(briefFile().brief.risks.map((item: { ref: string }) => item.ref)).toEqual(['code.cjs:2', 'code.cjs:4', 'code.cjs:7', 'code.cjs:3', 'code.cjs:6'])
-      expect(journalFile().acceptance!.findings).toEqual([
+      // The advisory spec-trace finding (requirement traceability) is asserted by its own tests.
+      expect(journalFile().acceptance!.findings.filter((finding: string) => !finding.startsWith('Spec trace (advisory'))).toEqual([
         "Additional low data risk (beyond the brief's top 5): risk 1 (code.cjs:1)",
         "Additional low data risk (beyond the brief's top 5): risk 5 (code.cjs:5)",
       ])

@@ -347,7 +347,7 @@ export function bindImplementationExclusions(contextInput: PipelineContext, excl
     if (!repository) continue // A scoped child receives the parent union, filtered to its frozen repositories.
     repositoryExclusions[id] = [...new Set(paths)].sort()
     for (const item of repositoryExclusions[id]!) {
-      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:changes|specs)\/[a-z0-9][a-z0-9./-]*$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
+      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:(?:changes|specs)\/[a-z0-9][a-z0-9./-]*|capability-map\.json)$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
       safeChild(repository.path, item)
     }
   }

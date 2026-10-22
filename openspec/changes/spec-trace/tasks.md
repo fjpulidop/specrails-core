@@ -6,12 +6,12 @@
 ## 2. Runtime
 
 - [x] 2.1 Verify node writes `spec-trace.json` bound to the receipt; `VerificationRecord.specTrace`; acceptance finding.
-- [x] 2.2 Developer `## Requirement tags`; reviewer check 3 (missing tag is an issue), check 9 and `brief.divergences`; trace in the verification feedback; `ROLE_INSTRUCTIONS_VERSION` 17.
+- [x] 2.2 Developer `## Requirement tags`; reviewer check 3 (missing tag is an issue), check 9 and `brief.divergences`; trace in the verification feedback; `ROLE_INSTRUCTIONS_VERSION` 17 (shared bump).
 - [x] 2.3 Drift sweep reference definition.
 
 ## 3. Contract and docs
 
-- [x] 3.1 `runtime api` capability `specTrace: 1`; `runtime-result.specTrace`; `integration-contract.json` 5.5; parity tests.
+- [x] 3.1 `runtime api` capability `specTrace: 1`; `runtime-result.specTrace`; `integration-contract.json` 5.7 (shared bump); parity tests.
 - [x] 3.2 `docs/agent-runtime.md` "Requirement traceability".
 
 ## 4. Tests

@@ -9,7 +9,7 @@ External feedback (feedback-2026-10, Phase 3 task 3.3, annex D.6) asked that eve
 - **CLI.** `specrails-core pipeline trace [--check] [--json] …`: normal mode never fails; `--check` fails when a requirement the change adds, modifies or renames is not demonstrated.
 - **Runtime.** The verify node writes `spec-trace.json` after every passing verification, bound to the receipt, and records an advisory acceptance finding. The developer is asked to tag one test per touched requirement; the reviewer treats a touched requirement without a demonstrated tag as an issue, and a new check 9 fills `brief.divergences` with spec claims the code contradicts.
 - **Drift sweep.** A read-only reference definition (`engine/__fixtures__/drift-sweep.json`) runs the divergence check across every capability on demand.
-- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 16 → 17, integration contract 5.4 → 5.5 with `agentRuntime.specTrace`, `runtime api` capability `specTrace: 1`, `runtime-result.specTrace`.
+- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 16 → 17, integration contract 5.6 → 5.7 (both bumped once for the branch) with `agentRuntime.specTrace`, `runtime api` capability `specTrace: 1`, `runtime-result.specTrace`.
 
 ## Capabilities
 
@@ -22,6 +22,6 @@ External feedback (feedback-2026-10, Phase 3 task 3.3, annex D.6) asked that eve
 ## Impact
 
 - **Code:** `src/pipeline/spec-trace.ts` (new), `graph/spec-trace-record.ts` (new), `graph/nodes.ts` (developer tags, verify trace, acceptance finding), `graph/state.ts`, `prompts.ts`, `cli.ts`, `index.ts`, `installer/cli.ts` (`pipeline trace`), `installer/phases/scaffold.ts` (copy), `graph/review-brief.ts` (comment).
-- **Contract:** `integration-contract.json` 5.5. Desktop reads `spec-trace.json` / `runtime-result.specTrace` when `specTrace >= 1` to show "Requirements demonstrated X/Y".
+- **Contract:** `integration-contract.json` 5.7. Desktop reads `spec-trace.json` / `runtime-result.specTrace` when `specTrace >= 1` to show "Requirements demonstrated X/Y".
 - **Compatibility:** additive and advisory; verification and acceptance outcomes are unchanged.
 - **Out of scope:** Desktop packet, analytics and CI template UI (Desktop side of task 3.3).

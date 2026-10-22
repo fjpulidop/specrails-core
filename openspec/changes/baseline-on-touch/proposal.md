@@ -10,7 +10,7 @@ External feedback (feedback-2026-10, Phase 3 task 3.4) pointed at legacy code: m
 - **Hard rule.** The developer's first turn writes only the Baseline group; Core refuses non-test edits and runs the verification plan on the unchanged code. A failure stops the run with an explicit host blocker (`baseline_characterization_failed`) before the developer touches the module.
 - **Review.** The reviewer checks that as-built requirements describe behaviour their characterization tests demonstrate.
 - **Cost.** Baseline turns run with invocation kind `baseline`; the efficiency summary reports their spend apart.
-- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 17 → 18, integration contract 5.5 → 5.6 with `agentRuntime.baselineOnTouch`, `runtime api` capability `baselineOnTouch: 1`, `runtime-result.baseline`.
+- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 16 → 17, integration contract 5.6 → 5.7 (both bumped once for the branch) with `agentRuntime.baselineOnTouch`, `runtime api` capability `baselineOnTouch: 1`, `runtime-result.baseline`.
 
 ## Capabilities
 
@@ -23,6 +23,6 @@ External feedback (feedback-2026-10, Phase 3 task 3.4) pointed at legacy code: m
 ## Impact
 
 - **Code:** `graph/capability-map.ts` and `graph/baseline.ts` (new), `graph/nodes.ts` (architect turn, developer stage, archive hook), `graph/artifacts.ts` (archive hook), `pipeline-state.ts` (candidate exclusion for new journals), `prompts.ts`, `role-routing.ts` (`baseline` kind), `efficiency-summary.ts`, `config.ts`, `executor-types.ts`, `cli.ts`, `index.ts`, `schemas/agent-runtime.schema.json`.
-- **Contract:** `integration-contract.json` 5.6; new optional config key `baselineOnTouch` in the schema Desktop copies byte for byte.
+- **Contract:** `integration-contract.json` 5.7; new optional config key `baselineOnTouch` in the schema Desktop copies byte for byte.
 - **Compatibility:** off by default. The capability map is written by every new run's archive; journals created before this change keep their candidate exclusions and never write it.
 - **Out of scope:** Desktop setting, packet section and docs (Desktop side of task 3.4).

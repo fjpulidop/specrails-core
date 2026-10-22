@@ -10,7 +10,7 @@ External feedback (feedback-2026-10, Phase 3 task 3.1) found that the architect 
 - **Proceed.** Otherwise the architect plans on its defaults and writes them under `## Assumptions` in `design.md`.
 - **Design sections.** Whenever the architect proceeds, Core validates `design.md`: a non-empty Non-Goals section always (heading or OpenSpec's `**Non-Goals:**` label), and Assumptions when clarifications were listed. A missing section spends the single in-session repair turn.
 - **Host record.** `<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json` and `runtime-result.clarifications`, so Desktop can post questions and assumptions to the ticket tracker.
-- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 15 → 16, integration contract 5.3 → 5.4 with `agentRuntime.architectClarifications`, `runtime api` capability `architectClarifications: 1`.
+- **Contract.** `ROLE_INSTRUCTIONS_VERSION` 16 → 17, integration contract 5.6 → 5.7 (both bumped once, shared with spec-trace, baseline-on-touch and project-rules-inventory) with `agentRuntime.architectClarifications`, `runtime api` capability `architectClarifications: 1`.
 
 ## Capabilities
 
@@ -23,6 +23,6 @@ External feedback (feedback-2026-10, Phase 3 task 3.1) found that the architect 
 ## Impact
 
 - **Code:** `src/agent-runtime/graph/clarifications.ts` (new), `graph/nodes.ts` (architect node), `graph/roles.ts` (participation exemption), `graph/state.ts`, `prompts.ts`, `config.ts`, `executor-types.ts`, `cli.ts`, `index.ts`.
-- **Contract:** `integration-contract.json` 5.4; `schemas/agent-runtime.schema.json` gains an optional key. Desktop copies that schema byte for byte, so the paired Desktop change must copy it again.
+- **Contract:** `integration-contract.json` 5.7; `schemas/agent-runtime.schema.json` gains an optional key. Desktop copies that schema byte for byte, so the paired Desktop change must copy it again.
 - **Compatibility:** additive. A reply without `clarifications` behaves as before except for the Non-Goals check, which a design produced from OpenSpec's template already satisfies once filled in.
 - **Out of scope:** Desktop UI and the Jira comment (task 3.2), any change to the low-confidence policy.
