@@ -421,6 +421,7 @@
       "params": {
         "change": "required; the run's frozen change name ({{run.changeId}})",
         "summaryPath": "optional; file relative to <backlogRoot>/.specrails/pipeline/<runId>/, at most 32768 bytes, no symlinks or .. segments; absent or empty derives from the diff alone; optional front matter 'transcriptTurns: <n>'",
+        "feedback": "optional string (at most 32000 characters, normally {{run.latestFindings}}); when non-blank the deriver re-derives the existing change in place after a correction round, with the findings bounded to 8000 characters as untrusted fenced data under '## Re-derivation after a correction round'",
         "timeoutMs": "optional",
         "idleTimeoutMs": "optional"
       },
@@ -449,6 +450,7 @@
       ],
       "verificationProposals": "output.structured.verification (at most 20, architect schema); bind them with verify additionalCommandsFrom: <derive node id>",
       "reviewer": "A reviewer role-turn in the same run receives derivation.json; every unexplained file is an issue",
+      "correctionLoop": "role-turn stance 'fixer' (write roles only; the built-in developer takes the FIXER instructions, rolePrompts.fixer and config.fixer in a fresh session). flow-spec routes a rejected review or a failing check to at most correctionLimit (2) rounds of fix then derive (feedback) then check then review; a fixer turn that leaves $outputs.fix.candidateHash equal to $outputs.check.candidateHash, or a spent budget, ends at end node changes-requested with reason 'Flow → Spec: the reviewer requested changes that <n> correction round(s) did not resolve. Latest findings: <findings>'",
       "referenceDefinition": "src/agent-runtime/engine/__fixtures__/flow-spec.json"
     },
     "openRoles": {

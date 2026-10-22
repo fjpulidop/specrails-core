@@ -111,3 +111,33 @@ describe('role-turn host plan visibility', () => {
     expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'x', verificationProposalsFrom: '' }, '/test')).not.toEqual([])
   })
 })
+
+describe('role-turn fixer stance', () => {
+  // The built-in developer's FIXER instructions, host fixer prompt and fixer engine need a real OpenSpec change: derive-change.test.ts covers them end to end.
+
+  it('accepts only the fixer stance in the closed params schema', () => {
+    const f = fixture()
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'Fix', stance: 'fixer' }, '/test')).toEqual([])
+    for (const stance of ['developer', '', 1, null]) expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'Fix', stance } as Record<string, JsonValue>, '/test')).toEqual([expect.objectContaining({ code: 'invalid_piece_params', path: '/test/params/stance' })])
+  })
+
+  it('rejects the fixer stance on a read role before any provider call', async () => {
+    const f = fixture()
+    await expect(f.run({ roleId: 'analyst', prompt: 'Fix', stance: 'fixer' })).rejects.toMatchObject({ code: 'invalid_arguments', message: expect.stringContaining('write access') })
+    expect(f.requests).toHaveLength(0)
+  })
+
+  it('labels a custom write role as the fixer without changing its instructions or engine', async () => {
+    const f = fixture()
+    const events: JsonValue[] = []
+    f.execution.progress = vi.fn(event => { events.push(event.payload as JsonValue) })
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); request.onEvent?.({ kind: 'text', text: 'working' }); return { text: 'done', usage: unknownUsage() } } })
+    expect(await f.run({ roleId: 'writer', prompt: 'Fix the findings', stance: 'fixer' })).toMatchObject({ outcome: 'next' })
+    expect(f.requests[0]).toMatchObject({ role: 'writer', stance: 'fixer', model: 'base' })
+    expect(f.requests[0].prompt).toContain('## Your task: writer')
+    expect(f.requests[0].prompt).toContain('Build the thing.')
+    expect(events).toContainEqual(expect.objectContaining({ role: 'fixer', event: { kind: 'text', text: 'working' } }))
+  })
+})

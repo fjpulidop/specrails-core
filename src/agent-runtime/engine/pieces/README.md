@@ -49,6 +49,16 @@ proposals for repositories without a configured check (the same admission rule
 the `verify` piece applies to `additionalCommandsFrom`), deduplicated. Read-only
 roles receive no plan block. The turn never runs those commands.
 
+`stance: 'fixer'` makes a `role-turn` a correction round. It requires a write
+role (`invalid_role_access` at publication, `invalid_arguments` at execution).
+The built-in `developer` then renders the FIXER instructions with
+`rolePrompts.fixer` and runs on `config.fixer` when one is configured, always
+in a fresh session (`agentOverride` in `graph/roles.ts`, mirroring the legacy
+`implementationVisit`). A custom write role only gets the `fixer` label on its
+request and events. `derive-change` takes the matching `feedback` param to
+re-derive the existing change in place after such a round; `flow-spec.json`
+wires both into a bounded repair loop.
+
 ## Verification and OpenSpec
 
 `verify` and shell evidence reuse the real Core command runner, its isolated
