@@ -3,9 +3,10 @@ import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
 import { REVIEW_BRIEF_RISK_LIMIT, REVIEW_BRIEF_SCHEMA, REVIEW_RISK_AREAS } from './graph/review-brief.js'
+import { CLARIFICATIONS_SCHEMA, CLARIFICATION_LIMIT, DEFAULT_CLARIFICATION_POLICY, type ClarificationPolicy } from './graph/clarifications.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '16'
+export const ROLE_INSTRUCTIONS_VERSION = '17'
 const OUTPUT_TAIL = 6_000
 /** One senior engineer, rendered once per role prompt (never repeated inside it): the identity the implement pipeline's roles share. */
 const ENGINEER = 'a T-shaped principal engineer with decades of delivery across web, mobile and backend systems: deep in software design and testing, broad across product, UX, data, security, infrastructure and operations; fluent in hexagonal (ports and adapters) architecture, SOLID, design patterns, Clean Code, The Pragmatic Programmer, refactoring, legacy-code seams and AI-assisted development. You work for the user, the operator and the next maintainer, and you treat AI-generated code, including your own, with the scepticism owed to any untrusted contribution.'
@@ -37,6 +38,8 @@ export interface RoleInstructionOptions {
   /** A reviewer pass after a correction round: only these files changed since its previous verdict, and these criteria it already certified as met. */
   reReview?: ReReviewContext
   planning?: 'full' | 'proportional'
+  /** The architect's clarification policy (`architect.clarifications`); Core's default when omitted. */
+  clarifications?: ClarificationPolicy
   /** The change so far, measured by Core from git against the run's base (rendered lines). */
   changeSet?: string[]
   /** Files the host verification regenerated and kept in the candidate; merged with `feedback.verification.adoptedOutputs`. */
@@ -60,6 +63,7 @@ export const ARCHITECT_OUTPUT_SCHEMA: Record<string, unknown> = {
     referencePatterns: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
     riskFlags: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
     question: { type: 'string', description: 'Only with low confidence: the single question whose answer decides the design.' },
+    clarifications: CLARIFICATIONS_SCHEMA,
     verification: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['repositoryId', 'command', 'args'], properties: { repositoryId: { type: 'string' }, command: { type: 'string' }, args: stringArray, cwd: { type: 'string' } } } },
   },
 }
@@ -185,6 +189,13 @@ function conventionsSection(): string[] {
   ]
 }
 
+/** How the architect's clarifications are settled for this run (`architect.clarifications`). */
+function clarificationPolicyLine(policy: ClarificationPolicy): string {
+  return policy === 'ask-on-high'
+    ? 'Clarification policy: ask-on-high. If a `high` clarification has no safe default (`default: null`), stop before planning: author no artifacts and reply with `confidence` and `clarifications` only; Core asks the requester and resumes you with the answers. Otherwise plan on your defaults and record them under `## Assumptions` in design.md.'
+    : 'Clarification policy: always-proceed. Never stop for clarifications: plan on your best default for each one (state a default even when none is fully safe) and record them under `## Assumptions` in design.md.'
+}
+
 function answersSection(answers: string[] | undefined): string[] {
   if (!answers?.length) return []
   return [
@@ -206,10 +217,12 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     'You are the Specrails architect, ' + ENGINEER,
     FOCUS,
     '',
+    `0. Clarify before planning. Read the ticket and the code it names, then list the ambiguities whose answer would change the design: at most ${CLARIFICATION_LIMIT}, most consequential first, none when the ticket is clear (never invent one to fill the list). Give each an \`impact\` (\`high\`: a different answer changes user-visible behaviour, persisted data, a public contract or most of the plan; \`medium\`: it changes part of the plan; \`low\`: a detail) and the \`default\` you would assume, or \`null\` when no default is safe. Answers from the requester below are authoritative: never ask them again.`,
     '1. Orient quickly: locate the code the change touches, the tests that cover it and the conventions that apply. Calibrate depth to the blast radius. A localized change gets a short proposal, focused design and only the tasks it needs; a cross-cutting change earns a full impact analysis. Investigate only as far as it changes a design decision.',
     'In design.md include a Local reference patterns section: cite actual repository paths and symbols for the closest existing implementation and its tests. Explain async rendering/state updates, error propagation and test setup when relevant. Check installed framework versions. If no equivalent exists, state that explicitly; never invent references.',
     '2. Choose the design with the smallest blast radius that fully satisfies the criteria and the repository\'s conventions. Extend the existing module, seam or helper before adding a file, layer or abstraction; keep dependencies pointing inward and follow the layering the code already uses; introduce a port, interface, pattern or abstraction only where a real substitution or variation boundary exists today, never as ceremony; prefer composition and plain functions; keep public signatures, exported contracts, schemas and persisted formats unchanged unless a criterion requires it, and then name every affected caller; add no dependency the design cannot justify; plan no rename, move, reformat or clean-up the change does not need, and record what you noticed as out-of-scope findings in design.md. Call out risks, edge cases, failure paths and compatibility concerns.',
     'Design judgement: understand before you change (a guard, branch or workaround you cannot explain stays until you can; reconstruct its intent from tests and history). Prefer reversible decisions, the simplest design that could work and a thin vertical slice first, so the earliest task proves the riskiest assumption; record rejected alternatives in design.md, one line each. Make illegal states unrepresentable; make failure paths, idempotency, concurrency, cancellation, timeouts, persistence and backward compatibility explicit; design security in at the boundary the change touches (parse and validate input, authorize where the repository does, no secrets or personal data in code or logs, least privilege); keep errors, logging, metrics, migrations and persisted-format changes consistent with the repository and additive. Design for the platform the change touches: web (state, accessibility, i18n, loading and error states), mobile (lifecycle, offline, permissions, battery, platform conventions), backend (transactions, idempotent retries, validation at the boundary, observability). State the performance assumption of any hot path instead of optimizing speculatively. Confirm every API, signature, option and version against the source or the installed package, never from memory.',
+    'design.md always contains a `## Non-Goals` section with at least one line naming what this change deliberately does not do, and, when you listed clarifications and proceed, a `## Assumptions` section with one line per clarification: the question and the answer you assumed. Core checks both and returns a design without them for repair.',
     '3. Declare the blast radius in design.md under a `Blast radius` heading: every file to create or modify (inside the repository scope when one is declared), each with the reason it must change, including every artifact the change makes stale (localized strings in every locale the repository ships, user or API documentation, schema and contract files, configuration examples, migrations). That list is the developer\'s boundary and the reviewer\'s checklist; a file the plan does not name must not change.',
     '4. Break the work into ordered, atomic tasks. Each task names concrete files from the blast radius and includes its own tests: behavior assertions, failure paths, deterministic, in the repository\'s existing test style. Every task must be completable by an agent that can only edit files and run commands: never add tasks such as "run the test suite", "verify", "test manually in a browser", "commit" or "open a PR". Core runs verification and the host owns delivery.',
     '5. Execute the official OpenSpec fast-forward skill. Query status and instructions in dependency order; author the real delta specs and other artifacts using those templates and project rules. Preserve existing requirements through OpenSpec delta semantics. Do not fabricate complete replacement specs.',
@@ -222,9 +235,10 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     'Reply with exactly one JSON object and nothing else: no prose before or after it, no Markdown fence.',
     '',
     '```',
-    '{"confidence":"high|medium|low","question":"Only with low confidence","verification":[{"repositoryId":"<id>","command":"npm","args":["test"]}]}',
+    '{"confidence":"high|medium|low","question":"Only with low confidence","clarifications":[{"question":"…","impact":"high|medium|low","default":"the answer you would assume, or null"}],"verification":[{"repositoryId":"<id>","command":"npm","args":["test"]}]}',
     '```',
     '- `question`: omit unless confidence is `low`; then one precise question a product owner can answer in a sentence.',
+    '- `clarifications`: the list from step 0; omit or leave empty when the ticket is clear. Each `question` is one sentence a product owner can answer.',
     '- `verification`: optional; commands for repositories that have no configured check, run without a shell (`command` plus an `args` array, optional `cwd` relative to the repository checkout and inside its scope).',
     '- Author the documents using the official workflow before returning metadata. Core does not generate your artifacts.',
     '- Optional planning metadata: `planningDepth` (focused|full), a bounded `planningReason`, `referencePatterns` (verified paths/symbols), and `riskFlags`. Missing metadata means full. Focused planning never removes official artifacts or acceptance criteria. Multi-repository, migration, public-contract and security changes need full planning.',
@@ -579,6 +593,7 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...conventionsSection(),
     ...scopeSection(context, change),
     ...(role === 'architect' ? answersSection(options.answers) : []),
+    ...(role === 'architect' ? [clarificationPolicyLine(options.clarifications ?? DEFAULT_CLARIFICATION_POLICY)] : []),
     ...(role === 'architect' ? [options.planning === 'full' || context.repositories.length > 1 ? 'Planning policy: full impact analysis is required for this run.' : 'Planning policy: proportional; use focused planning only for a clear local change without migration, public-contract or security risks.'] : []),
     ...(role === 'reviewer' ? developerSummarySection(options.developer) : []),
     ...changeSetSection(role, options.stance, options.changeSet),
@@ -615,5 +630,5 @@ export function deepenInstructions(question: string | undefined): string {
 
 /** Asks a structured role to resend a malformed reply without repeating its work. */
 export function repairInstructions(role: AgentRole, problem: string): string {
-  return `Your previous reply could not be used: ${problem}\n\nDo not redo the ${role} work. Reply again with exactly one JSON object matching the output contract, with no prose before or after it and no Markdown fence.\n`
+  return `Your previous reply could not be used: ${problem}\n\nDo not redo the ${role} work beyond what this problem names (fix a named artifact through the workflow first). Reply again with exactly one JSON object matching the output contract, with no prose before or after it and no Markdown fence.\n`
 }

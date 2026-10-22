@@ -11,6 +11,7 @@ import { frozenAcceptanceCriteria, pipelineStateDirectory, type PipelineContext 
 import type { ExecutorRegistry } from '../executors.js'
 import { AgentExecutionError, unknownUsage, type AgentEvent, type AgentEventRole, type AgentResult, type AgentRole, type RuntimeConfig, type RuntimeAgentConfig } from '../executor-types.js'
 import { ROLE_INSTRUCTIONS_VERSION, repairInstructions } from '../prompts.js'
+import { asksBeforePlanning } from './clarifications.js'
 import type { WorkflowStepContext } from '../workflow-types.js'
 import { parseAgentObject } from './artifacts.js'
 
@@ -156,9 +157,10 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       if (structured) {
         try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { parseError = error }
       }
-      // A genuine architect question can precede artifact creation. Completed
-      // role results must prove this invocation used the workflow, not an old visit.
-      if (!(role === 'architect' && output?.confidence === 'low')) workflow?.assertParticipation(cursor)
+      // A genuine architect question (low confidence, or a high-impact
+      // clarification without a safe default) can precede artifact creation.
+      // Completed role results must prove this invocation used the workflow, not an old visit.
+      if (!(role === 'architect' && (output?.confidence === 'low' || asksBeforePlanning(output?.clarifications)))) workflow?.assertParticipation(cursor)
       if (structured && !output && !options.lenient) throw new Error('Invalid structured role response: ' + (parseError instanceof Error ? parseError.message : 'missing object'))
       return { ok: true, value: accept(output, result.text, result), text: result.text, result }
     }

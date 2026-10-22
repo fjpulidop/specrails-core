@@ -64,7 +64,7 @@ it('continues a real v4 request/checkpoint with its original executable without 
           await tools.execute({ action: 'new' })
           const artifacts = [
             ['proposal', 'proposal.md', '## Why\nInformative alerts.\n## What Changes\nDocument behavior.\n## Capabilities\n### New Capabilities\n- `alerts`: Informative alerts.\n## Impact\nREADME.\n'],
-            ['design', 'design.md', '## Context\nAlerts are informative.\n## Decisions\nDocument their behavior.\n'],
+            ['design', 'design.md', '## Context\nAlerts are informative.\n## Decisions\nDocument their behavior.\n## Non-Goals\n- No new alert types.\n'],
             ['specs', 'specs/alerts/spec.md', '## ADDED Requirements\n### Requirement: Informative alerts\nAlerts SHALL be informative.\n#### Scenario: Viewing an alert\n- **WHEN** an alert is visible\n- **THEN** saving remains available\n'],
             ['tasks', 'tasks.md', '## 1. Documentation\n- [ ] 1.1 Document informative alerts\n'],
           ]

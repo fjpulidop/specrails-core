@@ -16,6 +16,8 @@ export interface ArchitectureRecord {
   question?: string
   /** True when a low-confidence design proceeded on stated assumptions instead of asking. */
   assumed?: boolean
+  /** Ambiguities the architect reported before planning (see clarifications.ts). */
+  clarifications?: import('./clarifications.js').Clarification[]
 }
 export interface DeveloperRecord {
   summary: string

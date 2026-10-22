@@ -217,11 +217,15 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
   let architect: RuntimeConfig['architect']
   if (config.architect !== undefined) {
     const raw = object(config.architect, 'architect')
-    keys(raw, ['onLowConfidence'], 'architect')
+    keys(raw, ['onLowConfidence', 'clarifications'], 'architect')
     architect = {}
     if (raw.onLowConfidence !== undefined) {
       if (raw.onLowConfidence !== 'ask' && raw.onLowConfidence !== 'proceed') fail('architect.onLowConfidence', 'expected "ask" or "proceed"')
       architect.onLowConfidence = raw.onLowConfidence
+    }
+    if (raw.clarifications !== undefined) {
+      if (raw.clarifications !== 'ask-on-high' && raw.clarifications !== 'always-proceed') fail('architect.clarifications', 'expected "ask-on-high" or "always-proceed"')
+      architect.clarifications = raw.clarifications
     }
   }
   let rolePrompts: RuntimeConfig['rolePrompts']

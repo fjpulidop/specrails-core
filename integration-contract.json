@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.6",
+  "schemaVersion": "5.7",
   "providers": {
     "claude": {
       "cli": {
@@ -264,6 +264,19 @@
       "stepOutput": "reviewer step output brief / briefDiagnostic; engine 2 implementation output review.brief",
       "documentation": "docs/agent-runtime.md#reviewer-risk-brief"
     },
+    "architectClarifications": {
+      "version": 1,
+      "capability": "architectClarifications",
+      "output": "architect reply clarifications: [{question, impact: high|medium|low, default: string | null}] (at most 5) before planning",
+      "policy": "config architect.clarifications: ask-on-high (default) | always-proceed",
+      "pause": "ask-on-high and a high-impact clarification with default null pauses the run with pendingQuestion (the questions, numbered when several); resume --answer feeds the answer to the architect as authoritative",
+      "proceed": "otherwise the architect plans on its defaults and records them under Assumptions in design.md",
+      "designSections": "design.md must contain a non-empty Non-Goals section (and Assumptions when clarifications were listed); a missing section spends the architect's single repair turn",
+      "runResult": "runtime-result.clarifications: {schemaVersion: 1, change, policy, status: awaiting-answers | proceeded, recordedAt, clarifications, blocking, answers, assumptions} | null (engine 1 builtin runs)",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json",
+      "stepOutput": "architect step output clarifications; graph state architecture.clarifications",
+      "documentation": "docs/agent-runtime.md#architect-clarifications"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
@@ -304,7 +317,7 @@
     "specificationFormat": "Architect specs are OpenSpec delta specs authored through the official fast-forward skill (ADDED/MODIFIED/REMOVED/RENAMED requirements); existing requirements are preserved through delta semantics and merged into main specs by OpenSpec archive. Complete replacement specs are not fabricated.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "16",
+    "instructionsVersion": "17",
     "workflowVersion": "7",
     "engines": [
       1,
