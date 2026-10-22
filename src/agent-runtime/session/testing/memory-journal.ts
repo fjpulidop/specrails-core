@@ -1,4 +1,5 @@
 import type { SessionEvent, SessionEventEnvelope } from '../domain/events.js'
+import { redactSessionEvent, redactSessionSnapshot } from '../domain/redaction.js'
 import { emptySnapshot, foldEvents, type SessionSnapshot } from '../domain/snapshot.js'
 import type { UsageBaseline } from '../domain/usage.js'
 import type { AppendOptions, SessionJournal, SessionRecord, SessionSummary } from '../ports.js'
@@ -25,8 +26,9 @@ export class MemoryJournal implements SessionJournal {
   append(sessionId: string, events: SessionEvent[], options?: AppendOptions): SessionEventEnvelope[] {
     const entry = this.require(sessionId)
     if (this.failNextAppend) { const error = this.failNextAppend; this.failNextAppend = null; throw error }
-    const envelopes = events.map((event, index) => ({ sessionId, seq: entry.snapshot.lastSeq + index + 1, event: structuredClone(event) }))
-    const snapshot = foldEvents(entry.snapshot, envelopes)
+    const snapshot = redactSessionSnapshot(foldEvents(entry.snapshot, events.map((event, index) => ({ sessionId, seq: entry.snapshot.lastSeq + index + 1, event }))))
+    // Same redaction boundary as the SQLite adapter (domain/redaction.ts).
+    const envelopes = events.map((event, index) => ({ sessionId, seq: entry.snapshot.lastSeq + index + 1, event: structuredClone(redactSessionEvent(event)) }))
     entry.events.push(...envelopes)
     entry.snapshot = snapshot
     if (options?.baseline) this.baselines.set(options.baseline.providerRef, { ...options.baseline.value })

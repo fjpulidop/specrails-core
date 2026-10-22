@@ -22,7 +22,7 @@ src/installer/
   util/                       fs, exec, git, registry, install transaction, logger
 src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
-src/shared/                   helpers shared by the CLIs (argument parsing)
+src/shared/                   helpers shared by the CLIs (argument parsing, Specrails home, secret redaction)
 templates/                    implement/retry commands, provider settings, Kimi runner (roles are runtime-defined, never templated)
 integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.2)
 ```

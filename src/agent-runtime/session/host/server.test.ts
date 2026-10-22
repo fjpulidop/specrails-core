@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -110,6 +110,39 @@ describe('SessionHost protocol', () => {
     expect(((await client.call('session.snapshot', { sessionId })).result as Json)).toMatchObject({ phase: 'idle', turnCount: 1 })
     expect(((await client.call('session.list')).result as Json).sessions).toMatchObject([{ sessionId, metadata: { conversationId: 'c1' } }])
     expect(((await client.call('host.ping')).result as Json)).toMatchObject({ sessions: 1, residentProcesses: 1 })
+  })
+
+  it('redacts secrets in the journal, the live feed, replay and snapshots, but delivers raw input to the provider', async () => {
+    const { client, factory, runtime } = await boot()
+    const secret = 'ghp_' + 'M4n5B6v7C8'.repeat(4)
+    await client.call('initialize', { protocolVersions: [1], host: { name: 't', version: '1' } })
+    const sessionId = String(((await client.call('session.open', { driver: 'scripted', model: 'm', cwd: '/r', policy })).result as Json).sessionId)
+    const text = `push with GH_TOKEN=${secret}`
+    await client.call('session.send', { sessionId, input: { inputId: 'u1', text, delivery: 'queue' } })
+    factory.last.emit(
+      { kind: 'input.receipt', inputId: 'u1', state: 'started' },
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'started', input: { command: `curl -H "Authorization: Bearer ${secret}" https://api`, env: { API_KEY: secret } } },
+      { kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'completed', output: `-----BEGIN PRIVATE KEY-----\nMIIE${secret}\n-----END PRIVATE KEY-----\nexport SECRET=${secret}` },
+      { kind: 'turn.output', channel: 'text', delta: `Using ${secret}` },
+    )
+    await tick(); await tick()
+    // The provider still receives exactly what the host sent.
+    expect(factory.last.sent[0]?.text).toContain(secret)
+    const live = client.notifications('session.event')
+    const replay = (await client.call('session.events', { sessionId, afterSeq: 0 })).result as Json
+    const snapshot = (await client.call('session.snapshot', { sessionId })).result as Json
+    for (const value of [live, replay, snapshot]) expect(JSON.stringify(value)).not.toContain(secret)
+    expect((replay.events as Json[]).map((envelope) => envelope.event)).toEqual(live.map((params) => params.event))
+    expect(JSON.stringify(replay)).toContain('[REDACTED]')
+    // An idempotent retry of the same input still matches its fingerprint.
+    expect((await client.call('session.send', { sessionId, input: { inputId: 'u1', text, delivery: 'queue' } })).result).toMatchObject({ inputId: 'u1' })
+    factory.last.emit({ kind: 'turn.completed', status: 'completed', text: `done ${secret}`, usage: { costUsd: 0.01 } })
+    await tick(); await tick()
+    runtime.journal.checkIntegrity()
+    const bytes = Buffer.concat([runtime.journal.filename, `${runtime.journal.filename}-wal`].filter((file) => existsSync(file)).map((file) => readFileSync(file)))
+    expect(bytes.includes(Buffer.from(secret))).toBe(false)
+    expect(bytes.includes(Buffer.from('[REDACTED]'))).toBe(true)
   })
 
   it('marks a session lagged instead of growing the queue, without losing events', async () => {

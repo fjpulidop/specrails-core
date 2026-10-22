@@ -21,6 +21,7 @@
 - Provider I/O and observer delivery never run inside a transaction. The application publishes notifications only after `append` returns.
 - Schema changes are ordered, forward-only migrations (`schema.ts`), one transaction each, tracked by `PRAGMA user_version`. A newer schema is refused with `store_incompatible` and the file is left untouched.
 - Storage is private: directory 0700 and file 0600 on POSIX; current-user ACLs on Windows (`engine/storage/private-path.ts`).
+- `append` folds the events as produced, then stores and returns redacted copies (`domain/redaction.ts`, rules in `src/shared/secret-redaction.ts`). Input fingerprints come from the original text; the persisted and cached snapshot is redacted. `MemoryJournal` applies the same boundary. See [docs/agent-sessions/journal.md](../../../../docs/agent-sessions/journal.md#secret-redaction).
 
 ## Bounds
 
