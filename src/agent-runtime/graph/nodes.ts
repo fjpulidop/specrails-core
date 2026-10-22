@@ -20,6 +20,7 @@ import { CAPABILITY_MAP_PATH, recordArchivedChange } from './capability-map.js'
 import { BASELINE_BLOCKER, detectBaseline, nonTestEdits, readBaselineRecord, testEdits, validateBaselinePlan, writeBaselineRecord, type BaselineRecord } from './baseline.js'
 import { DEFAULT_CLARIFICATION_POLICY, blockingClarifications, clarificationQuestion, designAssumptions, parseClarifications, validateDesignSections, writeClarificationsRecord } from './clarifications.js'
 import { describeDrift } from '../compact/environment.js'
+import { projectRulesContext } from '../project-rules.js'
 import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
 import { exitCodeContradiction, exitHonestyReason } from '../compact/exit-code-honesty.js'
@@ -165,7 +166,8 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         fresh.push(reply.answer)
         note('architect', 'Continuing the architecture with the answer to the blocking question.')
       }
-      const prompt = roleInstructions('architect', context, change, { definition: config.rolePrompts?.architect, verification: config.verification, answers, planning: config.efficiency?.planning, clarifications: policy })
+      const projectRules = projectRulesContext(context)
+      const prompt = roleInstructions('architect', context, change, { definition: config.rolePrompts?.architect, verification: config.verification, answers, planning: config.efficiency?.planning, clarifications: policy, ...(projectRules ? { projectRules } : {}) })
       const first = await invoke('architect', step, { prompt, structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA }, accept)
       if (!first.ok) return settle(first, 'Resume to run the architect again, or raise limits.timeoutMs.')
       let architecture = first.value
@@ -613,7 +615,8 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
       // The reviewer judges the change itself, measured from git — not the whole checkout.
       const changes = measuredChange(context, change)
       const baselineContext = baselinePromptContext(context, change)
-      const prompt = roleInstructions('reviewer', context, change, { ...(baselineContext ? { baseline: baselineContext } : {}), definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
+      const projectRules = projectRulesContext(context)
+      const prompt = roleInstructions('reviewer', context, change, { ...(baselineContext ? { baseline: baselineContext } : {}), ...(projectRules ? { projectRules } : {}), definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
       const incremental = config.efficiency?.reviewMode !== 'full' && delta.mode === 'incremental' && state.review?.sessionId
       const followup = correctionInstructions('reviewer', feedbackFor(state), { focusedEvidence: deps.focusedCorrectionEvidence && config.efficiency?.contextMode !== 'full' }) + '\nChanges since YOUR previous reviewed candidate:\n' + JSON.stringify(delta.changes)
         + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')

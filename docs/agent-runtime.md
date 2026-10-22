@@ -357,6 +357,33 @@ With `baselineOnTouch: true` in `.specrails/agent-runtime.json` (default `false`
 
 The capability is announced as `baselineOnTouch: 1` by `runtime api` and as `agentRuntime.baselineOnTouch` in `integration-contract.json` (since schema 5.7).
 
+## Project rules inventory
+
+`specrails-core rules inventory` records what a repository already enforces and how each of its written rules is checked, in `.specrails/rules.json`. It is re-runnable; `init` runs it offline after installing.
+
+```sh
+specrails-core rules inventory [--root <repo>] [--artifact-root <dir>] [--offline] [--reclassify] [--json]
+```
+
+1. **Gates (deterministic).** Package scripts (`lint`, `format`, `typecheck`, `test`, architecture and OpenSpec scripts, run through the lockfile's package manager), lint and format configurations without a script (ESLint, Biome, Prettier, Ruff, Black, mypy, golangci-lint, rustfmt, clippy, RuboCop), a `strict` `tsconfig.json`, architecture tests and dependency-cruiser, git hooks (`.husky/`, `.githooks/`, pre-commit, lefthook), the check-like `run:` steps of `.github/workflows/*.yml` and `openspec validate` when `openspec/` exists. Each gate is `{id, kind, command, source}`; commands are deduplicated.
+2. **Rules (deterministic).** List items and strongly normative sentences (must, never, always, do not, required…) of `CLAUDE.md`, `AGENTS.md` and `CONTRIBUTING.md` (also under `.github/` and `docs/`), outside code fences, tables and Specrails-managed blocks, at most 200. Each rule keeps its text and `source` as `file:line`; its id is a hash of the file and the statement, so it survives line moves.
+3. **Classification (one AI call).** The `agents.architect` provider of `.specrails/agent-runtime.json` receives the gates and the rules not yet classified, read-only and without role instructions, and returns a status per id: `enforcedBy` (with the gate id or test that enforces it), `automatable` (with `proposedCheck`) or `humanOnly`. The model cannot add, drop or reword a rule; unknown ids and statuses are ignored. Offline (`--offline`, `init`), without a configuration or on a failed call, rules stay `unclassified` and `classification.status` says why. Classifications are cached by rule id: a re-run classifies only new or changed statements (`--reclassify` forces all).
+
+| Field | Content |
+| --- | --- |
+| `gates[]` | `{id, kind: "lint" \| "format" \| "typecheck" \| "test" \| "architecture" \| "hook" \| "ci" \| "spec", command, source}` |
+| `rules[]` | `{id, text, source: "<file>:<line>", status: "enforcedBy" \| "automatable" \| "humanOnly" \| "unclassified", enforcedBy?, proposedCheck?}` |
+| `classification` | `{status: "classified" \| "cached" \| "offline" \| "unavailable" \| "failed" \| "empty", provider?, model?, reason?, classifiedAt?, usage?}` |
+
+The runtime reads `<backlogRoot>/.specrails/rules.json`, then `<artifactRoot>/.specrails/rules.json`:
+
+- The reviewer receives the `humanOnly` rules under `## Project rules that need a human` and copies the ones the change could break into `brief.humanChecks`. They never become issues for the developer.
+- When the host configured no verification command, the architect receives the discovered gates under `## Project gates (default verification)` as the default verification proposal for the artifact repository; it keeps only the gates that exercise the change.
+
+Claude Code installs also get a Specrails-managed block in the root `CLAUDE.md` (between `<!-- specrails-managed:start -->` and `<!-- specrails-managed:end -->`, content outside it preserved), as Codex (`AGENTS.md`), Gemini (`GEMINI.md`) and Kimi (`.kimi-code/AGENTS.md`) already did. It points the agent at `.specrails/rules.json`.
+
+The capability is announced as `rulesInventory: 1` by `runtime api` and as `agentRuntime.rulesInventory` in `integration-contract.json` (since schema 5.7).
+
 ## Budgets and provider capability differences
 
 | Setting | Behavior |

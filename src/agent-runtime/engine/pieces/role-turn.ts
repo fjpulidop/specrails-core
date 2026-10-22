@@ -10,6 +10,7 @@ import { admitVerificationProposals } from '../../verification-proposals.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
 import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../../prompts.js'
+import { projectRulesContext } from '../../project-rules.js'
 import { EngineError, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
@@ -67,7 +68,8 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
   const adopted = adoptedVerificationOutputs(context.state.$outputs)
   const derivation = roleId === 'reviewer' ? committedDerivation(context.state.$outputs) : undefined
-  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}) }) + '\n## Current workflow task\n' + task
+  const projectRules = roleId === 'architect' || roleId === 'reviewer' ? projectRulesContext(deps.context) : undefined
+  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}), ...(projectRules ? { projectRules } : {}) }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
     structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
     const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output

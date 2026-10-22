@@ -222,6 +222,11 @@ describe('runInit', () => {
     expect(readFileSync(path.join(ws, '.specrails', 'specrails-version'), 'utf8').trim()).toBe('4.2.0')
     // setup-templates is NOT copied per-workspace anymore (it lives in framework).
     expect(pathExists(path.join(ws, '.specrails', 'setup-templates'))).toBe(false)
+    // Claude gets its managed instruction block, and init records the project
+    // rules inventory offline (no provider call) next to the workspace config.
+    expect(readTextFile(path.join(ws, 'CLAUDE.md'))).toContain('specrails-managed:start')
+    const rules = JSON.parse(readTextFile(path.join(ws, '.specrails', 'rules.json')))
+    expect(rules).toMatchObject({ schemaVersion: 1, classification: { status: 'empty' } })
     // Repo-immutability invariant.
     assertRepoHasNoSpecrailsArtifacts(repoRoot)
   })

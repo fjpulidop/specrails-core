@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
@@ -83,6 +83,23 @@ describe('cli.main', () => {
       writeFileSync(path.join(root, 'search.test.js'), "test('[spec:search/search-projects] finds', () => {})\n")
       expect(await main(['pipeline', 'trace', '--root', root, '--check', '--tests-passed'])).toBe(0)
       expect(stdout.mock.calls.map(call => String(call[0])).join('')).toContain('Requirements demonstrated 1/1')
+    } finally {
+      stdout.mockRestore(); stderr.mockRestore()
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('routes rules inventory to the project rules inventory and writes .specrails/rules.json', async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), 'cli rules '))
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+    try {
+      writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { lint: 'eslint .' } }))
+      writeFileSync(path.join(root, 'AGENTS.md'), '## Rules\n\n- Never commit generated files to the repository.\n')
+      expect(await main(['rules', 'inventory', '--root', root, '--offline'])).toBe(0)
+      expect(JSON.parse(readFileSync(path.join(root, '.specrails', 'rules.json'), 'utf8'))).toMatchObject({ gates: [{ id: 'lint' }], rules: [{ source: 'AGENTS.md:3', status: 'unclassified' }] })
+      expect(await main(['rules'])).toBe(1)
+      expect(stdout.mock.calls.map(call => String(call[0])).join('')).toContain('Project rules inventory written to')
     } finally {
       stdout.mockRestore(); stderr.mockRestore()
       rmSync(root, { recursive: true, force: true })

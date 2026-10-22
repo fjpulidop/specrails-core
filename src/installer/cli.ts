@@ -36,6 +36,7 @@ function usageText(): string {
     '  swap-current        Point framework/current at a version (offline)',
     '  assemble            Link the framework into a project workspace (offline)',
     '  pipeline            Inspect and verify durable implementation phases (pipeline trace: requirement ↔ test traceability)',
+    '  rules               Inventory project gates and written rules (rules inventory → .specrails/rules.json)',
     '  runtime             Run, inspect and resume programmatic agents',
     '  help                Show this help message',
     '  version             Print the installed version',
@@ -72,6 +73,8 @@ async function dispatch(
       return runPipelineCommand(flags, positionals)
     case 'runtime':
       return (await import('../agent-runtime/cli.js')).runRuntimeCommand(flags, positionals)
+    case 'rules':
+      return (await import('../agent-runtime/project-rules.js')).runRulesCommand(flags, positionals)
     case 'install-framework':
       await runInstallFramework(flags as InstallFrameworkFlags)
       return 0

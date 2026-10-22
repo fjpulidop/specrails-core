@@ -4,6 +4,7 @@ import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './grap
 import type { DeveloperRecord } from './graph/state.js'
 import { REVIEW_BRIEF_RISK_LIMIT, REVIEW_BRIEF_SCHEMA, REVIEW_RISK_AREAS } from './graph/review-brief.js'
 import { CLARIFICATIONS_SCHEMA, CLARIFICATION_LIMIT, DEFAULT_CLARIFICATION_POLICY, type ClarificationPolicy } from './graph/clarifications.js'
+import type { ProjectRulesContext } from './project-rules.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
 export const ROLE_INSTRUCTIONS_VERSION = '17'
@@ -50,6 +51,8 @@ export interface RoleInstructionOptions {
   requirementTags?: string[]
   /** Baseline on touch: characterization tests that passed on the base code before the change (developer and reviewer). */
   baseline?: BaselineContext
+  /** `.specrails/rules.json`: discovered gates (architect, as the default verification proposal) and `humanOnly` rules (reviewer, as human checks). */
+  projectRules?: ProjectRulesContext
 }
 export interface BaselineContext { receiptId?: string; tests: string[]; uncovered: string[] }
 export interface AdoptedOutput { repositoryId?: string; path: string }
@@ -625,6 +628,30 @@ const DERIVER_INSTRUCTIONS = [
 const ENGINE_ROLE_INSTRUCTIONS: Record<EngineRole, string> = { deriver: DERIVER_INSTRUCTIONS }
 
 /** What the reviewer must do with a `derive-change` coverage report; rendered only when the run has one. */
+/** Discovered gates offered as the default verification proposal when the host configured none. */
+function projectGatesSection(context: PipelineContext, rules: ProjectRulesContext | undefined, verification: VerificationCommand[] | undefined): string[] {
+  if (!rules?.gates.length || verification?.length) return []
+  return [
+    '## Project gates (default verification)',
+    '',
+    `\`specrails-core rules inventory\` found these gates in repository \`${context.artifactRepositoryId}\` (\`.specrails/rules.json\`). No verification command is configured by the host, so in step 6 propose from them first, as \`command\` plus \`args\`, keeping only the gates that exercise this change and that pass on the current code:`,
+    ...rules.gates.map(gate => `- \`${gate.id}\` (${gate.kind}): \`${gate.command}\``),
+    '',
+  ]
+}
+
+/** The project's human-only written rules, handed to the reviewer as candidate human checks. */
+function humanRulesSection(rules: ProjectRulesContext | undefined): string[] {
+  if (!rules?.humanOnly.length) return []
+  return [
+    '## Project rules that need a human',
+    '',
+    'Only a person can judge these written project rules (`.specrails/rules.json`, status `humanOnly`). For each one this change could break, add one line to `brief.humanChecks`: the rule, its source and what to look at in this change. They are not issues for the developer; never claim them verified.',
+    ...rules.humanOnly.map(rule => `- ${rule.text} (${rule.source})`),
+    '',
+  ]
+}
+
 function derivationSection(derivation: DerivationReport | undefined): string[] {
   if (!derivation) return []
   const unexplained = derivation.unexplainedFiles.slice(0, 200)
@@ -677,6 +704,8 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...baselineSection(role, options.baseline),
     ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
     ...(role === 'reviewer' ? derivationSection(options.derivation) : []),
+    ...(role === 'architect' ? projectGatesSection(context, options.projectRules, options.verification) : []),
+    ...(role === 'reviewer' ? humanRulesSection(options.projectRules) : []),
     ...adoptedOutputSection(role, adopted),
     ...feedback,
   ]
