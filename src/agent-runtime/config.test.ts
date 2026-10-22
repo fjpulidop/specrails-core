@@ -62,6 +62,7 @@ describe('runtime configuration and registration', () => {
     (value: RuntimeConfig) => { value.review = { aspects: { security: 74 } } },
     (value: RuntimeConfig) => { value.review = { minScore: 69 } },
     (value: RuntimeConfig) => { Object.assign(value, { architect: { onLowConfidence: 'guess' } }) },
+    (value: RuntimeConfig) => { Object.assign(value, { architect: { clarifications: 'ask-always' } }) },
     (value: RuntimeConfig) => { Object.assign(value, { review: { aspects: { readability: 90 } } }) },
   ])('rejects malformed, ambiguous or credential-bearing configuration', mutate => {
     const value = config(); mutate(value)
@@ -70,8 +71,9 @@ describe('runtime configuration and registration', () => {
   it('lets projects tighten the review gate and choose how a low-confidence design proceeds', () => {
     const value = config()
     value.review = { minScore: 85, aspects: { security: 90, test_coverage: 60 } }
-    value.architect = { onLowConfidence: 'proceed' }
+    value.architect = { onLowConfidence: 'proceed', clarifications: 'always-proceed' }
     expect(validateRuntimeConfig(value)).toEqual(value)
+    expect(validateRuntimeConfig({ ...value, architect: { clarifications: 'ask-on-high' } }).architect).toEqual({ clarifications: 'ask-on-high' })
     expect(() => validateRuntimeConfig({ ...value, review: { minScore: 60 } })).toThrow("at least 70, Core's own review gate")
     expect(() => validateRuntimeConfig({ ...value, review: { aspects: { security: 70 } } })).toThrow('review.aspects.security')
   })

@@ -17,6 +17,8 @@ import { sameRuntimeIdentity, type RuntimeIdentity } from './runtime-identity.js
 import { readWorkflowState } from './workflow.js'
 import type { WorkflowState } from './workflow-types.js'
 import { runtimeEfficiency } from './efficiency.js'
+import { readReviewBriefRecord } from './graph/review-brief-record.js'
+import { readClarificationsRecord } from './graph/clarifications.js'
 import { configuredCapabilities } from './capabilities.js'
 import { createExecutorRegistry } from './executors.js'
 import { runRecovery } from './recovery.js'
@@ -194,7 +196,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION],
       engineVersion: 2, engines: RUNTIME_ENGINES, nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().kinds(),
       capabilities: { openRoles: 1, scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1,
-        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, sessions: 1 }, guardrails: GUARDRAIL_CATALOG })
+        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, sessions: 1, reviewBrief: 1, deriveChange: 1, architectClarifications: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'host') return runSessionHost(flags)
@@ -270,7 +272,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     })
     let inspection: ReturnType<typeof inspectPipeline> | undefined
     try { inspection = inspectPipeline(context) } catch { /* A failed scope inspection must not erase recorded spend. */ }
-    emit({ type: 'runtime-result', runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0), metrics: runtimeEfficiency(state), efficiencySummary: efficiencySummary(state, context, request.config as RuntimeConfig, inspection?.completion, inspection) })
+    emit({ type: 'runtime-result', runId: state.runId, traceId: state.traceId, status: state.status, nextStep: state.nextStep, error: state.error, pendingApproval: state.pendingApproval, pendingQuestion: state.pendingQuestion, usage: state.usage, invocationUsage: invocationUsage(state, previous?.history.length ?? 0), metrics: runtimeEfficiency(state), efficiencySummary: efficiencySummary(state, context, request.config as RuntimeConfig, inspection?.completion, inspection), reviewBrief: readReviewBriefRecord(context), clarifications: readClarificationsRecord(context) })
     return state.status === 'succeeded' ? 0 : state.status === 'paused' ? 2 : 1
   } finally { process.off('SIGINT', abort); process.off('SIGTERM', abort) }
 }

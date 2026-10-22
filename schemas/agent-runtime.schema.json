@@ -145,7 +145,8 @@
       } }
     } },
     "architect": { "type": "object", "additionalProperties": false, "properties": {
-      "onLowConfidence": { "enum": ["ask", "proceed"], "description": "After one autonomous investigation pass, a still-low design either pauses with its question (ask, default) or proceeds on stated assumptions (proceed)." }
+      "onLowConfidence": { "enum": ["ask", "proceed"], "description": "After one autonomous investigation pass, a still-low design either pauses with its question (ask, default) or proceeds on stated assumptions (proceed)." },
+      "clarifications": { "enum": ["ask-on-high", "always-proceed"], "description": "Before planning, a high-impact clarification without a safe default either pauses the run with its question (ask-on-high, default) or the architect proceeds on stated assumptions written under Assumptions in design.md (always-proceed)." }
     } }
   },
   "definitions": {

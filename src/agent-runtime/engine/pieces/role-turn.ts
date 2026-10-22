@@ -9,7 +9,7 @@ import { createRoleInvoker } from '../../graph/roles.js'
 import { admitVerificationProposals } from '../../verification-proposals.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
-import { roleInstructions, type AdoptedOutput } from '../../prompts.js'
+import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../../prompts.js'
 import { EngineError, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
@@ -66,7 +66,8 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const task = text(params.prompt) + environment + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
   const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
   const adopted = adoptedVerificationOutputs(context.state.$outputs)
-  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}) }) + '\n## Current workflow task\n' + task
+  const derivation = roleId === 'reviewer' ? committedDerivation(context.state.$outputs) : undefined
+  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}) }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
     structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
     const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output
@@ -101,6 +102,16 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   return { outcome: 'next', output: { candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, text: boundedText(result.text), ...(result.value ? { structured: json(result.value) } : {}) },
     history: [historyEntry(context, result.text)], ...(params.sessionContinuity !== 'none' && session ? { session: { sessionId: session.sessionId, identity: session.identity } } : {}) }
+}
+
+/** The coverage report a committed `derive-change` output carries (its derivation.json), for the reviewer. */
+function committedDerivation(outputs: Record<string, JsonValue | undefined>): DerivationReport | undefined {
+  for (const output of Object.values(outputs)) {
+    const value = output && typeof output === 'object' && !Array.isArray(output) ? output.derivation : undefined
+    if (value && typeof value === 'object' && !Array.isArray(value) && Array.isArray(value.unexplainedFiles) && typeof value.files === 'number' && typeof value.explained === 'number')
+      return { ...value, unexplainedFiles: value.unexplainedFiles.filter((file): file is string => typeof file === 'string') } as DerivationReport
+  }
+  return undefined
 }
 
 /** Files any committed `verify` output reports as host-adopted verification output (sticky for the run), so no role is told to revert them. */

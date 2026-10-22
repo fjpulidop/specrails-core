@@ -19,7 +19,7 @@ let config: RuntimeConfig
 const change = 'surgical-feature'
 const usage = { costUsd: 0.1, inputTokens: 20, outputTokens: 10 }
 const architecture = {
-  proposal: '# Navigation\nFix the app navigation.', design: '# Design\nChange apps/app/code.cjs only.',
+  proposal: '# Navigation\nFix the app navigation.', design: '# Design\nChange apps/app/code.cjs only.\n## Non-Goals\n- No other package changes.\n',
   tasks: [{ title: 'Return 2 from apps/app/code.cjs' }],
   specs: [{ name: 'navigation', content: '## ADDED Requirements\n### Requirement: App returns 2\nThe app SHALL return 2.\n#### Scenario: Requested behavior\n- **WHEN** the app is called\n- **THEN** it returns 2.\n' }], confidence: 'high',
 }

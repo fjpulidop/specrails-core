@@ -6,16 +6,17 @@ import { NODE_KINDS_VERSION } from './engine/piece-registry.js'
 import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
+import { CLARIFICATION_POLICIES } from './graph/clarifications.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_PROTOCOL_VERSIONS } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'deriveChange'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.2')
+    expect(contract.schemaVersion).toBe('5.4')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -33,7 +34,7 @@ describe('Desktop integration contract', () => {
     expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
-    expect(contract.agentRuntime.instructionsVersion).toBe('14')
+    expect(contract.agentRuntime.instructionsVersion).toBe('16')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {
@@ -44,7 +45,7 @@ describe('Desktop integration contract', () => {
 
   it('advertises the real engine v2 catalog: contract, runtime api and workflows list agree with the validation registry', async () => {
     const registry = validationPieceRegistry(), kinds = registry.kinds()
-    expect(kinds).toHaveLength(19)
+    expect(kinds).toHaveLength(20)
     expect(kinds).toEqual(registry.catalog().map(piece => piece.kind))
     expect(kinds.some(kind => /test|fixture|fake/.test(kind))).toBe(false)
     expect(contract.agentRuntime.engine).toEqual({ version: 2, definitionSchema: 'schemas/workflow-definition.schema.json', nodeKindsVersion: NODE_KINDS_VERSION })
@@ -80,6 +81,34 @@ describe('Desktop integration contract', () => {
     expect(sessions.eventTypes).toEqual([...SESSION_EVENT_TYPES])
     expect(RUNTIME_CLI_OPERATIONS).toContain(sessions.cliOperation)
     expect(existsSync(new URL('../../' + sessions.documentation, import.meta.url))).toBe(true)
+  })
+
+  it('announces the reviewer risk brief in the contract and the runtime api', async () => {
+    expect(contract.agentRuntime.reviewBrief).toMatchObject({ version: 1, capability: 'reviewBrief', recordPath: '<backlogRoot>/.specrails/pipeline/<runId>/review-brief.json' })
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewBrief).toBe(contract.agentRuntime.reviewBrief.version)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Reviewer risk brief')
+  })
+
+  it('describes the derive-change operation exactly as the catalog registers it', () => {
+    const derive = contract.agentRuntime.deriveChange
+    const descriptor = validationPieceRegistry().catalog().find(piece => piece.kind === derive.nodeKind)!
+    expect(derive).toMatchObject({ version: 1, capability: 'deriveChange', role: 'deriver' })
+    expect(descriptor.outcomes).toEqual(derive.outcomes)
+    expect(Object.keys(descriptor.paramsSchema.properties as object).sort()).toEqual(Object.keys(derive.params).sort())
+    expect(existsSync(new URL('../../' + derive.referenceDefinition, import.meta.url))).toBe(true)
+  })
+
+  it('announces architect clarifications, their policy key and the host record', async () => {
+    const clarifications = contract.agentRuntime.architectClarifications
+    expect(clarifications).toMatchObject({ version: 1, capability: 'architectClarifications', recordPath: '<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json' })
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.architectClarifications).toBe(clarifications.version)
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
+    expect(schema.properties.architect.properties.clarifications.enum).toEqual([...CLARIFICATION_POLICIES])
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Architect clarifications')
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

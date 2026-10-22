@@ -12,6 +12,9 @@ import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA,
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
+import { riskFinding, settleReviewBrief } from './review-brief.js'
+import { writeReviewBriefRecord } from './review-brief-record.js'
+import { DEFAULT_CLARIFICATION_POLICY, blockingClarifications, clarificationQuestion, designAssumptions, parseClarifications, validateDesignSections, writeClarificationsRecord } from './clarifications.js'
 import { describeDrift } from '../compact/environment.js'
 import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
@@ -119,11 +122,18 @@ function withoutDiscarded<T extends DeveloperRecord>(context: PipelineContext, r
 
 function architectNode(deps: CoreNodeDeps): CoreNode {
   const { context, config, change, invoke, note } = deps
-  const accept = (output: Record<string, unknown> | undefined): ReturnType<typeof parseArchitecture> => {
-    const architecture = parseArchitecture(object(output))
+  const policy = config.architect?.clarifications ?? DEFAULT_CLARIFICATION_POLICY
+  const lowConfidencePauses = (config.architect?.onLowConfidence ?? 'ask') === 'ask'
+  const accept = (output: Record<string, unknown> | undefined) => {
+    const raw = object(output)
+    const architecture = { ...parseArchitecture(raw), clarifications: parseClarifications(raw.clarifications) }
     if (config.efficiency?.planning === 'full' || context.repositories.length > 1 || /\b(?:migration|security|authentication|authorization|public contract|public api|migraci[oó]n|seguridad)\b/i.test(context.specs.map(spec => spec.title + ' ' + spec.description).join('\n'))) architecture.planningDepth = 'full'
     // Malformed proposals are repaired inside the same session, like any other structural defect.
     proposedVerification(context, config.verification, architecture.verification)
+    // A reply that will pause has no finished design yet; one that proceeds
+    // must carry Non-Goals (and Assumptions for its clarifications), repaired in-session.
+    const pauses = blockingClarifications(architecture.clarifications, policy).length > 0 || (architecture.confidence === 'low' && lowConfidencePauses)
+    if (!pauses) validateDesignSections(context, change, { clarifications: architecture.clarifications, policy })
     return architecture
   }
   return {
@@ -142,7 +152,7 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         fresh.push(reply.answer)
         note('architect', 'Continuing the architecture with the answer to the blocking question.')
       }
-      const prompt = roleInstructions('architect', context, change, { definition: config.rolePrompts?.architect, verification: config.verification, answers, planning: config.efficiency?.planning })
+      const prompt = roleInstructions('architect', context, change, { definition: config.rolePrompts?.architect, verification: config.verification, answers, planning: config.efficiency?.planning, clarifications: policy })
       const first = await invoke('architect', step, { prompt, structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA }, accept)
       if (!first.ok) return settle(first, 'Resume to run the architect again, or raise limits.timeoutMs.')
       let architecture = first.value
@@ -154,10 +164,21 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         if (second.ok) architecture = second.value
         else note('architect', `The investigation pass could not be used (${second.error}); keeping the first design.`)
       }
+      const blocking = blockingClarifications(architecture.clarifications, policy)
+      if (blocking.length) {
+        // High-impact questions without a safe default come before any plan:
+        // the run pauses on them and the answers return as authoritative input.
+        const lowQuestion = architecture.confidence === 'low' && lowConfidencePauses ? architecture.question : undefined
+        writeDesignConfidence(context, change, architecture)
+        writeClarificationsRecord(context, { change, policy, status: 'awaiting-answers', clarifications: architecture.clarifications, blocking, answers })
+        transitionPipeline(context, 'architect', 'blocked', 'High-impact clarifications need answers')
+        note('architect', `The architect raised ${plural(blocking.length, 'high-impact question')} without a safe default; pausing for answers before planning.`)
+        step.interrupt({ kind: 'question', question: clarificationQuestion(blocking, lowQuestion) })
+      }
       let assumed = false
       if (architecture.confidence === 'low') {
         const question = architecture.question ?? 'The architect could not choose between several plausible designs; inspect proposal.md and state the intended behavior.'
-        if ((config.architect?.onLowConfidence ?? 'ask') === 'ask') {
+        if (lowConfidencePauses) {
           // The draft artifacts are written first so the requester can read the
           // proposal while answering; the resumed pass replaces them.
           writeDesignConfidence(context, change, architecture)
@@ -175,6 +196,8 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
       const names = (Array.isArray(specs) ? specs : [specs]).map(file => path.basename(path.dirname(file)))
       const proposed = proposedVerification(context, config.verification, architecture.verification)
       writeDesignConfidence(context, change, architecture, { assumed })
+      writeClarificationsRecord(context, { change, policy, status: 'proceeded', clarifications: architecture.clarifications, blocking: [], answers, assumptions: designAssumptions(context, change) })
+      if (architecture.clarifications.length) note('architect', `Proceeding on ${plural(architecture.clarifications.length, 'clarification')} recorded under Assumptions in design.md.`)
       const effective = initializeVerificationPlan(context, config.verification, proposed, config.efficiency?.verification?.maxConcurrency)
       bindPlan(context, effective)
       const plan = expandedPlanCommands(context, effective)
@@ -188,11 +211,12 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
         planningDepth: architecture.planningDepth, referencePatterns: architecture.referencePatterns, riskFlags: architecture.riskFlags,
         ...(architecture.planningReason ? { planningReason: architecture.planningReason } : {}),
         ...(architecture.question ? { question: architecture.question } : {}), ...(assumed ? { assumed: true } : {}),
+        ...(architecture.clarifications.length ? { clarifications: architecture.clarifications } : {}),
       }
       return {
         status: 'succeeded', next: 'developer',
         update: { plan, unverifiedRepositories: uncovered, architecture: record, answers: fresh, deepenPasses: passes },
-        output: { change, verification: plan as unknown as JsonValue, unverifiedRepositories: uncovered, confidence: architecture.confidence, assumed, deepenPasses: passes },
+        output: { change, verification: plan as unknown as JsonValue, unverifiedRepositories: uncovered, confidence: architecture.confidence, assumed, deepenPasses: passes, clarifications: architecture.clarifications as unknown as JsonValue },
       }
     },
   }
@@ -505,27 +529,36 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
         + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')
         + '\nRecertify EVERY current acceptance criterion; previous met results are not current evidence:\n' + JSON.stringify(criteria)
         + '\nCurrent developer handoff:\n' + JSON.stringify(state.development)
+      // The first reply may spend the single repair turn on a malformed brief;
+      // a repaired reply keeps its verdict and only loses the brief.
+      let replies = 0
       const outcome = await invoke('reviewer', step, { kind: state.review ? 'correction' : 'initial', prompt: incremental ? followup : prompt, ...(incremental ? { resumeSessionId: state.review!.sessionId, fallbackPrompt: prompt } : {}), structured: true, outputSchema: REVIEW_OUTPUT_SCHEMA }, output => {
+        const repairable = replies++ === 0
         const raw = object(output)
         const review = evaluateReview(raw, policy)
         const report = buildAcceptanceReport(criteria, state.verifyResult, raw.acceptance)
         try { validateAcceptanceReport(context, report) } catch (error) { throw new Error('Invalid acceptance report: ' + (error instanceof Error ? error.message : String(error))) }
-        return { ...review, report }
+        const brief = settleReviewBrief(raw.brief, { repairable })
+        // Risks beyond the brief's cap stay visible as supplementary findings.
+        if (brief.overflow.length) report.findings = [...report.findings, ...brief.overflow.map(riskFinding)]
+        return { ...review, report, brief }
       })
       if (!outcome.ok) return failed(outcome.error)
       const workflow = new OpenSpecTools(deps.openspec.reviewer, step.signal)
       workflow.assertParticipation()
       await workflow.assertReady()
-      const { record, approved, report } = outcome.value
-      const reviewedRecord = { ...record, manifest, ...(outcome.result.sessionId ? { sessionId: outcome.result.sessionId } : {}) }
+      const { record, approved, report, brief } = outcome.value
+      if (brief.diagnostic) note('reviewer', brief.diagnostic)
+      const reviewedRecord = { ...record, ...(brief.brief ? { brief: brief.brief } : {}), ...(brief.diagnostic ? { briefDiagnostic: brief.diagnostic } : {}), manifest, ...(outcome.result.sessionId ? { sessionId: outcome.result.sessionId } : {}) }
       // Acceptance evidence is bound to the exact candidate before the reviewer verdict is recorded.
       recordAcceptance(context, report)
+      writeReviewBriefRecord(context, { change, approved, score: record.score, ...(brief.brief ? { brief: brief.brief } : {}), ...(brief.diagnostic ? { diagnostic: brief.diagnostic } : {}) })
       if (!approved) {
         transitionPipeline(context, 'reviewer', 'blocked', 'Review requests corrections')
         note('reviewer', `Review requested corrections (score ${record.score}, ${plural(record.issues.length, 'issue')}); handing them to the fixer.`)
         return { status: 'succeeded', next: 'fixer', update: { review: reviewedRecord }, output: reviewedRecord as unknown as JsonValue }
       }
-      write(child(context.artifactRoot, 'openspec/changes/' + change + '/confidence-score.json'), JSON.stringify({ change, overall: record.score, aspects: record.aspects, summary: record.summary }, null, 2) + '\n')
+      write(child(context.artifactRoot, 'openspec/changes/' + change + '/confidence-score.json'), JSON.stringify({ change, overall: record.score, aspects: record.aspects, summary: record.summary, ...(brief.brief ? { brief: brief.brief } : {}) }, null, 2) + '\n')
       transitionPipeline(context, 'reviewer', 'done')
       note('reviewer', `Review approved with score ${record.score}: ${record.summary}`)
       const reviewed = { ...reviewedRecord, candidateHash: fingerprintCandidate(journal(context)) }

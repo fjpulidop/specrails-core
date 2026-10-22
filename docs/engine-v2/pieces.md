@@ -2,7 +2,7 @@
 
 A piece is a node kind the engine knows how to execute. The catalog is closed: `createPieceRegistry(dependencies)` (`src/agent-runtime/engine/pieces/index.ts`) binds the reviewed pieces to one execution, and `validationPieceRegistry()` returns the same descriptors and parameter validators without initializing providers, a journal or a project store. A definition selects kinds from this catalog by name; it cannot register code, callbacks or expressions that execute JavaScript.
 
-`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 7 with 19 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
+`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 8 with 20 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
 
 ## Descriptor model
 
@@ -115,6 +115,18 @@ Archives a change with the pinned CLI through Core's recoverable write set, prep
 - Effect: write. Writes `$outputs[nodeId] = { change, archived: true }` and one `$history` entry.
 - The optional `allowArchived` and `repositoryId` parameters have the same scope and lookup rules as validation. An already archived target returns `next` with `{ change, archived: relativePath, skipped: true }`, without re-archiving or manufacturing a receipt. Strict behavior remains the default.
 
+### `derive-change`
+
+Writes the OpenSpec change for code that already exists (Flow mode), then checks it deterministically. The piece measures the change set with the same `changeSet` the reviewer sees (base: `repositories[].baseSha`, or HEAD at the first measurement, to the working tree; `.specrails/` and the change's own directory excluded). An empty change set fails the node with `empty_change_set` before any provider call.
+
+1. It runs the Core engine role `deriver` (read-only code access, all OpenSpec artifacts, the `openspec-ff-change` skill, the architect's provider assignment) through the same role-turn path, with the rendered change set, the base commits and the bounded conversation summary. The definition must declare `deriver` in `roles`; its instructions are Core's and cannot be configured.
+2. Core then measures coverage itself: every changed path must appear in the `## Blast radius` section of `design.md` (whole-path match; several repositories also accept `<repositoryId>/<path>` or `<repositoryId>:<path>`). Missing paths become `unexplainedFiles`. Coverage never fails the node: a reviewer `role-turn` later in the run receives the report and must raise each unexplained file as an issue.
+3. Every task in `tasks.md` must be checked, the change must pass `openspec validate --strict` and the archive preflight (`checkOpenSpecChange`, shared with `openspec-validate`). Any failure returns `fail` with one `$history` note and `output.repair`; the next visit of the node sends that note to the deriver in the same session, so a definition can loop back once (see `flow-spec` in [definition format](definition-format.md)).
+
+- Params: `change` (the run's frozen change name, normally `{{run.changeId}}`), optional `summaryPath` (a file relative to `.specrails/pipeline/<runId>/`, at most 32 KB, no `..` segments or symlinks; absent, missing or empty derives from the diff alone; optional front matter `transcriptTurns: <n>`), optional timers.
+- Outcomes: `pass`, `fail`. Effect: write (the deriver writes only OpenSpec artifacts; the piece writes `derivation.json`).
+- Output: `{ change, derivation, derivationPath, structured: { confidence, verification }, candidateHash, text, validation }`. `derivation` is the report also written to `derivation.json` in the node's artifact directory: `{ schemaVersion, change, base, head, files, explained, unexplainedFiles, tasks, requirementsAdded, requirementsModified, confidence, transcriptTurnsUsed, repositories[] }`. `structured.verification` holds at most 20 proposals in the architect's shape: bind them with `verify` `additionalCommandsFrom: <derive node id>`, which is how an engine run binds the deriver's verification plan.
+
 ### `approval`
 
 Pauses the run with a human interrupt `{ kind: 'approval', prompt: reason, nodePath, scopeId, attemptId }`. The process exits with code 2 and `runtime-result.status = 'paused'`; the attempt stays `paused` and is reused on resume. Resume with `runtime resume --approve <nodePath|interruptId>`.
@@ -180,7 +192,7 @@ Terminates the current body. `completion.ok` is `outcome === 'success'`; `comple
 ## Descriptor reference (generated)
 
 <!-- piece-catalog:generated:start -->
-Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 7, 19 kinds, in registration order.
+Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 8, 20 kinds, in registration order.
 Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts`.
 
 ### Descriptor: `prompt`
@@ -512,6 +524,23 @@ Exactly one of: `argv`, `commandLine`.
 | Parameter | Required | Type |
 | --- | --- | --- |
 | `reduce` | yes | `"collect"` / `"all-ok"` / `"any-ok"` |
+
+### Descriptor: `derive-change`
+
+| Field | Value |
+| --- | --- |
+| Effect | `write` |
+| Requires AI | yes |
+| Store access | `none` |
+| Declared outcomes | `pass`, `fail` |
+| Additional parameters | rejected |
+
+| Parameter | Required | Type |
+| --- | --- | --- |
+| `timeoutMs` | no | integer (0–2147483647) |
+| `idleTimeoutMs` | no | integer (0–2147483647) |
+| `change` | yes | string (1–128 chars) |
+| `summaryPath` | no | string (1–512 chars) matching `^(?![\\/])(?![A-Za-z]:)(?!.*(?:^|[\\/])\.{1,2}(?:[\\/]|$))[^\u0000]+$` |
 <!-- piece-catalog:generated:end -->
 
 ## Workflow-defined agents (catalog 7)

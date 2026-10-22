@@ -58,7 +58,7 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
     { "repositoryId": "app", "command": "node", "args": ["--test"] }
   ],
   "review": { "minScore": 80, "aspects": { "security": 85 } },
-  "architect": { "onLowConfidence": "ask" },
+  "architect": { "onLowConfidence": "ask", "clarifications": "ask-on-high" },
   "approvalBeforeArchive": false
 }
 ```
@@ -69,7 +69,7 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
 
 `review` tightens the review gate. Core's own gate is the floor: overall score at least 70, `security` at least 75, every other aspect at least 60. A lower value is rejected by validation, because the pipeline journal enforces the floor regardless of configuration. The reviewer is told the effective thresholds.
 
-`architect.onLowConfidence` decides what happens when the architect still reports low confidence after its investigation pass (see [Questions and approvals](#questions-and-approvals)): `ask` (default) pauses the run with the architect's question; `proceed` continues on the assumptions the architect stated, recording `design-confidence.json` as `medium` with `assumed: true` and the original `reportedConfidence`.
+`architect.onLowConfidence` decides what happens when the architect still reports low confidence after its investigation pass (see [Questions and approvals](#questions-and-approvals)): `ask` (default) pauses the run with the architect's question; `proceed` continues on the assumptions the architect stated, recording `design-confidence.json` as `medium` with `assumed: true` and the original `reportedConfidence`. `architect.clarifications` decides whether a high-impact clarification without a safe default pauses the run before planning (`ask-on-high`, default) or the architect proceeds on stated assumptions (`always-proceed`); see [Architect clarifications](#architect-clarifications).
 
 A CLI role's optional `model` is passed to that provider; omitting it uses the CLI's default. Provider IDs are aliases, so you can configure several endpoints or replace an executor without changing workflow code.
 
@@ -79,7 +79,7 @@ For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provi
 
 The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
 
-The [integration contract](../integration-contract.json) retains schema 5.1, API 1, legacy workflow 7 and role instructions 13. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
+The [integration contract](../integration-contract.json) is schema 5.4, API 1, legacy workflow 7 and role instructions 16. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
@@ -100,9 +100,13 @@ The required `agents` assignments remain architect, developer and reviewer. Add 
 }
 ```
 
-This fragment extends the configuration above. Role IDs match `^[a-z][a-z0-9-]{0,63}$`; `fixer` remains reserved for developer corrections. `access` controls source tools and native CLI policies. `artifacts` controls scoped OpenSpec tools: `all` permits proposal/design/specs/tasks, `tasks-checkboxes` permits only task checkbox changes, and `none` denies writes. Progress records require `all` or `tasks-checkboxes`. Native CLIs retain their own workspace sandbox; artifact permissions are not an operating-system filesystem ACL.
+This fragment extends the configuration above. Role IDs match `^[a-z][a-z0-9-]{0,63}$`; `fixer` remains reserved for developer corrections and `deriver` for the Core engine role below. `access` controls source tools and native CLI policies. `artifacts` controls scoped OpenSpec tools: `all` permits proposal/design/specs/tasks, `tasks-checkboxes` permits only task checkbox changes, and `none` denies writes. Progress records require `all` or `tasks-checkboxes`. Native CLIs retain their own workspace sandbox; artifact permissions are not an operating-system filesystem ACL.
 
 A role can declare `openspecSkill` as `openspec-ff-change`, `openspec-apply-change` or `openspec-verify-change`; absent means no OpenSpec binding. `rolePrompts` can override the prompt of a declared role. Built-ins retain implicit read/all, write/tasks-checkboxes and read/none policies respectively. Explicit built-in descriptors must match their assignment and policy. Validation of saved configuration adds no fields; new-run normalization materializes descriptors without editing the original document.
+
+### Engine role `deriver`
+
+`deriver` is a Core engine role used only by the engine v2 `derive-change` piece (capability `deriveChange: 1`). It needs no configuration: it takes `agents.architect`'s provider assignment with the fixed policy `access: read`, `artifacts: all`, `openspecSkill: openspec-ff-change`, and its instructions belong to Core (`prompts.ts`, versioned by `ROLE_INSTRUCTIONS_VERSION`). Its posture is the architect's, inverted: it writes the OpenSpec change for code that already exists and must not invent requirements. A definition that uses `derive-change` declares `deriver` in `roles`; `configuredRoles(config)` always admits it. It is not a pipeline phase and does not appear in `roleIds(config)`, the legacy efficiency summary or `configuredCapabilities`. A reviewer turn in the same run receives the piece's `derivation.json` coverage report and must raise every unexplained file as an issue; see [`derive-change`](engine-v2/pieces.md#derive-change).
 
 `resolveRoleDescriptor(config, id)` and `roleInstructions(descriptor, context, change)` are public APIs. Custom roles use the guarded free loop on OpenAI-compatible providers; the compact architect/developer/reviewer pipelines remain specific to those built-in protocols. Existing context limits, read reuse, budgets, nullable accounting, review gates and verification stay in force. Select models and effort explicitly; no new automatic escalation or cheaper-model policy is inferred for custom roles.
 
@@ -169,7 +173,9 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `a
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
 | `setupCommands: 1` | The runtime configuration accepts `setup` and the `verify` piece runs it before each plan (`setup: 'configured'` or an inline list) |
+| `deriveChange: 1` | The `derive-change` piece and the `deriver` engine role: derive an OpenSpec change from an existing diff (Flow), with deterministic Blast-radius coverage in `derivation.json` (see `agentRuntime.deriveChange` in `integration-contract.json`) |
 | `sessions: 1` | `runtime host --stdio --scope <projectKey\|global>` serves long-lived agent sessions (Claude, Codex, executor-backed providers) with sub-agents, durable journals under `~/.specrails/sessions/<scope>/` and the [session protocol](agent-sessions/protocol.md). Batch operations are unaffected. |
+| `reviewBrief: 1` | The reviewer returns an optional advisory risk brief, recorded at every verdict and exposed in `runtime-result.reviewBrief` (see [Reviewer risk brief](#reviewer-risk-brief)) |
 | `efficientRoleExecution: 1`, `reproducibleVerification: 1`, `implementationEfficiencyMetrics: 1`, `compactAgentLoop: 1`, `configurableGuardrails: 1`, `compactOutputBudget: 1`, `roleThinkingControl: 1`, `repositoryScope: 1` | Existing built-in workflow capabilities; unchanged |
 
 `engines` lists the engines this package can launch: `1` is the legacy built-in pipeline (`runtime run` without `--definition`) and `2` is workflow definitions. `integration-contract.json` mirrors it as `agentRuntime.engines`. A Core without engine 1 (planned for Core 7) advertises `[2]`; hosts then refuse a legacy launch before admission with `legacy_engine_unavailable`. Hosts that meet a Core predating the field treat it as `[1, 2]` when `engineV2: 1` is advertised, otherwise `[1]`.
@@ -195,9 +201,35 @@ Verification failures return to the fixer. `limits.maxAttempts` bounds fixer inv
 The graph pauses through LangGraph interrupts; the host resumes it with the matching answer.
 
 - **Low design confidence.** When the architect reports `low`, Core first asks the same architect session to investigate the code once more and decide from evidence. If confidence is still low, the run pauses with the architect's single blocking question (`pendingQuestion`), the draft proposal is left on disk for inspection, and `resume --answer <text>` re-runs the architect with the answer as authoritative input. With `architect.onLowConfidence: "proceed"` the run continues on the stated assumptions instead of pausing.
+- **High-impact clarifications.** Before planning the architect lists its clarifications; with `architect.clarifications: "ask-on-high"` (default) a `high` one without a safe default pauses the run the same way (`pendingQuestion`, `resume --answer`). See [Architect clarifications](#architect-clarifications).
 - **Archive approval.** With `approvalBeforeArchive: true` the run pauses before archive (`pendingApproval`); `resume --approve archive` grants it. The default is no approval, so a fully autonomous run implements, verifies, reviews and archives without a human in the loop.
 
 A resumed node collects its answer before doing any work, so the pass that asked the question is never repeated. Approvals and answers are persisted; a granted approval survives interruption, but invalidated candidate evidence clears it.
+
+## Architect clarifications
+
+The architect's first job is to say what it does not know. Its structured reply carries an optional `clarifications` list (`ARCHITECT_OUTPUT_SCHEMA.clarifications`, at most five):
+
+```json
+{"confidence":"high","clarifications":[{"question":"Should archived projects appear in search?","impact":"high","default":null},{"question":"Page size?","impact":"low","default":"25, as in the projects list"}]}
+```
+
+- `impact` is `high` (a different answer changes user-visible behaviour, persisted data, a public contract or most of the plan), `medium` or `low`. `default` is the answer the architect would assume, or `null` when no default is safe. A clear ticket has no clarifications.
+- **Policy** `architect.clarifications` in `.specrails/agent-runtime.json` (`schemas/agent-runtime.schema.json`):
+  - `ask-on-high` (default): when at least one `high` clarification has `default: null`, the architect authors no artifacts and Core pauses the run before planning with `pendingQuestion` (the single question, or a numbered list when several block). `resume --answer <text>` re-runs the architect with the answer as authoritative input, exactly like the low-confidence question. If the architect also reported `low` confidence, its question joins the same pause.
+  - `always-proceed`: the run never pauses for clarifications; the architect states a default for each one.
+- When the run proceeds, the architect records every clarification it planned on under `## Assumptions` in `design.md`.
+- **Design sections.** Whenever the architect proceeds, Core checks the active change's `design.md`: it must contain a `Non-Goals` section (a `## Non-Goals` heading or OpenSpec's `**Non-Goals:**` label) with at least one line of content, and an `Assumptions` section when clarifications were listed. Template placeholders (`<!-- … -->`) do not count. A missing section spends the architect's single structured-output repair turn (`Invalid design.md: …`) in the same session; the run fails if the repaired design is still incomplete.
+
+Where hosts read it:
+
+| Location | Content |
+| --- | --- |
+| `<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json` | Rewritten when the architect pauses (`status: "awaiting-answers"`, `blocking` lists the questions) and when it proceeds (`status: "proceeded"`, `assumptions` copies the Assumptions lines of `design.md`): `{schemaVersion:1, change, policy, status, recordedAt, clarifications, blocking, answers, assumptions}`. Engine 2 implementation steps write it in their own implementation pipeline directory. Desktop can post the questions or the assumptions to the ticket's tracker from this file. |
+| `runtime-result.clarifications` (engine 1 `runtime run`/`resume`) | The same record read at settle, or `null` when the architect has not recorded one. |
+| Architect step output (`runtime status`, non-compact) → `clarifications` | Graph state `architecture.clarifications` (omitted when empty). |
+
+The capability is announced as `architectClarifications: 1` by `runtime api` and as `agentRuntime.architectClarifications` in `integration-contract.json` (schema 5.4). A Core without the capability never pauses for clarifications and writes no record. Desktop copies `schemas/agent-runtime.schema.json` byte for byte; the new `architect.clarifications` key is optional.
 
 ## Recovery and durable state
 
@@ -239,6 +271,37 @@ Core 5.2 requires acceptance evidence before a change can be archived. The runti
 - The reviewer receives every frozen acceptance criterion with stable coordinates (`specId`, `criterionIndex`) and certifies each one as `met`, `exception`, `blocked` or `pending` with concrete evidence. A reviewer may only accept a non-material exception itself; material scope changes stay `blocked`.
 - Core records the verification commands it actually ran as required checks (passed or failed by exit code, with the receipt id as evidence), repositories admitted without a check as unavailable checks, and the reviewer's own inspections as supplementary, never required, checks.
 - The report is validated against the frozen scope inside the reviewer turn (a malformed report gets the repair turn), then bound to the exact candidate before the reviewer verdict is recorded. Unresolved requirements or a failed required check block review and archive; the CLI status exposes the reasons.
+
+## Reviewer risk brief
+
+After its verdict the reviewer may add an optional `brief` object to the same structured reply (`REVIEW_OUTPUT_SCHEMA.brief`). The brief is advisory for the human who merges the change: the approval gate (`review-policy.ts`) never reads it, so a brief full of `high` risks does not block an approval and an empty brief does not weaken a rejection.
+
+```json
+{"brief":{
+  "behaviourChanges":[{"what":"…","where":"src/x.ts:41","userVisible":true}],
+  "invariantsTouched":[{"invariant":"…","evidence":"src/q.ts:120-138","status":"kept|changed|at-risk"}],
+  "untested":[{"path":"src/x.ts","why":"…"}],
+  "risks":[{"severity":"high|medium|low","area":"data|security|api|ux|performance|ops|other","whatToLookAt":"…","ref":"file:line"}],
+  "humanChecks":["…"],
+  "divergences":[{"capability":"…","requirement":"…","observed":"…"}]
+}}
+```
+
+- Every section is optional and may be empty; a reply without `brief` (an older reviewer, a custom reviewer definition that ignores it) is valid and records no brief. The reviewer is told that every risk points to `file:line`, that `untested` lists code paths the diff touches which no test in the verification plan exercises, and that `humanChecks` lists what it cannot verify read-only. `divergences` is reserved for spec-divergence reporting (Phase 3) and is expected to be empty today.
+- Core validates the brief after the verdict and the acceptance report. Text fields are trimmed and bounded (2,000 characters, 20 items per list). Core orders `risks` by severity (stable within a severity) and keeps the first five; the remaining risks are appended to `acceptance.findings` as `Additional <severity> <area> risk (beyond the brief's top 5): <whatToLookAt> (<ref>)`.
+- A malformed brief on the first reply spends the reviewer's single structured-output repair turn (`Invalid review brief: …`). If the repaired reply still carries a malformed brief, Core keeps the repaired verdict, drops the brief and records a diagnostic (`briefDiagnostic`, plus a reviewer narration line) instead of failing the review.
+- The compact (OpenAI-compatible) reviewer passes a `brief` through unchanged when its model sends one; it is not prompted for it.
+
+Where hosts read it:
+
+| Location | Content |
+| --- | --- |
+| `<backlogRoot>/.specrails/pipeline/<runId>/review-brief.json` | Rewritten at every reviewer verdict, approved or not: `{schemaVersion:1, change, approved, score, recordedAt, brief: ReviewBrief \| null, diagnostic?}`. Engine 2 implementation steps write it in their own implementation pipeline directory. |
+| `runtime-result.reviewBrief` (engine 1 `runtime run`/`resume`) | The same record read at settle, or `null` when no reviewer verdict was recorded. |
+| `openspec/changes/<change>/confidence-score.json` → `brief` | Approved verdicts only; archived with the change. Absent when there is no brief. |
+| Reviewer step output (`runtime status`, non-compact) → `brief`, `briefDiagnostic` | Graph state `review`; the engine 2 `implementation` piece output carries it as `review.brief`. |
+
+The capability is announced as `reviewBrief: 1` by `runtime api` and as `agentRuntime.reviewBrief` in `integration-contract.json` (since schema 5.3). Hosts must treat every field as optional.
 
 ## Budgets and provider capability differences
 
@@ -362,7 +425,7 @@ The summary contains `total` and `phases` (architect, developer, verify, reviewe
 - The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. In engine v2, the next fenced owner closes abandoned calls as interrupted and emits their unknown usage exactly once, retaining unreported budget reservations. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
 - Total execution duration accumulates active workflow time, excluding time parked for human approval between invocations. Phase time includes phase overhead; do not add agent time to phase time. A phase without an end timestamp has unknown duration.
 
-Role instructions are version 13 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
+Role instructions are version 15 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
 
 To evaluate the first efficiency changes, select a fixed set of representative tasks and reset each task to the same base revision. Keep provider/model settings and acceptance criteria fixed. Save status JSON for every run, including failures and manual recovery, and compare:
 
