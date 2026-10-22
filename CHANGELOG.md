@@ -1,5 +1,37 @@
 # Changelog
 
+## [6.7.0](https://github.com/fjpulidop/specrails-core/compare/v6.6.5...v6.7.0) (2026-10-22)
+
+
+### Features
+
+* **engine:** add derive-change piece and deriver engine role ([a57d851](https://github.com/fjpulidop/specrails-core/commit/a57d8515453ac6f423b2e30783161d003e4d72ed))
+* feedback-2026-10 Core runtime (integration of [#435](https://github.com/fjpulidop/specrails-core/issues/435), [#436](https://github.com/fjpulidop/specrails-core/issues/436), [#438](https://github.com/fjpulidop/specrails-core/issues/438), [#440](https://github.com/fjpulidop/specrails-core/issues/440)) ([1f68803](https://github.com/fjpulidop/specrails-core/commit/1f688038f063f1abf15d28a6c8273b37ef940bef))
+* **runtime:** add the reviewer's advisory risk brief ([7e706a7](https://github.com/fjpulidop/specrails-core/commit/7e706a74d8634fbd18e359b24d645ff9ed736b4d))
+* **sessions:** add interrupt delivery for real mid-turn corrections ([7f6999e](https://github.com/fjpulidop/specrails-core/commit/7f6999e7b7b80e57c9d173871820d02be889dadb))
+
+
+### Bug Fixes
+
+* **sessions:** redact secrets before persisting the session journal ([5729fdc](https://github.com/fjpulidop/specrails-core/commit/5729fdca420b4e807b3937bbd49e66e95271b6e1))
+
+
+### Documentation
+
+* align security policy, runtime docs and contract text with the code ([#437](https://github.com/fjpulidop/specrails-core/issues/437)) ([a5e25fd](https://github.com/fjpulidop/specrails-core/commit/a5e25fd6ac1292913a5ad06bd699bfa6e323a926))
+* **runtime:** state contract 5.5 ([d6083fc](https://github.com/fjpulidop/specrails-core/commit/d6083fc9d6f2e0782135438e3d5d387ddf482493))
+* **runtime:** state contract 5.6 and role instructions 16 ([4dd279b](https://github.com/fjpulidop/specrails-core/commit/4dd279ba368ef802939c05aeec0b9b9d8c812b2a))
+
+
+### Miscellaneous
+
+* **contract:** bump schemaVersion to 5.4 for the interrupt delivery ([50b05e6](https://github.com/fjpulidop/specrails-core/commit/50b05e6523991387b04f59d4e893334e1be60b84))
+* **deps-dev:** bump the compatible-development group across 1 directory with 2 updates ([#429](https://github.com/fjpulidop/specrails-core/issues/429)) ([d2246fd](https://github.com/fjpulidop/specrails-core/commit/d2246fd551e14636f2f27bedcef3e3430e33dd72))
+* **deps:** bump actions/download-artifact from 4.3.0 to 8.0.2 ([#420](https://github.com/fjpulidop/specrails-core/issues/420)) ([f73c41f](https://github.com/fjpulidop/specrails-core/commit/f73c41f07e42f94336d388a472210f3f4fe00c8f))
+* **deps:** bump actions/setup-node from 6.3.0 to 7.1.0 ([#421](https://github.com/fjpulidop/specrails-core/issues/421)) ([91cd630](https://github.com/fjpulidop/specrails-core/commit/91cd630be15103d7f4af7b46997e7f41e05635e5))
+* **deps:** bump actions/upload-artifact ([#419](https://github.com/fjpulidop/specrails-core/issues/419)) ([a4cfab8](https://github.com/fjpulidop/specrails-core/commit/a4cfab8697b5bbfd73f0781b6db4913465092a9c))
+* **deps:** bump the compatible-runtime group across 1 directory with 6 updates ([#430](https://github.com/fjpulidop/specrails-core/issues/430)) ([b6ee318](https://github.com/fjpulidop/specrails-core/commit/b6ee3185a6ba20eb9f01062aeba1a78148f73631))
+
 ## [6.6.5](https://github.com/fjpulidop/specrails-core/compare/v6.6.4...v6.6.5) (2026-10-20)
 
 
