@@ -239,6 +239,6 @@ describe('fork and invalidate through the CLI', () => {
     const workflows = await invoke('bin/specrails-core.mjs runtime', ['workflows', 'list'])
     expect(workflows.code, workflows.stderr).toBe(0)
     expect(workflows.last).toMatchObject({ type: 'runtime-workflows', nodeKindsVersion: 8, builtins: [{ id: 'specrails-implementation', deprecated: true }] })
-    expect(workflows.last!.nodeKinds).toHaveLength(19)
+    expect(workflows.last!.nodeKinds).toHaveLength(20)
   })
 })
