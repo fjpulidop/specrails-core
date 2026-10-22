@@ -34,7 +34,8 @@ function sanitize(text, workspace) {
     .replace(/"installationId":"[^"]*"/g, '"installationId":"<ID>"')
 }
 
-function record(name, command, args, script, endAtMs) {
+// `options.drop(json)` leaves out output frames that carry account or machine data and nothing the drivers read.
+function record(name, command, args, script, endAtMs, options = {}) {
   return new Promise((resolve) => {
     const workspace = mkdtempSync(path.join(tmpdir(), 'session-capture-'))
     const rows = []
@@ -52,7 +53,7 @@ function record(name, command, args, script, endAtMs) {
         if (!line.trim()) continue
         let json = null
         try { json = JSON.parse(line) } catch { rows.push({ t: Date.now() - t0, dir: 'out', raw: line }); continue }
-        rows.push({ t: Date.now() - t0, dir: 'out', json })
+        if (!options.drop?.(json)) rows.push({ t: Date.now() - t0, dir: 'out', json })
         for (const handler of handlers) handler(json)
       }
     })
@@ -84,6 +85,21 @@ async function captureClaude() {
     setTimeout(() => write(user('u1', 'Use the Agent tool to launch a subagent that runs `echo X`. If the Agent tool is not available, say exactly NO_AGENT_TOOL and list the tool names you have.')), 500)
     setTimeout(end, 50_000)
   }, 60_000)
+  // Interrupt delivery: q1 queued behind a running turn, then a stop plus i1 with priority `now`.
+  await record('claude-interrupt-now', 'claude', claudeArgs(['--strict-mcp-config']), ({ write, onFrame, end }) => {
+    let stage = 0; let results = 0
+    onFrame((frame) => {
+      if (frame.type === 'result' && ++results >= 3) end()
+      if (stage === 0 && frame.type === 'assistant' && frame.message?.content?.some((block) => block.type === 'tool_use')) {
+        stage = 1
+        setTimeout(() => {
+          write(user('q1', 'Reply with exactly: Q-OK'))
+          setTimeout(() => { write({ type: 'control_request', request_id: 'r1', request: { subtype: 'interrupt' } }); write({ ...user('i1', 'Reply with exactly: I-OK'), priority: 'now' }) }, 300)
+        }, 1_500)
+      }
+    })
+    setTimeout(() => write(user('u1', 'Use the Bash tool to run exactly `sleep 25`, then reply with exactly: A-DONE')), 500)
+  }, 120_000, { drop: (json) => json.type === 'stream_event' })
 }
 
 async function captureCodex() {
@@ -101,6 +117,21 @@ async function captureCodex() {
   }, endAtMs)
   await codex('codex-multi-wait', [], ["Use your multi-agent tools: spawn TWO sub-agents in parallel. Agent A must run the shell command 'sleep 15 && echo A_DONE'. Agent B must run 'sleep 30 && echo B_DONE'. Wait for both to finish, then reply with one line containing both outputs."], 160_000)
   await codex('codex-spawn-nowait', [], ["Call your spawn_agent tool exactly once to create a sub-agent whose task is: run the shell command 'sleep 35 && echo LATE_DONE' and report its output. You MUST NOT call wait, and you MUST NOT run any shell command yourself. Right after spawn_agent returns, reply only LAUNCHED and end your turn.", 'Now call wait on the sub-agent you spawned earlier and report its final message in one line.'], 130_000)
+  // Interrupt delivery: turn/interrupt mid-turn, then turn/start with the correction once the turn completed.
+  await record('codex-0160-interrupt-then-start', 'codex', ['-c', 'features.multi_agent=false', 'app-server', '--listen', 'stdio://'], ({ write, onFrame, end }) => {
+    let id = 0; let thread = null; let turnId = null; let stage = 0
+    const rpc = (method, params) => write({ id: ++id, method, params })
+    const text = (value) => [{ type: 'text', text: value, text_elements: [] }]
+    onFrame((frame) => {
+      if (frame.id === 1 && frame.result) { write({ method: 'initialized' }); rpc('thread/start', { model: codexModel, cwd: process.cwd(), approvalPolicy: 'never', sandbox: 'workspace-write' }) }
+      else if (frame.id === 2 && frame.result) { thread = frame.result.thread.id; rpc('turn/start', { threadId: thread, clientUserMessageId: 'u1', input: text('Run the shell command `sleep 30 && echo slept` (wait for it to finish), then reply with exactly: A-DONE'), model: codexModel, effort: 'low' }) }
+      else if (frame.method === 'turn/started' && frame.params?.threadId === thread && stage === 0) { turnId = frame.params.turn.id; stage = 1; setTimeout(() => rpc('turn/interrupt', { threadId: thread, turnId }), 6_000) }
+      else if (frame.method === 'turn/completed' && frame.params?.threadId === thread) {
+        if (stage === 1) { stage = 2; rpc('turn/start', { threadId: thread, clientUserMessageId: 'i1', input: text('Reply with exactly: I-OK'), model: codexModel, effort: 'low' }) } else end()
+      }
+    })
+    rpc('initialize', { clientInfo: { name: 'specrails_capture', title: 'Specrails capture', version: '1' }, capabilities: { experimentalApi: true } })
+  }, 120_000, { drop: (json) => /^(account\/|hook\/|mcpServer\/|remoteControl\/|turn\/moderationMetadata)/.test(json.method ?? '') })
   await codex('codex-disabled', ['-c', 'features.multi_agent=false'], ["If you have a tool to spawn sub-agents, use it to run 'echo X'. If you do not have one, reply exactly NO_AGENT_TOOL and list your tool names."], 70_000)
 }
 

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { SessionError } from '../domain/errors.js'
 import type { SessionEvent } from '../domain/events.js'
+import { fingerprint } from '../domain/fingerprint.js'
 import { DEFAULT_LIMITS } from '../domain/policy.js'
 import { EMPTY_USAGE, type SessionPolicy } from '../domain/types.js'
 import type { SessionJournal } from '../ports.js'
@@ -100,5 +101,29 @@ describe.each(implementations)('SessionJournal contract (%s)', (_name, make) => 
     expect(() => journal.append('ghost', [opened])).toThrow()
     expect(journal.snapshot('ghost')).toBeNull()
     expect(journal.getSession('ghost')).toBeNull()
+  })
+  it('persists, returns and replays tool I/O with secrets redacted', async () => {
+    const journal = await withSession()
+    const secret = 'ghp_' + 'Q1w2E3r4T5'.repeat(4)
+    const raw = `deploy TOKEN=${secret}`
+    const returned = journal.append('s1', [
+      opened,
+      { type: 'input.accepted', inputId: 'i1', delivery: 'queue', text: raw, at },
+      { type: 'session.phase', phase: 'turn', at },
+      { type: 'turn.started', turnId: 't1', origin: 'user', inputIds: ['i1'], at },
+      { type: 'turn.tool', turnId: 't1', toolUseId: 'u1', name: 'Bash', phase: 'started', input: { command: 'env', env: { GITHUB_TOKEN: secret, HOME: '/home/me' } }, at },
+      { type: 'turn.tool', turnId: 't1', toolUseId: 'u1', name: 'Bash', phase: 'completed', output: `HOME=/home/me\nGITHUB_TOKEN=${secret}`, at },
+      { type: 'turn.output', turnId: 't1', channel: 'text', delta: `Your key is ${secret}`, at },
+    ])
+    const replayed = journal.read('s1', 0, 100).events
+    expect(replayed).toEqual(returned)
+    expect(JSON.stringify(replayed)).not.toContain(secret)
+    expect(replayed[4]!.event).toMatchObject({ input: { command: 'env', env: { GITHUB_TOKEN: '[REDACTED]', HOME: '/home/me' } } })
+    expect(replayed[5]!.event).toMatchObject({ output: 'HOME=/home/me\nGITHUB_TOKEN=[REDACTED]' })
+    const snapshot = journal.snapshot('s1')!
+    expect(JSON.stringify(snapshot)).not.toContain(secret)
+    expect(snapshot.openTurn?.text).toBe('Your key is [REDACTED]')
+    // The fingerprint is the one of the text as sent, so an idempotent retry still matches.
+    expect(snapshot.inputs.i1).toMatchObject({ fingerprint: fingerprint(raw), textLength: raw.length })
   })
 })

@@ -114,6 +114,12 @@ export function changeBases(context: PipelineContext): Record<string, string> {
   return Object.fromEntries(Object.entries(baseRecords(context)).map(([id, record]) => [id, record.base]))
 }
 
+/** The commit HEAD names in a repository checkout, or null when it has none. */
+export function repositoryHead(root: string): string | null {
+  const head = git(root, ['rev-parse', '--verify', '--quiet', 'HEAD^{commit}'], true)
+  return head.ok && /^[a-f0-9]{40,64}$/.test(head.stdout.trim()) ? head.stdout.trim() : null
+}
+
 /** Host and runtime state, the change's own OpenSpec artifacts and generated trees are never part of the code change. */
 function ignored(context: PipelineContext, repository: PipelineRepository, change: string | undefined, file: string, fresh: boolean): boolean {
   if (file === '.specrails' || file.startsWith('.specrails/')) return true

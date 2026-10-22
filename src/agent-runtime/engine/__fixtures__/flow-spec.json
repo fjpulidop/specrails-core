@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 1,
+  "id": "flow-spec",
+  "title": "Flow Spec",
+  "journal": "ledger-only",
+  "change": "new",
+  "entry": "init",
+  "maxTransitions": 100,
+  "roles": [
+    "deriver",
+    "reviewer"
+  ],
+  "nodes": {
+    "init": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "derivationRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "derive",
+        "failed": "failed"
+      }
+    },
+    "derive": {
+      "kind": "derive-change",
+      "params": {
+        "change": "{{run.changeId}}",
+        "summaryPath": "flow-summary.md"
+      },
+      "ends": {
+        "pass": "check",
+        "fail": "repair-guard"
+      }
+    },
+    "repair-guard": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.derivationRepairs < 1"
+      },
+      "ends": {
+        "true": "repair-count",
+        "false": "failed"
+      }
+    },
+    "repair-count": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "derivationRepairs": 1
+        }
+      },
+      "ends": {
+        "next": "derive",
+        "failed": "failed"
+      }
+    },
+    "check": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured",
+        "additionalCommandsFrom": "derive"
+      },
+      "ends": {
+        "pass": "review",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "review": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "reviewer",
+        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report.",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "approved",
+            "issues"
+          ],
+          "properties": {
+            "approved": {
+              "type": "boolean"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ends": {
+        "next": "review-policy",
+        "invalid": "failed",
+        "failed": "failed"
+      }
+    },
+    "review-policy": {
+      "kind": "condition",
+      "params": {
+        "expr": "$outputs.review.structured.approved == true"
+      },
+      "ends": {
+        "true": "archive",
+        "false": "failed"
+      }
+    },
+    "archive": {
+      "kind": "openspec-archive",
+      "params": {
+        "change": "{{run.changeId}}",
+        "requiresVerified": true
+      },
+      "ends": {
+        "next": "verify",
+        "failed": "failed"
+      }
+    },
+    "verify": {
+      "kind": "verify",
+      "params": {
+        "commands": "configured",
+        "additionalCommandsFrom": "derive"
+      },
+      "ends": {
+        "pass": "done",
+        "fail": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success",
+        "requiresVerified": true
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "592f9fdf1dcc662e633f4f4c114fa76c1007bdb811f73878dfefabfbab8101da"
+}

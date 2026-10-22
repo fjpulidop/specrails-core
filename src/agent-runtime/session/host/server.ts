@@ -3,6 +3,7 @@ import { StringDecoder } from 'node:string_decoder'
 import type { SessionService } from '../application/session-service.js'
 import { SessionError, isSessionError } from '../domain/errors.js'
 import type { SessionEventEnvelope } from '../domain/events.js'
+import { redactSessionSnapshot } from '../domain/redaction.js'
 import {
   MAX_FRAME_BYTES,
   RPC_APPLICATION_ERROR,
@@ -10,6 +11,7 @@ import {
   RPC_INVALID_REQUEST,
   RPC_METHOD_NOT_FOUND,
   RPC_PARSE_ERROR,
+  SESSION_HOST_CAPABILITIES,
   SESSION_PROTOCOL_VERSIONS,
   validatorFor,
 } from './protocol.js'
@@ -61,7 +63,8 @@ export class SessionHost {
     const service = runtime.service
     this.handlers = Object.freeze({
       'initialize': async (params) => this.initialize(params),
-      'session.open': async (params) => service.open(params as never),
+      // Live snapshots come from the in-memory session: redact them like the journal does.
+      'session.open': async (params) => { const opened = await service.open(params as never); return { ...opened, snapshot: redactSessionSnapshot(opened.snapshot) } },
       'session.send': async (params) => service.send(String(params.sessionId), params.input as never),
       'session.interrupt': async (params) => service.interrupt(String(params.sessionId)),
       'session.delegate': async (params) => service.delegate(String(params.sessionId), {
@@ -74,7 +77,7 @@ export class SessionHost {
       'session.stopSubagents': async (params) => service.stopSubagents(String(params.sessionId), params.subagentIds as string[] | undefined),
       'session.update': async (params) => { const { sessionId, ...changes } = params; return service.update(String(sessionId), changes as never) },
       'session.close': async (params) => { await service.close(String(params.sessionId), String(params.reason)); return {} },
-      'session.snapshot': async (params) => service.snapshot(String(params.sessionId)),
+      'session.snapshot': async (params) => redactSessionSnapshot(service.snapshot(String(params.sessionId))),
       'session.events': async (params) => service.events(String(params.sessionId), Number(params.afterSeq), params.limit === undefined ? undefined : Number(params.limit)),
       'session.list': async (params) => ({ sessions: service.list((params.state as 'open' | 'closed' | 'all' | undefined) ?? 'open') }),
       'host.ping': async () => ({ ...service.stats(), uptimeMs: Math.round(process.uptime() * 1000) }),
@@ -177,8 +180,7 @@ export class SessionHost {
       protocolVersion: Math.max(...requested),
       scope: this.runtime.scope,
       runtime: this.runtime.identity,
-      // `delegation`: session.delegate / session.waitSubagents and subagentRuntime.mode 'delegated'.
-      capabilities: { sessions: 1, delegation: 1 },
+      capabilities: { ...SESSION_HOST_CAPABILITIES },
       drivers: this.runtime.service.drivers(),
     }
   }

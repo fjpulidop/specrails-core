@@ -1,0 +1,17 @@
+# Gitleaks configuration for the repository-wide secret scan (CI `secret-scan`).
+#
+# The default rule set stays in force. The only exception is the test suite of
+# the session-journal secret redaction: those tests must contain realistic,
+# FAKE credentials (key formats, PEM blocks, JWTs) to prove they are redacted.
+# Keep this list limited to redaction tests; never allowlist source files.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake credentials used only by the secret-redaction tests"
+paths = [
+  '''^src/shared/secret-redaction\.test\.ts$''',
+  '''^src/agent-runtime/session/domain/redaction\.test\.ts$''',
+  '''^src/agent-runtime/session/host/server\.test\.ts$''',
+  '''^src/agent-runtime/session/journal/journal-contract\.test\.ts$''',
+]

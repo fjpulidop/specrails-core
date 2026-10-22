@@ -32,12 +32,12 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(`Driver conformance: ${message}`)
 }
 
-async function oneTurn(harness: ConformanceHarness) {
+async function oneTurn(harness: ConformanceHarness, delivery: 'queue' | 'interrupt' = 'queue') {
   const factory = harness.factory()
   const journal = new MemoryJournal()
   const service = new SessionService({ journal, drivers: catalogOf(factory), clock: new FakeClock(), ids: new SequentialIds() })
   const { sessionId } = await service.open({ driver: factory.descriptor.id, model: harness.model, cwd: process.cwd(), policy: { subagents: harness.subagents } })
-  await service.send(sessionId, { inputId: 'conformance-1', text: 'Reply briefly.', delivery: 'queue' })
+  await service.send(sessionId, { inputId: 'conformance-1', text: 'Reply briefly.', delivery })
   await harness.settle(factory)
   const events = () => journal.events(sessionId).map((envelope) => envelope.event as SessionEventBody)
   return { factory, journal, service, sessionId, events }
@@ -83,6 +83,20 @@ export const DRIVER_CONFORMANCE: readonly ConformanceCheck[] = Object.freeze([
       const snapshot = service.snapshot(sessionId)
       assert(snapshot.inputs['conformance-1']?.state === 'completed', 'the input completes with its turn')
       assert(snapshot.openTurn === null && snapshot.phase === 'idle', 'the session is idle after a turn without sub-agents')
+    },
+  },
+  {
+    name: 'declares its interrupt mechanism and treats an interrupt on an idle session as a queued input',
+    async run(harness) {
+      const caps = harness.factory().descriptor.capabilities
+      assert(caps.interrupt === 'native' || caps.interrupt === 'emulated', 'capabilities.interrupt is native or emulated')
+      const { events, service, sessionId } = await oneTurn(harness, 'interrupt')
+      const list = events()
+      const accepted = list.find((event): event is Extract<SessionEventBody, { type: 'input.accepted' }> => event.type === 'input.accepted')
+      assert(accepted?.delivery === 'interrupt', 'the journal keeps the requested delivery')
+      const statuses = list.filter((event): event is Extract<SessionEventBody, { type: 'turn.completed' }> => event.type === 'turn.completed').map((event) => event.status)
+      assert(statuses.length === 1 && statuses[0] === 'completed', 'nothing is interrupted on an idle session')
+      assert(service.snapshot(sessionId).inputs['conformance-1']?.state === 'completed', 'the input completes with its turn')
     },
   },
   {

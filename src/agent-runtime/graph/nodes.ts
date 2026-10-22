@@ -12,6 +12,8 @@ import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA,
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
+import { riskFinding, settleReviewBrief } from './review-brief.js'
+import { writeReviewBriefRecord } from './review-brief-record.js'
 import { describeDrift } from '../compact/environment.js'
 import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
 import { unreachedTestFiles, unreachedTestsReason } from '../compact/test-reachability.js'
@@ -505,27 +507,36 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
         + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')
         + '\nRecertify EVERY current acceptance criterion; previous met results are not current evidence:\n' + JSON.stringify(criteria)
         + '\nCurrent developer handoff:\n' + JSON.stringify(state.development)
+      // The first reply may spend the single repair turn on a malformed brief;
+      // a repaired reply keeps its verdict and only loses the brief.
+      let replies = 0
       const outcome = await invoke('reviewer', step, { kind: state.review ? 'correction' : 'initial', prompt: incremental ? followup : prompt, ...(incremental ? { resumeSessionId: state.review!.sessionId, fallbackPrompt: prompt } : {}), structured: true, outputSchema: REVIEW_OUTPUT_SCHEMA }, output => {
+        const repairable = replies++ === 0
         const raw = object(output)
         const review = evaluateReview(raw, policy)
         const report = buildAcceptanceReport(criteria, state.verifyResult, raw.acceptance)
         try { validateAcceptanceReport(context, report) } catch (error) { throw new Error('Invalid acceptance report: ' + (error instanceof Error ? error.message : String(error))) }
-        return { ...review, report }
+        const brief = settleReviewBrief(raw.brief, { repairable })
+        // Risks beyond the brief's cap stay visible as supplementary findings.
+        if (brief.overflow.length) report.findings = [...report.findings, ...brief.overflow.map(riskFinding)]
+        return { ...review, report, brief }
       })
       if (!outcome.ok) return failed(outcome.error)
       const workflow = new OpenSpecTools(deps.openspec.reviewer, step.signal)
       workflow.assertParticipation()
       await workflow.assertReady()
-      const { record, approved, report } = outcome.value
-      const reviewedRecord = { ...record, manifest, ...(outcome.result.sessionId ? { sessionId: outcome.result.sessionId } : {}) }
+      const { record, approved, report, brief } = outcome.value
+      if (brief.diagnostic) note('reviewer', brief.diagnostic)
+      const reviewedRecord = { ...record, ...(brief.brief ? { brief: brief.brief } : {}), ...(brief.diagnostic ? { briefDiagnostic: brief.diagnostic } : {}), manifest, ...(outcome.result.sessionId ? { sessionId: outcome.result.sessionId } : {}) }
       // Acceptance evidence is bound to the exact candidate before the reviewer verdict is recorded.
       recordAcceptance(context, report)
+      writeReviewBriefRecord(context, { change, approved, score: record.score, ...(brief.brief ? { brief: brief.brief } : {}), ...(brief.diagnostic ? { diagnostic: brief.diagnostic } : {}) })
       if (!approved) {
         transitionPipeline(context, 'reviewer', 'blocked', 'Review requests corrections')
         note('reviewer', `Review requested corrections (score ${record.score}, ${plural(record.issues.length, 'issue')}); handing them to the fixer.`)
         return { status: 'succeeded', next: 'fixer', update: { review: reviewedRecord }, output: reviewedRecord as unknown as JsonValue }
       }
-      write(child(context.artifactRoot, 'openspec/changes/' + change + '/confidence-score.json'), JSON.stringify({ change, overall: record.score, aspects: record.aspects, summary: record.summary }, null, 2) + '\n')
+      write(child(context.artifactRoot, 'openspec/changes/' + change + '/confidence-score.json'), JSON.stringify({ change, overall: record.score, aspects: record.aspects, summary: record.summary, ...(brief.brief ? { brief: brief.brief } : {}) }, null, 2) + '\n')
       transitionPipeline(context, 'reviewer', 'done')
       note('reviewer', `Review approved with score ${record.score}: ${record.summary}`)
       const reviewed = { ...reviewedRecord, candidateHash: fingerprintCandidate(journal(context)) }

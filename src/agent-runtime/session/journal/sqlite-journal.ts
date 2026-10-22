@@ -6,6 +6,7 @@ import { sessionsRoot } from '../../../shared/specrails-home.js'
 import { PersistenceError, privateSqlitePath } from '../../engine/storage/private-path.js'
 import { SessionError } from '../domain/errors.js'
 import type { SessionEvent, SessionEventEnvelope } from '../domain/events.js'
+import { redactSessionEvent, redactSessionSnapshot } from '../domain/redaction.js'
 import { emptySnapshot, foldEvents, type SessionSnapshot } from '../domain/snapshot.js'
 import type { UsageBaseline } from '../domain/usage.js'
 import type { AppendOptions, SessionJournal, SessionRecord, SessionSummary } from '../ports.js'
@@ -107,8 +108,11 @@ export class SqliteSessionJournal implements SessionJournal {
     return this.write(() => {
       const current = this.loadSnapshot(sessionId)
       if (!current) throw new SessionError('session_not_found', `Unknown session ${sessionId}`)
-      const envelopes = events.map((event, index) => ({ sessionId, seq: current.lastSeq + index + 1, event }))
-      const next = foldEvents(current, envelopes)
+      // Fold the events as produced (input fingerprints must match the live
+      // session), then persist and return only redacted copies: what is
+      // stored, published and replayed is the same redacted stream.
+      const next = redactSessionSnapshot(foldEvents(current, events.map((event, index) => ({ sessionId, seq: current.lastSeq + index + 1, event }))))
+      const envelopes = events.map((event, index) => ({ sessionId, seq: current.lastSeq + index + 1, event: redactSessionEvent(event) }))
       const insert = this.db.prepare('INSERT INTO events(session_id,seq,type,at,payload_json) VALUES (?,?,?,?,?)')
       for (const envelope of envelopes) insert.run(sessionId, envelope.seq, envelope.event.type, envelope.event.at, JSON.stringify(envelope.event))
       this.db.prepare('UPDATE sessions SET last_seq=?, status=?, snapshot_json=?, updated_at=? WHERE session_id=?')

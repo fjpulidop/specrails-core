@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import { validateGuardrailSettings } from './guardrails.js'
 import { readFileSync } from 'node:fs'
-import { BUILTIN_ROLES, BUILTIN_ROLE_POLICY, ROLE_ID, isBuiltinRole, type RuntimeRoleConfig, type RoleDescriptor, type RuntimeAgentConfig, type RuntimeConfig, type RuntimeProviderConfig } from './executor-types.js'
+import { BUILTIN_ROLES, BUILTIN_ROLE_POLICY, ENGINE_ROLE_POLICY, ROLE_ID, isBuiltinRole, isEngineRole, type RuntimeRoleConfig, type RoleDescriptor, type RuntimeAgentConfig, type RuntimeConfig, type RuntimeProviderConfig } from './executor-types.js'
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewAspect } from './graph/review-policy.js'
 
 const ROLES = [...BUILTIN_ROLES]
@@ -152,7 +152,7 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     const raw = object(config.roles, 'roles')
     roles = {}
     for (const [id, value] of Object.entries(raw)) {
-      if (!ROLE_ID.test(id) || id === 'fixer') fail(`roles.${id}`, 'expected a role id; fixer is reserved')
+      if (!ROLE_ID.test(id) || id === 'fixer' || isEngineRole(id)) fail(`roles.${id}`, 'expected a role id; fixer and Core engine roles (deriver) are reserved')
       const descriptor = object(value, `roles.${id}`)
       const { access, artifacts, prompt, openspecSkill, ...assignment } = descriptor
       const selected = validateAgent(assignment, `roles.${id}`)
@@ -267,6 +267,8 @@ export function normalizeRuntimeConfig(input: unknown, options?: { registeredPro
 export function roleIds(config: RuntimeConfig): string[] { return [...new Set([...BUILTIN_ROLES, ...Object.keys(config.roles ?? {})])] }
 export function resolveRoleDescriptor(config: RuntimeConfig, id: string): RoleDescriptor {
   if (isBuiltinRole(id)) return { ...config.agents[id], ...BUILTIN_ROLE_POLICY[id], id }
+  // Engine roles reuse the architect's assignment; their instructions are Core's (prompts.ts), never configuration.
+  if (isEngineRole(id)) return { ...config.agents.architect, ...ENGINE_ROLE_POLICY[id], id }
   const role = Object.hasOwn(config.roles ?? {}, id) ? config.roles![id] : undefined
   if (!role) throw new Error(`Unknown runtime role '${id}'`)
   return { ...role, ...(config.rolePrompts?.[id] === undefined ? {} : { prompt: config.rolePrompts[id] }), id }

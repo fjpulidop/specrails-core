@@ -23,6 +23,7 @@ export const CLAUDE_DESCRIPTOR: DriverDescriptor = Object.freeze({
     autonomousContinuation: true,
     steer: true,
     toolFiltering: true,
+    interrupt: 'native' as const,
     usage: Object.freeze({ costUsd: 'session-cumulative' as const, tokens: 'per-turn' as const }),
   }),
 })
@@ -56,6 +57,11 @@ class ClaudeDriverSession implements DriverSession {
   constructor(private readonly process: ProviderProcess, private readonly translator: ClaudeTranslator, private readonly graceMs: number, private readonly cleanup: () => void) {}
 
   async send(input: DriverInput): Promise<void> {
+    // Interrupt delivery: stop the running turn (once per cut turn), then put the
+    // input first. Verified on 2.1.299: after the stop, `now` runs the input alone
+    // in the next turn and already queued commands follow; `next` or the default
+    // would batch it behind them.
+    if (input.delivery === 'interrupt' && this.translator.interruptible) this.writeInterrupt()
     this.translator.noteInput(input.inputId)
     const frame = {
       type: 'user',
@@ -63,13 +69,17 @@ class ClaudeDriverSession implements DriverSession {
       session_id: '',
       parent_tool_use_id: null,
       // `next` delivers into the running turn; otherwise the CLI queues it for the next turn.
-      ...(input.delivery === 'steer' ? { priority: 'next' } : {}),
+      ...(input.delivery === 'steer' ? { priority: 'next' } : input.delivery === 'interrupt' ? { priority: 'now' } : {}),
       message: { role: 'user', content: userContent(input) },
     }
     if (!this.process.write(JSON.stringify(frame))) throw new Error('Claude input is closed')
   }
 
   async interrupt(): Promise<void> {
+    this.writeInterrupt()
+  }
+
+  private writeInterrupt(): void {
     this.translator.noteInterrupt()
     this.process.write(JSON.stringify({ type: 'control_request', request_id: randomUUID(), request: { subtype: 'interrupt' } }))
   }

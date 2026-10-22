@@ -7,7 +7,7 @@
  */
 import type { SessionEvent, SessionEventEnvelope, ToolActivity } from './domain/events.js'
 import type { SessionSnapshot } from './domain/snapshot.js'
-import type { Attachment, DriverDescriptor, OutputChannel, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
+import type { Attachment, DriverDescriptor, InputDelivery, OutputChannel, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
 import type { ReportedUsage, UsageBaseline } from './domain/usage.js'
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
@@ -29,7 +29,11 @@ export interface DriverInput {
   inputId: string
   text: string
   attachments?: Attachment[]
-  delivery: 'queue' | 'steer'
+  /**
+   * Drivers receive `interrupt` only when they declare a native queue and a
+   * native interrupt: they stop the running turn and put this input first.
+   */
+  delivery: InputDelivery
   /** Set by the application for policy-driven turns (e.g. collecting settled sub-agents). */
   origin?: 'user' | 'system'
 }

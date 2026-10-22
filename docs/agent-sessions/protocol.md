@@ -5,9 +5,11 @@ JSON-RPC 2.0. Each message is one JSON object on one line (NDJSON) of at most
 2 MiB. stdout carries protocol messages only; diagnostics go to stderr.
 
 `runtime api` advertises `capabilities.sessions = 1` when this protocol is
-available. `integration-contract.json` → `agentRuntime.sessions` lists the
-protocol versions, the CLI operation, the journal root and the event types;
-a contract test keeps them in sync with the code.
+available, and `capabilities.flowSessions = 1` when `session.send` accepts
+`delivery: 'interrupt'`. `integration-contract.json` → `agentRuntime.sessions`
+lists the protocol versions, the CLI operation, the journal root, the event
+types, the `initialize` capabilities and the deliveries; a contract test keeps
+them in sync with the code.
 
 ## Lifecycle
 
@@ -25,7 +27,7 @@ A scope has at most one live host. A second host for the same scope fails
 | --- | --- | --- |
 | `initialize` | `{ protocolVersions: number[], host: { name, version }, scope }` | `{ protocolVersion, runtime: RuntimeIdentity, capabilities, drivers: DriverDescriptor[] }` |
 | `session.open` | `{ sessionId?, resume?: { sessionId }, driver, model, effort?, cwd, systemPrompt?, policy: SessionPolicy, metadata? }` | `{ sessionId, snapshot: SessionSnapshot }` |
-| `session.send` | `{ sessionId, input: { inputId, text, attachments?, delivery: 'queue' \| 'steer' } }` | `{ inputId, state }` (idempotent by `inputId`) |
+| `session.send` | `{ sessionId, input: { inputId, text, attachments?, delivery: 'queue' \| 'steer' \| 'interrupt' } }` | `{ inputId, state }` (idempotent by `inputId`) |
 | `session.interrupt` | `{ sessionId }` | `{ turnId \| null }` |
 | `session.stopSubagents` | `{ sessionId, subagentIds? }` | `{ stopped: string[] }` (native and delegated) |
 | `session.delegate` | `{ sessionId, description, prompt, agentType?, contextTurns? }` | `{ subagentId }`, or `limit_reached` |
@@ -37,6 +39,46 @@ A scope has at most one live host. A second host for the same scope fails
 | `session.list` | `{ state?: 'open' \| 'closed' \| 'all' }` | `{ sessions: SessionSummary[] }` |
 | `host.ping` | `{}` | `{ uptimeMs, sessions, residentProcesses }` |
 | `host.shutdown` | `{ graceMs? }` | `{}` (sent before the process exits) |
+
+`initialize` returns `capabilities: { sessions: 1, delegation: 1, flowSessions: 1 }`.
+Each driver descriptor in `drivers` may carry `capabilities.interrupt:
+'native' | 'emulated'`; treat its absence as "interrupt delivery unsupported"
+(an older Core).
+
+### Deliveries
+
+| `delivery` | Turn running | Session idle |
+| --- | --- | --- |
+| `queue` | Runs as a later turn, after inputs queued before it. | Starts a turn. |
+| `steer` | Delivered into the running turn (drivers with `steer`); otherwise queued. | Starts a turn. |
+| `interrupt` | Cuts the running turn and runs this input as the next turn, ahead of inputs queued before it. | Exactly like `queue`. |
+
+`interrupt` is a user correcting the agent mid-turn. Core picks the mechanism
+per driver (`capabilities.interrupt`): `native` uses the provider's stop
+primitive and keeps its session (Claude `control_request interrupt` plus the
+input with `priority: 'now'`; Codex `turn/interrupt`, then `turn/start` once the
+turn completed); `emulated` stops the turn like `session.interrupt` and runs the
+input next (executor-backed drivers resume the provider session).
+
+Event order for an interrupt during a turn:
+
+1. `input.accepted { inputId, delivery: 'interrupt' }`
+2. `input.state { state: 'queued' }` when the provider queues it (Claude)
+3. `turn.completed { turnId: <cut turn>, status: 'interrupted', text: <partial text> }`; the cut turn's own inputs complete with it
+4. `input.state { state: 'started' }` and `turn.started { inputIds: [<interrupting input>] }`
+5. later, turns for the inputs that were queued before it, in their order
+
+If the turn finished on its own before the stop landed, step 3 carries the
+provider's status (`completed`, `failed`). An `interrupt` sent while an earlier
+one has not started yet does not stop again: it runs right after the earlier
+one, still ahead of queued inputs. If the provider does not end the turn within
+the interrupt grace (5 s), Core retires the process (`session.process retired`,
+reason `user_stop`), records the turn `interrupted`, and delivers the
+interrupting input and any input Core still held to a new process; inputs that
+were inside the dead provider's own queue are recorded `interrupted`
+(reason `user_interrupt`) and reported by the next interruption notice. After a
+host restart an interrupted turn is never re-run, and an interrupting input that
+had not started is recorded `interrupted` (reason `restart`), like any input.
 
 `session.update` replaces the fields it carries; `policy` is resolved as a whole, so send the complete policy. An update that leaves the effective configuration unchanged is a no-op: nothing is journaled and the resident process keeps running. Hosts may re-send their configuration before every turn. A real change applies at once when the session is idle and retires the process, because provider flags are fixed at spawn. While a turn or sub-agents run, the change is `deferred` until the session goes idle.
 
@@ -53,6 +95,7 @@ the next time a turn needs a process.
 `host.leaseLost` → `{}` (another host took over the scope; this host stops serving and exits)
 
 - Notifications are sent only after the event is committed to the journal.
+- Notifications, `session.events` replay and `session.open`/`session.snapshot` snapshots carry the journal's redacted text: recognisable secrets in tool I/O and free text read `[REDACTED]` ([journal](journal.md#secret-redaction)). Shapes and usage numbers are unchanged.
 - `seq` is gap-free per session and starts at 1. The journal is the source of truth and notifications are a live feed of it.
 - A client applies events idempotently by `(sessionId, seq)`. When it sees a gap, it fetches the missing range with `session.events`.
 - Under backpressure the host may discard queued notifications of the busiest session. It first sends `session.lagged { sessionId, deliveredSeq }`. Nothing is lost: the client catches up with `session.events`.

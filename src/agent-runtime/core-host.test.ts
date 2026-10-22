@@ -844,6 +844,91 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
   })
 
+  describe('reviewer risk brief', () => {
+    const risk = (severity: string, n: number) => ({ severity, area: 'data', whatToLookAt: `risk ${n}`, ref: `code.cjs:${n}` })
+    const brief = {
+      behaviourChanges: [{ what: 'Returns 2', where: 'code.cjs:1', userVisible: true }],
+      invariantsTouched: [{ invariant: 'Module exports a number', evidence: 'code.cjs:1', status: 'kept' }],
+      untested: [{ path: 'code.cjs', why: 'Only the exit code is checked' }],
+      risks: [risk('low', 1), risk('high', 2)],
+      humanChecks: ['Run the CLI by hand'], divergences: [],
+    }
+    const archived = (file: string) => path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, file)
+    const briefFile = () => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'review-brief.json'), 'utf8'))
+    function reviewing(replies: unknown[]) {
+      let reviews = 0
+      return fake(async request => {
+        if (request.role === 'architect') return result(architecture)
+        if (request.role === 'developer') { develop(); return result('Done') }
+        return result(replies[Math.min(reviews++, replies.length - 1)])
+      })
+    }
+
+    it('records a full brief, severity-ordered, in the state, the run record and the confidence score', async () => {
+      const { registry, calls } = reviewing([{ ...review, brief }])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.find(call => call.role === 'reviewer')!.prompt).toContain('## Risk brief (after the verdict)')
+      const expected = { ...brief, risks: [risk('high', 2), risk('low', 1)] }
+      expect((state.steps.reviewer!.output as { brief: unknown }).brief).toEqual(expected)
+      expect(briefFile()).toMatchObject({ schemaVersion: 1, change, approved: true, score: 90, brief: expected })
+      expect(briefFile()).not.toHaveProperty('diagnostic')
+      expect(JSON.parse(readFileSync(archived('confidence-score.json'), 'utf8'))).toMatchObject({ overall: 90, brief: expected })
+    })
+
+    it('accepts an older reviewer reply without a brief', async () => {
+      const { registry, calls } = reviewing([review])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(1)
+      expect(state.steps.reviewer!.output).not.toHaveProperty('brief')
+      expect(briefFile()).toMatchObject({ approved: true, brief: null })
+      expect(JSON.parse(readFileSync(archived('confidence-score.json'), 'utf8'))).not.toHaveProperty('brief')
+    })
+
+    it('repairs a malformed brief through the single structured-output repair turn', async () => {
+      const { registry, calls } = reviewing([{ ...review, brief: { risks: [{ severity: 'catastrophic', area: 'data', whatToLookAt: 'x', ref: 'code.cjs:1' }] } }, { ...review, brief }])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      const reviewer = calls.filter(call => call.role === 'reviewer')
+      expect(reviewer).toHaveLength(2)
+      expect(reviewer[1]!.prompt).toContain('Invalid review brief: risks[0].severity')
+      expect(briefFile().brief.risks[0]).toEqual(risk('high', 2))
+    })
+
+    it('drops a brief that is still malformed after the repair turn and keeps the verdict', async () => {
+      const malformed = { ...review, brief: { humanChecks: 'not a list' } }
+      const { registry, calls } = reviewing([malformed, malformed])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.filter(call => call.role === 'reviewer')).toHaveLength(2)
+      const output = state.steps.reviewer!.output as Record<string, unknown>
+      expect(output).not.toHaveProperty('brief')
+      expect(output.briefDiagnostic).toBe('Review brief dropped after the repair turn: Invalid review brief: humanChecks must be an array')
+      expect(briefFile()).toMatchObject({ brief: null, diagnostic: output.briefDiagnostic })
+    })
+
+    it('never changes the gate: high risks do not block an approval, and overflow risks become findings', async () => {
+      const risks = [risk('low', 1), risk('high', 2), risk('medium', 3), risk('high', 4), risk('low', 5), risk('medium', 6), risk('high', 7)]
+      const { registry } = reviewing([{ ...review, brief: { risks } }])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(briefFile().brief.risks.map((item: { ref: string }) => item.ref)).toEqual(['code.cjs:2', 'code.cjs:4', 'code.cjs:7', 'code.cjs:3', 'code.cjs:6'])
+      expect(journalFile().acceptance!.findings).toEqual([
+        "Additional low data risk (beyond the brief's top 5): risk 1 (code.cjs:1)",
+        "Additional low data risk (beyond the brief's top 5): risk 5 (code.cjs:5)",
+      ])
+    })
+
+    it('records the brief of a rejected verdict for the host', async () => {
+      config.limits = { maxAttempts: 1 }
+      const { registry } = reviewing([{ ...review, approved: false, issues: ['code.cjs: must change'], brief: { risks: [risk('medium', 1)] } }])
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).not.toBe('succeeded')
+      expect(briefFile()).toMatchObject({ approved: false, brief: { risks: [risk('medium', 1)] } })
+    })
+  })
+
   it('records the developer\'s structured summary and shows it to the reviewer', async () => {
     const { registry, calls } = fake(async request => {
       if (request.role === 'architect') return result(architecture)

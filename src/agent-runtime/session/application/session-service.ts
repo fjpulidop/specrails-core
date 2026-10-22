@@ -2,7 +2,7 @@ import { SessionError } from '../domain/errors.js'
 import type { SessionEventEnvelope } from '../domain/events.js'
 import { resolvePolicy, type SessionPolicyInput } from '../domain/policy.js'
 import { liveSubagents, type SessionSnapshot } from '../domain/snapshot.js'
-import type { Attachment, DriverDescriptor } from '../domain/types.js'
+import type { Attachment, DriverDescriptor, InputDelivery } from '../domain/types.js'
 import type { RateCard } from '../domain/usage.js'
 import type { Clock, DriverCatalog, Ids, SessionJournal, SessionSummary } from '../ports.js'
 import { ActiveSession, type SessionConfig } from './active-session.js'
@@ -41,7 +41,7 @@ export interface SendParams {
   inputId: string
   text: string
   attachments?: Attachment[]
-  delivery: 'queue' | 'steer'
+  delivery: InputDelivery
 }
 
 export type SessionListener = (envelopes: SessionEventEnvelope[]) => void

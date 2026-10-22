@@ -101,6 +101,34 @@ describe('Codex driver against recorded transcripts', () => {
   })
 })
 
+describe('Codex interrupt delivery (recorded on 0.160.1)', () => {
+  it('sends turn/interrupt, waits for the interrupted turn, then turn/start with the correction', async () => {
+    const replayer = FixtureReplayer.fromFile(fixture('codex-0160-interrupt-then-start'))
+    const ctx = setup(replayer)
+    const { sessionId } = await ctx.service.open({ driver: 'codex', model: 'gpt-6-astra', cwd: '/repo', policy: { subagents: 'enabled' } })
+    await ctx.service.send(sessionId, { inputId: 'u1', text: 'Run a long command', delivery: 'queue' })
+    await drain(replayer)
+    expect(ctx.service.snapshot(sessionId).openTurn).not.toBeNull()
+    await ctx.service.send(sessionId, { inputId: 'i1', text: 'Reply with exactly: I-OK', delivery: 'interrupt' })
+    await drain(replayer)
+
+    const methods = replayer.last.written.map((line) => line.method).filter((method) => typeof method === 'string' && method.startsWith('turn/'))
+    expect(methods).toEqual(['turn/start', 'turn/interrupt', 'turn/start'])
+    const interrupt = replayer.last.written.find((line) => line.method === 'turn/interrupt') as { params: Record<string, unknown> }
+    expect(interrupt.params).toMatchObject({ threadId: '01a15ebd-21f4-7200-881b-3c9a33be7254', turnId: '01a15ebd-2406-7f23-a5d0-70116adbef26' })
+    const restart = replayer.last.written.filter((line) => line.method === 'turn/start')[1] as { params: { clientUserMessageId: string } }
+    expect(restart.params.clientUserMessageId).toBe('i1')
+
+    const events = ctx.events(sessionId)
+    expect(of(events, 'turn.started').map((event) => event.inputIds)).toEqual([['u1'], ['i1']])
+    const done = of(events, 'turn.completed')
+    expect(done.map((event) => event.status)).toEqual(['interrupted', 'completed'])
+    expect(done[0]?.text).toContain('wait for it to finish')
+    expect(done[1]?.text).toBe('I-OK')
+    expect(ctx.service.snapshot(sessionId).inputs.i1?.state).toBe('completed')
+  })
+})
+
 describe('Codex 0.160 transcripts (subAgentActivity)', () => {
   it('maps named child threads to sub-agents with results', async () => {
     const replayer = FixtureReplayer.fromFile(fixture('codex-0160-multi-wait'))

@@ -1,7 +1,17 @@
 import { Ajv2020, type ValidateFunction } from 'ajv/dist/2020.js'
 
+import type { InputDelivery } from '../domain/types.js'
+
 /** Protocol versions this host speaks (docs/agent-sessions/protocol.md). */
 export const SESSION_PROTOCOL_VERSIONS = Object.freeze([1])
+/** `session.send` deliveries this host accepts (mirrored into integration-contract.json). */
+export const SESSION_DELIVERIES = Object.freeze(['queue', 'steer', 'interrupt'] as const satisfies readonly InputDelivery[])
+/**
+ * Capabilities `initialize` advertises (mirrored into integration-contract.json).
+ * `delegation`: session.delegate / session.waitSubagents and subagentRuntime.mode 'delegated'.
+ * `flowSessions`: session.send delivery 'interrupt' and per-driver capabilities.interrupt.
+ */
+export const SESSION_HOST_CAPABILITIES = Object.freeze({ sessions: 1, delegation: 1, flowSessions: 1 } as const)
 /** Longest accepted request line. */
 export const MAX_FRAME_BYTES = 2 * 1024 * 1024
 
@@ -63,7 +73,7 @@ export const METHOD_SCHEMAS: Readonly<Record<string, Schema>> = Object.freeze({
     },
     oneOf: [{ required: ['resume'] }, { required: ['driver', 'model', 'cwd', 'policy'] }],
   },
-  'session.send': { type: 'object', additionalProperties: false, required: ['sessionId', 'input'], properties: { sessionId: id, input: { type: 'object', additionalProperties: false, required: ['inputId', 'text', 'delivery'], properties: { inputId: id, text, attachments: { type: 'array', maxItems: 32, items: attachment }, delivery: { enum: ['queue', 'steer'] } } } } },
+  'session.send': { type: 'object', additionalProperties: false, required: ['sessionId', 'input'], properties: { sessionId: id, input: { type: 'object', additionalProperties: false, required: ['inputId', 'text', 'delivery'], properties: { inputId: id, text, attachments: { type: 'array', maxItems: 32, items: attachment }, delivery: { enum: [...SESSION_DELIVERIES] } } } } },
   'session.interrupt': { type: 'object', additionalProperties: false, required: ['sessionId'], properties: { sessionId: id } },
   'session.stopSubagents': { type: 'object', additionalProperties: false, required: ['sessionId'], properties: { sessionId: id, subagentIds: { type: 'array', maxItems: 500, items: id } } },
   'session.delegate': { type: 'object', additionalProperties: false, required: ['sessionId', 'description', 'prompt'], properties: { sessionId: id, description: { type: 'string', minLength: 1, maxLength: 200 }, prompt: { type: 'string', minLength: 1, maxLength: 64 * 1024 }, agentType: { type: 'string', minLength: 1, maxLength: 100 }, contextTurns: { type: 'integer', minimum: 0, maximum: 10 } } },

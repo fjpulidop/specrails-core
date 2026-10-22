@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.3",
+  "schemaVersion": "5.6",
   "providers": {
     "claude": {
       "cli": {
@@ -254,6 +254,16 @@
     "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event, verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
     "reviewGate": "review.minScore and review.aspects may only tighten Core's own gate (minScore 70, security 75, other aspects 60); the pipeline journal enforces the floor",
     "acceptance": "The reviewer certifies every frozen acceptance criterion by specId and criterionIndex; Core records the verification commands it ran as required checks and binds the report to the exact candidate before the reviewer verdict",
+    "reviewBrief": {
+      "version": 1,
+      "capability": "reviewBrief",
+      "advisory": "The reviewer's optional risk brief never changes the approval gate",
+      "runResult": "runtime-result.reviewBrief: {schemaVersion: 1, change, approved, score, recordedAt, brief | null, diagnostic?} | null (engine 1 builtin runs)",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/review-brief.json",
+      "confidenceScore": "openspec/changes/<change>/confidence-score.json brief (approved verdicts; archived with the change)",
+      "stepOutput": "reviewer step output brief / briefDiagnostic; engine 2 implementation output review.brief",
+      "documentation": "docs/agent-runtime.md#reviewer-risk-brief"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
@@ -294,7 +304,7 @@
     "specificationFormat": "Architect specs are OpenSpec delta specs authored through the official fast-forward skill (ADDED/MODIFIED/REMOVED/RENAMED requirements); existing requirements are preserved through delta semantics and merged into main specs by OpenSpec archive. Complete replacement specs are not fabricated.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "14",
+    "instructionsVersion": "16",
     "workflowVersion": "7",
     "engines": [
       1,
@@ -303,7 +313,7 @@
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 7
+      "nodeKindsVersion": 8
     },
     "nodeKinds": [
       "prompt",
@@ -324,7 +334,8 @@
       "component",
       "map",
       "implementation",
-      "join"
+      "join",
+      "derive-change"
     ],
     "implementationSteps": {
       "version": 1,
@@ -346,6 +357,45 @@
     "structuredOutput": "Claude receives --json-schema and Codex --output-schema for architect/reviewer replies; other providers are parsed leniently.",
     "resumeBudget": "An explicit resume resets the transition ceiling and grants the developer a fresh maxAttempts budget.",
     "defaultImplementationEngine": true,
+    "deriveChange": {
+      "version": 1,
+      "capability": "deriveChange",
+      "nodeKind": "derive-change",
+      "role": "deriver",
+      "roleAssignment": "Core engine role: access read, artifacts all, openspecSkill openspec-ff-change; takes agents.architect's provider assignment; instructions are Core's and the id is reserved for custom roles",
+      "params": {
+        "change": "required; the run's frozen change name ({{run.changeId}})",
+        "summaryPath": "optional; file relative to <backlogRoot>/.specrails/pipeline/<runId>/, at most 32768 bytes, no symlinks or .. segments; absent or empty derives from the diff alone; optional front matter 'transcriptTurns: <n>'",
+        "timeoutMs": "optional",
+        "idleTimeoutMs": "optional"
+      },
+      "outcomes": [
+        "pass",
+        "fail"
+      ],
+      "diff": "change-scope changeSet: repositories[].baseSha (or HEAD at first measurement) to the working tree; untracked files present at the first measurement are pre-existing; .specrails/ and the change's own openspec/changes/<change>/ are excluded",
+      "emptyChangeSet": "node fails with error code empty_change_set before any provider call",
+      "derivationArtifact": "<backlogRoot>/.specrails/pipeline/<runId>/agent-workflow/artifacts/<scope-node digest>/derivation.json; the absolute path is output.derivationPath and the report is output.derivation",
+      "derivationFields": [
+        "schemaVersion",
+        "change",
+        "base",
+        "head",
+        "files",
+        "explained",
+        "unexplainedFiles",
+        "tasks",
+        "requirementsAdded",
+        "requirementsModified",
+        "confidence",
+        "transcriptTurnsUsed",
+        "repositories",
+        "unexplainedOmitted"
+      ],
+      "verificationProposals": "output.structured.verification (at most 20, architect schema); bind them with verify additionalCommandsFrom: <derive node id>",
+      "reviewer": "A reviewer role-turn in the same run receives derivation.json; every unexplained file is an issue",
+      "referenceDefinition": "src/agent-runtime/engine/__fixtures__/flow-spec.json"
+    },
     "openRoles": {
       "version": 1,
       "builtinRoles": [
@@ -412,8 +462,15 @@
       ],
       "capabilities": [
         "sessions",
-        "delegation"
-      ]
+        "delegation",
+        "flowSessions"
+      ],
+      "deliveries": [
+        "queue",
+        "steer",
+        "interrupt"
+      ],
+      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions"
     }
   },
   "execution": {

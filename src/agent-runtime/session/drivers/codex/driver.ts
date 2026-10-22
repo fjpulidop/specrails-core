@@ -21,6 +21,8 @@ export const CODEX_DESCRIPTOR: DriverDescriptor = Object.freeze({
     autonomousContinuation: false,
     steer: true,
     toolFiltering: false,
+    // `turn/interrupt`, then `turn/start` once the turn completed (sequenced by the application).
+    interrupt: 'native' as const,
     usage: Object.freeze({ costUsd: 'none' as const, tokens: 'cumulative' as const }),
   }),
 })
