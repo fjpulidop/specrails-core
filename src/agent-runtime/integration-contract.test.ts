@@ -7,6 +7,7 @@ import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { CLARIFICATION_POLICIES } from './graph/clarifications.js'
+import { SPEC_TRACE_FILE } from '../pipeline/spec-trace.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_DELIVERIES, SESSION_HOST_CAPABILITIES, SESSION_PROTOCOL_VERSIONS, validatorFor } from './session/host/protocol.js'
 
@@ -114,6 +115,17 @@ describe('Desktop integration contract', () => {
     const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
     expect(schema.properties.architect.properties.clarifications.enum).toEqual([...CLARIFICATION_POLICIES])
     expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Architect clarifications')
+  })
+
+  it('announces the requirement trace, its report and the drift sweep reference definition', async () => {
+    const trace = contract.agentRuntime.specTrace
+    expect(trace).toMatchObject({ version: 1, capability: 'specTrace' })
+    expect(trace.reportPath).toContain('<backlogRoot>/.specrails/pipeline/<runId>/' + SPEC_TRACE_FILE)
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.specTrace).toBe(trace.version)
+    expect(existsSync(new URL('../../' + trace.driftSweepDefinition.split(' ')[0], import.meta.url))).toBe(true)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Requirement traceability')
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

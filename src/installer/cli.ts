@@ -35,7 +35,7 @@ function usageText(): string {
     '  install-framework   Materialize the versioned framework (offline)',
     '  swap-current        Point framework/current at a version (offline)',
     '  assemble            Link the framework into a project workspace (offline)',
-    '  pipeline            Inspect and verify durable implementation phases',
+    '  pipeline            Inspect and verify durable implementation phases (pipeline trace: requirement ↔ test traceability)',
     '  runtime             Run, inspect and resume programmatic agents',
     '  help                Show this help message',
     '  version             Print the installed version',
@@ -95,6 +95,12 @@ async function dispatch(
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<number> {
+  // `pipeline trace` keeps its own argv (repeatable, comma-separated lists) and
+  // judges execution with the runtime's full test-reachability check.
+  if (argv[0] === 'pipeline' && argv[1] === 'trace') {
+    const [{ runSpecTraceCli }, { commandReachesTest }] = await Promise.all([import('../pipeline/spec-trace.js'), import('../agent-runtime/compact/test-reachability.js')])
+    return runSpecTraceCli(argv.slice(2), { reaches: commandReachesTest })
+  }
   const { subcommand, flags, positionals } = parseArgs(argv)
 
   // `--version` is global only before a command: `swap-current --version <v>`

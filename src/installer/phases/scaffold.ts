@@ -1229,6 +1229,15 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
   if (!pathExists(source)) return 0
   const dest = path.join(input.artifactRoot, '.specrails', 'runtime')
   copyFile(source, path.join(dest, 'pipeline-state.mjs'))
+  // Requirement ↔ test traceability, self-contained like pipeline-state: `node .specrails/runtime/trace.mjs --check`.
+  const trace = path.join(input.scriptDir, 'dist', 'pipeline', 'spec-trace.js')
+  const traced = pathExists(trace) ? 2 : 0
+  if (traced) {
+    copyFile(trace, path.join(dest, 'spec-trace.mjs'))
+    writeFileLf(path.join(dest, 'trace.mjs'),
+      "import { runSpecTraceCli } from './spec-trace.mjs'\n" +
+      "process.exitCode = await runSpecTraceCli(process.argv.slice(2))\n")
+  }
   writeFileLf(path.join(dest, 'pipeline.mjs'),
     "import { runPipelineCli } from './pipeline-state.mjs'\n" +
     "process.exitCode = await runPipelineCli(process.argv.slice(2))\n")
@@ -1247,9 +1256,9 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
         agents: Object.fromEntries(['architect', 'developer', 'reviewer'].map(role => [role, { provider, maxTurns: 100 }])), verification: [],
       }, null, 2) + '\n')
     }
-    return 3
+    return 3 + traced
   }
-  return 2
+  return 2 + traced
 }
 
 function pruneLegacyArtifacts(

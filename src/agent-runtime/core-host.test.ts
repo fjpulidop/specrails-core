@@ -844,6 +844,47 @@ describe('programmatic Core host with real evidence gates', () => {
     })
   })
 
+  describe('requirement trace', () => {
+    const id = 'feature/implement-shared-behavior'
+    const traceFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'spec-trace.json'), 'utf8'))
+
+    it('asks the developer to tag touched requirements, binds the trace to the receipt and shows it to the reviewer', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return result(architecture)
+        if (request.role === 'developer') {
+          develop()
+          write(path.join(context.repositories[0]!.path, 'code.test.cjs'), `// spec: ${id}\nrequire('node:assert').equal(require('./code.cjs'), 2)\n`)
+          return result('Done')
+        }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      const developer = calls.find(call => call.role === 'developer')!.prompt
+      expect(developer).toContain('## Requirement tags')
+      expect(developer).toContain('- `' + id + '`')
+      const report = traceFile()
+      expect(report).toMatchObject({ schemaVersion: 1, evidence: 'receipt', changes: [change], touched: [id], touchedUndemonstrated: [], requirements: 1 })
+      expect(report.receiptId).toBe(journalFile().verification?.id)
+      const reviewer = calls.find(call => call.role === 'reviewer')!.prompt
+      expect(reviewer).toContain('Requirement trace (advisory, bound to receipt')
+      expect(reviewer).toContain('Requirements demonstrated 1/1')
+      expect(reviewer).toContain('Every requirement this change adds or modifies is demonstrated.')
+      expect(reviewer).toContain('9. Spec claims')
+      expect(journalFile().acceptance?.findings).toContain(`Spec trace (advisory, receipt ${String(report.receiptId)}): Requirements demonstrated 1/1; touched by this change 1/1.`)
+      expect(journalFile().acceptance?.checks.some(check => check.name.includes('trace'))).toBe(false)
+    })
+
+    it('reports an untagged requirement to the reviewer without failing verification', async () => {
+      const { registry, calls } = fake()
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(traceFile()).toMatchObject({ touchedUndemonstrated: [id], undemonstrated: [{ id, reason: 'no-test' }] })
+      expect(calls.find(call => call.role === 'reviewer')!.prompt).toContain(`Not demonstrated by a tagged test that a passing verification command ran: ${id} (no-test).`)
+      expect(inspectPipeline(context).completion.validation).toBe('verified')
+    })
+  })
+
   it('lets the architect investigate once in its own session before anyone is asked', async () => {
     let architectCalls = 0
     const { registry, calls } = fake(async request => {

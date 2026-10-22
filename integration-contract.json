@@ -277,6 +277,21 @@
       "stepOutput": "architect step output clarifications; graph state architecture.clarifications",
       "documentation": "docs/agent-runtime.md#architect-clarifications"
     },
+    "specTrace": {
+      "version": 1,
+      "capability": "specTrace",
+      "requirementId": "<capability>/<slug> from '### Requirement: <name>' in openspec/specs/<capability>/spec.md (and the change's ADDED/MODIFIED/RENAMED deltas); slug: NFKD without accents, lowercase, every run of non-alphanumerics one '-', no leading or trailing '-'",
+      "testTags": "[spec:<capability>/<slug>] in a test title, or a '// spec: <capability>/<slug>' comment ('# spec:' for Python and shell) on the line before the test; any language",
+      "states": "demonstrated: tagged test file reached by a verification command that exited 0; undemonstrated: reason no-test | not-executed | failed; untagged: tags that match no requirement (advisory)",
+      "report": "{schemaVersion: 1, generatedAt, changes, evidence: receipt | tests-passed | none, receiptId, requirements, demonstrated[{id, name, tests}], undemonstrated[{id, name, reason, tests}], untagged[{tag, repositoryId, file, line, form}], touched, touchedUndemonstrated, scannedFiles}",
+      "reportPath": "<backlogRoot>/.specrails/pipeline/<runId>/spec-trace.json (written after each passing verification, bound to the receipt id)",
+      "runResult": "runtime-result.specTrace: the report | null (engine 1 builtin runs)",
+      "advisory": "The trace never changes verification or acceptance status; the acceptance report carries a finding 'Spec trace (advisory, receipt <id>): Requirements demonstrated X/Y…', the reviewer treats a touched requirement without a demonstrated tag as an issue",
+      "divergences": "reviewer check 9 fills brief.divergences[{capability, requirement, observed}] with spec claims of touched capabilities the code contradicts",
+      "cli": "specrails-core pipeline trace [--root <dir>] [--context <context.json>] [--change <name>[,...]] [--tests <glob>[,...]] [--tests-passed] [--check] [--json] [--out <file>]; installed projects also get node .specrails/runtime/trace.mjs; normal mode exits 0, --check exits 1 when a requirement touched by the change is not demonstrated",
+      "driftSweepDefinition": "src/agent-runtime/engine/__fixtures__/drift-sweep.json (read-only role-turn of a host-declared read role drift-auditor; structured output {divergences[{capability, requirement, observed}], unchecked[]})",
+      "documentation": "docs/agent-runtime.md#requirement-traceability"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",

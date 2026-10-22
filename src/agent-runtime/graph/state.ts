@@ -44,6 +44,8 @@ export interface VerificationRecord {
   selfMutation?: import('../../pipeline/pipeline-state.js').VerificationSelfMutation
   /** Files verification regenerated that the host kept in the candidate; roles must not revert them. Sticky for the run. */
   adoptedOutputs?: import('../../pipeline/pipeline-state.js').CandidateFileChange[]
+  /** Advisory requirement ↔ test trace of a passing verification (spec-trace.json), bound to `receiptId`. */
+  specTrace?: import('./spec-trace-record.js').SpecTraceSummary
 }
 export interface ReviewRecord {
   sessionId?: string

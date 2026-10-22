@@ -14,6 +14,8 @@ import { archive, child, journal, object, parseArchitecture, proposedVerificatio
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
 import { riskFinding, settleReviewBrief } from './review-brief.js'
 import { writeReviewBriefRecord } from './review-brief-record.js'
+import { recordSpecTrace, specTraceFinding } from './spec-trace-record.js'
+import { touchedRequirements } from '../../pipeline/spec-trace.js'
 import { DEFAULT_CLARIFICATION_POLICY, blockingClarifications, clarificationQuestion, designAssumptions, parseClarifications, validateDesignSections, writeClarificationsRecord } from './clarifications.js'
 import { describeDrift } from '../compact/environment.js'
 import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
@@ -99,6 +101,10 @@ export function developerRecord(output: Record<string, unknown> | undefined, tex
   }
 }
 
+/** Requirement ids the change's delta specs add, modify or rename; none when they cannot be read. */
+function touchedRequirementIds(context: PipelineContext, change: string): string[] {
+  try { return touchedRequirements(context.artifactRoot, change) } catch { return [] }
+}
 /** The change so far as prompt lines; a checkout git cannot measure yields no section instead of failing the role. */
 function measuredChange(context: PipelineContext, change: string): string[] | undefined {
   try { return renderChangeSet(changeSet(context, change)) } catch { return undefined }
@@ -243,7 +249,8 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
   const provider = (fixer ?? config.agents.developer).provider
   // What the run has changed so far, from git: a correction stays inside it.
   const changes = state.development ? measuredChange(context, change) : undefined
-  const full = roleInstructions('developer', context, change, { definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan, developer: state.development, ...(changes ? { changeSet: changes } : {}) }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
+  const requirementTags = touchedRequirementIds(context, change)
+  const full = roleInstructions('developer', context, change, { definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(requirementTags.length ? { requirementTags } : {}) }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
   const previous = state.development
   // A CLI developer with a live session takes corrections and continuations
   // as a short follow-up in that session; a configured fixer engine always
@@ -463,7 +470,11 @@ function verifyNode(deps: CoreNodeDeps): CoreNode {
       }
       transitionPipeline(context, 'developer', 'done')
       note('developer', plan.length ? `Verification passed: ${plural(plan.length, 'command')} exited 0.` : 'No verification commands available; relying on task completion and review.')
-      return { status: 'succeeded', next: 'reviewer', update: { verifyResult: evidence, verifyHistory: [outcome(true)] }, output: evidence as unknown as JsonValue, usage: NO_SPEND }
+      // Advisory requirement ↔ test trace, bound to this receipt; it never changes the outcome.
+      const trace = recordSpecTrace(context, deps.change, receipt, state.development?.tests ?? [])
+      if (trace) note('developer', `${trace.summary}${trace.touchedUndemonstrated.length ? `; not demonstrated for this change: ${trace.touchedUndemonstrated.map(item => item.id).join(', ')}` : ''} (advisory).`)
+      const verified: VerificationRecord = trace ? { ...evidence, specTrace: trace } : evidence
+      return { status: 'succeeded', next: 'reviewer', update: { verifyResult: verified, verifyHistory: [outcome(true)] }, output: verified as unknown as JsonValue, usage: NO_SPEND }
     },
   }
 }
@@ -501,7 +512,9 @@ export function buildAcceptanceReport(criteria: FrozenCriterion[], verification:
   }
   // Reviewer inspections are evidence, never gates: only Core's own subprocess receipts are required checks.
   for (const item of Array.isArray(input.checks) ? input.checks : []) checks.push({ ...(object(item) as unknown as AcceptanceCheck), required: false })
-  return { criteria: certified, checks, findings: (Array.isArray(input.findings) ? input.findings : []) as string[] }
+  const findings = (Array.isArray(input.findings) ? input.findings : []) as string[]
+  // The advisory spec trace is evidence for the merger, never a check: it cannot change the acceptance status.
+  return { criteria: certified, checks, findings: verification?.specTrace ? [...findings, specTraceFinding(verification.specTrace)] : findings }
 }
 
 function reviewerNode(deps: CoreNodeDeps): CoreNode {

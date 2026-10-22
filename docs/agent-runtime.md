@@ -288,7 +288,7 @@ After its verdict the reviewer may add an optional `brief` object to the same st
 }}
 ```
 
-- Every section is optional and may be empty; a reply without `brief` (an older reviewer, a custom reviewer definition that ignores it) is valid and records no brief. The reviewer is told that every risk points to `file:line`, that `untested` lists code paths the diff touches which no test in the verification plan exercises, and that `humanChecks` lists what it cannot verify read-only. `divergences` is reserved for spec-divergence reporting (Phase 3) and is expected to be empty today.
+- Every section is optional and may be empty; a reply without `brief` (an older reviewer, a custom reviewer definition that ignores it) is valid and records no brief. The reviewer is told that every risk points to `file:line`, that `untested` lists code paths the diff touches which no test in the verification plan exercises, and that `humanChecks` lists what it cannot verify read-only. `divergences` lists spec claims of a touched capability that the code contradicts (reviewer check 9, see [Requirement traceability](#requirement-traceability)); it is empty when the specs and the code agree.
 - Core validates the brief after the verdict and the acceptance report. Text fields are trimmed and bounded (2,000 characters, 20 items per list). Core orders `risks` by severity (stable within a severity) and keeps the first five; the remaining risks are appended to `acceptance.findings` as `Additional <severity> <area> risk (beyond the brief's top 5): <whatToLookAt> (<ref>)`.
 - A malformed brief on the first reply spends the reviewer's single structured-output repair turn (`Invalid review brief: …`). If the repaired reply still carries a malformed brief, Core keeps the repaired verdict, drops the brief and records a diagnostic (`briefDiagnostic`, plus a reviewer narration line) instead of failing the review.
 - The compact (OpenAI-compatible) reviewer passes a `brief` through unchanged when its model sends one; it is not prompted for it.
@@ -303,6 +303,41 @@ Where hosts read it:
 | Reviewer step output (`runtime status`, non-compact) → `brief`, `briefDiagnostic` | Graph state `review`; the engine 2 `implementation` piece output carries it as `review.brief`. |
 
 The capability is announced as `reviewBrief: 1` by `runtime api` and as `agentRuntime.reviewBrief` in `integration-contract.json` (since schema 5.3). Hosts must treat every field as optional.
+
+## Requirement traceability
+
+Every OpenSpec requirement has a stable id and tests claim the requirements they demonstrate. `src/pipeline/spec-trace.ts` (Node built-ins only; installed projects get it as `.specrails/runtime/spec-trace.mjs`) crosses both with verification receipts.
+
+- **Requirement id.** `<capability>/<slug>`: `capability` is the directory under `openspec/specs/`, `slug` comes from the `### Requirement: <name>` heading: Unicode NFKD with accents removed, lowercase, every run of non-alphanumeric characters one `-`, no leading or trailing `-`. `### Requirement: Pausa con pregunta: ¿qué ocurre?` in `openspec/specs/runs/spec.md` is `runs/pausa-con-pregunta-que-ocurre`. The OpenSpec format is unchanged.
+- **Test tag.** `[spec:<id>]` anywhere in a test title, or a comment `// spec: <id>` (`# spec: <id>` in Python and shell; `--`, `;`, `%` and block-comment openers work too) on the line before the test. Any language.
+- **States.** `demonstrated`: a tagged test file was reached by a verification command that exited 0. `undemonstrated`: `no-test` (no tag), `not-executed` (tagged but no passing command reached the file, or no evidence) or `failed` (only failing commands reached it). `untagged`: a tag that matches no requirement (a typo, or a renamed or removed requirement); advisory.
+- **Touched requirements.** The ADDED, MODIFIED and RENAMED (new name) requirements of the change's delta specs (`openspec/changes/<change>/specs/`, or its archive). They count as requirements before the change is archived; REMOVED and renamed-from requirements no longer count.
+- **Test files.** Every test-shaped file of each repository (`*.test.*`, `*.spec.*`, `test_*.py|sh`, `*_test.*`, `*_spec.rb`, `*Test.java`, `*.bats`; `node_modules`, `dist`, `build`, `.git`, `.specrails`, `openspec` and similar are skipped), optionally restricted to `--tests` globs, plus the files the developer reported.
+
+**In a run.** After every passing verification the verify node writes `<backlogRoot>/.specrails/pipeline/<runId>/spec-trace.json` (bound to the receipt id; Core's test-reachability check decides which commands reached which files) and puts a summary in the verification record (`verifyResult.specTrace`). The trace is advisory: it never changes the verification outcome or the acceptance status. The acceptance report records it as a finding, `Spec trace (advisory, receipt <id>): Requirements demonstrated X/Y; touched by this change A/B (not demonstrated: …).`
+
+- The developer prompt lists the requirement ids the change touches under `## Requirement tags` and asks for one tagged test per id.
+- The reviewer receives the trace with the verification result. A touched requirement that is not demonstrated is an issue naming the id (check 3). Check 9 compares the claims of each touched capability's specs with the code and reports contradictions in `brief.divergences` (`{capability, requirement, observed}`).
+
+| Location | Content |
+| --- | --- |
+| `<backlogRoot>/.specrails/pipeline/<runId>/spec-trace.json` | `{schemaVersion:1, generatedAt, changes, evidence: "receipt", receiptId, requirements, demonstrated[{id, name, tests}], undemonstrated[{id, name, reason, tests}], untagged[{tag, repositoryId, file, line, form}], touched, touchedUndemonstrated, scannedFiles}`. Desktop shows "Requirements demonstrated `demonstrated.length`/`requirements`" from it. |
+| `runtime-result.specTrace` (engine 1 `runtime run`/`resume`) | The same report, or `null` before the first passing verification. |
+
+**From the CLI or CI.**
+
+```sh
+specrails-core pipeline trace [--root <dir>] [--context <context.json>] [--change <name>[,…]] [--tests <glob>[,…]] [--tests-passed] [--check] [--json] [--out <file>]
+node .specrails/runtime/trace.mjs --check --tests-passed   # inside an installed project
+```
+
+- Without `--context` it scans `--root` (default: the working directory) and checks the active changes under `openspec/changes/` (or `--change`). It has no receipt, so nothing is executed unless `--tests-passed` says the tests already passed in this job. With `--context` it reads the run's receipt from `state.json` and the run's change.
+- Normal mode never fails: it reports and exits 0, even when it cannot read something. `--check` exits 1 when a requirement touched by the change is not demonstrated (or the scan fails).
+- A CI step after the test suite: `"spec:check": "specrails-core pipeline trace --check --tests-passed"` in `package.json`, run as `npm test && npm run spec:check`.
+
+**Drift sweep.** `src/agent-runtime/engine/__fixtures__/drift-sweep.json` is a read-only reference definition that runs check 9 across every capability on demand: one `role-turn` of a host-declared read role `drift-auditor` (`roles: {"drift-auditor": {provider, access: "read", artifacts: "none"}}`) with structured output `{divergences: [{capability, requirement, observed}], unchecked: [string]}`. Remove its `version`, bind the provider and publish it like any definition.
+
+The capability is announced as `specTrace: 1` by `runtime api` and as `agentRuntime.specTrace` in `integration-contract.json` (schema 5.5).
 
 ## Budgets and provider capability differences
 

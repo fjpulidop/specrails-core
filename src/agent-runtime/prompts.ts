@@ -46,6 +46,8 @@ export interface RoleInstructionOptions {
   adoptedOutputs?: AdoptedOutput[]
   /** The run's `derive-change` coverage report (derivation.json), rendered for the reviewer. */
   derivation?: DerivationReport
+  /** Requirement ids (`capability/slug`) the change adds, modifies or renames: the developer tags one test for each. */
+  requirementTags?: string[]
 }
 export interface AdoptedOutput { repositoryId?: string; path: string }
 /** The derivation.json fields the reviewer reads; written by the `derive-change` piece, never by a role. */
@@ -335,12 +337,13 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     'Check, in this order:',
     '1. Spec completeness: every requirement in the change specs and every acceptance criterion is implemented. Cross-reference each one against the code.',
     '2. Task completion: every task in `tasks.md` is `- [x]` and is backed by real code and tests, not just a ticked box.',
-    '3. Test quality: new behavior has tests that assert on behavior, cover error paths, and would fail without the change. Missing tests for production code, tests without assertions and tests that restate the implementation are blocking issues.',
+    '3. Test quality: new behavior has tests that assert on behavior, cover error paths, and would fail without the change. Missing tests for production code, tests without assertions and tests that restate the implementation are blocking issues. Every requirement this change adds or modifies is claimed by at least one test tag (`[spec:<capability>/<slug>]` in the test title or a `spec: <capability>/<slug>` comment on the line before it); a touched requirement the requirement trace below reports as not demonstrated is an issue naming the requirement id and the test to tag.',
     '4. Blast radius: compare the change set below with the files design.md and tasks.md name. A file the plan did not name, a hunk no task explains (reformatting, import reordering, renames, comment rewrites, type widening, deleted or rewritten tests outside the tasks, regenerated lockfiles, snapshots or generated files' + (adopted ? ' other than the host-adopted verification output listed below' : '') + ', new dependencies, widened public signatures) or an edit to a shared module without a stated reason is an issue to REVERT, not to polish: name the file and the hunk. Trace every criterion to the narrowest code that satisfies it; code beyond that is suspect. Unjustified blast radius lowers `architectural_alignment` and `pattern_adherence`.',
     '5. Correctness and conventions: types and signatures fit the codebase, patterns match the repository, imports and error handling are consistent, no dead code, debug output or placeholders. Architecture: the change respects the dependency direction and boundaries the repository already follows; domain logic placed in an adapter, an adapter imported from the domain, a bypassed existing port or helper, a duplicated utility that already exists, or a new abstraction with one implementation and no variation point is an issue when it breaks a convention the code enforces and a finding otherwise. Platform correctness as far as the change touches it: web state, accessibility, loading and error states; mobile lifecycle, offline and permissions; backend transactions, idempotency and validation at the boundary.',
     '6. Security: no secrets, injection, path traversal, unsafe deserialization, missing authorization or new attack surface. Scale scrutiny to what the change touches.',
     '7. Performance: no obvious N+1, unbounded loops or blocking work on hot paths introduced by the change.',
     '8. What tests rarely catch: swallowed or context-free errors, missing cancellation, timeouts or cleanup, races and partial failures, retries without idempotency, empty, huge, malformed or boundary inputs, time zones and Unicode, secrets or personal data in logs, non-additive migrations or persisted-format changes, a removed guard or branch without a stated reason (understand before approving its removal), and artifacts the change made stale: localized strings in every locale the repository ships, documentation, schemas, configuration examples. Missing stale-artifact updates inside the planned blast radius are issues; concerns outside it are findings.',
+    '9. Spec claims: for each capability this change touches (its delta specs under the change, and `openspec/specs/<capability>/spec.md` when it exists), compare what the requirements and scenarios claim with what the code does. A claim the code contradicts is a divergence for the brief (`divergences`), with the requirement and the observed behaviour at `file:line`. It is an issue only when this change introduced the contradiction.',
     '',
     'Judge BEHAVIOUR against the acceptance criteria, never the shape of the code against the wording of the plan: module layout, file lists, class or function names, naming conventions and implementation techniques named in the ticket, the design or a "contract layer" are suggestions the developer may legitimately improve on. A working implementation that satisfies a criterion by other means is correct; asking to rename, move or rewrite it to match the plan\'s wording is NOT an issue. Only a criterion that is not met, a defect, a missing test or a regression is.',
     '',
@@ -388,10 +391,22 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `untested`: code paths the diff touches that no test in the verification plan exercises, by repository-relative `path` with the reason.',
     `- \`risks\`: at most ${REVIEW_BRIEF_RISK_LIMIT}, most severe first. Every risk names a \`ref\` as \`file:line\`, a \`severity\` (\`high\`, \`medium\`, \`low\`), an \`area\` (${REVIEW_RISK_AREAS.map(area => '`' + area + '`').join(', ')}) and \`whatToLookAt\`: the concrete thing a human should inspect. A risk is not an issue: blocking problems still go in \`issues\`.`,
     '- `humanChecks`: what you cannot verify read-only (running the UI, real credentials, production data, performance under load, a manual flow), one concrete check per line.',
-    '- `divergences`: reserved; leave it an empty array.',
+    '- `divergences`: spec claims of a touched capability that the code contradicts (check 9): `capability`, `requirement` (its id `capability/slug`) and `observed`, what the code does instead with `file:line`. An empty array when the specs and the code agree.',
     '',
   )
   return lines
+}
+
+/** The requirements the developer tags so Core can trace them to tests (spec-trace). */
+function requirementTagsSection(ids: string[] | undefined): string[] {
+  if (!ids?.length) return []
+  return [
+    '## Requirement tags',
+    '',
+    'Tag at least one test for each requirement this change adds or modifies, so Core can prove it is demonstrated: put `[spec:<id>]` in the test title, or a comment `// spec: <id>` (`# spec: <id>` in Python or shell) on the line before the test. Tag the test that exercises the requirement, in a file the verification commands run. Requirement ids:',
+    ...ids.slice(0, 50).map(id => `- \`${id}\``),
+    '',
+  ]
 }
 
 /** The developer's summary is a claim for the reviewer to check, never evidence by itself. */
@@ -441,6 +456,20 @@ function adoptedOutputSection(role: AgentRole, adopted: AdoptedOutput[]): string
   ]
 }
 
+/** The advisory requirement ↔ test trace Core recorded with the passing receipt. */
+function specTraceLines(trace: Record<string, unknown> | undefined): string[] {
+  if (!trace || typeof trace.summary !== 'string') return []
+  const ids = (value: unknown): string[] => Array.isArray(value) ? value.map(item => typeof item === 'string' ? item : record(item) && typeof record(item)!.id === 'string' ? `${String(record(item)!.id)} (${String(record(item)!.reason ?? 'no-test')})` : '').filter(Boolean) : []
+  const touched = ids(trace.touched), missing = ids(trace.touchedUndemonstrated)
+  const untagged = Array.isArray(trace.untagged) ? trace.untagged.map(record).filter(Boolean).map(tag => `${String(tag!.file)}:${String(tag!.line)} \`${String(tag!.tag)}\``) : []
+  return [
+    '', `Requirement trace (advisory, bound to receipt ${String(trace.receiptId ?? 'unknown')}): ${trace.summary}.`,
+    ...(touched.length ? [`Requirements this change adds or modifies: ${touched.map(id => '`' + id + '`').join(', ')}.`] : []),
+    ...(missing.length ? [`Not demonstrated by a tagged test that a passing verification command ran: ${missing.join(', ')}.`] : touched.length ? ['Every requirement this change adds or modifies is demonstrated.'] : []),
+    ...(untagged.length ? [`Tags that match no requirement (typo, renamed or removed requirement): ${untagged.slice(0, 10).join(', ')}.`] : []),
+  ]
+}
+
 function feedbackSection(feedback: RoleFeedback | undefined, focused = false): string[] {
   const lines: string[] = []
   const verification = record(feedback?.verification)
@@ -450,6 +479,7 @@ function feedbackSection(feedback: RoleFeedback | undefined, focused = false): s
     lines.push(verification.valid === true ? (Array.isArray(verification.commands) && verification.commands.length ? 'All verification commands passed.' : 'No automated verification command was available for this run.') : 'Verification did not pass.')
     if (unverified.length) lines.push(`Repositories without an automated check (inspect their changes with extra care): ${unverified.map(id => '`' + id + '`').join(', ')}.`)
     if (typeof verification.reason === 'string') lines.push(verification.reason)
+    lines.push(...specTraceLines(record(verification.specTrace)))
     const incomplete = Array.isArray(verification.incompleteTasks) ? verification.incompleteTasks.filter(item => typeof item === 'string') : []
     if (incomplete.length) lines.push('', 'Tasks still unchecked in `tasks.md`:', ...incomplete.map(item => `- ${item}`))
     const commands = Array.isArray(verification.commands) ? verification.commands.map(record).filter(Boolean) as Record<string, unknown>[] : []
@@ -598,6 +628,7 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...(role === 'reviewer' ? developerSummarySection(options.developer) : []),
     ...changeSetSection(role, options.stance, options.changeSet),
     ...(role === 'developer' ? discardedSection(options.developer) : []),
+    ...(role === 'developer' ? requirementTagsSection(options.requirementTags) : []),
     ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
     ...(role === 'reviewer' ? derivationSection(options.derivation) : []),
     ...adoptedOutputSection(role, adopted),

@@ -13,6 +13,8 @@ export { coreNodes, developerRecord, buildAcceptanceReport, MAX_DEEPEN_PASSES, t
 export { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, evaluateReview, resolveReviewPolicy, type ReviewAspect, type ReviewPolicy } from './graph/review-policy.js'
 export { REVIEW_BRIEF_RISK_LIMIT, REVIEW_BRIEF_SCHEMA, REVIEW_BRIEF_SCHEMA_VERSION, parseReviewBrief, type ReviewBrief, type ReviewRisk } from './graph/review-brief.js'
 export { REVIEW_BRIEF_FILE, readReviewBriefRecord, reviewBriefPath, type ReviewBriefRecord } from './graph/review-brief-record.js'
+export { SPEC_TRACE_FILE, SPEC_TRACE_SCHEMA_VERSION, requirementSlug, requirementId, traceSpecs, touchedRequirements, type SpecTraceReport, type SpecTraceInput } from '../pipeline/spec-trace.js'
+export { readSpecTraceReport, specTracePath, type SpecTraceSummary } from './graph/spec-trace-record.js'
 export { CLARIFICATIONS_FILE, CLARIFICATIONS_SCHEMA, CLARIFICATIONS_SCHEMA_VERSION, CLARIFICATION_POLICIES, blockingClarifications, designSection, parseClarifications, readClarificationsRecord, clarificationsPath, type Clarification, type ClarificationPolicy, type ClarificationsRecord } from './graph/clarifications.js'
 export { createRoleInvoker, type Accept, type InvokeOptions, type InvokeOutcome, type RoleInvoker, type RoleInvokerDeps } from './graph/roles.js'
 export { parseAgentObject } from './graph/artifacts.js'
