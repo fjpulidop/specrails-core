@@ -8,6 +8,8 @@ import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
 import { CLARIFICATION_POLICIES } from './graph/clarifications.js'
 import { SPEC_TRACE_FILE } from '../pipeline/spec-trace.js'
+import { BASELINE_BLOCKER, BASELINE_FILE } from './graph/baseline.js'
+import { CAPABILITY_MAP_PATH } from './graph/capability-map.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_DELIVERIES, SESSION_HOST_CAPABILITIES, SESSION_PROTOCOL_VERSIONS, validatorFor } from './session/host/protocol.js'
 
@@ -126,6 +128,20 @@ describe('Desktop integration contract', () => {
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.specTrace).toBe(trace.version)
     expect(existsSync(new URL('../../' + trace.driftSweepDefinition.split(' ')[0], import.meta.url))).toBe(true)
     expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Requirement traceability')
+  })
+
+  it('announces baseline on touch, its config key, records and cost attribution', async () => {
+    const baseline = contract.agentRuntime.baselineOnTouch
+    expect(baseline).toMatchObject({ version: 1, capability: 'baselineOnTouch' })
+    expect(baseline.capabilityMap).toContain(CAPABILITY_MAP_PATH)
+    expect(baseline.hardRule).toContain(BASELINE_BLOCKER)
+    expect(baseline.recordPath).toContain('<backlogRoot>/.specrails/pipeline/<runId>/' + BASELINE_FILE)
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.baselineOnTouch).toBe(baseline.version)
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
+    expect(schema.properties.baselineOnTouch.type).toBe('boolean')
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Baseline on touch')
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

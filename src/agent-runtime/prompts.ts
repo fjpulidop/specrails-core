@@ -48,7 +48,10 @@ export interface RoleInstructionOptions {
   derivation?: DerivationReport
   /** Requirement ids (`capability/slug`) the change adds, modifies or renames: the developer tags one test for each. */
   requirementTags?: string[]
+  /** Baseline on touch: characterization tests that passed on the base code before the change (developer and reviewer). */
+  baseline?: BaselineContext
 }
+export interface BaselineContext { receiptId?: string; tests: string[]; uncovered: string[] }
 export interface AdoptedOutput { repositoryId?: string; path: string }
 /** The derivation.json fields the reviewer reads; written by the `derive-change` piece, never by a role. */
 export interface DerivationReport { files: number; explained: number; unexplainedFiles: string[]; confidence?: string; [key: string]: unknown }
@@ -397,6 +400,48 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
   return lines
 }
 
+/** Asks the architect, in its session, to add the Baseline task group for code no capability covers. */
+export function baselinePlanInstructions(uncovered: readonly string[]): string {
+  return [
+    '## Baseline before the change',
+    '',
+    'The blast radius reaches code no capability in `openspec/specs/` covers yet:',
+    ...uncovered.slice(0, 50).map(file => `- \`${file}\``),
+    '',
+    'Before the change tasks, add a Baseline so the change starts from described, tested behaviour:',
+    '1. In `tasks.md`, insert a `## 0. Baseline` group before every other group. Its tasks: characterization tests that pin what each listed module does TODAY (one test file per module, in the repository\'s test style, in a location the verification commands run), and the minimal as-built spec below.',
+    '2. Add the as-built spec as `## ADDED Requirements` in `specs/<capability>/spec.md`, naming a capability for the module; one requirement per behaviour the characterization tests pin, each with a scenario. Each Baseline task tells the developer to tag its test with `[spec:<capability>/<slug>]` of the requirement it demonstrates.',
+    '3. Characterization tests describe current behaviour, never the behaviour this change wants. Core runs them against the unchanged code before the developer may touch the module, and stops the run if they fail.',
+    '',
+    'Update `tasks.md` and the delta spec through the workflow (instructions, then write_artifact). Do not change the rest of the plan. Reply with the same JSON object as before.',
+  ].join('\n') + '\n'
+}
+/** The developer's first turn under baseline on touch: characterization only, against the unchanged code. */
+export function baselineStageInstructions(uncovered: readonly string[]): string {
+  return [
+    '## Baseline stage (this turn only)',
+    '',
+    `Complete ONLY the \`Baseline\` task group in \`tasks.md\` now: the characterization tests that pin the current behaviour of ${uncovered.slice(0, 20).map(file => '`' + file + '`').join(', ')}, tagged with their as-built requirement ids. Leave every other task for your next turn.`,
+    'Do not modify any non-test file. Right after this turn Core runs the verification commands against the unchanged code; the run stops if a characterization test fails or a non-test file changed. Mark only the Baseline tasks `- [x]` and list the characterization test files under `tests`.',
+    '',
+  ].join('\n')
+}
+function baselineSection(role: AgentRole, baseline: BaselineContext | undefined): string[] {
+  if (!baseline || !(role === 'developer' || role === 'reviewer')) return []
+  const tests = baseline.tests.slice(0, 30).map(file => `- \`${file}\``)
+  return role === 'developer' ? [
+    '## Baseline',
+    '',
+    `The characterization tests passed on the unchanged code (receipt ${baseline.receiptId ?? 'unknown'}). They pin today's behaviour of the modules this change touches; when the change alters that behaviour on purpose, update the affected test and its as-built requirement through the change tasks and say so in summary. Do not weaken them otherwise.`,
+    ...tests, '',
+  ] : [
+    '## Baseline',
+    '',
+    `This change started with a Baseline: characterization tests for ${baseline.uncovered.slice(0, 10).map(file => '`' + file + '`').join(', ')} passed on the unchanged code (receipt ${baseline.receiptId ?? 'unknown'}). Check that every as-built requirement the Baseline added describes behaviour its tagged characterization test demonstrates against that code, not desired behaviour; an as-built requirement without such a test, or one that describes behaviour the code does not have, is an issue.`,
+    ...tests, '',
+  ]
+}
+
 /** The requirements the developer tags so Core can trace them to tests (spec-trace). */
 function requirementTagsSection(ids: string[] | undefined): string[] {
   if (!ids?.length) return []
@@ -629,6 +674,7 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...changeSetSection(role, options.stance, options.changeSet),
     ...(role === 'developer' ? discardedSection(options.developer) : []),
     ...(role === 'developer' ? requirementTagsSection(options.requirementTags) : []),
+    ...baselineSection(role, options.baseline),
     ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
     ...(role === 'reviewer' ? derivationSection(options.derivation) : []),
     ...adoptedOutputSection(role, adopted),

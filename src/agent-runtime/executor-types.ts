@@ -93,6 +93,8 @@ export interface RuntimeConfig {
   /** Idempotent commands the `verify` piece runs sequentially before each verification plan (same shape as `verification`; `policy` is ignored). */
   setup?: VerificationCommand[]
   approvalBeforeArchive?: boolean
+  /** Characterize uncovered modules before changing them: a Baseline task group whose tests must pass on the base code (default false). */
+  baselineOnTouch?: boolean
   /** Review gate thresholds (0–100); unset fields keep Core's defaults. */
   review?: { minScore?: number; aspects?: Partial<Record<ReviewAspectName, number>> }
   /** What to do when the architect still reports low confidence after investigating: ask the requester (default) or proceed on stated assumptions. */

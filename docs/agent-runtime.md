@@ -339,6 +339,24 @@ node .specrails/runtime/trace.mjs --check --tests-passed   # inside an installed
 
 The capability is announced as `specTrace: 1` by `runtime api` and as `agentRuntime.specTrace` in `integration-contract.json` (schema 5.5).
 
+## Baseline on touch
+
+With `baselineOnTouch: true` in `.specrails/agent-runtime.json` (default `false`), a change that reaches code no capability describes starts by describing it: characterization tests of today's behaviour and a minimal as-built spec, proven on the unchanged code before the developer edits the module.
+
+1. **Capability map.** The archive step maintains `openspec/capability-map.json`: `{schemaVersion: 1, capabilities: {<capability>: {files, changes}}}`, merging the files each archived change touched (from Core's change set, OpenSpec and `.specrails/` paths excluded; `<repositoryId>:` prefix outside the artifact repository) into every capability of its delta specs. The file is Core metadata: new journals exclude it from the reviewed candidate, and it is committed with the change by the host. It is updated whether or not `baselineOnTouch` is on, so coverage accumulates before the setting is enabled.
+2. **Detection.** After planning, Core reads the `Blast radius` section of `design.md` (backticked paths, or the first path of each bullet; `<repositoryId>:path` for other repositories). A file needs a baseline when it exists, is code (tests, documentation, lockfiles and OpenSpec files are skipped), is not listed in the capability map, and neither its path nor one of its specific directories (`src/search/`, not a bare `src/`) appears in any `openspec/specs/*/spec.md`.
+3. **Plan.** Uncovered files send the architect, in the same session, an extra turn (invocation kind `baseline`) to insert a `## 0. Baseline` task group before the change tasks (characterization tests per module) and an as-built spec under `## ADDED Requirements` with requirements tagged per [requirement traceability](#requirement-traceability). Core validates both and spends the single repair turn otherwise.
+4. **Hard rule.** The developer's first turn (kind `baseline`) completes only the Baseline group. Core then refuses any non-test edit, checks that the verification plan reaches the characterization tests and runs the full plan on the unchanged code. A non-test edit, an unreached test, a missing verification command or a failing receipt stops the run as `blocked` with error code `baseline_characterization_failed` and a sentence naming what to fix; resume reruns the stage. Only a passing receipt lets the visit continue with the change tasks.
+5. **Review.** The developer and reviewer prompts carry a `## Baseline` section with the receipt and the characterization tests. The reviewer checks that every as-built requirement describes behaviour its tagged test demonstrates on the base code; one that does not is an issue.
+
+| Location | Content |
+| --- | --- |
+| `<backlogRoot>/.specrails/pipeline/<runId>/baseline.json` | `{schemaVersion: 1, change, status: "not-needed" \| "planned" \| "passed" \| "failed" \| "violated", recordedAt, detection: {blastRadius, covered, uncovered, skipped}, tests, receiptId?, reason?}` |
+| `runtime-result.baseline` (engine 1 `runtime run`/`resume`) | The same record, or `null` when the setting is off. |
+| `efficiencySummary.invocations.byKind.baseline`, `efficiencySummary.baseline` | Baseline turns counted apart: `{invocations, roles, costUsd, inputTokens, outputTokens}` (null when a provider reported no value). The receipts of the base-code run are ordinary verification receipts. |
+
+The capability is announced as `baselineOnTouch: 1` by `runtime api` and as `agentRuntime.baselineOnTouch` in `integration-contract.json` (schema 5.6).
+
 ## Budgets and provider capability differences
 
 | Setting | Behavior |

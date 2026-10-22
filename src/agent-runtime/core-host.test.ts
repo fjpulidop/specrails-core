@@ -18,6 +18,7 @@ import type { WorkflowState } from './workflow-types.js'
 import { compactState, runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 import { runtimeEfficiency } from './efficiency.js'
+import { efficiencySummary } from './efficiency-summary.js'
 import { runRecovery } from './recovery.js'
 import { definitionFingerprint, runWorkflow } from './workflow.js'
 import { coreNodes, type CoreNodeDeps } from './graph/nodes.js'
@@ -882,6 +883,95 @@ describe('programmatic Core host with real evidence gates', () => {
       expect(traceFile()).toMatchObject({ touchedUndemonstrated: [id], undemonstrated: [{ id, reason: 'no-test' }] })
       expect(calls.find(call => call.role === 'reviewer')!.prompt).toContain(`Not demonstrated by a tagged test that a passing verification command ran: ${id} (no-test).`)
       expect(inspectPipeline(context).completion.validation).toBe('verified')
+    })
+  })
+
+  describe('baseline on touch', () => {
+    const radius = '## Blast radius\n- `code.cjs`: returns 2\n- `back:code.cjs`: returns 2\n'
+    const touching = { ...architecture, design: architecture.design + radius }
+    const baselineFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'baseline.json'), 'utf8'))
+    const characterize = (value: number) => { for (const repository of context.repositories) write(path.join(repository.path, 'code.test.cjs'), `// spec: legacy-code/returns-the-configured-value\nif (require('./code.cjs') !== ${value}) process.exit(3)\n`) }
+    const tick = (prefix: string) => write(active('tasks.md'), readFileSync(active('tasks.md'), 'utf8').replace(`- [ ] ${prefix}`, `- [x] ${prefix}`))
+    /** Architect that answers the baseline turn by inserting the Baseline group and an as-built spec. */
+    async function architectTurn(request: AgentRequest): Promise<AgentResult> {
+      if (!request.prompt.includes('## Baseline before the change')) return result(touching)
+      const tools = new OpenSpecTools(request.openspec!)
+      await tools.execute({ action: 'instructions', artifact: 'tasks' })
+      await tools.execute({ action: 'write_artifact', path: 'tasks.md', content: '## 0. Baseline\n- [ ] 0.1 Characterize code.cjs\n\n## 1. Change\n' + readFileSync(active('tasks.md'), 'utf8') })
+      await tools.execute({ action: 'write_artifact', path: 'specs/legacy-code/spec.md', content: '## ADDED Requirements\n### Requirement: Returns the configured value\nThe module SHALL return its configured value.\n#### Scenario: Read\n- **WHEN** required\n- **THEN** it returns the configured value\n' })
+      return result({ confidence: 'high' })
+    }
+    const developerSummary = { summary: 'Characterized', files: [], tests: ['code.test.cjs'], verification: 'none', incomplete: [] }
+    beforeEach(() => {
+      config = { ...config, baselineOnTouch: true, verification: context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['code.test.cjs'] })) }
+    })
+
+    it('records the files of each archived change in the capability map', async () => {
+      config = { ...config, baselineOnTouch: false, verification: context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['-e', 'if(require("./code.cjs")!==2)process.exit(9)'] })) }
+      const state = await runCoreWorkflow(opts(fake().registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'capability-map.json'), 'utf8'))).toEqual({ schemaVersion: 1, capabilities: { feature: { files: ['back:code.cjs', 'code.cjs'], changes: [change] } } })
+      expect(existsSync(path.join(pipelineStateDirectory(context), 'baseline.json'))).toBe(false)
+    })
+
+    it('characterizes an uncovered module on the base code before the change, attributing its cost apart', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer' && request.prompt.includes('## Baseline stage (this turn only)')) { characterize(1); tick('0.1'); return result(developerSummary) }
+        if (request.role === 'developer') { develop(); characterize(2); return result({ ...developerSummary, summary: 'Implemented', files: ['code.cjs'] }) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'developer', 'reviewer'])
+      const record = baselineFile()
+      expect(record).toMatchObject({ change, status: 'passed', detection: { uncovered: ['code.cjs', 'back:code.cjs'] }, tests: ['code.test.cjs'] })
+      const receipt = JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'receipts', `${String(record.receiptId)}.json`), 'utf8'))
+      expect(receipt).toMatchObject({ valid: true })
+      expect(calls[3]!.prompt).toContain('## Baseline\n')
+      expect(calls[4]!.prompt).toContain('This change started with a Baseline')
+      const summary = efficiencySummary(state, context, config)
+      expect(summary.invocations.byKind.baseline).toBe(2)
+      expect(summary.baseline).toEqual({ invocations: 2, roles: ['architect', 'developer'], costUsd: 0.2, inputTokens: 40, outputTokens: 20 })
+    })
+
+    it('stops with a host blocker when the characterization tests fail on the base code', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer') { characterize(2); tick('0.1'); return result(developerSummary) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('blocked')
+      expect(state.error).toContain('Characterization tests fail on the base code')
+      expect(state.error).toContain('(baseline_characterization_failed)')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer'])
+      expect(baselineFile()).toMatchObject({ status: 'failed', tests: ['code.test.cjs'] })
+      expect(readFileSync(path.join(context.repositories[0]!.path, 'code.cjs'), 'utf8')).toBe('module.exports = 1\n')
+    })
+
+    it('stops when the baseline stage edits the module itself', async () => {
+      const { registry } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer') { develop(); characterize(2); return result(developerSummary) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('blocked')
+      expect(state.error).toContain('The baseline stage changed non-test files (code.cjs')
+      expect(baselineFile()).toMatchObject({ status: 'violated' })
+    })
+
+    it('adds nothing when a spec already covers the touched module', async () => {
+      write(path.join(context.artifactRoot, 'openspec', 'specs', 'value', 'spec.md'), '# value Specification\n\n## Purpose\nThe shared value.\n\n## Requirements\n### Requirement: Value\nThe system SHALL keep the value in code.cjs.\n\n#### Scenario: Read\n- **WHEN** code.cjs is required\n- **THEN** it returns the value\n')
+      write(path.join(context.artifactRoot, 'openspec', 'capability-map.json'), JSON.stringify({ schemaVersion: 1, capabilities: { feature: { files: ['back:code.cjs'], changes: ['earlier'] } } }))
+      git(context.artifactRoot, ['add', '.']); git(context.artifactRoot, ['-c', 'user.name=Runtime Fixture', '-c', 'user.email=runtime@example.invalid', 'commit', '-qm', 'specs'])
+      for (const repository of context.repositories) { write(path.join(repository.path, 'code.test.cjs'), "if (require('./code.cjs') !== 2) process.exit(3)\n"); git(repository.path, ['add', '.']); git(repository.path, ['-c', 'user.name=Runtime Fixture', '-c', 'user.email=runtime@example.invalid', 'commit', '-qm', 'test']) }
+      const { registry, calls } = fake(async request => request.role === 'architect' ? result(touching) : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(baselineFile()).toMatchObject({ status: 'not-needed', detection: { covered: ['code.cjs', 'back:code.cjs'], uncovered: [] } })
     })
   })
 

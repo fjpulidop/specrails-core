@@ -516,7 +516,8 @@ export function initializePipeline(contextInput: unknown, change: string): Pipel
       schemaVersion: 1, runId: context.runId, change, context, scopeHash: digest(canonical(context)), revision: 0,
       createdAt: now, updatedAt: now,
       phases: Object.fromEntries(PHASES.map((phase) => [phase, { status: 'pending' }])) as PipelineState['phases'],
-      artifactExclusions: ['openspec/changes/' + change],
+      // The capability map is Core metadata the archive step rewrites (graph/capability-map.ts), never part of the reviewed candidate.
+      artifactExclusions: ['openspec/changes/' + change, 'openspec/capability-map.json'],
     }
     atomicJson(path.join(pipelineStateDirectory(context), 'context.json'), context)
     saveState(state)

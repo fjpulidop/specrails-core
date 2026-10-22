@@ -8,7 +8,7 @@ import {
   type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type CandidateFileChange, type PipelineContext, type VerificationCommand,
 } from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
-import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, correctionInstructions, deepenInstructions, roleInstructions, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
+import { ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA, baselinePlanInstructions, baselineStageInstructions, correctionInstructions, deepenInstructions, roleInstructions, type BaselineContext, type FrozenCriterion, type RoleFeedback } from '../prompts.js'
 import type { JsonValue, NodeResult, WorkflowNode, WorkflowState, WorkflowStepContext } from '../workflow-types.js'
 import { archive, child, journal, object, parseArchitecture, proposedVerification, write, writeDesignConfidence } from './artifacts.js'
 import { evaluateReview, type ReviewPolicy } from './review-policy.js'
@@ -16,6 +16,8 @@ import { riskFinding, settleReviewBrief } from './review-brief.js'
 import { writeReviewBriefRecord } from './review-brief-record.js'
 import { recordSpecTrace, specTraceFinding } from './spec-trace-record.js'
 import { touchedRequirements } from '../../pipeline/spec-trace.js'
+import { CAPABILITY_MAP_PATH, recordArchivedChange } from './capability-map.js'
+import { BASELINE_BLOCKER, detectBaseline, nonTestEdits, readBaselineRecord, testEdits, validateBaselinePlan, writeBaselineRecord, type BaselineRecord } from './baseline.js'
 import { DEFAULT_CLARIFICATION_POLICY, blockingClarifications, clarificationQuestion, designAssumptions, parseClarifications, validateDesignSections, writeClarificationsRecord } from './clarifications.js'
 import { describeDrift } from '../compact/environment.js'
 import { adoptedOutputNote, environmentFailure, hostPreconditionMessage, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../verification-repair.js'
@@ -101,6 +103,11 @@ export function developerRecord(output: Record<string, unknown> | undefined, tex
   }
 }
 
+/** The passed baseline of this change, for the developer and reviewer prompts. */
+function baselinePromptContext(context: PipelineContext, change: string): BaselineContext | undefined {
+  const record = readBaselineRecord(context)
+  return record?.change === change && record.status === 'passed' ? { ...(record.receiptId ? { receiptId: record.receiptId } : {}), tests: record.tests, uncovered: record.detection.uncovered } : undefined
+}
 /** Requirement ids the change's delta specs add, modify or rename; none when they cannot be read. */
 function touchedRequirementIds(context: PipelineContext, change: string): string[] {
   try { return touchedRequirements(context.artifactRoot, change) } catch { return [] }
@@ -162,12 +169,13 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
       const first = await invoke('architect', step, { prompt, structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA }, accept)
       if (!first.ok) return settle(first, 'Resume to run the architect again, or raise limits.timeoutMs.')
       let architecture = first.value
+      let sessionId = first.result.sessionId
       let passes = state.deepenPasses
       if (architecture.confidence === 'low' && passes < MAX_DEEPEN_PASSES) {
         passes += 1
         note('architect', `Design confidence is low${architecture.question ? ` (${architecture.question})` : ''}; asking the architect to investigate the code further before deciding.`)
         const second = await invoke('architect', step, { kind: 'deepen', prompt: deepenInstructions(architecture.question), fallbackPrompt: prompt + '\nPrevious response (bounded):\n' + first.text.slice(-32_000) + '\n' + deepenInstructions(architecture.question), structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA, resumeSessionId: first.result.sessionId }, accept)
-        if (second.ok) architecture = second.value
+        if (second.ok) { architecture = second.value; sessionId = second.result.sessionId ?? sessionId }
         else note('architect', `The investigation pass could not be used (${second.error}); keeping the first design.`)
       }
       const blocking = blockingClarifications(architecture.clarifications, policy)
@@ -197,13 +205,31 @@ function architectNode(deps: CoreNodeDeps): CoreNode {
       }
       const workflow = new OpenSpecTools(deps.openspec.architect, step.signal)
       workflow.assertParticipation()
-      const applied = await workflow.assertReady()
-      const specs = Object.keys((await workflow.status()).artifactPaths).length ? (applied.contextFiles.specs ?? []) : []
-      const names = (Array.isArray(specs) ? specs : [specs]).map(file => path.basename(path.dirname(file)))
+      let applied = await workflow.assertReady()
       const proposed = proposedVerification(context, config.verification, architecture.verification)
       writeDesignConfidence(context, change, architecture, { assumed })
       writeClarificationsRecord(context, { change, policy, status: 'proceeded', clarifications: architecture.clarifications, blocking: [], answers, assumptions: designAssumptions(context, change) })
       if (architecture.clarifications.length) note('architect', `Proceeding on ${plural(architecture.clarifications.length, 'clarification')} recorded under Assumptions in design.md.`)
+      if (config.baselineOnTouch) {
+        // Baseline on touch: code the blast radius reaches that no capability
+        // covers gets characterization tests and an as-built spec first.
+        const detection = detectBaseline(context, change)
+        if (!detection.uncovered.length) writeBaselineRecord(context, { change, status: 'not-needed', detection, tests: [] })
+        else {
+          note('architect', `The blast radius reaches ${plural(detection.uncovered.length, 'file')} no capability covers (${detection.uncovered.slice(0, 8).join(', ')}); asking the architect for a Baseline task group.`)
+          const instructions = baselinePlanInstructions(detection.uncovered)
+          const planned = await invoke('architect', step, { kind: 'baseline', prompt: instructions, fallbackPrompt: prompt + '\n' + instructions, structured: true, outputSchema: ARCHITECT_OUTPUT_SCHEMA, ...(sessionId ? { resumeSessionId: sessionId } : {}) }, output => {
+            object(output)
+            validateBaselinePlan(context, change)
+            return true
+          })
+          if (!planned.ok) return settle(planned, 'Resume to run the architect again, or raise limits.timeoutMs.')
+          applied = await workflow.assertReady()
+          writeBaselineRecord(context, { change, status: 'planned', detection, tests: [] })
+        }
+      }
+      const specs = Object.keys((await workflow.status()).artifactPaths).length ? (applied.contextFiles.specs ?? []) : []
+      const names = (Array.isArray(specs) ? specs : [specs]).map(file => path.basename(path.dirname(file)))
       const effective = initializeVerificationPlan(context, config.verification, proposed, config.efficiency?.verification?.maxConcurrency)
       bindPlan(context, effective)
       const plan = expandedPlanCommands(context, effective)
@@ -250,7 +276,8 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
   // What the run has changed so far, from git: a correction stays inside it.
   const changes = state.development ? measuredChange(context, change) : undefined
   const requirementTags = touchedRequirementIds(context, change)
-  const full = roleInstructions('developer', context, change, { definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(requirementTags.length ? { requirementTags } : {}) }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
+  const developerPrompt = (): string => roleInstructions('developer', context, change, { ...(baselinePromptContext(context, change) ? { baseline: baselinePromptContext(context, change)! } : {}), definition: fixing ? config.rolePrompts?.fixer : config.rolePrompts?.developer, ...(fixing ? { stance: 'fixer' as const } : {}), feedback, verification: state.plan, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(requirementTags.length ? { requirementTags } : {}) }) + (config.efficiency?.acceptDeveloperChecks !== false ? '\nYou may propose verificationChecks in your JSON summary. These are additive required checks, never replacements for the baseline. Use kind command with structured command/args, or kind harness with entrypoint and 1–8 relative source files (64 KiB each, 256 KiB total). Core persists harnesses outside delivery, appends the absolute entrypoint to argv and supplies SPECRAILS_CHECK_REPO_ROOT. Stable keys revise your own checks; omission retains them. Do not claim a check passed until Core has executed it.' : '')
+  let full = developerPrompt()
   const previous = state.development
   // A CLI developer with a live session takes corrections and continuations
   // as a short follow-up in that session; a configured fixer engine always
@@ -258,6 +285,13 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
   const visits = developerVisitsSinceResume(step.checkpoint) + fixerVisitsSinceResume(step.checkpoint)
   const resumable = !fixer && previous?.sessionId !== undefined && previous.provider === provider && visits > 1
   if (fixer) note('fixer', `Correction round on the fixer engine (${fixer.provider}/${fixer.model ?? 'provider default'}).`)
+  // Baseline on touch: characterization comes first and must pass on the unchanged code.
+  const baseline = !fixing && config.baselineOnTouch ? readBaselineRecord(context) : null
+  if (baseline && baseline.change === change && baseline.status !== 'passed' && baseline.status !== 'not-needed') {
+    const stopped = await baselineStage(deps, step, baseline, full, provider)
+    if (stopped) return stopped
+    full = developerPrompt()
+  }
   // Out-of-scope state before the turn: afterwards the host undoes exactly what the turn did outside the scope.
   const guard = captureOutOfScope(context, change)
   const outcome = await invoke('developer', step, {
@@ -304,6 +338,48 @@ async function implementationVisit(deps: CoreNodeDeps, state: CoreStateType, ste
     status: 'succeeded', next: 'verify', update: { development: record, plan: expandedPlanCommands(context, effective) },
     output: { summary: record.summary, provider, ...(record.sessionId ? { sessionId: record.sessionId } : {}), files: record.files, tests: record.tests, incomplete: record.incomplete as unknown as JsonValue, structured: record.structured },
   }
+}
+
+/**
+ * The baseline stage of a developer visit: the developer writes only the
+ * characterization tests and the as-built spec, Core checks that no non-test
+ * file changed and runs the verification plan on the unchanged code. A failure
+ * stops the run with an explicit host blocker; a pass is recorded with its
+ * receipt and the visit continues with the change tasks.
+ */
+async function baselineStage(deps: CoreNodeDeps, step: WorkflowStepContext, record: BaselineRecord, full: string, provider: string): Promise<Result | undefined> {
+  const { context, change, invoke, note } = deps
+  const uncovered = record.detection.uncovered
+  const stop = (status: 'failed' | 'violated', reason: string, extra: Partial<BaselineRecord> = {}): Result => {
+    writeBaselineRecord(context, { ...record, ...extra, status, reason })
+    note('developer', reason)
+    return { status: 'blocked', error: `${reason} (${BASELINE_BLOCKER})`, usage: NO_SPEND }
+  }
+  note('developer', `Baseline stage: characterization tests for ${uncovered.slice(0, 8).join(', ')} before the change touches them.`)
+  const guard = captureOutOfScope(context, change)
+  const outcome = await invoke('developer', step, { kind: 'baseline', prompt: full + '\n' + baselineStageInstructions(uncovered), structured: true, lenient: true, outputSchema: DEVELOPER_OUTPUT_SCHEMA },
+    (output, text, result) => developerRecord(output, text, result, provider))
+  try { discardOutOfScopeEdits(context, guard) }
+  catch (error) { return { status: 'blocked', error: `Developer edited files outside the repository scope during the baseline stage and Core could not undo them: ${error instanceof Error ? error.message : String(error)}. Restore those files, then resume.` } }
+  if (!outcome.ok) return settle(outcome, 'Resume to run the baseline stage again, or raise limits.timeoutMs.')
+  const changed = changeSet(context, change).flatMap(set => set.files.map(file => ({ repositoryId: set.repositoryId, path: file.path })))
+  const edited = nonTestEdits(changed.map(file => file.path))
+  if (edited.length) return stop('violated', `The baseline stage changed non-test files (${edited.slice(0, 10).join(', ')}); the module must stay untouched until its characterization tests pass on the base code. Restore those files, then resume`)
+  const tests = testEdits([...new Set([...outcome.value.tests, ...changed.map(file => file.path)])])
+  const effective = readVerificationPlan(context)
+  const plan = effective ? expandedPlanCommands(context, effective) : []
+  if (!effective || !plan.length) return stop('failed', 'No verification command can run the characterization tests on the base code; configure one for the repository, then resume', { tests })
+  const unreached = context.repositories.flatMap(repository => unreachedTestFiles(repository.path, plan.filter(command => command.repositoryId === repository.id).map(({ command, args, cwd }) => ({ command, args, ...(cwd ? { cwd } : {}) })), tests))
+  if (unreached.length) return stop('failed', `No verification command runs the characterization tests ${unreached.join(', ')}; wire them into the repository's test command, then resume`, { tests })
+  const uncoveredRepositories = context.repositories.filter(repository => !plan.some(command => command.repositoryId === repository.id)).map(repository => repository.id)
+  const receipt = await verifyPipeline(context, { kind: 'full', planHash: effective.planHash, commands: plan, ...(uncoveredRepositories.length ? { unverified: true } : {}) }, deps.onVerificationOutput, step.signal)
+  if (!receipt.valid) {
+    const failing = receipt.commands.filter(command => command.exitCode !== 0).map(command => [command.command, ...command.args].join(' '))
+    return stop('failed', `Characterization tests fail on the base code (receipt ${receipt.id}${failing.length ? ': ' + failing.join('; ') : ''}): they do not describe the current behaviour of ${uncovered.slice(0, 8).join(', ')}. Make the characterization tests describe what the code does today (never change the module to match them), then resume`, { tests, receiptId: receipt.id })
+  }
+  writeBaselineRecord(context, { ...record, status: 'passed', tests, receiptId: receipt.id, reason: undefined })
+  note('developer', `Baseline passed on the base code (receipt ${receipt.id}, ${plural(tests.length, 'characterization test file')}); continuing with the change.`)
+  return undefined
 }
 
 function developerNode(deps: CoreNodeDeps): CoreNode {
@@ -536,7 +612,8 @@ function reviewerNode(deps: CoreNodeDeps): CoreNode {
       if (reReview) note('reviewer', `Re-review: ${plural(reReview.changes.length, 'file')} changed since the previous verdict; certifying the previous issues instead of re-reading the candidate.`)
       // The reviewer judges the change itself, measured from git — not the whole checkout.
       const changes = measuredChange(context, change)
-      const prompt = roleInstructions('reviewer', context, change, { definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
+      const baselineContext = baselinePromptContext(context, change)
+      const prompt = roleInstructions('reviewer', context, change, { ...(baselineContext ? { baseline: baselineContext } : {}), definition: config.rolePrompts?.reviewer, feedback: feedbackFor(state), verification: state.plan, policy, criteria, developer: state.development, ...(changes ? { changeSet: changes } : {}), ...(reReview ? { reReview } : {}) })
       const incremental = config.efficiency?.reviewMode !== 'full' && delta.mode === 'incremental' && state.review?.sessionId
       const followup = correctionInstructions('reviewer', feedbackFor(state), { focusedEvidence: deps.focusedCorrectionEvidence && config.efficiency?.contextMode !== 'full' }) + '\nChanges since YOUR previous reviewed candidate:\n' + JSON.stringify(delta.changes)
         + (changes ? '\nThe complete change under review (from git, against the run\'s base) — review these files only:\n' + changes.join('\n') : '')
@@ -591,7 +668,12 @@ function archiveNode(deps: CoreNodeDeps): CoreNode {
         step.reportUsage(NO_SPEND)
         step.interrupt<{ approved: true }>({ kind: 'approval', reason: 'Approve archive after inspecting the verified implementation' })
       }
-      await archive(context, change, step.signal)
+      await archive(context, change, step.signal, { beforeDone: archived => {
+        // Only journals that exclude the map from the candidate may rewrite it (older runs keep their reviewed hash).
+        if (!journal(context).artifactExclusions.includes(CAPABILITY_MAP_PATH)) return
+        try { recordArchivedChange(context, change, archived) }
+        catch (error) { deps.note('architect', `The capability map could not be updated (${error instanceof Error ? error.message : String(error)}); baseline detection will not see this change.`) }
+      } })
       const record = { archivePath: journal(context).archivePath!, deliveryOwner: context.ownership.git }
       return { status: 'succeeded', next: null, update: { archived: record }, output: record, usage: NO_SPEND }
     },

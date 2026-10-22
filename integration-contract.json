@@ -292,6 +292,19 @@
       "driftSweepDefinition": "src/agent-runtime/engine/__fixtures__/drift-sweep.json (read-only role-turn of a host-declared read role drift-auditor; structured output {divergences[{capability, requirement, observed}], unchecked[]})",
       "documentation": "docs/agent-runtime.md#requirement-traceability"
     },
+    "baselineOnTouch": {
+      "version": 1,
+      "capability": "baselineOnTouch",
+      "config": "baselineOnTouch: boolean (default false) in .specrails/agent-runtime.json",
+      "capabilityMap": "openspec/capability-map.json {schemaVersion: 1, capabilities: {<capability>: {files: string[], changes: string[]}}}; the archive step merges the files each archived change touched into every capability of its delta specs (paths prefixed '<repositoryId>:' outside the artifact repository); excluded from the reviewed candidate",
+      "detection": "after planning, design.md Blast radius files that exist, are code (not tests, docs or lockfiles) and appear neither in the capability map nor as a path or specific directory in openspec/specs are uncovered",
+      "plan": "uncovered files make the architect add a '## 0. Baseline' task group (characterization tests of current behaviour plus a minimal as-built spec under ADDED Requirements, requirements tagged per specTrace) in the same session",
+      "hardRule": "the developer's first turn writes only the Baseline group; Core refuses non-test edits and runs the verification plan on the unchanged code; failure stops the run (status blocked, error code baseline_characterization_failed) before the developer touches the module",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/baseline.json {schemaVersion: 1, change, status: not-needed | planned | passed | failed | violated, recordedAt, detection {blastRadius, covered, uncovered, skipped}, tests, receiptId?, reason?}",
+      "runResult": "runtime-result.baseline: the record | null (engine 1 builtin runs)",
+      "cost": "baseline turns run with invocation kind 'baseline'; efficiencySummary.invocations.byKind.baseline and efficiencySummary.baseline {invocations, roles, costUsd, inputTokens, outputTokens} keep their spend apart",
+      "documentation": "docs/agent-runtime.md#baseline-on-touch"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
