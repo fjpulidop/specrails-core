@@ -32,7 +32,7 @@ let config: RuntimeConfig
 const change = 'programmatic-feature'
 const usage = { costUsd: 0.1, inputTokens: 20, outputTokens: 10 }
 const architecture = {
-  proposal: '# Feature\nImplement the frozen feature.', design: '# Design\nUpdate both selected repositories.',
+  proposal: '# Feature\nImplement the frozen feature.', design: '# Design\nUpdate both selected repositories.\n## Non-Goals\n- No change outside the two repositories.\n',
   tasks: [{ title: 'Implement the feature and validate both repositories' }],
   specs: [{ name: 'feature', content: '## ADDED Requirements\n### Requirement: Implement shared behavior\nBoth repositories SHALL return 2.\n#### Scenario: Requested behavior\n- **WHEN** the feature is called\n- **THEN** Both repositories return 2.\n' }], confidence: 'high',
 }
@@ -751,6 +751,97 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(state.steps.architect?.visits).toBe(1)
     expect(state.pendingQuestion).toBeUndefined()
     expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
+  })
+
+  describe('architect clarifications', () => {
+    const blockingQuestion = 'Should archived projects appear in search?'
+    const recordFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'clarifications.json'), 'utf8'))
+
+    it('pauses before planning on a high-impact question without a safe default and resumes with the answer', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') {
+          if (request.prompt.includes('## Answers from the requester')) return result({ ...architecture, design: architecture.design + '## Assumptions\n- Archived projects: excluded, as answered.\n', clarifications: [{ question: blockingQuestion, impact: 'high', default: 'Excluded, as answered' }] })
+          // Clarification-only reply: no artifacts are authored before the answer.
+          return result({ confidence: 'high', clarifications: [{ question: blockingQuestion, impact: 'high', default: null }, { question: 'Page size?', impact: 'low', default: '25' }] })
+        }
+        if (request.role === 'developer') { develop(); return result('Done') }
+        return result(review)
+      })
+      const paused = await runCoreWorkflow(opts(registry))
+      expect(paused.status).toBe('paused')
+      expect(paused.pendingQuestion).toMatchObject({ stepId: 'architect', question: blockingQuestion })
+      expect(calls.map(call => call.role)).toEqual(['architect'])
+      expect(calls[0]!.prompt).toContain('Clarification policy: ask-on-high')
+      expect(existsSync(active('proposal.md'))).toBe(false)
+      expect(inspectPipeline(context).phases.architect.status).toBe('blocked')
+      expect(recordFile()).toMatchObject({ schemaVersion: 1, change, policy: 'ask-on-high', status: 'awaiting-answers', blocking: [{ question: blockingQuestion, impact: 'high', default: null }], answers: [] })
+      const state = await runCoreWorkflow(opts(registry, { resume: true, answer: 'Exclude archived projects.' }))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+      expect(calls[1]!.prompt).toContain('1. Exclude archived projects.')
+      expect(recordFile()).toMatchObject({ status: 'proceeded', blocking: [], answers: ['Exclude archived projects.'], assumptions: ['- Archived projects: excluded, as answered.'] })
+      expect(state.steps.architect?.output).toMatchObject({ clarifications: [{ question: blockingQuestion, impact: 'high', default: 'Excluded, as answered' }] })
+    })
+
+    it('proceeds on low-impact clarifications and records the assumptions written in design.md', async () => {
+      const design = architecture.design + '## Assumptions\n- Page size? Assumed 25, as in the projects list.\n'
+      const { registry, calls } = fake(async request => request.role === 'architect'
+        ? result({ ...architecture, design, clarifications: [{ question: 'Page size?', impact: 'low', default: '25' }] })
+        : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(recordFile()).toMatchObject({ status: 'proceeded', clarifications: [{ question: 'Page size?', impact: 'low', default: '25' }], blocking: [], assumptions: ['- Page size? Assumed 25, as in the projects list.'] })
+    })
+
+    it('proceeds without clarifications and records an empty list', async () => {
+      const { registry, calls } = fake()
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(recordFile()).toMatchObject({ status: 'proceeded', clarifications: [], blocking: [], answers: [], assumptions: [] })
+      expect(state.steps.architect?.output).toMatchObject({ clarifications: [] })
+    })
+
+    it('never pauses under always-proceed', async () => {
+      config = { ...config, architect: { clarifications: 'always-proceed' } }
+      const design = architecture.design + '## Assumptions\n- Archived projects: excluded by default.\n'
+      const { registry, calls } = fake(async request => request.role === 'architect'
+        ? result({ ...architecture, design, clarifications: [{ question: blockingQuestion, impact: 'high', default: null }] })
+        : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls[0]!.prompt).toContain('Clarification policy: always-proceed')
+      expect(recordFile()).toMatchObject({ policy: 'always-proceed', status: 'proceeded', assumptions: ['- Archived projects: excluded by default.'] })
+    })
+
+    it('repairs a design without Non-Goals in the same architect session', async () => {
+      let architectCalls = 0
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') {
+          architectCalls++
+          if (architectCalls === 1) return { ...result({ ...architecture, design: '# Design\nUpdate both selected repositories.' }), sessionId: 'arch' }
+          expect(request.resumeSessionId).toBe('arch')
+          expect(request.prompt).toContain('Invalid design.md')
+          writeFileSync(active('design.md'), architecture.design)
+          return result({ confidence: 'high' })
+        }
+        return request.role === 'developer' ? (develop(), result('Done')) : result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    })
+
+    it('fails the architect when the repaired design still has no Non-Goals', async () => {
+      let architectCalls = 0
+      const { registry } = fake(async request => request.role === 'architect'
+        ? (++architectCalls === 1 ? result({ ...architecture, design: '# Design\n## Non-Goals\n<!-- What is explicitly out of scope -->\n' }) : result({ confidence: 'high' }))
+        : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('failed')
+      expect(state.error).toContain('Invalid design.md')
+    })
   })
 
   it('lets the architect investigate once in its own session before anyone is asked', async () => {

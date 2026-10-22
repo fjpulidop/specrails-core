@@ -17,7 +17,7 @@ it.each([ARCHITECT_OUTPUT_SCHEMA, DEVELOPER_OUTPUT_SCHEMA, REVIEW_OUTPUT_SCHEMA]
   expect(schema).toEqual(original)
 })
 it('accepts the architect response with null optional fields and restores the original contract', () => {
-  const raw = { confidence: 'high', question: null, planningDepth: null, planningReason: null, referencePatterns: null, riskFlags: null, verification: [{ repositoryId: 'front', command: 'npm', args: ['test'], cwd: null }] }
+  const raw = { confidence: 'high', question: null, clarifications: null, planningDepth: null, planningReason: null, referencePatterns: null, riskFlags: null, verification: [{ repositoryId: 'front', command: 'npm', args: ['test'], cwd: null }] }
   expect(new Ajv().compile(codexOutputSchema(ARCHITECT_OUTPUT_SCHEMA))(raw)).toBe(true)
   const restored = restoreOptionalFields(raw, ARCHITECT_OUTPUT_SCHEMA)
   expect(restored).toEqual({ confidence: 'high', verification: [{ repositoryId: 'front', command: 'npm', args: ['test'] }] })

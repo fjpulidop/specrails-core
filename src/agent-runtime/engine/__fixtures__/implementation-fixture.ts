@@ -34,7 +34,7 @@ export function implementationFixture(approval = false) {
         await tools.execute({ action: 'new' })
         const files = [
           ['proposal', 'proposal.md', '# Why\nReturn two.\n# What Changes\nUpdate the function.\n# Capabilities\n## New Capabilities\n- feature: Return the required value.\n# Impact\nOne function.'],
-          ['design', 'design.md', '# Design\nUpdate code.cjs and verify the return value.'],
+          ['design', 'design.md', '# Design\nUpdate code.cjs and verify the return value.\n## Non-Goals\n- Nothing outside code.cjs.\n'],
           ['specs', `specs/${capability}/spec.md`, '## ADDED Requirements\n### Requirement: Return the required value\nThe function SHALL return 2.\n#### Scenario: Calling the function\n- **WHEN** code.cjs is loaded\n- **THEN** it returns 2\n'],
           ['tasks', 'tasks.md', '- [ ] 1. Implement the return value and verify behavior\n'],
         ]
