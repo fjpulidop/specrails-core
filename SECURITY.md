@@ -4,10 +4,11 @@
 
 | Version | Supported |
 |---------|-----------|
-| Latest 6.x release | ✅ |
-| 5.x and older | ❌ |
+| Latest 6.x minor (npm `latest`, currently 6.6.x) | ✅ |
+| Version on the npm `stable` dist-tag | ✅ |
+| Older releases, including 5.x | ❌ |
 
-We only provide security fixes for the latest release. Please upgrade to the latest version before reporting a vulnerability.
+Security fixes are released as a patch of the latest 6.x minor. When the version on `stable` is affected, the fix is promoted to `stable` (see the [release policy](docs/release-policy.md)) or the advisory tells `stable` users which version to upgrade to. Please reproduce on one of the supported versions before reporting a vulnerability.
 
 ## Reporting a Vulnerability
 

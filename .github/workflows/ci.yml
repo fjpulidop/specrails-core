@@ -142,6 +142,28 @@ jobs:
           path: coverage/
           retention-days: 14
 
+  # Desktop <-> Core contract versioning (docs/release-policy.md): a changed
+  # integration-contract.json must bump schemaVersion; removals and type
+  # changes need a major bump plus a `!`/BREAKING CHANGE declaration.
+  contract-policy:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Require a schemaVersion bump for contract changes
+        env:
+          CONTRACT_BASE_REF: ${{ github.event.pull_request.base.sha }}
+          CONTRACT_HEAD_REF: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: node scripts/check-contract-bump.mjs
+
   workflow-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -1,0 +1,51 @@
+name: Promote stable
+
+# Moves the npm `stable` dist-tag to an already-published version. Manual only,
+# monthly by policy (docs/release-policy.md). Never publishes or tags.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Published version to promote (X.Y.Z); published 7+ days ago, no same-minor patch within that week, green tag CI'
+        type: string
+        required: true
+      dry_run:
+        description: 'Only check the guards; do not move the dist-tag'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# Shares the release group so a publication and a promotion never race npm dist-tags.
+concurrency:
+  group: core-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Validate version syntax before checkout
+        env:
+          PROMOTE_VERSION: ${{ inputs.version }}
+        run: |
+          node -e 'if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(process.env.PROMOTE_VERSION || "")) process.exit(1)'
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+      - name: Check guards and promote to stable
+        env:
+          PROMOTE_VERSION: ${{ inputs.version }}
+          PROMOTE_DRY_RUN: ${{ inputs.dry_run }}
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ !inputs.dry_run && secrets.NPM_TOKEN || '' }}
+        run: node scripts/promote-stable.mjs
