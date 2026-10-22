@@ -305,7 +305,7 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   if (pathExists(installedMarker)) assertNoCoreDowngrade(readTextFile(installedMarker).trim(), version)
   const previousSelections = snapshotWorkspaceProviderSelections(artifactRoot)
   const surfaces = [
-    ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', '.gitignore'].map((name) => path.join(artifactRoot, name)),
+    ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', 'CLAUDE.md', '.gitignore'].map((name) => path.join(artifactRoot, name)),
     ...['specrails-version', 'specrails-manifest.json', 'setup-templates', 'runtime'].map((name) => path.join(artifactRoot, '.specrails', name)),
     path.join(fwDir, 'current'),
     // Contents deliberately NOT snapshotted: `installFramework` rebuilds a
