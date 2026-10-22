@@ -50,6 +50,10 @@ Security patches are released as patch versions as soon as practicable. We recom
 
 Subscribe to [GitHub security advisories](https://github.com/fjpulidop/specrails-core/security/advisories) for this repository to receive notifications.
 
+## Secrets in local state
+
+The agent session journal (`~/.specrails/sessions/<scope>/sessions.sqlite`) is private to the current user and redacts recognisable secrets in tool input and output before it stores them. Redaction is best effort: it covers secret-like names, authorization headers, credential flags, URL passwords, common key formats and private key blocks, not every possible secret. Journals written before this protection are not rewritten. See [docs/agent-sessions/journal.md](docs/agent-sessions/journal.md#secret-redaction).
+
 ## Scope
 
 This policy covers the `specrails-core` installer, the programmatic agent runtime and the templates it installs into user repositories. It does not cover vulnerabilities in third-party tools the runtime invokes (e.g., Claude Code, Codex, Gemini CLI, Kimi Code).
