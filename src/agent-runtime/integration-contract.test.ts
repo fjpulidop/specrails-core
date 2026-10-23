@@ -11,10 +11,12 @@ import { SPEC_TRACE_FILE } from '../pipeline/spec-trace.js'
 import { BASELINE_BLOCKER, BASELINE_FILE } from './graph/baseline.js'
 import { CAPABILITY_MAP_PATH } from './graph/capability-map.js'
 import { GATE_KINDS, RULES_FILE, RULE_STATUSES } from './project-rules.js'
+import { PAUSE_OUTCOMES } from './engine/runs.js'
+import { PAUSE_REASON } from './engine/steering/inbox.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_DELIVERIES, SESSION_HOST_CAPABILITIES, SESSION_PROTOCOL_VERSIONS, validatorFor } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'flowSessions', 'deriveChange'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'flowSessions', 'deriveChange', 'pauseRuns'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
@@ -39,6 +41,12 @@ describe('Desktop integration contract', () => {
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
     expect(contract.agentRuntime.instructionsVersion).toBe('17')
+  })
+
+  it('documents cooperative pause with the outcomes and reason grammar Core enforces', () => {
+    expect(contract.agentRuntime.pauseRuns).toMatchObject({ version: 1, capability: 'pauseRuns', outcomes: [...PAUSE_OUTCOMES] })
+    expect(contract.agentRuntime.pauseRuns.reason).toContain(PAUSE_REASON.source)
+    expect(contract.agentRuntime.cliOperations).toContain('pause')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {

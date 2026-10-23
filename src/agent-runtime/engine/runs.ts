@@ -15,7 +15,7 @@ import { EngineEventStream } from './events.js'
 import { initialDefinitionState } from './state.js'
 import { preflightDefinition, type DefinitionRunInput, type DefinitionRunRequest } from './preflight.js'
 import { observeLedger, projectRunStatus } from './run-status.js'
-import { ControlInbox } from './steering/inbox.js'
+import { ControlInbox, PAUSE_REASON } from './steering/inbox.js'
 import { ledgerBudget } from './invocation-context.js'
 import { composeDefinitionRuntime } from './composition.js'
 import { createEngineTelemetry } from './otel.js'
@@ -141,6 +141,8 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
     }
     if (resume) database.transaction('workflow-resumed', () => {
       lease.assert(token)
+      // An explicit resume supersedes pause requests that arrived before it.
+      inbox.consumePauses()
       appendRunEvent(database, runId, 'workflow_resumed', {})
     })
     stream.flush()
@@ -162,23 +164,42 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
     // A lost owner may observe, but can never settle effects after a newer epoch.
     if (controller.signal.reason instanceof EngineError && controller.signal.reason.code === 'lease_lost') throw controller.signal.reason
     const reason = controller.signal.aborted ? controller.signal.reason : error
-    const code = reason instanceof EngineError || reason && typeof reason === 'object' && 'code' in reason ? String((reason as { code: unknown }).code) : 'execution_failed'
+    const pause = controller.signal.aborted ? undefined : pauseOf(error)
+    const code = pause ? 'paused' : reason instanceof EngineError || reason && typeof reason === 'object' && 'code' in reason ? String((reason as { code: unknown }).code) : 'execution_failed'
     const message = reason instanceof Error ? reason.message : String(reason)
+    let settled: string | undefined
     database.transaction('execution-stopped', () => {
       lease.assert(token)
       const row = ledger.run()
       if (row.completion_json) return
-      const status = code === 'aborted' ? 'cancelled' : row.status === 'interrupted' || code === 'recover_required' ? 'interrupted' : 'failed'
+      const status = code === 'aborted' ? 'cancelled' : pause ? 'paused' : row.status === 'interrupted' || code === 'recover_required' ? 'interrupted' : 'failed'
+      settled = status
       database.put('runs', { ...row, status, active_duration_ms: ledger.activeDurationMs(), active_started_at: null, updated_at: new Date().toISOString() })
-      appendRunEvent(database, runId, status === 'cancelled' ? 'workflow_cancelled' : 'workflow_failed', { error: { code, message } })
+      if (pause) {
+        inbox.consumePauses()
+        appendRunEvent(database, runId, 'workflow_paused', { requestId: pause.requestId, reason: pause.reason })
+      } else appendRunEvent(database, runId, status === 'cancelled' ? 'workflow_cancelled' : 'workflow_failed', { error: { code, message } })
     })
     if (inbox.cancellationRequested()) inbox.acknowledgeCancellation(token)
     const status = projectRunStatus(ledger)
-    return { ...status, error: { code, message } }
+    // A requested pause is a resumable stop, not a failure.
+    return settled === 'paused' ? status : { ...status, error: { code, message } }
   } finally {
     clearInterval(controlTimer); stopHeartbeat(); options.signal?.removeEventListener('abort', abort)
     runtime?.close(); stream.flush(); lease.release(token); await telemetry?.close()
   }
+}
+
+/** The pause request carried by an admission refusal, also when several branches refused together. */
+function pauseOf(error: unknown): { requestId: string; reason: string } | undefined {
+  const errors = error instanceof AggregateError ? error.errors : [error]
+  for (const value of errors) {
+    if (value instanceof EngineError && value.code === 'paused' && value.details && typeof value.details === 'object' && !Array.isArray(value.details)) {
+      const details = value.details as { requestId?: unknown; reason?: unknown }
+      if (typeof details.requestId === 'string' && typeof details.reason === 'string') return { requestId: details.requestId, reason: details.reason }
+    }
+  }
+  return undefined
 }
 
 function validateAnswers(ledger: RunLedger, answers: Record<string, JsonValue>): void {
@@ -217,5 +238,54 @@ export async function cancelRun(directory: string, requestId?: string) {
       inbox.acknowledgeCancellation(token)
     } finally { lease.release(token) }
     return accepted
+  } finally { database.close() }
+}
+
+export const PAUSE_OUTCOMES = ['requested', 'paused', 'already-paused', 'not-running', 'terminal'] as const
+export type PauseOutcome = typeof PAUSE_OUTCOMES[number]
+export interface PauseResult { runId: string; requestId: string; reason: string; outcome: PauseOutcome; status: string; createdAt?: string }
+
+/**
+ * Cooperative pause. A run executing under a live lease receives an idempotent
+ * inbox request: its in-flight attempts finish and commit, the next admission is
+ * refused, and the owner settles `paused` with the reason and releases its lease.
+ * A run whose owner is gone while still marked running is settled `paused`
+ * directly. Terminal, already paused or otherwise stopped runs are left
+ * unchanged and reported as such. `runtime resume` continues every paused run.
+ */
+export async function pauseRun(directory: string, options: { requestId?: string; reason?: string } = {}): Promise<PauseResult> {
+  const reason = options.reason ?? 'requested', requestId = options.requestId ?? randomUUID()
+  if (!PAUSE_REASON.test(reason)) throw new EngineError('invalid_arguments', 'Pause reason must be a lowercase token of 1–64 characters (for example requested or budget)')
+  if (!requestId || requestId.length > 256) throw new EngineError('invalid_arguments', 'Control request ID must contain 1–256 characters')
+  const database = await RunDatabase.open(path.join(directory, 'run.sqlite'))
+  try {
+    const view = observeLedger(database), runId = view.runId
+    const result = (outcome: PauseOutcome, createdAt?: string): PauseResult => ({ runId, requestId, reason, outcome, status: String(view.run().status), ...(createdAt ? { createdAt } : {}) })
+    const terminal = () => { const row = view.run(); return !!row.completion_json || row.status === 'succeeded' || row.status === 'cancelled' }
+    if (terminal()) return result('terminal')
+    // Only this exact package can resume the run, so only it may pause it.
+    if (!sameRuntimeIdentity(JSON.parse(String(view.run().runtime_identity_json)) as RuntimeIdentity, coreRuntimeIdentity())) throw new EngineError('resume_incompatible', 'Pause requires the retained original Core package')
+    const lease = new RunLease(database, runId)
+    if ((lease.current()?.expiresAt ?? 0) > Date.now()) {
+      database.upgradeSchema()
+      const accepted = new ControlInbox(database, runId).pause(reason, requestId)
+      return result('requested', accepted.createdAt)
+    }
+    if (view.run().status === 'paused') return result('already-paused')
+    if (view.run().status !== 'running') return result('not-running')
+    const token = lease.acquire(randomUUID())
+    let outcome: PauseOutcome = 'paused'
+    try {
+      const ledger = new RunLedger(database, token, { maxTransitions: 1 })
+      database.transaction('workflow-paused', () => {
+        lease.assert(token)
+        const run = ledger.run()
+        // The owner may have settled between the observation and the lease.
+        if (run.completion_json || run.status !== 'running') { outcome = run.status === 'paused' ? 'already-paused' : run.completion_json || run.status === 'succeeded' || run.status === 'cancelled' ? 'terminal' : 'not-running'; return }
+        database.put('runs', { ...run, status: 'paused', active_duration_ms: ledger.activeDurationMs(), active_started_at: null, updated_at: new Date().toISOString() })
+        appendRunEvent(database, runId, 'workflow_paused', { requestId, reason })
+      })
+    } finally { lease.release(token) }
+    return result(outcome)
   } finally { database.close() }
 }

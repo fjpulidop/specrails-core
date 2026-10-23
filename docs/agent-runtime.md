@@ -164,12 +164,13 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `a
 
 | Capability | Meaning |
 | --- | --- |
-| `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal` and `cancel` operate on those runs |
+| `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal`, `cancel` and `pause` operate on those runs |
 | `workflowDefinitions: 1` | `runtime workflows list` and `runtime workflows validate --stdin` expose the piece catalog, definition schema and Core-computed definition hash |
 | `openRoles: 1` | Declared roles with explicit access, artifact and instruction policies |
 | `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
 | `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
+| `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
 | `setupCommands: 1` | The runtime configuration accepts `setup` and the `verify` piece runs it before each plan (`setup: 'configured'` or an inline list) |
@@ -264,6 +265,12 @@ specrails-core runtime resume --context .specrails/context.json --invalidate ver
 Inspect the saved phase and worktree before using `--recover`; it authorizes repeating an effect whose completion was not durably recorded. Dead local process leases can be reclaimed. Live, remote or unverifiable leases are never silently stolen. Do not delete a lease while its process may still be running.
 
 Cancellation propagates to owned provider and verification processes. Programmatic callbacks must cooperate with `AbortSignal` and finish subprocess cleanup before returning; the engine retains its lease until they settle. A write step that settles after cancellation is recorded as interrupted and requires explicit recovery.
+
+### Pausing a run
+
+`runtime pause --context <json> [--request-id <id>] [--reason <token>]` (capability `pauseRuns: 1`, engine 2 runs) stops a workflow without cancelling it, for example when the host's daily budget is spent (`--reason budget`; the default reason is `requested`). Unlike `cancel` it never aborts work in flight: every attempt already admitted finishes and commits, the next admission is refused, and the owner records status `paused`, releases its lease and exits with code `2`. `runtime status` and `runtime-result` report `state.pause {requestId, reason, at}`; there are no pending interrupts. `runtime resume --context <json>` continues from the last committed step without repeating it and discards pause requests that arrived before the resume.
+
+The command always exits `0` with one `{type:"runtime-pause-result", runId, requestId, reason, outcome, status, createdAt?}` line. `outcome` is `requested` (a live owner will stop at its next admission; a repeated request ID returns the original record), `paused` (an ownerless run still marked running was settled directly), or a no-op: `already-paused`, `not-running` (failed, interrupted, blocked) or `terminal` (succeeded, cancelled, completed). Only the Core package that started the run may pause it (`resume_incompatible` otherwise). Recording the request upgrades a run database created before this capability (schema 1 to 2) in place.
 
 ## Acceptance evidence
 

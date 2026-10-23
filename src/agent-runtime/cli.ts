@@ -77,7 +77,7 @@ export function runtimeFailure(error: unknown) {
 }
 
 /** Machine operations are mirrored in integration-contract.json; help is presentation-only. */
-export const RUNTIME_CLI_OPERATIONS = ['api', 'validate', 'run', 'status', 'resume', 'prompts', 'capabilities', 'evidence', 'recovery', 'evaluate', 'workflows', 'fork', 'signal', 'cancel', 'host', 'help'] as const
+export const RUNTIME_CLI_OPERATIONS = ['api', 'validate', 'run', 'status', 'resume', 'prompts', 'capabilities', 'evidence', 'recovery', 'evaluate', 'workflows', 'fork', 'signal', 'cancel', 'pause', 'host', 'help'] as const
 
 function read(file: string): unknown { return JSON.parse(readFileSync(file, 'utf8')) }
 async function readStdin(): Promise<unknown> {
@@ -189,6 +189,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       'specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--scope-id <scope>] [--visit <number>] [--state <json>]',
       'specrails-core runtime signal --context <json> --stdin [--request-id <id>]',
       'specrails-core runtime cancel --context <json> [--request-id <id>]',
+      'specrails-core runtime pause --context <json> [--request-id <id>] [--reason requested|budget|<token>]',
       'specrails-core runtime host --stdio [--scope <projectKey|global>]',
     ] })
     return 0
@@ -198,7 +199,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION],
       engineVersion: 2, engines: RUNTIME_ENGINES, nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().kinds(),
       capabilities: { openRoles: 1, scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1,
-        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, sessions: 1, flowSessions: 1, reviewBrief: 1, deriveChange: 1, architectClarifications: 1, specTrace: 1, baselineOnTouch: 1, rulesInventory: 1 }, guardrails: GUARDRAIL_CATALOG })
+        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, sessions: 1, flowSessions: 1, reviewBrief: 1, deriveChange: 1, architectClarifications: 1, specTrace: 1, baselineOnTouch: 1, rulesInventory: 1, pauseRuns: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'host') return runSessionHost(flags)

@@ -67,7 +67,7 @@ CREATE TABLE interrupts (
  attempt_id TEXT NOT NULL REFERENCES attempts(attempt_id), node_path TEXT NOT NULL, scope_id TEXT NOT NULL, branch_id TEXT,
  kind TEXT NOT NULL, requested_at TEXT NOT NULL, payload_json TEXT NOT NULL, answered_at TEXT, answer_json TEXT);
 CREATE TABLE control_inbox (
- request_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id), kind TEXT NOT NULL CHECK(kind IN ('cancel','steer')),
+ request_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id), kind TEXT NOT NULL CHECK(kind IN ('cancel','steer','pause')),
  payload_json TEXT NOT NULL, created_at TEXT NOT NULL, received_sequence INTEGER NOT NULL DEFAULT 0, consumed_by_attempt_id TEXT, consumed_at TEXT);
 CREATE TABLE role_sessions (
  session_key TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id), scope_id TEXT NOT NULL, node_path TEXT NOT NULL,
@@ -101,7 +101,23 @@ CREATE INDEX visits_run ON visits(run_id,node_path,scope_id,local_visit);
 CREATE INDEX attempts_visit ON attempts(visit_id,attempt);
 CREATE INDEX events_cursor ON events(run_id,sequence);
 CREATE INDEX revisions_cut ON row_versions(revision,table_name);
-PRAGMA user_version=1;
+PRAGMA user_version=2;
+`
+
+/** Current run database schema. Version 1 lacks the 'pause' control kind and stays readable. */
+export const RUN_DATABASE_SCHEMA = 2
+/**
+ * Version 1 → 2 only widens the control_inbox kind CHECK to admit 'pause'.
+ * SQLite cannot alter a CHECK constraint, so the table is rebuilt in place.
+ */
+const migrateV1ToV2 = `
+CREATE TABLE control_inbox_v2 (
+ request_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id), kind TEXT NOT NULL CHECK(kind IN ('cancel','steer','pause')),
+ payload_json TEXT NOT NULL, created_at TEXT NOT NULL, received_sequence INTEGER NOT NULL DEFAULT 0, consumed_by_attempt_id TEXT, consumed_at TEXT);
+INSERT INTO control_inbox_v2 SELECT request_id,run_id,kind,payload_json,created_at,received_sequence,consumed_by_attempt_id,consumed_at FROM control_inbox;
+DROP TABLE control_inbox;
+ALTER TABLE control_inbox_v2 RENAME TO control_inbox;
+PRAGMA user_version=2;
 `
 
 function encodeRow(row: WriteRow | DatabaseRow): string {
@@ -130,9 +146,26 @@ export class RunDatabase {
       if (!options.readOnly) sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;')
       const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version)
       if (version === 0 && options.create) { sqlite.exec('BEGIN IMMEDIATE'); try { sqlite.exec(schema); sqlite.exec('COMMIT') } catch (error) { sqlite.exec('ROLLBACK'); throw error } }
-      else if (version !== 1) throw new PersistenceError('resume_incompatible', `Unsupported run database schema ${version}`)
+      else if (version !== 1 && version !== RUN_DATABASE_SCHEMA) throw new PersistenceError('resume_incompatible', `Unsupported run database schema ${version}`)
       return new RunDatabase(target, sqlite)
     } catch (error) { sqlite.close(); throw error }
+  }
+
+  get schemaVersion(): number { return Number(this.sqlite.prepare('PRAGMA user_version').get()?.user_version) }
+
+  /**
+   * Upgrades a version 1 database in place. Only callers that already proved the
+   * run belongs to this Core package call it: a retained older Core must keep
+   * opening the databases of its own runs.
+   */
+  upgradeSchema(): void {
+    if (this.schemaVersion === RUN_DATABASE_SCHEMA) return
+    if (this.inTransaction) throw new PersistenceError('internal', 'Schema upgrades cannot run inside a transaction')
+    this.sqlite.exec('BEGIN IMMEDIATE')
+    try {
+      if (this.schemaVersion === 1) this.sqlite.exec(migrateV1ToV2)
+      this.sqlite.exec('COMMIT')
+    } catch (error) { this.sqlite.exec('ROLLBACK'); throw error }
   }
 
   get revision(): number { return Number(this.sqlite.prepare('SELECT COALESCE(MAX(revision),0) AS value FROM durable_revisions').get()!.value) }

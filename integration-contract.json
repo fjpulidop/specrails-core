@@ -242,6 +242,7 @@
       "fork",
       "signal",
       "cancel",
+      "pause",
       "host"
     ],
     "cliPresentationOperations": [
@@ -318,6 +319,23 @@
       "verification": "with no host verification configured, the architect is offered the discovered gate commands as the default verification proposal for the artifact repository",
       "claudeInstructions": "Claude Code installs get the sentinel-managed block (<!-- specrails-managed:start/end -->) in the root CLAUDE.md, like codex AGENTS.md, gemini GEMINI.md and kimi .kimi-code/AGENTS.md",
       "documentation": "docs/agent-runtime.md#project-rules-inventory"
+    },
+    "pauseRuns": {
+      "version": 1,
+      "capability": "pauseRuns",
+      "cli": "specrails-core runtime pause --context <json> | --run-dir <dir> [--request-id <id>] [--reason <token>]; engine 2 runs only; always exits 0 with one line {type: runtime-pause-result, runId, requestId, reason, outcome, status, createdAt?}",
+      "reason": "lowercase token matching ^[a-z][a-z0-9-]{0,63}$, default requested (Desktop's daily budget guard sends budget)",
+      "outcomes": [
+        "requested",
+        "paused",
+        "already-paused",
+        "not-running",
+        "terminal"
+      ],
+      "semantics": "requested: the run executes under a live lease; the idempotent inbox request (same request id and reason returns the original record, a different reason is control_conflict) lets every admitted attempt finish and commit, refuses the next admission, settles status paused and releases the lease (the run process exits 2). paused: an ownerless run still marked running is settled paused directly. already-paused, not-running (failed, interrupted, blocked) and terminal (succeeded, cancelled, completed) change nothing. A run of another Core package is refused with resume_incompatible.",
+      "status": "runtime status and runtime-result state.pause {requestId, reason, at} while a requested pause holds the run (no pendingInterrupts); events pause_requested {requestId, reason} and workflow_paused {requestId, reason}",
+      "resume": "runtime resume continues a paused run from its last committed step without repeating it and discards pause requests that arrived before the resume",
+      "documentation": "docs/agent-runtime.md#pausing-a-run"
     },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
