@@ -18,7 +18,7 @@ It adapts to each driver's declared capabilities.
 | Reaction when sub-agents finish | the provider continues on its own (`provider-native`) | Core asks the agent to collect results (`resume-agent`, bounded) | — |
 | Steer into a running turn | yes | yes (`turn/steer`) | no |
 | Interrupt delivery (`capabilities.interrupt`) | `native`: `control_request interrupt`, then the input with `priority: 'now'` | `native`: `turn/interrupt`, then `turn/start` once the turn completed (Core holds the input) | `emulated`: the invocation is aborted, the input runs next and resumes the provider session |
-| Tool filtering (`policy.tools`) | yes | no (refused) | no (refused) |
+| Tool filtering (`policy.tools`) | yes; `read-only` is `--tools Read,Grep,Glob`, plus `Agent,Task` when native sub-agents are allowed, with `Write,Edit,MultiEdit,NotebookEdit,Bash` denied so sub-agents stay read-only | no (refused) | no (refused) |
 | Billed USD | per session, cumulative; Core records per-turn deltas | none (estimated only with a host rate card) | as reported |
 | Tokens | per turn | cumulative per thread (deltas) | per turn |
 | MCP isolation (`inheritUserScope: false`) | `--strict-mcp-config` | user servers disabled one by one | provider default |
@@ -38,6 +38,7 @@ The drivers are pinned by recorded transcripts of Claude Code 2.1.285 and
 - **Claude:**
   - A sub-agent's status is re-entrant: it reports completion, then restarts when a shell it backgrounded finishes.
   - The parent agent may say a sub-agent is done before it is. Hosts should show the sub-agent's state, not the parent's prose.
+  - A native sub-agent keeps the parent's `--tools` restriction (Claude Code 2.1.309: the general-purpose sub-agent of a `Read,Grep,Glob,Agent` session saw only those tools and could not write). An unknown name in `--tools`, such as the legacy `Task`, is ignored.
 - **Codex:**
   - A sub-agent keeps running after the parent's turn completes, as long as the resident process lives.
   - The parent only reacts when it calls `wait` or receives new input.
