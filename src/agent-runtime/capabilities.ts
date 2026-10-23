@@ -10,8 +10,11 @@ export function unknownCapabilities(transport: string): ExecutorCapabilities {
   return { transport, continuation: 'unknown', effortSupport: 'unknown', supportedEfforts: null, observedModel: false, observedEffort: false }
 }
 
-/** Introspection never calls an inference endpoint. Only the explicit Codex
- * exec-resume contract is recognized; its possible cold fallback needs full context. */
+/** Introspection never calls an inference endpoint. Two resume contracts are
+ * recognized: Codex `exec resume`, whose possible cold fallback needs full
+ * context, and Claude `-p --resume <id>`, which either continues the stored
+ * conversation of that ID or fails with "No conversation found" (mapped to
+ * `session_not_found`, so the role falls back to a fresh full turn). */
 export async function cliCapabilities(provider: CliProvider, model: string | undefined, options: { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv } = {}): Promise<ExecutorCapabilities> {
   const result = unknownCapabilities(provider === 'kimi' ? 'kimi-acp' : `${provider}-cli`)
   if (provider === 'kimi') return { ...result, continuation: 'unsupported', effortSupport: 'unsupported', supportedEfforts: [] }
@@ -30,6 +33,8 @@ export async function cliCapabilities(provider: CliProvider, model: string | und
       }
     }
     if (provider === 'claude') {
+      // Claude Code 2.1.309 (recorded): an unknown ID fails before inference with "No conversation found"; it never starts cold.
+      if (/^\s*(?:-r, )?--resume\b/m.test(help.stdout)) result.continuation = 'supported'
       const section = /--effort\s+<[^>]+>([\s\S]*?)(?=\n\s+--|$)/.exec(help.stdout)?.[1]
       const levels = section?.match(/\(([^)]+)\)/)?.[1].split(',').map(value => value.trim())
       if (levels?.length && levels.every(value => /^[a-z][a-z0-9_-]{0,31}$/.test(value))) return { ...result, effortSupport: 'supported', supportedEfforts: levels }

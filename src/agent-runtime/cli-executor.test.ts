@@ -198,6 +198,14 @@ describe('four CLI execution contracts', () => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype, is_error: true, total_cost_usd: 2.422, usage: { input_tokens: 100, output_tokens: 20 } }), stderr: 'secret-provider-details', exitCode: 1 }))
     await expect(new CliExecutor('claude', { runProcess }).execute(request())).rejects.toMatchObject({ code, message: expect.stringContaining(message), usage: { costUsd: 2.422 } })
   })
+  it('reports a resumed Claude session without a stored transcript as session_not_found, and only on resume', async () => {
+    // Recorded from Claude Code 2.1.309 (`claude -p --resume <unknown id>`).
+    const stdout = jsonl({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, session_id: 'gone', total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 }, errors: ['No conversation found with session ID: gone'] })
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout, stderr: 'No conversation found with session ID: gone\n', exitCode: 1 }))
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer', resumeSessionId: 'gone' }))).rejects.toMatchObject({ code: 'session_not_found', usage: { costUsd: 0 } })
+    expect(runProcess.mock.calls[0]![0].args.slice(-2)).toEqual(['--resume', 'gone'])
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer' }))).rejects.toMatchObject({ code: 'provider_execution_error' })
+  })
   it('names the role, its effective turn ceiling and the fix in a max-turns failure', async () => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype: 'error_max_turns', is_error: true, usage: { input_tokens: 1, output_tokens: 1 } }), stderr: '', exitCode: 1 }))
     await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer' }))).rejects.toMatchObject({ message: expect.stringMatching(/reached the configured limit of 100 turns for developer\. Raise maxTurns for role developer \(unset: Core default 100\)/) })
