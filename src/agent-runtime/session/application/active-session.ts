@@ -92,6 +92,14 @@ export class ActiveSession {
   private pendingDeferred: Record<string, unknown> | null = null
   private roster: string[] | null = null
   private handoffs = 0
+  /** Tool calls (the turn's and its sub-agents') that started and have not completed. */
+  private readonly toolsInFlight = new Set<string>()
+  /**
+   * Text the turn streams around its tool calls arrives as separate messages
+   * with no whitespace between them. `broken` = text was streamed and a tool
+   * call followed, so the next text starts a new paragraph.
+   */
+  private textSegment: 'none' | 'open' | 'broken' = 'none'
   private finishedSinceLastTurn = new Set<string>()
   /** Finished delegated sub-agents whose results the agent has not received yet. */
   private readonly delegatedResults = new Map<string, { description: string; status: string; result: string }>()
@@ -390,6 +398,7 @@ export class ActiveSession {
   }
 
   private handleDriverEvent(event: DriverEvent): void {
+    this.trackToolInFlight(event)
     this.markActivity()
     switch (event.kind) {
       case 'process.started':
@@ -400,6 +409,7 @@ export class ActiveSession {
         this.driver = null
         this.liveGeneration = null
         this.timers.cancel('idle', 'stall', 'backgroundMax', 'turnInactivity', 'settle', 'interruptGrace')
+        this.toolsInFlight.clear()
         this.endRunningWork({ turnStatus: 'failed', subagentPhase: 'interrupted', reason: 'crashed', error: `Provider process exited (code ${event.exitCode ?? 'none'}${event.signal ? `, signal ${event.signal}` : ''})` })
         this.commit([{ type: 'session.process', state: 'exited', generation: this.generation, exitCode: event.exitCode, reason: 'crashed' }])
         this.deps.touched(this)
@@ -422,11 +432,12 @@ export class ActiveSession {
         return this.startTurn(event.trigger, event.inputIds)
       case 'turn.output': {
         const turn = this.requireTurn()
-        this.commitBuffered(this.output.add({ type: 'turn.output', turnId: turn.turnId, channel: event.channel, delta: event.delta }))
+        this.commitBuffered(this.output.add({ type: 'turn.output', turnId: turn.turnId, channel: event.channel, delta: event.channel === 'text' ? this.separateTextSegment(event.delta) : event.delta }))
         return
       }
       case 'turn.tool': {
         const turn = this.requireTurn()
+        if (this.textSegment === 'open') this.textSegment = 'broken'
         const { kind: _kind, ...tool } = event
         this.commit([{ type: 'turn.tool', turnId: turn.turnId, ...tool }])
         return
@@ -482,6 +493,7 @@ export class ActiveSession {
       this.handoffs = 0
     }
     this.finishedSinceLastTurn.clear()
+    this.textSegment = 'none'
     if (this.pendingInterrupt?.inputs.some((input) => inputIds.includes(input.inputId))) this.pendingInterrupt = null
     this.timers.cancel('idle', 'stall')
     this.commit([
@@ -494,6 +506,7 @@ export class ActiveSession {
   private completeTurn(reportedStatus: 'completed' | 'failed' | 'stopped', reportedText: string, reported: ReportedUsage, error?: string): void {
     const turn = this.requireTurn()
     this.timers.cancel('turnInactivity', 'interruptGrace')
+    this.toolsInFlight.clear()
     // A stop the application asked for to run an interrupting input is an interruption.
     const status = reportedStatus === 'stopped' && this.pendingInterrupt?.turnId === turn.turnId ? 'interrupted' : reportedStatus
     // Commit buffered deltas first so a cut turn keeps the partial text it streamed.
@@ -671,9 +684,26 @@ export class ActiveSession {
     return { turnStatus: 'interrupted', subagentPhase: 'interrupted', reason }
   }
 
+  private separateTextSegment(delta: string): string {
+    const separate = this.textSegment === 'broken' && !/^\s*\n/.test(delta)
+    this.textSegment = 'open'
+    return separate ? `\n\n${delta}` : delta
+  }
+
+  private trackToolInFlight(event: DriverEvent): void {
+    const tool = event.kind === 'turn.tool' ? event : event.kind === 'subagent.output' ? event.tool : undefined
+    if (!tool?.toolUseId) return
+    if (tool.phase === 'started') this.toolsInFlight.add(tool.toolUseId)
+    else this.toolsInFlight.delete(tool.toolUseId)
+  }
+
   private armTurnInactivity(): void {
-    this.timers.arm('turnInactivity', this.config.policy.limits.turnInactivityMs, () => {
-      void this.retire('stalled', { turnStatus: 'failed', subagentPhase: 'interrupted', reason: 'stalled', error: 'No provider activity before the inactivity limit' })
+    const limits = this.config.policy.limits
+    const waitingOnTool = this.toolsInFlight.size > 0
+    const limit = waitingOnTool ? Math.max(limits.turnInactivityMs, limits.toolInactivityMs) : limits.turnInactivityMs
+    this.timers.arm('turnInactivity', limit, () => {
+      const error = waitingOnTool ? 'A tool call produced no provider activity before the tool inactivity limit' : 'No provider activity before the inactivity limit'
+      void this.retire('stalled', { turnStatus: 'failed', subagentPhase: 'interrupted', reason: 'stalled', error })
     })
   }
 

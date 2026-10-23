@@ -156,7 +156,7 @@ interface SessionPolicy {
   tools: { mode: 'default' | 'read-only' | 'none'; allow?: string[]; deny?: string[] }
   permissions: 'bypass' | 'workspace-write' | 'read-only'
   mcp: { servers: McpServerSpec[]; inheritUserScope: boolean }
-  limits?: Partial<SessionLimits>   // idleMs, stallMs, backgroundMaxMs, turnInactivityMs, maxSettleHandoffs
+  limits?: Partial<SessionLimits>   // idleMs, stallMs, backgroundMaxMs, turnInactivityMs, toolInactivityMs, maxSettleHandoffs
   subagentRuntime?:                  // who launches sub-agents (default: native)
     | { mode: 'native'; model?: string; effort?: string }
     | { mode: 'delegated'; driver: string; model?: string; effort?: string; maxConcurrent?: number }

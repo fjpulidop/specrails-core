@@ -70,6 +70,12 @@ export interface SessionLimits {
   backgroundMaxMs: number
   /** Fail a running turn when no provider frame (including sub-agent frames) arrives for this long. */
   turnInactivityMs: number
+  /**
+   * Replaces `turnInactivityMs` while a tool call (the turn's or a sub-agent's)
+   * has started and not completed: a long build or test run is silent until
+   * it returns, so it gets a wider bound instead of failing the turn.
+   */
+  toolInactivityMs: number
   /** Maximum policy-driven `resume-agent` turns per settle cycle. */
   maxSettleHandoffs: number
   /** Debounce before an empty sub-agent roster counts as settled. */
