@@ -113,7 +113,12 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
-describe('surgical implementation runs', () => {
+// Each case drives one to three complete workflows through the real OpenSpec CLI:
+// 40-70 `openspec` subprocesses (status, instructions, validate, archive) of
+// ~200 ms each, which is 80% of a 10-17 s local run. A loaded macOS runner is
+// 4-5x slower and crossed the 60 s POSIX default, so these cases get the same
+// ceiling the config already gives Windows. Nothing here waits on a timer.
+describe('surgical implementation runs', { timeout: 180_000 }, () => {
   it('verifies in the package, undoes edits outside it and reviews only the change', async () => {
     const notes: string[] = []
     const { registry, calls } = fake({ developer: () => {

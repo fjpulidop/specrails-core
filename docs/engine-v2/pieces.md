@@ -33,7 +33,7 @@ A free provider turn without role instructions or OpenSpec binding (`instruction
 - Accounting: each physical call is admitted through the durable invocation port before inference (`budget_exhausted` when no bounded headroom remains) and settled with its response memo in one transaction, so a crash or human pause never repeats a billed call.
 - A `LOOP_BLOCKED` question takes precedence over a verification sentinel: `sentinel: "verification"` pauses for the human answer and requires a subsequent provider response before accepting pass/fail. Resume reuses the recorded blocked response instead of invoking it twice.
 - `prompt`, `role-turn` and `decider` accept per-piece invocation/idle timers. Explicit zero timers preserve untimed legacy steps. Omission inherits runtime/provider defaults; host cancellation and workflow duration/cost/token budgets remain active.
-- Writes: `$outputs[nodeId] = { text, sessionId?, sentinel?, reasons?, vars }`, `$vars` from `captureVars` (regex ≤ 200 characters, 50 ms VM timeout, 32,000 input characters), one `$history` entry, `$sessions[nodeId]`, and `$answers` for blocked-question replies. Emits `agent-event` with `role: 'prompt'`.
+- Writes: `$outputs[nodeId] = { text, sessionId?, sentinel?, reasons?, vars }`, `$vars` from `captureVars` (regex ≤ 200 characters, 50 ms VM timeout retried once, 32,000 input characters), one `$history` entry, `$sessions[nodeId]`, and `$answers` for blocked-question replies. Emits `agent-event` with `role: 'prompt'`.
 
 ### `role-turn`
 

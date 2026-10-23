@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boundedPattern, interpolateParams, parseExpression } from './expressions.js'
 import { initialDefinitionState } from './state.js'
+import { capturePattern, PATTERN_ATTEMPTS } from './regex.js'
 
 describe('closed condition expressions', () => {
   const state = initialDefinitionState({ count: 2, text: 'PASS', changeId: 'example' })
@@ -20,6 +21,20 @@ describe('closed condition expressions', () => {
     expect(() => boundedPattern('(?=a)')).toThrow()
     expect(() => boundedPattern('a'.repeat(201))).toThrow()
     expect(() => parseExpression('('.repeat(40) + 'true' + ')'.repeat(40))).toThrow('nesting')
+  })
+  it('absorbs one wall-clock timeout from a pause outside the match, but never a pattern that always times out', () => {
+    // The VM bound is wall-clock: simulate a GC or scheduler pause instead of measuring time.
+    const timeout = () => Object.assign(new Error('Script execution timed out'), { code: 'ERR_SCRIPT_EXECUTION_TIMEOUT' })
+    let calls = 0
+    const paused = (pattern: string, text: string) => { if (++calls === 1) throw timeout(); return new RegExp(pattern).exec(text) }
+    expect(capturePattern('^PA(.*)$', 'PASS', paused)).toEqual(['PASS', 'SS'])
+    expect(calls).toBe(2)
+    calls = 0
+    expect(() => capturePattern('(a+)+b', 'aaaa', () => { calls++; throw timeout() })).toThrow('exceeded 50 ms')
+    expect(calls).toBe(PATTERN_ATTEMPTS)
+    calls = 0
+    expect(() => capturePattern('[', 'x', () => { calls++; throw new SyntaxError('Invalid regular expression') })).toThrow('Invalid regular expression')
+    expect(calls).toBe(1)
   })
   it('binds only committed output paths and bounded history with literal escaping', () => {
     state.$history = [{ id: 'a', transition: 1, attempt: 1, ordinal: 0, nodePath: 'ask', text: 'Human answer' }]

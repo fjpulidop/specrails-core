@@ -38,8 +38,10 @@ without calling that decision again, and records the answer in history.
 Malformed non-question output keeps the existing single-repair policy.
 
 Captures and expression regexes use a constant VM script, 50 ms timeout, 200
-pattern characters and at most 32,000 input characters. User input supplies only
-data. Provider text, shell output and history are separately bounded.
+pattern characters and at most 32,000 input characters. The timeout is
+wall-clock, so a timed-out match is retried once: a GC or scheduler pause cannot
+fail a cheap pattern, while a catastrophic one still fails (at most 2 × 50 ms).
+User input supplies only data. Provider text, shell output and history are separately bounded.
 
 A `role-turn` for a role with write access renders the complete host
 verification plan in its instructions: the configured checks for the
