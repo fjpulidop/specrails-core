@@ -4,7 +4,7 @@ import { addDeveloperChecks, bindPlan, expandedPlanCommands, initializeVerificat
 import path from 'node:path'
 import { OpenSpecTools, type OpenSpecRoleContext } from '../openspec.js'
 import {
-  candidateManifest, describeModifiedFiles, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, transitionPipeline, validateAcceptanceReport, verifyPipeline,
+  candidateManifest, describeModifiedFiles, fingerprintCandidate, frozenAcceptanceCriteria, inspectPipeline, recordAcceptance, sanitizeFindingLocations, transitionPipeline, validateAcceptanceReport, verifyPipeline,
   type AcceptanceCheck, type AcceptanceCriterion, type AcceptanceReport, type CandidateFileChange, type PipelineContext, type VerificationCommand,
 } from '../../pipeline/pipeline-state.js'
 import type { AgentEventRole, AgentResult, AgentRole, RuntimeConfig } from '../executor-types.js'
@@ -592,7 +592,9 @@ export function buildAcceptanceReport(criteria: FrozenCriterion[], verification:
   for (const item of Array.isArray(input.checks) ? input.checks : []) checks.push({ ...(object(item) as unknown as AcceptanceCheck), required: false })
   const findings = (Array.isArray(input.findings) ? input.findings : []) as string[]
   // The advisory spec trace is evidence for the merger, never a check: it cannot change the acceptance status.
-  return { criteria: certified, checks, findings: verification?.specTrace ? [...findings, specTraceFinding(verification.specTrace)] : findings }
+  // Anchors index the reviewer's own findings; appended host findings come after them, so the indexes stay valid.
+  const findingLocations = sanitizeFindingLocations(input.findingLocations, findings.length)
+  return { criteria: certified, checks, findings: verification?.specTrace ? [...findings, specTraceFinding(verification.specTrace)] : findings, ...(findingLocations.length ? { findingLocations } : {}) }
 }
 
 function reviewerNode(deps: CoreNodeDeps): CoreNode {

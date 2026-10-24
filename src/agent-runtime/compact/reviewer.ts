@@ -147,7 +147,7 @@ export async function runCompactReviewer(env: CompactEnv, options: { reviewToolB
     approved: (raw.approved === true || resolved) && !uncertified && issues.length === 0,
     summary: text(raw.summary).slice(0, 8000), issues, score: lift(raw.score, gate?.minScore),
     aspects: Object.fromEntries(REVIEW_ASPECTS.map(name => [name, lift(aspectsRaw[name], gate?.aspects[name])])),
-    acceptance: { criteria: certified, checks: [], findings: strings(acceptanceRaw.findings, 50, 1000) },
+    acceptance: { criteria: certified, checks: [], findings: strings(acceptanceRaw.findings, 50, 1000), ...(Array.isArray(acceptanceRaw.findingLocations) ? { findingLocations: acceptanceRaw.findingLocations } : {}) },
     // The optional risk brief passes through untouched; the reviewer node validates it.
     ...(raw.brief !== undefined && raw.brief !== null ? { brief: raw.brief } : {}),
   }

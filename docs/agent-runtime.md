@@ -414,6 +414,10 @@ The classification is derived only from signals the run already produced (status
 
 A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 1` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
 
+## Finding locations
+
+The reviewer may anchor a finding to a place in the change with `acceptance.findingLocations`, an optional array of `{ "finding": 0, "path": "src/a.ts", "line": 12, "endLine": 18 }`. `finding` indexes `acceptance.findings` (which stays a string array); `path` is repository-relative; `line`/`endLine` are 1-based and optional. Core validates each anchor, drops malformed ones instead of failing the review, keeps one per finding (at most 50) and never invents a location. Findings Core appends itself (the spec trace, overflow risks) come after the reviewer's and carry none. The record is persisted in `state.json` under `acceptance`, and announced as `findingLocations: 1` by `runtime api` and as `agentRuntime.findingLocations` in `integration-contract.json` (since schema 5.9). It is additive: a host ignores an absent field and shows the finding unanchored.
+
 ## Budgets and provider capability differences
 
 | Setting | Behavior |

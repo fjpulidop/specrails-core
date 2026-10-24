@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.8",
+  "schemaVersion": "5.9",
   "providers": {
     "claude": {
       "cli": {
@@ -348,6 +348,15 @@
       },
       "compatibility": "additive: hosts ignore an absent field; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
       "documentation": "docs/agent-runtime.md#failure-classification"
+    },
+    "findingLocations": {
+      "version": 1,
+      "capability": "findingLocations",
+      "record": "acceptance.findingLocations[] = {finding, path, line?, endLine?}",
+      "location": "state.json acceptance.findingLocations in the run's pipeline directory, next to acceptance.findings (which stays string[])",
+      "semantics": "finding is the zero-based index into acceptance.findings; path is repository-relative with forward slashes (never absolute, never containing ..); line and endLine are 1-based and optional (endLine only with line, greater than it). Core drops a malformed anchor instead of failing the review, keeps at most 50 and one per finding, and never invents a location: a finding without an entry is unanchored.",
+      "compatibility": "additive: hosts ignore an absent field and render the finding unanchored; an older Core never emits it",
+      "documentation": "docs/agent-runtime.md#finding-locations"
     },
     "pauseRuns": {
       "version": 1,

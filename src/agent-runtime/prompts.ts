@@ -135,6 +135,9 @@ export const REVIEW_OUTPUT_SCHEMA: Record<string, unknown> = {
           evidence: { ...stringArray, minItems: 1 }, scope: { type: 'string' }, limitations: { type: 'string' },
         } } },
         findings: stringArray,
+        findingLocations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['finding', 'path'], properties: {
+          finding: { type: 'integer', minimum: 0 }, path: { type: 'string' }, line: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
+        } } },
       },
     },
     brief: REVIEW_BRIEF_SCHEMA,
@@ -381,6 +384,7 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `acceptance.criteria`: one entry per criterion listed above, with the same `specId` and `criterionIndex`; Core records the frozen requirement text itself.',
     '- `acceptance.checks`: Core records the verification commands it ran; add only supplementary checks you performed by inspection, each with what it measured (`scope`) and what it leaves out (`limitations`). Never mark an inspection as `required`.',
     '- `acceptance.findings`: concrete conclusions, risks and resolutions; an empty array when there are none.',
+    '- `acceptance.findingLocations` (optional): for a finding about one place in the change, `{"finding":<index in findings>,"path":"<repository-relative file>","line":<first line>,"endLine":<last line>}`; omit `line`/`endLine` when only the file is known and omit the entry when the finding is not about one place. Never guess a location.',
     '- When corrections are required, set `approved` to false and list each issue as one concrete, actionable line naming the file and what must change: a file in the change set, or a test the change must add. The developer receives these lines verbatim.',
     '- Never raise a score or a criterion status to pass a gate, and never approve with open issues or unresolved criteria.',
     '',

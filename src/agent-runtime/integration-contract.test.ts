@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.8')
+    expect(contract.schemaVersion).toBe('5.9')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -163,6 +163,14 @@ describe('Desktop integration contract', () => {
     expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.failureClassification).toBe(failure.version)
     expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Failure classification')
+  })
+
+  it('announces finding locations and the runtime reports the capability', async () => {
+    expect(contract.agentRuntime.findingLocations).toMatchObject({ version: 1, capability: 'findingLocations' })
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.findingLocations).toBe(1)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Finding locations')
   })
 
   it('announces the project rules inventory, its file, statuses and gate kinds', async () => {

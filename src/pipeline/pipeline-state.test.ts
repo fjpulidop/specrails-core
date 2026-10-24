@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -898,5 +898,26 @@ describe('verification self-mutation', () => {
     expect(marked.reason).toBe('A verification command failed. Verification commands modified 205 candidate files: gen/000.js, gen/001.js, gen/002.js and 202 more')
     expect(candidateChangedReceipt(marked, undefined, () => { throw new Error('not read again') })).toEqual(marked)
     expect(describeModifiedFiles({ files: [{ repositoryId: 'web', path: 'a.js', change: 'added' }] })).toBe('1 candidate file: a.js')
+  })
+})
+
+describe('finding locations (contract 5.9)', () => {
+  it('keeps well-formed anchors and drops malformed ones without failing', () => {
+    const out = sanitizeFindingLocations([
+      { finding: 0, path: './src/a.ts', line: 3, endLine: 5 },
+      { finding: 0, path: 'src/dup.ts' },
+      { finding: 1, path: '/etc/passwd', line: 1 },
+      { finding: 1, path: '../x.ts' },
+      { finding: 2, path: 'src/b.ts', line: 0 },
+      { finding: 9, path: 'src/c.ts', line: 1 },
+      { finding: 3, path: 'src\\d.ts', line: 4, endLine: 2 },
+      'nope',
+    ], 4)
+    expect(out).toEqual([
+      { finding: 0, path: 'src/a.ts', line: 3, endLine: 5 },
+      { finding: 2, path: 'src/b.ts' },
+      { finding: 3, path: 'src/d.ts', line: 4 },
+    ])
+    expect(sanitizeFindingLocations(undefined, 3)).toEqual([])
   })
 })
