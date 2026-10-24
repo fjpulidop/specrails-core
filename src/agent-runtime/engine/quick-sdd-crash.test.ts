@@ -18,6 +18,11 @@ const change = 'quick-change'
 const directories: string[] = [], children = new Set<ChildProcess>()
 type Message = Record<string, any>
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+// Every case waits out the real 60 s production lease before resuming, so the
+// budget is that fixed wait plus the measured work. Healthy windows-latest runs
+// take 73-99 s per case with five cases in flight next to robustness.test.ts
+// (run 39913609133); loaded ones exceeded 150 s (runs 39436705336, 39716192266).
+const CASE_TIMEOUT_MS = process.platform === 'win32' ? 300_000 : 150_000
 afterAll(async () => {
   for (const child of children) {
     if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { timeout: 5000, windowsHide: true })
@@ -92,7 +97,7 @@ it.concurrent.each(['init', 'work', 'validate', 'apply', 'check', 'archive', 've
   expect(resumed.last).toMatchObject({ status: 'succeeded', completion: { ok: true, verified: true } })
   expect(f.calls()).toEqual(['opsx:ff', 'opsx:apply'])
   expectDelivered(f)
-}, 150_000)
+}, CASE_TIMEOUT_MS)
 
 it.concurrent('requires explicit recovery for an apply write interrupted mid-invocation', async () => {
   const f = fixture(), crashed = await f.start('apply:during')
@@ -119,4 +124,4 @@ it.concurrent('requires explicit recovery for an apply write interrupted mid-inv
   } finally { database.close() }
   expect(f.calls()).toEqual(['opsx:ff', 'opsx:apply'])
   expectDelivered(f)
-}, 150_000)
+}, CASE_TIMEOUT_MS)

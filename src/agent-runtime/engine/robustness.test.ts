@@ -11,6 +11,15 @@ const fixtures = fileURLToPath(new URL('./__fixtures__/robustness/', import.meta
 const directories: string[] = [], children = new Set<ChildProcess>()
 type Message = Record<string, any>
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+// Measured on windows-latest (run 39913609133): the SIGKILL cases take 115-120 s
+// (they include the real 60 s lease wait) and the cancel case reaches its
+// boundary, after fifteen sequential shell nodes, in ~25 s when healthy and
+// in more than 30 s when loaded (runs 36560238422, 39977990477). POSIX keeps the
+// original bounds.
+const windows = process.platform === 'win32'
+const CRASH_CASE_TIMEOUT_MS = windows ? 300_000 : 180_000
+const CANCEL_BOUNDARY_MS = windows ? 120_000 : 30_000
+const CANCEL_CASE_TIMEOUT_MS = windows ? 240_000 : 90_000
 
 function launch(directory: string, args: string[], crash?: string, input?: string) {
   const child = spawn(process.execPath, [...(crash ? ['--import', pathToFileURL(path.join(fixtures, 'crash-preload.mjs')).href] : []), cli, ...args], {
@@ -102,7 +111,7 @@ it.concurrent.each(['before', 'during', 'after-writes', 'after-snapshot'])('reco
     // An explicitly recovered uncertain effect may repeat; committed effects never do.
     expect(readFileSync(path.join(f.markers, name), 'utf8'), name).toBe('x'.repeat(name === 's10' && phase === 'during' ? 2 : 1))
   }
-}, 180_000)
+}, CRASH_CASE_TIMEOUT_MS)
 
 it('bounds more than 2 MiB of shell output and preserves the durable result', async () => {
   const f = await fixture(0, 2_200_000), paused = await f.start().result
@@ -114,7 +123,11 @@ it('bounds more than 2 MiB of shell output and preserves the durable result', as
 it.each(['cancel', ...(process.platform === 'win32' ? [] : ['SIGTERM'])])('cancels a live CLI with %s and leaves no shell child', async mode => {
   const f = await fixture(60_000), running = f.start()
   const pidFile = path.join(f.markers, 'sleep.pid')
-  await until(() => existsSync(pidFile))
+  let exited = false
+  running.result.then(() => { exited = true }, () => { exited = true })
+  await until(() => existsSync(pidFile) || exited, CANCEL_BOUNDARY_MS)
+  // Fail with the run's own output instead of a timeout if it ended early.
+  if (!existsSync(pidFile)) { const early = await running.result; throw new Error(`Run ended before the sleep node: ${JSON.stringify(early.last)} ${early.stderr}`) }
   const competing = await f.resume()
   expect(competing.last.error).toMatchObject({ code: 'lease_held' })
   if (mode === 'SIGTERM') running.child.kill('SIGTERM')
@@ -130,4 +143,4 @@ it.each(['cancel', ...(process.platform === 'win32' ? [] : ['SIGTERM'])])('cance
   expect((await f.resume()).last.status).toBe('cancelled')
   const fork = await f.invoke(['fork', '--context', f.files.context, '--from', 'sleep', '--run-id', 'cancelled-copy']).result
   expect(fork.code, JSON.stringify(fork.last) + fork.stderr).toBe(0)
-}, 90_000)
+}, CANCEL_CASE_TIMEOUT_MS)

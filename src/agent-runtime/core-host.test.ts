@@ -36,6 +36,13 @@ function archivedChangeFile(file: string): string {
   return path.join(archive, folders[0]!, file)
 }
 
+// Most cases drive one to four real workflows (git, OpenSpec, spawned
+// verification). Healthy macos-latest runs take up to ~27 s per case (run
+// 39913609133); loaded ones exceeded the 60 s default on cases that pass in
+// 15-20 s (runs 39675761584, 39738608562, 39743878063). Windows keeps the
+// global 180 s ceiling; explicit per-case budgets below still apply.
+vi.setConfig({ testTimeout: process.platform === 'win32' ? 180_000 : 120_000 })
+
 const legacyFingerprints = JSON.parse(readFileSync(new URL('./__fixtures__/implementation-workflow-fingerprint.json', import.meta.url), 'utf8')) as Array<{ fingerprint: string; attempts: number; compactDeveloper: boolean }>
 
 let root: string

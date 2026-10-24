@@ -22,11 +22,18 @@ foreach($entry in $actual.GetAccessRules($true,$true,[System.Security.Principal.
  if($entry.IdentityReference.Value -notin @($identity.User.Value,'S-1-5-18') -or $entry.AccessControlType -ne 'Allow'){throw 'Private directory grants broad access'}
 }`
 
+// A cold `powershell.exe` that loads the .NET AccessControl types has taken
+// more than 30 s on a loaded windows-latest runner (run 39675761584: the first
+// RunDatabase.open of a file failed with the total execution limit). The bound
+// only protects against a hung PowerShell; a slow one must not fail closed
+// storage creation, so it gets the same headroom as other Windows cold starts.
+const WINDOWS_ACL_TIMEOUT_MS = 120_000
+
 async function setPrivateWindowsAcl(target: string, cwd: string): Promise<void> {
   const env = { ...process.env, SPECRAILS_PRIVATE_PATH: target }
   for (const key of Object.keys(env)) if (key.toLowerCase() === 'psmodulepath') delete (env as NodeJS.ProcessEnv)[key]
   const result = await runCliProcess({ command: 'powershell.exe', args: ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(aclScript, 'utf16le').toString('base64')] },
-    { cwd, timeoutMs: 30_000, env })
+    { cwd, timeoutMs: WINDOWS_ACL_TIMEOUT_MS, env })
   if (result.exitCode !== 0) throw new PersistenceError('private_storage_unavailable', `Cannot protect engine storage: ${result.stderr.slice(0, 2000)}`)
 }
 
