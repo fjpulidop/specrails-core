@@ -79,7 +79,7 @@ For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provi
 
 The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
 
-The [integration contract](../integration-contract.json) is schema 5.7, API 1, legacy workflow 7 and role instructions 17. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
+The [integration contract](../integration-contract.json) is schema 5.8, API 1, legacy workflow 7 and role instructions 17. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
@@ -390,6 +390,29 @@ The runtime reads `<backlogRoot>/.specrails/rules.json`, then `<artifactRoot>/.s
 Claude Code installs also get a Specrails-managed block in the root `CLAUDE.md` (between `<!-- specrails-managed:start -->` and `<!-- specrails-managed:end -->`, content outside it preserved), as Codex (`AGENTS.md`), Gemini (`GEMINI.md`) and Kimi (`.kimi-code/AGENTS.md`) already did. It points the agent at `.specrails/rules.json`.
 
 The capability is announced as `rulesInventory: 1` by `runtime api` and as `agentRuntime.rulesInventory` in `integration-contract.json` (since schema 5.7).
+
+## Failure classification
+
+A run that ends `failed` or `blocked` reports why in one typed record, so a host can offer a remedy without parsing prose. `runtime-result.failure` and `runtime-status.failure` (both engines) carry:
+
+```json
+{ "kind": "tests_failed", "phase": "fixer", "rounds": 4, "detail": "...", "resumablePhase": "fixer", "confidence": "high" }
+```
+
+| `kind` | Meaning |
+| --- | --- |
+| `tests_failed` | Verification kept failing, or the correction loop stopped on the same failing change |
+| `provider_limit` | The provider reported a session, usage, rate or quota limit. `resetAt` is the provider's own wording of when it resets, never reformatted |
+| `environment` | The host environment cannot run verification: credentials, toolchain, a failing setup command, non-deterministic generated output, edits outside the scope |
+| `blocked` | A configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change |
+| `timeout` | The total execution or active-duration limit elapsed |
+| `tool_inactivity` | The agent produced no tool call, reply or usage within the idle limit |
+| `crash` | The provider process, endpoint, lease or storage failed under the run |
+| `unknown` | No documented signal matched; always `confidence: "low"` |
+
+The classification is derived only from signals the run already produced (status, the failing step or node, error codes and messages). It never guesses: an unmatched failure is `unknown`, and a host must present it as an unknown cause next to the raw log tail. `phase` is the failing step id (engine 1) or node path (engine 2), `rounds` counts visits of correction steps, `detail` is one bounded sentence from the run's own error, and `resumablePhase` names the step `runtime resume` continues from when resuming can help (blocked runs and the transient kinds). It is absent for a plain failed verification, which needs a change rather than a resume.
+
+A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 1` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
 
 ## Budgets and provider capability differences
 

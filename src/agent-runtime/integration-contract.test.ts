@@ -11,6 +11,7 @@ import { SPEC_TRACE_FILE } from '../pipeline/spec-trace.js'
 import { BASELINE_BLOCKER, BASELINE_FILE } from './graph/baseline.js'
 import { CAPABILITY_MAP_PATH } from './graph/capability-map.js'
 import { GATE_KINDS, RULES_FILE, RULE_STATUSES } from './project-rules.js'
+import { FAILURE_KINDS } from './failure-classification.js'
 import { PAUSE_OUTCOMES } from './engine/runs.js'
 import { PAUSE_REASON } from './engine/steering/inbox.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
@@ -22,7 +23,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.7')
+    expect(contract.schemaVersion).toBe('5.8')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -151,6 +152,17 @@ describe('Desktop integration contract', () => {
     const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
     expect(schema.properties.baselineOnTouch.type).toBe('boolean')
     expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Baseline on touch')
+  })
+
+  it('announces the failure classification with exactly the kinds the classifier emits', async () => {
+    const failure = contract.agentRuntime.failureClassification
+    expect(failure).toMatchObject({ version: 1, capability: 'failureClassification' })
+    expect(failure.kinds).toEqual([...FAILURE_KINDS])
+    expect(Object.keys(failure.kindMeaning)).toEqual([...FAILURE_KINDS])
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.failureClassification).toBe(failure.version)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Failure classification')
   })
 
   it('announces the project rules inventory, its file, statuses and gate kinds', async () => {

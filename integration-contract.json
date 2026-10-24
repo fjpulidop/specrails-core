@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.7",
+  "schemaVersion": "5.8",
   "providers": {
     "claude": {
       "cli": {
@@ -319,6 +319,35 @@
       "verification": "with no host verification configured, the architect is offered the discovered gate commands as the default verification proposal for the artifact repository",
       "claudeInstructions": "Claude Code installs get the sentinel-managed block (<!-- specrails-managed:start/end -->) in the root CLAUDE.md, like codex AGENTS.md, gemini GEMINI.md and kimi .kimi-code/AGENTS.md",
       "documentation": "docs/agent-runtime.md#project-rules-inventory"
+    },
+    "failureClassification": {
+      "version": 1,
+      "capability": "failureClassification",
+      "kinds": [
+        "tests_failed",
+        "provider_limit",
+        "environment",
+        "blocked",
+        "timeout",
+        "tool_inactivity",
+        "crash",
+        "unknown"
+      ],
+      "record": "{kind, phase?, rounds?, resetAt?, detail?, resumablePhase?, confidence: high | low}",
+      "runResult": "runtime-result.failure and runtime-status.failure (both engines): the record when the run status is failed or blocked; absent otherwise. A run Core could not start (fatal argument or configuration error) carries none.",
+      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification.",
+      "kindMeaning": {
+        "tests_failed": "verification kept failing, or the correction loop stopped on the same failing change",
+        "provider_limit": "the provider reported a session, usage, rate or quota limit",
+        "environment": "the host environment cannot run verification (credentials, toolchain, setup command, non-deterministic generated output, edits outside the scope)",
+        "blocked": "a configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change",
+        "timeout": "the total execution or active-duration limit elapsed",
+        "tool_inactivity": "the agent produced no tool call, reply or usage within the idle limit",
+        "crash": "the provider process, endpoint, lease or storage failed under the run",
+        "unknown": "no documented signal matched"
+      },
+      "compatibility": "additive: hosts ignore an absent field; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
+      "documentation": "docs/agent-runtime.md#failure-classification"
     },
     "pauseRuns": {
       "version": 1,

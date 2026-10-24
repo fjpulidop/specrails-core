@@ -24,7 +24,7 @@ src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipt
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI, project rules inventory (.specrails/rules.json)
 src/shared/                   helpers shared by the CLIs (argument parsing, Specrails home, secret redaction)
 templates/                    implement/retry commands, provider settings, Kimi runner (roles are runtime-defined, never templated)
-integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.7)
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.8)
 ```
 
 ## Commands
