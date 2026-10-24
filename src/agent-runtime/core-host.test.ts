@@ -25,6 +25,17 @@ import { coreNodes, type CoreNodeDeps } from './graph/nodes.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
 
+/**
+ * OpenSpec names the archive folder with its own local date, which differs from
+ * the journal's UTC date around midnight; locate the change's folder instead.
+ */
+function archivedChangeFile(file: string): string {
+  const archive = path.join(context.artifactRoot, 'openspec', 'changes', 'archive')
+  const folders = readdirSync(archive).filter(name => /^\d{4}-\d{2}-\d{2}-/.test(name) && name.slice(11) === change)
+  if (folders.length !== 1) throw new Error(`Expected one archived ${change}, found ${folders.join(', ') || 'none'}`)
+  return path.join(archive, folders[0]!, file)
+}
+
 const legacyFingerprints = JSON.parse(readFileSync(new URL('./__fixtures__/implementation-workflow-fingerprint.json', import.meta.url), 'utf8')) as Array<{ fingerprint: string; attempts: number; compactDeveloper: boolean }>
 
 let root: string
@@ -751,7 +762,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(answered[0]).toContain('1. Yes, one shared module.')
     expect(state.steps.architect?.visits).toBe(1)
     expect(state.pendingQuestion).toBeUndefined()
-    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
+    expect(JSON.parse(readFileSync(archivedChangeFile('design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
   })
 
   describe('architect clarifications', () => {
@@ -1063,7 +1074,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer', 'developer', 'reviewer'])
     expect(calls[2]!.prompt).toContain('`score` is at least 95')
     expect(calls[2]!.prompt).toContain('`security` ≥ 91')
-    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
+    expect(JSON.parse(readFileSync(archivedChangeFile('confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
   })
 
   describe('reviewer risk brief', () => {
@@ -1075,7 +1086,7 @@ describe('programmatic Core host with real evidence gates', () => {
       risks: [risk('low', 1), risk('high', 2)],
       humanChecks: ['Run the CLI by hand'], divergences: [],
     }
-    const archived = (file: string) => path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, file)
+    const archived = (file: string) => archivedChangeFile(file)
     const briefFile = () => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'review-brief.json'), 'utf8'))
     function reviewing(replies: unknown[]) {
       let reviews = 0
