@@ -11,7 +11,7 @@ import { configuredRoles } from './preflight.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { validationPieceRegistry } from './pieces/index.js'
 import type { DefinitionNode, WorkflowDefinitionDraft } from './definition-types.js'
-import { cancelRun, createRun, definitionRunDirectory, resumeRun, signalRun } from './runs.js'
+import { cancelRun, createRun, definitionRunDirectory, pauseRun, resumeRun, signalRun } from './runs.js'
 import { statusRun } from './run-status.js'
 import { RunDatabase } from './checkpoint/database.js'
 import { RunLease } from './checkpoint/lease.js'
@@ -353,4 +353,129 @@ it('delivers steering at most once when the claiming attempt fails and is retrie
   expect(attempts.map(attempt => attempt.status)).toEqual(['failed', 'succeeded'])
   const status = await statusRun(f.directory)
   expect(status.state.steering).toMatchObject({ pending: 0, consumed: 1, receipts: [{ id: 'retry-steering', status: 'consumed', consumedAttemptId: attempts[0].attempt_id }] })
+})
+
+it('pauses a running workflow after its current attempt and resumes without repeating it', async () => {
+  const f = fixture({ inspect: { ...prompt, ends: { next: 'review', failed: null } }, review: prompt, done })
+  const pauses: Awaited<ReturnType<typeof pauseRun>>[] = []
+  f.registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    // Requested while this attempt is in flight under the owner's live lease.
+    if (f.requests.length === 1) { pauses.push(await pauseRun(f.directory, { requestId: 'budget-1', reason: 'budget' })); pauses.push(await pauseRun(f.directory, { requestId: 'budget-1', reason: 'budget' })) }
+    return { text: 'Inspected', usage: { inputTokens: 3, outputTokens: 2, costUsd: 0.01 } }
+  } })
+  const paused = await createRun(f)
+  expect(pauses[0]).toMatchObject({ outcome: 'requested', requestId: 'budget-1', reason: 'budget', status: 'running', createdAt: expect.any(String) })
+  // The retried idempotency key returns the same accepted request.
+  expect(pauses[1]).toEqual(pauses[0])
+  expect(paused).not.toHaveProperty('error')
+  expect(paused.state.status).toBe('paused')
+  expect(paused.state.pendingInterrupts).toEqual([])
+  expect(paused.state.pause).toMatchObject({ requestId: 'budget-1', reason: 'budget' })
+  expect(paused.state.steps.inspect.status).toBe('succeeded')
+  expect(paused.state.steps.review).toBeUndefined()
+  expect(f.requests).toHaveLength(1)
+  const status = await statusRun(f.directory)
+  expect(status.state.lease?.active ?? false).toBe(false)
+  expect(status.state.pause).toMatchObject({ reason: 'budget' })
+  // Pausing a paused run is a reported no-op.
+  expect(await pauseRun(f.directory, { requestId: 'budget-2', reason: 'budget' })).toMatchObject({ outcome: 'already-paused', status: 'paused' })
+
+  const resumed = await resumeRun(f.directory, { registry: f.registry })
+  expect(resumed.state.status, JSON.stringify(resumed.state)).toBe('succeeded')
+  expect(resumed.state).not.toHaveProperty('pause')
+  expect(f.requests).toHaveLength(2)
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    const types = database.sqlite.prepare('SELECT type FROM events WHERE run_id=? ORDER BY sequence').all(f.context.runId).map(row => String(row.type))
+    expect(types.filter(type => type === 'pause_requested')).toHaveLength(1)
+    expect(types.filter(type => type === 'workflow_paused')).toHaveLength(1)
+    expect(types.indexOf('workflow_paused')).toBeLessThan(types.indexOf('workflow_resumed'))
+    expect(database.sqlite.prepare("SELECT count(*) count FROM control_inbox WHERE kind='pause' AND consumed_at IS NULL").get()?.count).toBe(0)
+  } finally { database.close() }
+  // A completed run is never changed by a pause.
+  expect(await pauseRun(f.directory, { requestId: 'late' })).toMatchObject({ outcome: 'terminal', status: 'succeeded', reason: 'requested' })
+})
+
+it('lets in-flight mapped branches finish before pausing and resumes the rest once', async () => {
+  const f = fixture({
+    branches: { kind: 'map', params: { over: 'tickets', body: 'branch', concurrency: 2 }, ends: { next: 'join' } },
+    join: { kind: 'join', params: { reduce: 'all-ok' }, ends: { next: 'done', fail: null } },
+    done,
+  }, { components: { branch: { entry: 'inspect', nodes: {
+    inspect: { ...prompt, ends: { next: 'check', failed: null } },
+    check: { ...prompt, ends: { next: 'finish', failed: null } },
+    finish: done,
+  } } } })
+  f.context.specs.push({ ...f.context.specs[0], id: 'second' })
+  f.registry = new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    // Both branches' first steps were admitted before the request; the second
+    // still waits for the AI permit and must run to completion, not be cut.
+    if (f.requests.length === 1) await pauseRun(f.directory, { requestId: 'pause-map', reason: 'requested' })
+    return { text: 'Inspected', usage: { inputTokens: 3, outputTokens: 2, costUsd: 0.01 } }
+  } })
+  const paused = await createRun(f)
+  expect(paused.state.status, JSON.stringify(paused.state)).toBe('paused')
+  // A step admitted before the request finishes instead of failing; nothing new is admitted.
+  expect(f.requests.length).toBeLessThanOrEqual(2)
+  expect(paused.state.recentFailures).toEqual([])
+  const resumed = await resumeRun(f.directory, { registry: f.registry })
+  expect(resumed.state.status, JSON.stringify(resumed.state)).toBe('succeeded')
+  // Each branch ran inspect once (before the pause) and check once (after it).
+  expect(f.requests).toHaveLength(4)
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path LIKE 'branches/%inspect' AND status='succeeded'").get()?.count).toBe(2)
+    expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path LIKE 'branches/%check' AND status='succeeded'").get()?.count).toBe(2)
+  } finally { database.close() }
+})
+
+it('settles an ownerless running run as paused and discards a pause superseded by resume', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'inspect' } }, inspect: prompt, done })
+  const first = await createRun(f)
+  // A human pause is already a stop: the request is a reported no-op.
+  expect(await pauseRun(f.directory)).toMatchObject({ outcome: 'already-paused' })
+  const database = await RunDatabase.open(path.join(f.directory, 'run.sqlite'))
+  try {
+    const lease = new RunLease(database, f.context.runId), token = lease.acquire('stale-owner')
+    // A pause that lands while an owner holds the lease, then the owner reaches an interrupt and stops.
+    expect((await pauseRun(f.directory, { requestId: 'stale', reason: 'budget' })).outcome).toBe('requested')
+    lease.release(token)
+  } finally { database.close() }
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [first.state.pendingInterrupts[0].id]: { answer: 'Continue' } } })
+  expect(resumed.state.status, JSON.stringify(resumed.state)).toBe('succeeded')
+  expect(f.requests).toHaveLength(1)
+
+  const g = fixture({ inspect: prompt, done })
+  await createRun(g)
+  const raw = await RunDatabase.open(path.join(g.directory, 'run.sqlite'))
+  try { raw.transaction('simulate-crash', () => raw.put('runs', { ...raw.sqlite.prepare('SELECT * FROM runs').get()!, status: 'running', completion_json: null })) }
+  finally { raw.close() }
+  expect(await pauseRun(g.directory, { reason: 'budget' })).toMatchObject({ outcome: 'paused', status: 'paused' })
+  expect((await statusRun(g.directory)).state.pause).toMatchObject({ reason: 'budget' })
+  await expect(pauseRun(g.directory, { reason: 'Budget!' })).rejects.toMatchObject({ code: 'invalid_arguments' })
+})
+
+it('upgrades a version 1 run database before recording a pause and keeps version 1 readable', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
+  await createRun(f)
+  const filename = path.join(f.directory, 'run.sqlite')
+  const raw = await RunDatabase.open(filename)
+  try {
+    raw.sqlite.exec(`BEGIN; CREATE TABLE old_inbox (request_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(run_id), kind TEXT NOT NULL CHECK(kind IN ('cancel','steer')),
+      payload_json TEXT NOT NULL, created_at TEXT NOT NULL, received_sequence INTEGER NOT NULL DEFAULT 0, consumed_by_attempt_id TEXT, consumed_at TEXT);
+      DROP TABLE control_inbox; ALTER TABLE old_inbox RENAME TO control_inbox; PRAGMA user_version=1; COMMIT;`)
+  } finally { raw.close() }
+  await signalRun(f.directory, 'Keep going', 'steer-v1')
+  expect((await statusRun(f.directory)).state.status).toBe('paused')
+  const database = await RunDatabase.open(filename)
+  try {
+    expect(database.schemaVersion).toBe(1)
+    const lease = new RunLease(database, f.context.runId), token = lease.acquire('owner')
+    expect((await pauseRun(f.directory, { requestId: 'after-upgrade' })).outcome).toBe('requested')
+    lease.release(token)
+    expect(database.schemaVersion).toBe(2)
+    expect(database.sqlite.prepare("SELECT kind FROM control_inbox ORDER BY created_at").all().map(row => row.kind)).toEqual(['steer', 'pause'])
+  } finally { database.close() }
 })

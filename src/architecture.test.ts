@@ -113,8 +113,8 @@ describe('source architecture', () => {
     })
   })
 
-  it('keeps the copied pipeline runtime free of package dependencies', () => {
-    const external = imports(path.join('pipeline', 'pipeline-state.ts')).filter((specifier) => !specifier.startsWith('node:'))
+  it.each(['pipeline-state.ts', 'spec-trace.ts'])('keeps the copied pipeline runtime %s free of package dependencies', (file) => {
+    const external = imports(path.join('pipeline', file)).filter((specifier) => !specifier.startsWith('node:'))
     expect(external).toEqual([])
   })
 })

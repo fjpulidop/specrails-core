@@ -17,7 +17,7 @@ export interface ReviewBehaviourChange { what: string; where: string; userVisibl
 export interface ReviewInvariant { invariant: string; evidence: string; status: typeof REVIEW_INVARIANT_STATUSES[number] }
 export interface ReviewUntested { path: string; why: string }
 export interface ReviewRisk { severity: typeof REVIEW_RISK_SEVERITIES[number]; area: typeof REVIEW_RISK_AREAS[number]; whatToLookAt: string; ref: string }
-/** Reserved for spec-divergence reporting (Phase 3); may be empty. */
+/** A spec claim of a touched capability that the code contradicts (reviewer check 9); may be empty. */
 export interface ReviewDivergence { capability: string; requirement: string; observed: string }
 export interface ReviewBrief {
   behaviourChanges?: ReviewBehaviourChange[]

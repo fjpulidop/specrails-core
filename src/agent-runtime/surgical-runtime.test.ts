@@ -19,7 +19,7 @@ let config: RuntimeConfig
 const change = 'surgical-feature'
 const usage = { costUsd: 0.1, inputTokens: 20, outputTokens: 10 }
 const architecture = {
-  proposal: '# Navigation\nFix the app navigation.', design: '# Design\nChange apps/app/code.cjs only.',
+  proposal: '# Navigation\nFix the app navigation.', design: '# Design\nChange apps/app/code.cjs only.\n## Non-Goals\n- No other package changes.\n',
   tasks: [{ title: 'Return 2 from apps/app/code.cjs' }],
   specs: [{ name: 'navigation', content: '## ADDED Requirements\n### Requirement: App returns 2\nThe app SHALL return 2.\n#### Scenario: Requested behavior\n- **WHEN** the app is called\n- **THEN** it returns 2.\n' }], confidence: 'high',
 }
@@ -113,7 +113,12 @@ beforeEach(() => {
 })
 afterEach(() => { vi.unstubAllEnvs(); rmSync(root, { recursive: true, force: true }) })
 
-describe('surgical implementation runs', () => {
+// Each case drives one to three complete workflows through the real OpenSpec CLI:
+// 40-70 `openspec` subprocesses (status, instructions, validate, archive) of
+// ~200 ms each, which is 80% of a 10-17 s local run. A loaded macOS runner is
+// 4-5x slower and crossed the 60 s POSIX default, so these cases get the same
+// ceiling the config already gives Windows. Nothing here waits on a timer.
+describe('surgical implementation runs', { timeout: 180_000 }, () => {
   it('verifies in the package, undoes edits outside it and reviews only the change', async () => {
     const notes: string[] = []
     const { registry, calls } = fake({ developer: () => {

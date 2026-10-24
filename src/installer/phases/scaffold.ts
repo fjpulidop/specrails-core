@@ -280,8 +280,14 @@ export function scaffoldInstallation(input: ScaffoldInput): ScaffoldResult {
   }
 
 
-  // --- Codex provider settings + AGENTS.md initial content ---
-  if (input.provider === 'codex') {
+  // --- Provider settings + managed instruction block ---
+  if (input.provider === 'claude') {
+    const written = applyClaudeSettings(input)
+    copiedFiles += written
+    if (written > 0) {
+      info(`Claude provider: wrote ${written} setting file(s) (CLAUDE.md)`)
+    }
+  } else if (input.provider === 'codex') {
     const written = applyCodexSettings(input)
     copiedFiles += written
     if (written > 0) {
@@ -725,7 +731,12 @@ function seedProjectLayer(input: AssembleProjectWorkspaceInput): void {
   // Project-named instruction file (codex AGENTS.md / gemini GEMINI.md). Reuse
   // the same sentinel-upsert helpers via the settings appliers, scoped so they
   // ONLY emit the instruction file (the settings file is already linked above).
-  if (input.provider === 'codex') {
+  if (input.provider === 'claude') {
+    seedInstructionFile(
+      path.join(input.workspace, 'CLAUDE.md'),
+      renderInitialClaudeMd(input.codeRoot),
+    )
+  } else if (input.provider === 'codex') {
     seedInstructionFile(
       path.join(input.workspace, 'AGENTS.md'),
       renderInitialAgentsMd(input.codeRoot),
@@ -1210,6 +1221,40 @@ function renderInitialKimiAgentsMd(repoRoot: string): string {
   ].join('\n')
 }
 
+/**
+ * Claude Code provider settings: the sentinel-protected Specrails block in the
+ * root `CLAUDE.md` (the instruction file Claude Code loads on startup), upserted
+ * exactly like codex `AGENTS.md` and gemini `GEMINI.md` so user content outside
+ * the block survives. Returns files written.
+ */
+function applyClaudeSettings(input: ScaffoldInput): number {
+  const claudeMdPath = path.join(input.artifactRoot, 'CLAUDE.md')
+  const content = renderInitialClaudeMd(input.codeRoot)
+  if (!pathExists(claudeMdPath)) {
+    writeFileLf(claudeMdPath, content)
+    return 1
+  }
+  const existing = readTextFile(claudeMdPath)
+  const next = upsertAgentsMdManagedBlock(existing, extractManagedBlock(content))
+  if (next === existing) return 0
+  writeFileLf(claudeMdPath, next)
+  return 1
+}
+
+function renderInitialClaudeMd(repoRoot: string): string {
+  return renderInitialAgentsMd(repoRoot).replace(AGENTS_MD_END, [
+    '## Project rules',
+    '',
+    '- `.specrails/rules.json` (refreshed by `specrails-core rules inventory`)',
+    '  lists the gates this repository already enforces and how each written',
+    '  rule is checked. Run the gates that cover your change; rules marked',
+    '  `humanOnly` are for the human reviewer, never claim them verified.',
+    '- Read provider rules from `.claude/rules/` when present.',
+    '',
+    AGENTS_MD_END,
+  ].join('\n'))
+}
+
 function renderInitialGeminiMd(repoRoot: string): string {
   return renderInitialAgentsMd(repoRoot).replace(AGENTS_MD_END, 'Read provider rules from `.gemini/`.\n\n' + AGENTS_MD_END)
 }
@@ -1229,6 +1274,15 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
   if (!pathExists(source)) return 0
   const dest = path.join(input.artifactRoot, '.specrails', 'runtime')
   copyFile(source, path.join(dest, 'pipeline-state.mjs'))
+  // Requirement ↔ test traceability, self-contained like pipeline-state: `node .specrails/runtime/trace.mjs --check`.
+  const trace = path.join(input.scriptDir, 'dist', 'pipeline', 'spec-trace.js')
+  const traced = pathExists(trace) ? 2 : 0
+  if (traced) {
+    copyFile(trace, path.join(dest, 'spec-trace.mjs'))
+    writeFileLf(path.join(dest, 'trace.mjs'),
+      "import { runSpecTraceCli } from './spec-trace.mjs'\n" +
+      "process.exitCode = await runSpecTraceCli(process.argv.slice(2))\n")
+  }
   writeFileLf(path.join(dest, 'pipeline.mjs'),
     "import { runPipelineCli } from './pipeline-state.mjs'\n" +
     "process.exitCode = await runPipelineCli(process.argv.slice(2))\n")
@@ -1247,9 +1301,9 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
         agents: Object.fromEntries(['architect', 'developer', 'reviewer'].map(role => [role, { provider, maxTurns: 100 }])), verification: [],
       }, null, 2) + '\n')
     }
-    return 3
+    return 3 + traced
   }
-  return 2
+  return 2 + traced
 }
 
 function pruneLegacyArtifacts(

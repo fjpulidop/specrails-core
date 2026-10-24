@@ -10,12 +10,16 @@ import { RunLease } from './lease.js'
 import { RunDatabase } from './database.js'
 
 const roots: string[] = []
+// Each worker opens its run database, which on Windows applies the private ACL
+// through PowerShell (bounded at 120 s in storage/private-path.ts). A 30 s
+// spawn bound there would kill a healthy but cold worker; POSIX keeps it tight.
+const WORKER_TIMEOUT_MS = process.platform === 'win32' ? 150_000 : 30_000
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }) })
 describe('production SQLite recovery after process death', () => {
   it('retains unknown provider usage and reservations after a killed started invocation, including forks', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'engine invocation crash ')); roots.push(root)
     const filename = path.join(root, 'run.sqlite'), worker = fileURLToPath(new URL('./__fixtures__/crash-worker.mjs', import.meta.url)), clock = Date.now() - 120_000
-    const crashed = spawnSync(process.execPath, [worker, filename, 'provider-started', String(clock)], { encoding: 'utf8', timeout: 30_000 })
+    const crashed = spawnSync(process.execPath, [worker, filename, 'provider-started', String(clock)], { encoding: 'utf8', timeout: WORKER_TIMEOUT_MS })
     expect(crashed.error).toBeUndefined()
     expect(JSON.parse(readFileSync(filename + '.fault', 'utf8')).at).toBe('provider-started')
     expect(existsSync(filename + '.kill-failed')).toBe(false); expect(existsSync(filename + '.cleanup')).toBe(false)
@@ -31,7 +35,7 @@ describe('production SQLite recovery after process death', () => {
       expect(copied.usage()).toMatchObject({ costUsd: null, inputTokens: null, outputTokens: null })
       expect(copied.reservationStatus().knownTokens).toBe(10)
     } finally { fork.close(); source.close() }
-    const retry = spawnSync(process.execPath, [worker, filename, 'reserve-after-crash', String(clock + 60_001)], { encoding: 'utf8', timeout: 30_000 })
+    const retry = spawnSync(process.execPath, [worker, filename, 'reserve-after-crash', String(clock + 60_001)], { encoding: 'utf8', timeout: WORKER_TIMEOUT_MS })
     expect(retry.status).not.toBe(0)
     expect(retry.stderr).toContain('shared budget')
   })
@@ -39,7 +43,7 @@ describe('production SQLite recovery after process death', () => {
   it.each(['before-effect', 'before-writes', 'between-writes-ledger', 'after-writes', 'after-snapshot'])('recovers %s without losing or repeating committed work', async phase => {
     const root = await mkdtemp(path.join(tmpdir(), 'engine durable crash ')); roots.push(root)
     const filename = path.join(root, 'run.sqlite'), worker = fileURLToPath(new URL('./__fixtures__/crash-worker.mjs', import.meta.url)), clock = Date.now()
-    const crashed = spawnSync(process.execPath, [worker, filename, phase, String(clock)], { encoding: 'utf8', timeout: 30_000 })
+    const crashed = spawnSync(process.execPath, [worker, filename, phase, String(clock)], { encoding: 'utf8', timeout: WORKER_TIMEOUT_MS })
     expect(crashed.error).toBeUndefined()
     expect(existsSync(filename + '.fault')).toBe(true)
     expect(JSON.parse(readFileSync(filename + '.fault', 'utf8')).at).toBe(phase)
@@ -47,7 +51,7 @@ describe('production SQLite recovery after process death', () => {
     expect(existsSync(filename + '.cleanup')).toBe(false)
     if (process.platform !== 'win32') expect(crashed.signal).toBe('SIGKILL')
     else expect(crashed.status).not.toBe(0)
-    const resumed = spawnSync(process.execPath, [worker, filename, 'none', String(clock + 60_001)], { encoding: 'utf8', timeout: 30_000 })
+    const resumed = spawnSync(process.execPath, [worker, filename, 'none', String(clock + 60_001)], { encoding: 'utf8', timeout: WORKER_TIMEOUT_MS })
     expect(resumed.status, resumed.stderr).toBe(0)
     const db = await RunDatabase.open(filename)
     try {

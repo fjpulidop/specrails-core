@@ -15,6 +15,9 @@ import { parseStructuredText } from './openai-executor.js'
 import { executeKimiReadonlyAcp } from './kimi-acp.js'
 import { assertGeminiAdminPolicyAvailable, GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
+/** Claude's print-mode answer to `--resume <id>` when no transcript exists for that ID in this project. */
+const CLAUDE_SESSION_MISSING = /No conversation found with session ID/i
+
 export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
 interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
@@ -323,6 +326,11 @@ export class CliExecutor implements AgentExecutor {
         throw new AgentExecutionError(message, parsed.failureKind, parsed.usage)
       }
       if (result.exitCode !== 0 || parsed.failed) {
+        // A resumed Claude session whose transcript is gone fails before any
+        // inference; the role layer then starts a fresh full turn.
+        if (this.provider === 'claude' && request.resumeSessionId && CLAUDE_SESSION_MISSING.test(result.stdout + '\n' + result.stderr)) {
+          throw new AgentExecutionError('claude has no stored conversation for the resumed session', 'session_not_found', parsed.usage)
+        }
         const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
         throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`, 'provider_execution_error', parsed.usage)
       }

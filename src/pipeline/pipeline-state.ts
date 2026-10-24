@@ -347,7 +347,7 @@ export function bindImplementationExclusions(contextInput: PipelineContext, excl
     if (!repository) continue // A scoped child receives the parent union, filtered to its frozen repositories.
     repositoryExclusions[id] = [...new Set(paths)].sort()
     for (const item of repositoryExclusions[id]!) {
-      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:changes|specs)\/[a-z0-9][a-z0-9./-]*$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
+      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:(?:changes|specs)\/[a-z0-9][a-z0-9./-]*|capability-map\.json)$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
       safeChild(repository.path, item)
     }
   }
@@ -516,7 +516,8 @@ export function initializePipeline(contextInput: unknown, change: string): Pipel
       schemaVersion: 1, runId: context.runId, change, context, scopeHash: digest(canonical(context)), revision: 0,
       createdAt: now, updatedAt: now,
       phases: Object.fromEntries(PHASES.map((phase) => [phase, { status: 'pending' }])) as PipelineState['phases'],
-      artifactExclusions: ['openspec/changes/' + change],
+      // The capability map is Core metadata the archive step rewrites (graph/capability-map.ts), never part of the reviewed candidate.
+      artifactExclusions: ['openspec/changes/' + change, 'openspec/capability-map.json'],
     }
     atomicJson(path.join(pipelineStateDirectory(context), 'context.json'), context)
     saveState(state)

@@ -255,7 +255,7 @@ An invalid first preparation gets exactly one repair: `init` sets `artifactRepai
 
 ## Flow Spec
 
-Flow's handoff: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
+Flow's handoff: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. A reviewer rejection or a failing `check` is not a dead end: it records its findings in `latestFindings` and starts a bounded correction round (`correctionLimit: 2`). `fix` is a `role-turn` of the built-in `developer` with `stance: "fixer"` (write access, the FIXER instructions and the configured fixer engine) that fixes the named defects and adds the tests the findings ask for, tagged `[spec:<capability>/<requirement-slug>]`, without editing `openspec/`. `fix-progress` continues only when the fixer changed the candidate (`$outputs.fix.candidateHash` differs from the hash `check` last verified); `derive` then runs again with `feedback: "{{run.latestFindings}}"` and updates the existing change in place, followed by `check` and a new review. When the fixer changes nothing or the budget is spent, the run ends at `changes-requested`, a failure whose reason names the number of correction rounds and the latest findings. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
 
 ```json
 {
@@ -268,6 +268,7 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
   "maxTransitions": 100,
   "roles": [
     "deriver",
+    "developer",
     "reviewer"
   ],
   "nodes": {
@@ -275,7 +276,10 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
       "kind": "assign",
       "params": {
         "set": {
-          "derivationRepairs": 0
+          "derivationRepairs": 0,
+          "correctionRounds": 0,
+          "correctionLimit": 2,
+          "latestFindings": ""
         }
       },
       "ends": {
@@ -287,7 +291,8 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
       "kind": "derive-change",
       "params": {
         "change": "{{run.changeId}}",
-        "summaryPath": "flow-summary.md"
+        "summaryPath": "flow-summary.md",
+        "feedback": "{{run.latestFindings}}"
       },
       "ends": {
         "pass": "check",
@@ -324,7 +329,19 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
       },
       "ends": {
         "pass": "review",
-        "fail": "failed",
+        "fail": "check-findings",
+        "failed": "failed"
+      }
+    },
+    "check-findings": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "latestFindings": "Host verification failed for the current candidate: {{outputs.check}}"
+        }
+      },
+      "ends": {
+        "next": "correction-budget",
         "failed": "failed"
       }
     },
@@ -365,7 +382,86 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
       },
       "ends": {
         "true": "archive",
-        "false": "failed"
+        "false": "review-findings"
+      }
+    },
+    "review-findings": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "latestFindings": "{{outputs.review.structured}}"
+        }
+      },
+      "ends": {
+        "next": "correction-budget",
+        "failed": "failed"
+      }
+    },
+    "correction-budget": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.correctionRounds < $vars.correctionLimit"
+      },
+      "ends": {
+        "true": "begin-correction",
+        "false": "changes-requested"
+      }
+    },
+    "begin-correction": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "correctionRounds": 1
+        },
+        "set": {
+          "derivationRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "fix",
+        "failed": "failed"
+      }
+    },
+    "fix": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "developer",
+        "stance": "fixer",
+        "prompt": "Correct the code Flow built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "summary",
+            "incomplete"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "incomplete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sessionContinuity": "none"
+      },
+      "ends": {
+        "next": "fix-progress",
+        "invalid": "failed",
+        "failed": "failed"
+      }
+    },
+    "fix-progress": {
+      "kind": "condition",
+      "params": {
+        "expr": "exists($outputs.fix.candidateHash) && $outputs.fix.candidateHash != null && $outputs.fix.candidateHash != $outputs.check.candidateHash"
+      },
+      "ends": {
+        "true": "derive",
+        "false": "changes-requested"
       }
     },
     "archive": {
@@ -405,9 +501,17 @@ Flow's handoff: the code already exists in a worktree reserved at `repositories[
         "outcome": "failure"
       },
       "ends": {}
+    },
+    "changes-requested": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "Flow → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
+      },
+      "ends": {}
     }
   },
-  "version": "592f9fdf1dcc662e633f4f4c114fa76c1007bdb811f73878dfefabfbab8101da"
+  "version": "4434e9a51f42e2d93762c7d3539c00f3f2102c064e107c636f6bb261221b5b44"
 }
 ```
 

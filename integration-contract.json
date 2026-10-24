@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.6",
+  "schemaVersion": "5.7",
   "providers": {
     "claude": {
       "cli": {
@@ -242,6 +242,7 @@
       "fork",
       "signal",
       "cancel",
+      "pause",
       "host"
     ],
     "cliPresentationOperations": [
@@ -263,6 +264,78 @@
       "confidenceScore": "openspec/changes/<change>/confidence-score.json brief (approved verdicts; archived with the change)",
       "stepOutput": "reviewer step output brief / briefDiagnostic; engine 2 implementation output review.brief",
       "documentation": "docs/agent-runtime.md#reviewer-risk-brief"
+    },
+    "architectClarifications": {
+      "version": 1,
+      "capability": "architectClarifications",
+      "output": "architect reply clarifications: [{question, impact: high|medium|low, default: string | null}] (at most 5) before planning",
+      "policy": "config architect.clarifications: ask-on-high (default) | always-proceed",
+      "pause": "ask-on-high and a high-impact clarification with default null pauses the run with pendingQuestion (the questions, numbered when several); resume --answer feeds the answer to the architect as authoritative",
+      "proceed": "otherwise the architect plans on its defaults and records them under Assumptions in design.md",
+      "designSections": "design.md must contain a non-empty Non-Goals section (and Assumptions when clarifications were listed); a missing section spends the architect's single repair turn",
+      "runResult": "runtime-result.clarifications: {schemaVersion: 1, change, policy, status: awaiting-answers | proceeded, recordedAt, clarifications, blocking, answers, assumptions} | null (engine 1 builtin runs)",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json",
+      "stepOutput": "architect step output clarifications; graph state architecture.clarifications",
+      "documentation": "docs/agent-runtime.md#architect-clarifications"
+    },
+    "specTrace": {
+      "version": 1,
+      "capability": "specTrace",
+      "requirementId": "<capability>/<slug> from '### Requirement: <name>' in openspec/specs/<capability>/spec.md (and the change's ADDED/MODIFIED/RENAMED deltas); slug: NFKD without accents, lowercase, every run of non-alphanumerics one '-', no leading or trailing '-'",
+      "testTags": "[spec:<capability>/<slug>] in a test title, or a '// spec: <capability>/<slug>' comment ('# spec:' for Python and shell) on the line before the test; any language",
+      "states": "demonstrated: tagged test file reached by a verification command that exited 0; undemonstrated: reason no-test | not-executed | failed; untagged: tags that match no requirement (advisory)",
+      "report": "{schemaVersion: 1, generatedAt, changes, evidence: receipt | tests-passed | none, receiptId, requirements, demonstrated[{id, name, tests}], undemonstrated[{id, name, reason, tests}], untagged[{tag, repositoryId, file, line, form}], touched, touchedUndemonstrated, scannedFiles}",
+      "reportPath": "<backlogRoot>/.specrails/pipeline/<runId>/spec-trace.json (written after each passing verification, bound to the receipt id)",
+      "runResult": "runtime-result.specTrace: the report | null (engine 1 builtin runs)",
+      "advisory": "The trace never changes verification or acceptance status; the acceptance report carries a finding 'Spec trace (advisory, receipt <id>): Requirements demonstrated X/Y…', the reviewer treats a touched requirement without a demonstrated tag as an issue",
+      "divergences": "reviewer check 9 fills brief.divergences[{capability, requirement, observed}] with spec claims of touched capabilities the code contradicts",
+      "cli": "specrails-core pipeline trace [--root <dir>] [--context <context.json>] [--change <name>[,...]] [--tests <glob>[,...]] [--tests-passed] [--check] [--json] [--out <file>]; installed projects also get node .specrails/runtime/trace.mjs; normal mode exits 0, --check exits 1 when a requirement touched by the change is not demonstrated",
+      "driftSweepDefinition": "src/agent-runtime/engine/__fixtures__/drift-sweep.json (read-only role-turn of a host-declared read role drift-auditor; structured output {divergences[{capability, requirement, observed}], unchecked[]})",
+      "documentation": "docs/agent-runtime.md#requirement-traceability"
+    },
+    "baselineOnTouch": {
+      "version": 1,
+      "capability": "baselineOnTouch",
+      "config": "baselineOnTouch: boolean (default false) in .specrails/agent-runtime.json",
+      "capabilityMap": "openspec/capability-map.json {schemaVersion: 1, capabilities: {<capability>: {files: string[], changes: string[]}}}; the archive step merges the files each archived change touched into every capability of its delta specs (paths prefixed '<repositoryId>:' outside the artifact repository); excluded from the reviewed candidate",
+      "detection": "after planning, design.md Blast radius files that exist, are code (not tests, docs or lockfiles) and appear neither in the capability map nor as a path or specific directory in openspec/specs are uncovered",
+      "plan": "uncovered files make the architect add a '## 0. Baseline' task group (characterization tests of current behaviour plus a minimal as-built spec under ADDED Requirements, requirements tagged per specTrace) in the same session",
+      "hardRule": "the developer's first turn writes only the Baseline group; Core refuses non-test edits and runs the verification plan on the unchanged code; failure stops the run (status blocked, error code baseline_characterization_failed) before the developer touches the module",
+      "recordPath": "<backlogRoot>/.specrails/pipeline/<runId>/baseline.json {schemaVersion: 1, change, status: not-needed | planned | passed | failed | violated, recordedAt, detection {blastRadius, covered, uncovered, skipped}, tests, receiptId?, reason?}",
+      "runResult": "runtime-result.baseline: the record | null (engine 1 builtin runs)",
+      "cost": "baseline turns run with invocation kind 'baseline'; efficiencySummary.invocations.byKind.baseline and efficiencySummary.baseline {invocations, roles, costUsd, inputTokens, outputTokens} keep their spend apart",
+      "documentation": "docs/agent-runtime.md#baseline-on-touch"
+    },
+    "rulesInventory": {
+      "version": 1,
+      "capability": "rulesInventory",
+      "cli": "specrails-core rules inventory [--root <repo>] [--artifact-root <dir>] [--offline] [--reclassify] [--json]; exits 0 and always writes the inventory (classification problems are reported in classification.status); init runs it offline after installing",
+      "path": "<artifactRoot>/.specrails/rules.json (the directory that holds .specrails/agent-runtime.json); the runtime reads <backlogRoot>/.specrails/rules.json, then <artifactRoot>/.specrails/rules.json",
+      "schema": "{schemaVersion: 1, generatedAt, gates[{id, kind: lint | format | typecheck | test | architecture | hook | ci | spec, command, source}], rules[{id, text, source: '<file>:<line>', status: enforcedBy | automatable | humanOnly | unclassified, enforcedBy?, proposedCheck?}], classification {status: classified | cached | offline | unavailable | failed | empty, provider?, model?, reason?, classifiedAt?, usage?}}",
+      "gates": "deterministic discovery in the repository: package scripts (lint, format, typecheck, test, architecture, openspec), lint/format configs (ESLint, Biome, Prettier, Ruff, Black, mypy, golangci-lint, rustfmt, clippy, RuboCop), tsconfig strict, architecture tests and dependency-cruiser, git hooks (.husky, .githooks, pre-commit, lefthook), check-like run steps of .github/workflows, openspec validate",
+      "rules": "list items and strongly normative sentences of CLAUDE.md, AGENTS.md, CONTRIBUTING.md (also .github/ and docs/), outside code fences, tables and specrails-managed blocks; at most 200; id r-<12 hex> = hash of file and statement, stable across line moves",
+      "classification": "one provider call (agents.architect of .specrails/agent-runtime.json, read-only, no role instructions) classifies only rules without a cached classification; the model never adds, drops or rewrites a statement; offline, without configuration or on failure the rules stay unclassified",
+      "reviewer": "humanOnly rules are listed to the reviewer, who copies the ones the change could break into brief.humanChecks",
+      "verification": "with no host verification configured, the architect is offered the discovered gate commands as the default verification proposal for the artifact repository",
+      "claudeInstructions": "Claude Code installs get the sentinel-managed block (<!-- specrails-managed:start/end -->) in the root CLAUDE.md, like codex AGENTS.md, gemini GEMINI.md and kimi .kimi-code/AGENTS.md",
+      "documentation": "docs/agent-runtime.md#project-rules-inventory"
+    },
+    "pauseRuns": {
+      "version": 1,
+      "capability": "pauseRuns",
+      "cli": "specrails-core runtime pause --context <json> | --run-dir <dir> [--request-id <id>] [--reason <token>]; engine 2 runs only; always exits 0 with one line {type: runtime-pause-result, runId, requestId, reason, outcome, status, createdAt?}",
+      "reason": "lowercase token matching ^[a-z][a-z0-9-]{0,63}$, default requested (Desktop's daily budget guard sends budget)",
+      "outcomes": [
+        "requested",
+        "paused",
+        "already-paused",
+        "not-running",
+        "terminal"
+      ],
+      "semantics": "requested: the run executes under a live lease; the idempotent inbox request (same request id and reason returns the original record, a different reason is control_conflict) lets every admitted attempt finish and commit, refuses the next admission, settles status paused and releases the lease (the run process exits 2). paused: an ownerless run still marked running is settled paused directly. already-paused, not-running (failed, interrupted, blocked) and terminal (succeeded, cancelled, completed) change nothing. A run of another Core package is refused with resume_incompatible.",
+      "status": "runtime status and runtime-result state.pause {requestId, reason, at} while a requested pause holds the run (no pendingInterrupts); events pause_requested {requestId, reason} and workflow_paused {requestId, reason}",
+      "resume": "runtime resume continues a paused run from its last committed step without repeating it and discards pause requests that arrived before the resume",
+      "documentation": "docs/agent-runtime.md#pausing-a-run"
     },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
@@ -304,7 +377,7 @@
     "specificationFormat": "Architect specs are OpenSpec delta specs authored through the official fast-forward skill (ADDED/MODIFIED/REMOVED/RENAMED requirements); existing requirements are preserved through delta semantics and merged into main specs by OpenSpec archive. Complete replacement specs are not fabricated.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "16",
+    "instructionsVersion": "17",
     "workflowVersion": "7",
     "engines": [
       1,
@@ -366,6 +439,7 @@
       "params": {
         "change": "required; the run's frozen change name ({{run.changeId}})",
         "summaryPath": "optional; file relative to <backlogRoot>/.specrails/pipeline/<runId>/, at most 32768 bytes, no symlinks or .. segments; absent or empty derives from the diff alone; optional front matter 'transcriptTurns: <n>'",
+        "feedback": "optional string (at most 32000 characters, normally {{run.latestFindings}}); when non-blank the deriver re-derives the existing change in place after a correction round, with the findings bounded to 8000 characters as untrusted fenced data under '## Re-derivation after a correction round'",
         "timeoutMs": "optional",
         "idleTimeoutMs": "optional"
       },
@@ -394,6 +468,7 @@
       ],
       "verificationProposals": "output.structured.verification (at most 20, architect schema); bind them with verify additionalCommandsFrom: <derive node id>",
       "reviewer": "A reviewer role-turn in the same run receives derivation.json; every unexplained file is an issue",
+      "correctionLoop": "role-turn stance 'fixer' (write roles only; the built-in developer takes the FIXER instructions, rolePrompts.fixer and config.fixer in a fresh session). flow-spec routes a rejected review or a failing check to at most correctionLimit (2) rounds of fix then derive (feedback) then check then review; a fixer turn that leaves $outputs.fix.candidateHash equal to $outputs.check.candidateHash, or a spent budget, ends at end node changes-requested with reason 'Flow → Spec: the reviewer requested changes that <n> correction round(s) did not resolve. Latest findings: <findings>'",
       "referenceDefinition": "src/agent-runtime/engine/__fixtures__/flow-spec.json"
     },
     "openRoles": {

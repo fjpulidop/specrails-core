@@ -215,7 +215,7 @@ export async function archiveOpenSpecChange(context: PipelineContext, change: st
   if (!existsSync(active) && !existsSync(path.join(adapter.directory, 'openspec-archive.json'))) throw new Error('OpenSpec active change does not exist')
   await archiveWithOpenSpec(context, change, active, signal, adapter)
 }
-export async function archive(context: PipelineContext, change: string, signal?: AbortSignal): Promise<void> {
+export async function archive(context: PipelineContext, change: string, signal?: AbortSignal, options: { beforeDone?: (archived: string) => void } = {}): Promise<void> {
   const state = journal(context)
   if (state.phases.archive.status !== 'done') {
     const active = artifactPath(context.artifactRoot, 'openspec/changes/' + change)
@@ -224,6 +224,9 @@ export async function archive(context: PipelineContext, change: string, signal?:
       transitionPipeline(context, 'archive', 'running')
       await archiveWithOpenSpec(context, change, active, signal)
     }
+    // Idempotent post-archive metadata (the capability map); repeated after a crash.
+    const archived = archivedOpenSpecChange(context, change)
+    if (archived && options.beforeDone) options.beforeDone(artifactPath(context.artifactRoot, archived))
     // If the process died after rename, Core rechecks the saved archive approval.
     transitionPipeline(context, 'archive', 'done')
   }

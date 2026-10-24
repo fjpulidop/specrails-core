@@ -6,16 +6,23 @@ import { NODE_KINDS_VERSION } from './engine/piece-registry.js'
 import { validationPieceRegistry } from './engine/pieces/index.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { ROLE_INSTRUCTIONS_VERSION } from './prompts.js'
+import { CLARIFICATION_POLICIES } from './graph/clarifications.js'
+import { SPEC_TRACE_FILE } from '../pipeline/spec-trace.js'
+import { BASELINE_BLOCKER, BASELINE_FILE } from './graph/baseline.js'
+import { CAPABILITY_MAP_PATH } from './graph/capability-map.js'
+import { GATE_KINDS, RULES_FILE, RULE_STATUSES } from './project-rules.js'
+import { PAUSE_OUTCOMES } from './engine/runs.js'
+import { PAUSE_REASON } from './engine/steering/inbox.js'
 import { SESSION_EVENT_TYPES } from './session/domain/events.js'
 import { SESSION_DELIVERIES, SESSION_HOST_CAPABILITIES, SESSION_PROTOCOL_VERSIONS, validatorFor } from './session/host/protocol.js'
 
-const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'flowSessions', 'deriveChange'] as const
+const ENGINE_V2_CAPABILITIES = ['workflowAgentSteps', 'implementationSteps', 'engineV2', 'workflowDefinitions', 'openRoles', 'fanOut', 'fork', 'steeringInbox', 'sessions', 'flowSessions', 'deriveChange', 'pauseRuns'] as const
 
 const contract = JSON.parse(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8'))
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.6')
+    expect(contract.schemaVersion).toBe('5.7')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -33,7 +40,13 @@ describe('Desktop integration contract', () => {
     expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
-    expect(contract.agentRuntime.instructionsVersion).toBe('16')
+    expect(contract.agentRuntime.instructionsVersion).toBe('17')
+  })
+
+  it('documents cooperative pause with the outcomes and reason grammar Core enforces', () => {
+    expect(contract.agentRuntime.pauseRuns).toMatchObject({ version: 1, capability: 'pauseRuns', outcomes: [...PAUSE_OUTCOMES] })
+    expect(contract.agentRuntime.pauseRuns.reason).toContain(PAUSE_REASON.source)
+    expect(contract.agentRuntime.cliOperations).toContain('pause')
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {
@@ -102,6 +115,54 @@ describe('Desktop integration contract', () => {
     expect(descriptor.outcomes).toEqual(derive.outcomes)
     expect(Object.keys(descriptor.paramsSchema.properties as object).sort()).toEqual(Object.keys(derive.params).sort())
     expect(existsSync(new URL('../../' + derive.referenceDefinition, import.meta.url))).toBe(true)
+  })
+
+  it('announces architect clarifications, their policy key and the host record', async () => {
+    const clarifications = contract.agentRuntime.architectClarifications
+    expect(clarifications).toMatchObject({ version: 1, capability: 'architectClarifications', recordPath: '<backlogRoot>/.specrails/pipeline/<runId>/clarifications.json' })
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.architectClarifications).toBe(clarifications.version)
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
+    expect(schema.properties.architect.properties.clarifications.enum).toEqual([...CLARIFICATION_POLICIES])
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Architect clarifications')
+  })
+
+  it('announces the requirement trace, its report and the drift sweep reference definition', async () => {
+    const trace = contract.agentRuntime.specTrace
+    expect(trace).toMatchObject({ version: 1, capability: 'specTrace' })
+    expect(trace.reportPath).toContain('<backlogRoot>/.specrails/pipeline/<runId>/' + SPEC_TRACE_FILE)
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.specTrace).toBe(trace.version)
+    expect(existsSync(new URL('../../' + trace.driftSweepDefinition.split(' ')[0], import.meta.url))).toBe(true)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Requirement traceability')
+  })
+
+  it('announces baseline on touch, its config key, records and cost attribution', async () => {
+    const baseline = contract.agentRuntime.baselineOnTouch
+    expect(baseline).toMatchObject({ version: 1, capability: 'baselineOnTouch' })
+    expect(baseline.capabilityMap).toContain(CAPABILITY_MAP_PATH)
+    expect(baseline.hardRule).toContain(BASELINE_BLOCKER)
+    expect(baseline.recordPath).toContain('<backlogRoot>/.specrails/pipeline/<runId>/' + BASELINE_FILE)
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.baselineOnTouch).toBe(baseline.version)
+    const schema = JSON.parse(readFileSync(new URL('../../schemas/agent-runtime.schema.json', import.meta.url), 'utf8'))
+    expect(schema.properties.baselineOnTouch.type).toBe('boolean')
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Baseline on touch')
+  })
+
+  it('announces the project rules inventory, its file, statuses and gate kinds', async () => {
+    const rules = contract.agentRuntime.rulesInventory
+    expect(rules).toMatchObject({ version: 1, capability: 'rulesInventory' })
+    expect(rules.path).toContain('<artifactRoot>/' + RULES_FILE)
+    for (const status of RULE_STATUSES) expect(rules.schema).toContain(status)
+    for (const kind of GATE_KINDS) expect(rules.schema).toContain(kind)
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.rulesInventory).toBe(rules.version)
+    expect(readFileSync(new URL('../../docs/agent-runtime.md', import.meta.url), 'utf8')).toContain('## Project rules inventory')
   })
 
   it('rejects operations outside the catalog before reading a context', async () => {

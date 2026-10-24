@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 import { InstallerError } from '../util/errors.js'
 import { runCommand } from '../util/exec.js'
-import { info, ok, step } from '../util/logger.js'
+import { info, ok, step, warn } from '../util/logger.js'
 import {
   isDir,
   isSymlink,
@@ -305,8 +305,8 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
   if (pathExists(installedMarker)) assertNoCoreDowngrade(readTextFile(installedMarker).trim(), version)
   const previousSelections = snapshotWorkspaceProviderSelections(artifactRoot)
   const surfaces = [
-    ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', '.gitignore'].map((name) => path.join(artifactRoot, name)),
-    ...['specrails-version', 'specrails-manifest.json', 'setup-templates', 'runtime'].map((name) => path.join(artifactRoot, '.specrails', name)),
+    ...['.claude', '.codex', '.gemini', '.kimi-code', 'AGENTS.md', 'GEMINI.md', 'CLAUDE.md', '.gitignore'].map((name) => path.join(artifactRoot, name)),
+    ...['specrails-version', 'specrails-manifest.json', 'setup-templates', 'runtime', 'rules.json'].map((name) => path.join(artifactRoot, '.specrails', name)),
     path.join(fwDir, 'current'),
     // Contents deliberately NOT snapshotted: `installFramework` rebuilds a
     // version tree whenever its content stamp does not match and stages
@@ -345,6 +345,17 @@ export async function runInit(flags: InitFlags): Promise<InitResult> {
 
   // openspec STAYS in the repo (codeRoot) — unchanged behaviour.
   await installOpenSpecProject(codeRoot, prereqs.provider, artifactRoot)
+
+  // Project rules inventory (gates + parsed rule statements). Offline here:
+  // init never spends on a provider; classifications from an earlier
+  // `specrails-core rules inventory` are kept for unchanged rules.
+  try {
+    const { runRulesInventory } = await import('../../agent-runtime/project-rules.js')
+    const { inventory } = await runRulesInventory({ root: codeRoot, artifactRoot, classify: false })
+    ok(`Project rules inventory: ${inventory.gates.length} gate(s), ${inventory.rules.length} rule(s) in .specrails/rules.json`)
+  } catch (err) {
+    warn(`Project rules inventory skipped: ${(err as Error).message}`)
+  }
 
   if (artifactRoot !== codeRoot) recordSuccessfulInstall(repoRoot, { home: process.env.SPECRAILS_REGISTRY_HOME, providers: [prereqs.provider], coreVersion: version })
 

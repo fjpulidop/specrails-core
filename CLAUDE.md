@@ -16,15 +16,15 @@ Agent workflow engine for specrails-desktop: a deterministic installer that rend
 ```
 bin/specrails-core.mjs        npm bin shim → dist/installer/cli.js
 src/installer/
-  cli.ts                      single dispatcher: init, install-framework, swap-current, assemble, pipeline, runtime
+  cli.ts                      single dispatcher: init, install-framework, swap-current, assemble, pipeline, rules, runtime
   commands/                   init + offline framework lifecycle
   phases/                     prereqs, provider detection, scaffold (provider rendering), manifest, install-config
   util/                       fs, exec, git, registry, install transaction, logger
 src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipts; Node built-ins only because it is copied into projects as .specrails/runtime/pipeline-state.mjs
-src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI
+src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI, project rules inventory (.specrails/rules.json)
 src/shared/                   helpers shared by the CLIs (argument parsing, Specrails home, secret redaction)
 templates/                    implement/retry commands, provider settings, Kimi runner (roles are runtime-defined, never templated)
-integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.6)
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.7)
 ```
 
 ## Commands

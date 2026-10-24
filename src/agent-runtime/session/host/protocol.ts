@@ -34,7 +34,7 @@ const mcpServer = {
 }
 const limits = {
   type: 'object', additionalProperties: false,
-  properties: Object.fromEntries(['idleMs', 'stallMs', 'backgroundMaxMs', 'turnInactivityMs', 'maxSettleHandoffs', 'settleDebounceMs'].map((key) => [key, { type: 'integer', minimum: 0 }])),
+  properties: Object.fromEntries(['idleMs', 'stallMs', 'backgroundMaxMs', 'turnInactivityMs', 'toolInactivityMs', 'maxSettleHandoffs', 'settleDebounceMs'].map((key) => [key, { type: 'integer', minimum: 0 }])),
 }
 const policy = {
   type: 'object', additionalProperties: false, required: ['subagents'],

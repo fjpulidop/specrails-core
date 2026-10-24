@@ -52,7 +52,7 @@ function fixtureRegistry(test: EvaluationCase, context: PipelineContext, onPromp
         await tools.execute({ action: 'new' })
         const artifacts = [
           ['proposal', 'proposal.md', `## Why\n${test.description}\n## What Changes\n- Implement the requested behavior.\n## Capabilities\n### New Capabilities\n- \`fixture-behavior\`: ${test.description}\n### Modified Capabilities\nNone.\n## Impact\nSelected repositories.\n`],
-          ['design', 'design.md', `## Context\n${test.description}\n## Decisions\nUse the existing implementation.cjs pattern and keep the public function boundary.`],
+          ['design', 'design.md', `## Context\n${test.description}\n## Decisions\nUse the existing implementation.cjs pattern and keep the public function boundary.\n## Non-Goals\n- No change outside implementation.cjs.`],
           ['specs', 'specs/fixture-behavior/spec.md', `## ADDED Requirements\n### Requirement: Requested behavior\nThe implementation SHALL satisfy the frozen behavior.\n#### Scenario: Supported input\n- **WHEN** a supported input is supplied\n- **THEN** the expected value is returned without losing required ordering or boundary behavior\n`],
           ['tasks', 'tasks.md', '## 1. Implementation\n- [ ] 1.1 Implement and test the requested behavior\n'],
         ]

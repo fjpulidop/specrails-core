@@ -16,6 +16,8 @@ export interface ArchitectureRecord {
   question?: string
   /** True when a low-confidence design proceeded on stated assumptions instead of asking. */
   assumed?: boolean
+  /** Ambiguities the architect reported before planning (see clarifications.ts). */
+  clarifications?: import('./clarifications.js').Clarification[]
 }
 export interface DeveloperRecord {
   summary: string
@@ -42,6 +44,8 @@ export interface VerificationRecord {
   selfMutation?: import('../../pipeline/pipeline-state.js').VerificationSelfMutation
   /** Files verification regenerated that the host kept in the candidate; roles must not revert them. Sticky for the run. */
   adoptedOutputs?: import('../../pipeline/pipeline-state.js').CandidateFileChange[]
+  /** Advisory requirement ↔ test trace of a passing verification (spec-trace.json), bound to `receiptId`. */
+  specTrace?: import('./spec-trace-record.js').SpecTraceSummary
 }
 export interface ReviewRecord {
   sessionId?: string

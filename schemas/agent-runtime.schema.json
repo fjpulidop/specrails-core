@@ -137,6 +137,7 @@
     "verification": { "type": "array", "items": { "$ref": "#/definitions/checkCommand" } },
     "setup": { "type": "array", "description": "Idempotent commands the verify piece runs sequentially in the admitted workspace before each verification plan; a failing setup command blocks the run instead of starting a correction round.", "items": { "$ref": "#/definitions/checkCommand" } },
     "approvalBeforeArchive": { "type": "boolean" },
+    "baselineOnTouch": { "type": "boolean", "description": "When the blast radius reaches code no capability covers (openspec/capability-map.json or a path named in openspec/specs), the architect adds a Baseline task group (characterization tests plus a minimal as-built spec) whose tests must pass on the unchanged code before the developer touches the module. Default false." },
     "review": { "type": "object", "additionalProperties": false, "description": "Review gate thresholds; unset fields keep Core's defaults (score 70, security 75, other aspects 60).", "properties": {
       "minScore": { "$ref": "#/definitions/score" },
       "aspects": { "type": "object", "additionalProperties": false, "properties": {
@@ -145,7 +146,8 @@
       } }
     } },
     "architect": { "type": "object", "additionalProperties": false, "properties": {
-      "onLowConfidence": { "enum": ["ask", "proceed"], "description": "After one autonomous investigation pass, a still-low design either pauses with its question (ask, default) or proceeds on stated assumptions (proceed)." }
+      "onLowConfidence": { "enum": ["ask", "proceed"], "description": "After one autonomous investigation pass, a still-low design either pauses with its question (ask, default) or proceeds on stated assumptions (proceed)." },
+      "clarifications": { "enum": ["ask-on-high", "always-proceed"], "description": "Before planning, a high-impact clarification without a safe default either pauses the run with its question (ask-on-high, default) or the architect proceeds on stated assumptions written under Assumptions in design.md (always-proceed)." }
     } }
   },
   "definitions": {

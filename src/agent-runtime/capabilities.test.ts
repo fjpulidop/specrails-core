@@ -11,10 +11,14 @@ import { OpenAICompatibleExecutor } from './openai-executor.js'
 const scratch: string[] = []
 afterEach(() => { for (const file of scratch.splice(0)) rmSync(file, { recursive: true, force: true }) })
 describe('installed transport capability introspection', () => {
-  it('reads Claude effort values without treating resume flags as history guarantees', async () => {
-    const runProcess = vi.fn(async () => ({ stdout: '--effort <level> Effort for this session (low, medium, high)\n  --resume <id> Continue', stderr: '', exitCode: 0 }))
+  it('reads Claude effort values and its explicit resume contract', async () => {
+    const runProcess = vi.fn(async () => ({ stdout: '  --effort <level> Effort for this session (low, medium, high)\n  -r, --resume [value] Resume a conversation by session ID', stderr: '', exitCode: 0 }))
     const result = await cliCapabilities('claude', 'sonnet', { runProcess })
-    expect(result).toMatchObject({ continuation: 'unknown', effortSupport: 'supported', supportedEfforts: ['low', 'medium', 'high'] })
+    // A missing transcript fails explicitly (session_not_found), so no full-context resend is needed.
+    expect(result).toMatchObject({ continuation: 'supported', effortSupport: 'supported', supportedEfforts: ['low', 'medium', 'high'] })
+    expect(result.resumeRequiresFullContext).toBeUndefined()
+    // A client without the flag, or one that only mentions it in prose, is not assumed to resume.
+    expect(await cliCapabilities('claude', 'sonnet', { runProcess: async () => ({ stdout: '  --effort <level> Effort (low, high)\n  --bg   With --resume <session-id>, continues', stderr: '', exitCode: 0 }) })).toMatchObject({ continuation: 'unknown' })
     expect(runProcess.mock.calls).toHaveLength(1)
     expect(() => assertEffortSupported({ effort: 'max' }, result)).toThrow('not confirmed')
   })

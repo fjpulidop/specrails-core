@@ -8,7 +8,7 @@ import { runtimeEfficiency } from './efficiency.js'
 /** Compact derived view. Durable invocation/evidence IDs remain the accounting authority. */
 export function efficiencySummary(state: WorkflowState, context: PipelineContext, config: RuntimeConfig | undefined, completion?: PipelineCompletion, identity?: { planHash?: string; candidateHash: string; verification?: { receipt?: { commands: Array<{ evidenceId?: string }>; notRunEvidenceIds?: string[] } } }, durableEvidence?: { items: Array<Record<string, unknown>>; available: boolean }) {
   const invocations = state.history.flatMap(attempt => [...(attempt.invocations ?? []), ...(attempt.pendingInvocations ?? [])].map(call => ({ ...call, role: attempt.stepId, attemptId: attempt.id })))
-  const kinds = ['initial', 'correction', 'repair', 'deepen', 'session-fallback'] as const
+  const kinds = ['initial', 'correction', 'repair', 'deepen', 'session-fallback', 'baseline'] as const
   const byKind = Object.fromEntries(kinds.map(kind => [kind, invocations.filter(call => call.kind === kind).length]))
   const measured = state.history.every(attempt => !attempt.pendingInvocations?.length) && state.history.every(attempt => !(config ? roleIds(config) : [...BUILTIN_ROLES]).includes(attempt.stepId as typeof BUILTIN_ROLES[number]) || attempt.invocations !== undefined) && invocations.every(call => call.kind !== undefined && call.promptBytes !== undefined)
   const bytes = (key: 'promptBytes' | 'contextBytes' | 'handoffBytes') => invocations.every(call => call[key] !== undefined) ? invocations.reduce((sum, call) => sum + call[key]!, 0) : null
@@ -36,8 +36,15 @@ export function efficiencySummary(state: WorkflowState, context: PipelineContext
       return { role, provider: latest?.provider ?? selected?.provider ?? null, model: latest?.model ?? selected?.model ?? null, effort: latest ? latest.requestedEffort ?? null : selected?.effort ?? null, observedModel: null, observedEffort: null, origin: 'frozen-runtime-config', tier: latest?.tier ?? 'base' }
     }),
     invocations: { byKind, total: invocations.length, complete: measured, promptBytes: bytes('promptBytes'), contextBytes: bytes('contextBytes'), handoffBytes: bytes('handoffBytes'), fullContexts: invocations.filter(call => call.contextMode === 'full').length, incrementalContexts: invocations.filter(call => call.contextMode === 'incremental').length },
+    baseline: baselineSpend(invocations.filter(call => call.kind === 'baseline')),
     escalations: escalations.slice(-16), escalationsTruncated: escalations.length > 16,
     checks: { invalidated: identity && evidenceAvailable ? checks.filter(check => check.planHash !== identity.planHash || check.candidateHash !== identity.candidateHash || check.reuseReason === 'snapshot-inputs-changed-during-verification').length : null, available: evidenceAvailable, complete: checksComplete, executed: checksComplete ? checks.filter(check => check.disposition === 'executed').length : null, reused: evidenceAvailable ? checks.filter(check => check.disposition === 'reused').length : null, notRun: evidenceAvailable ? checks.filter(check => check.disposition === 'not-run').length : null, durationMs: checksComplete ? checks.reduce((sum, check) => sum + (typeof check.durationMs === 'number' ? check.durationMs : 0), 0) : null },
     metrics: runtimeEfficiency(state, config ? roleIds(config) : undefined),
   }
+}
+
+/** Spend of the baseline-on-touch turns, kept apart from the change's own cost; unknown values stay unknown. */
+function baselineSpend(calls: ReadonlyArray<{ role: string; usage?: { costUsd?: number | null; inputTokens?: number | null; outputTokens?: number | null } }>) {
+  const sum = (key: 'costUsd' | 'inputTokens' | 'outputTokens') => calls.some(call => call.usage?.[key] == null) ? null : calls.reduce((total, call) => total + (call.usage![key] as number), 0)
+  return { invocations: calls.length, roles: [...new Set(calls.map(call => call.role))], costUsd: sum('costUsd'), inputTokens: sum('inputTokens'), outputTokens: sum('outputTokens') }
 }

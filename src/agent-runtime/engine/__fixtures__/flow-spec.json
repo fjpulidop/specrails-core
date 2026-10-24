@@ -8,6 +8,7 @@
   "maxTransitions": 100,
   "roles": [
     "deriver",
+    "developer",
     "reviewer"
   ],
   "nodes": {
@@ -15,7 +16,10 @@
       "kind": "assign",
       "params": {
         "set": {
-          "derivationRepairs": 0
+          "derivationRepairs": 0,
+          "correctionRounds": 0,
+          "correctionLimit": 2,
+          "latestFindings": ""
         }
       },
       "ends": {
@@ -27,7 +31,8 @@
       "kind": "derive-change",
       "params": {
         "change": "{{run.changeId}}",
-        "summaryPath": "flow-summary.md"
+        "summaryPath": "flow-summary.md",
+        "feedback": "{{run.latestFindings}}"
       },
       "ends": {
         "pass": "check",
@@ -64,7 +69,19 @@
       },
       "ends": {
         "pass": "review",
-        "fail": "failed",
+        "fail": "check-findings",
+        "failed": "failed"
+      }
+    },
+    "check-findings": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "latestFindings": "Host verification failed for the current candidate: {{outputs.check}}"
+        }
+      },
+      "ends": {
+        "next": "correction-budget",
         "failed": "failed"
       }
     },
@@ -105,7 +122,86 @@
       },
       "ends": {
         "true": "archive",
-        "false": "failed"
+        "false": "review-findings"
+      }
+    },
+    "review-findings": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "latestFindings": "{{outputs.review.structured}}"
+        }
+      },
+      "ends": {
+        "next": "correction-budget",
+        "failed": "failed"
+      }
+    },
+    "correction-budget": {
+      "kind": "condition",
+      "params": {
+        "expr": "$vars.correctionRounds < $vars.correctionLimit"
+      },
+      "ends": {
+        "true": "begin-correction",
+        "false": "changes-requested"
+      }
+    },
+    "begin-correction": {
+      "kind": "assign",
+      "params": {
+        "increment": {
+          "correctionRounds": 1
+        },
+        "set": {
+          "derivationRepairs": 0
+        }
+      },
+      "ends": {
+        "next": "fix",
+        "failed": "failed"
+      }
+    },
+    "fix": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "developer",
+        "stance": "fixer",
+        "prompt": "Correct the code Flow built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "summary",
+            "incomplete"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "incomplete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sessionContinuity": "none"
+      },
+      "ends": {
+        "next": "fix-progress",
+        "invalid": "failed",
+        "failed": "failed"
+      }
+    },
+    "fix-progress": {
+      "kind": "condition",
+      "params": {
+        "expr": "exists($outputs.fix.candidateHash) && $outputs.fix.candidateHash != null && $outputs.fix.candidateHash != $outputs.check.candidateHash"
+      },
+      "ends": {
+        "true": "derive",
+        "false": "changes-requested"
       }
     },
     "archive": {
@@ -145,7 +241,15 @@
         "outcome": "failure"
       },
       "ends": {}
+    },
+    "changes-requested": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "Flow → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
+      },
+      "ends": {}
     }
   },
-  "version": "592f9fdf1dcc662e633f4f4c114fa76c1007bdb811f73878dfefabfbab8101da"
+  "version": "4434e9a51f42e2d93762c7d3539c00f3f2102c064e107c636f6bb261221b5b44"
 }

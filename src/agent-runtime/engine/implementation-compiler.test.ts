@@ -25,6 +25,11 @@ import type { PieceDependencies } from './pieces/ports.js'
 import { initialDefinitionState } from './state.js'
 import { createRun, definitionRunDirectory } from './runs.js'
 
+// Each case drives the real implementation workflow (git, OpenSpec, spawned
+// verification) one or more times. Healthy macos-latest runs take 15-30 s per
+// case (run 39913609133) and loaded ones exceeded the 40/60 s bounds (runs
+// 39738608562, 39743878063); Windows keeps the global 180 s ceiling.
+const WORKFLOW_TIMEOUT_MS = process.platform === 'win32' ? 180_000 : 120_000
 const cleanup: Array<() => void> = []
 afterEach(() => { for (const close of cleanup.splice(0).reverse()) close() })
 const change = 'native-implementation'
@@ -98,7 +103,7 @@ it('executes the real implementation nodes on one SQLite saver with legacy accep
   expect(inspectPipeline(forkContext)).toMatchObject({ phases: { architect: { status: 'done' }, developer: { status: 'pending' }, reviewer: { status: 'pending' } }, verification: { valid: false } })
   expect(readVerificationPlan(forkContext)?.runId).toBe(forkContext.runId)
   expect(readFileSync(path.join(fresh.repository, 'openspec/changes/forked-implementation/tasks.md'), 'utf8')).toContain('- [ ]')
-})
+}, WORKFLOW_TIMEOUT_MS)
 
 it('revalidates verification and review after native archive approval with legacy parity', async () => {
   const f = fixture(true), runtime = await engine(f)
@@ -113,7 +118,7 @@ it('revalidates verification and review after native archive approval with legac
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer', 'reviewer', 'reviewer'])
   expect(result.$exit?.completion.ok).toBe(true)
   expect(runtime.ledger.events().filter(event => event.type === 'workflow_succeeded')).toHaveLength(1)
-}, process.platform === 'win32' ? 180_000 : 40_000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('executes Batch with distinct native journals and certifies only the global verification after join', async () => {
   const f = fixture()
@@ -135,4 +140,4 @@ it('executes Batch with distinct native journals and certifies only the global v
     expect(database.sqlite.prepare("SELECT count(*) count FROM attempts WHERE node_path='verify' AND status='succeeded'").get()?.count).toBe(1)
     expect(database.sqlite.prepare('SELECT count(*) count FROM invocations').get()?.count).toBe(6)
   } finally { database.close() }
-})
+}, WORKFLOW_TIMEOUT_MS)

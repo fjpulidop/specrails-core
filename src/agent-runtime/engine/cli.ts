@@ -12,7 +12,7 @@ import { validateWorkflowDefinition } from './definition-validator.js'
 import { configuredRoles } from './preflight.js'
 import { validationPieceRegistry } from './pieces/index.js'
 import { NODE_KINDS_VERSION } from './piece-registry.js'
-import { cancelRun, createRun, definitionRunDirectory, freezeRunRequest, frozenRequestEngine, frozenRequestFile, resumeRun, signalRun } from './runs.js'
+import { cancelRun, createRun, pauseRun, definitionRunDirectory, freezeRunRequest, frozenRequestEngine, frozenRequestFile, resumeRun, signalRun } from './runs.js'
 import { statusRun } from './run-status.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
 
@@ -49,7 +49,7 @@ function directory(flags: Flags): string {
  * created before its request was materialized) still resolves to this engine.
  */
 export function isDefinitionCommand(flags: Flags, command: string): boolean {
-  if (['workflows', 'fork', 'signal', 'cancel'].includes(command) || flags.definition !== undefined && command === 'run') return true
+  if (['workflows', 'fork', 'signal', 'cancel', 'pause'].includes(command) || flags.definition !== undefined && command === 'run') return true
   if (!['resume', 'status'].includes(command)) return false
   if (flags['run-dir'] !== undefined) return true
   if (flags.context === undefined) return false
@@ -85,6 +85,10 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     const text = new TextDecoder('utf-8', { fatal: true }).decode(await stdinBytes(MAX_STEERING_BYTES))
     const message = await signalRun(directory(flags), text, optional(flags, 'request-id'))
     emit({ type: 'runtime-signal-accepted', id: message.id, acceptedAt: message.createdAt }); return 0
+  }
+  if (command === 'pause') {
+    // Exit 0 for every outcome: a terminal or already stopped run is a reported no-op.
+    emit({ type: 'runtime-pause-result', ...await pauseRun(directory(flags), { requestId: optional(flags, 'request-id'), reason: optional(flags, 'reason') }) }); return 0
   }
   if (command === 'cancel') { emit({ type: 'runtime-cancellation-accepted', ...await cancelRun(directory(flags), optional(flags, 'request-id')) }); return 0 }
   const cutOptions = () => ({ ...(flags['scope-id'] === undefined ? {} : { scopeId: required(flags, 'scope-id') }),

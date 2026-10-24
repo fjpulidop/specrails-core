@@ -122,6 +122,33 @@ describe('scaffold', () => {
       expect(pathExists(path.join(repoRoot, '.specrails', 'setup-templates', 'agents'))).toBe(false)
     })
 
+    it('gives Claude Code a managed CLAUDE.md block and keeps user content outside it', () => {
+      const scriptDir = path.join(tmpDir, 'core')
+      const repoRoot = path.join(tmpDir, 'repo-claude-md')
+      setupFakeSource(scriptDir)
+      const input = { scriptDir, artifactRoot: repoRoot, codeRoot: repoRoot, provider: 'claude' as const, providerDir: '.claude' }
+
+      scaffoldInstallation(input)
+      const fresh = readTextFile(path.join(repoRoot, 'CLAUDE.md'))
+      expect(fresh.startsWith('<!-- specrails-managed:start -->')).toBe(true)
+      expect(fresh).toContain('# repo-claude-md — agent instructions')
+      expect(fresh).toContain('`.specrails/rules.json`')
+      expect(fresh.trimEnd().endsWith('<!-- specrails-managed:end -->')).toBe(true)
+
+      // A user-authored CLAUDE.md keeps its content; a stale block is replaced in place.
+      writeFileLf(path.join(repoRoot, 'CLAUDE.md'), '# Team rules\n- Keep it\n\n<!-- specrails-managed:start -->\nold\n<!-- specrails-managed:end -->\n\n## After\n')
+      scaffoldInstallation(input)
+      const merged = readTextFile(path.join(repoRoot, 'CLAUDE.md'))
+      expect(merged.startsWith('# Team rules\n- Keep it\n')).toBe(true)
+      expect(merged).not.toContain('\nold\n')
+      expect(merged).toContain('## Project rules')
+      expect(merged.trimEnd().endsWith('## After')).toBe(true)
+      expect(merged.match(/specrails-managed:start/g)).toHaveLength(1)
+      const before = merged
+      scaffoldInstallation(input)
+      expect(readTextFile(path.join(repoRoot, 'CLAUDE.md'))).toBe(before)
+    })
+
     function setupGeminiFakeSource(scriptDir: string): void {
       setupRichFakeSource(scriptDir)
       writeFileLf(
