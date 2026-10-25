@@ -6,7 +6,7 @@ const [home] = process.argv.slice(2)
 const journal = await SqliteSessionJournal.open({ scope: 'crash', owner: `worker-${process.pid}`, home, heartbeat: false })
 const at = new Date().toISOString()
 journal.createSession({ sessionId: 's1', driver: 'claude', cwd: '/', createdAt: at, metadata: {} })
-const policy = { subagents: 'enabled', onSubagentsSettled: 'provider-native', tools: { mode: 'default' }, permissions: 'bypass', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } }
+const policy = { subagents: 'enabled', onSubagentsSettled: 'provider-native', tools: { mode: 'default' }, permissions: 'bypass', mcp: { servers: [], inheritUserScope: false }, limits: { idleMs: 1000, stallMs: 1000, backgroundMaxMs: 1000, turnInactivityMs: 1000, toolInactivityMs: 1000, maxSettleHandoffs: 0, settleDebounceMs: 0 } }
 journal.append('s1', [
   { type: 'session.opened', driver: 'claude', model: 'm', policy, resumed: false, providerSessionRef: null, at },
   { type: 'provider.diagnostic', level: 'info', code: 'start', message: 'x', at },

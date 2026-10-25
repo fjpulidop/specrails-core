@@ -91,7 +91,7 @@ function uniqueKeys(commands: RuntimeConfig['verification'], list: string): void
 }
 export function validateRuntimeConfig(input: unknown, options: { registeredProviderIds?: string[] } = {}): RuntimeConfig {
   const config = object(input, '$')
-  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'roles', 'fixer', 'limits', 'verification', 'setup', 'approvalBeforeArchive', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
+  keys(config, ['schemaVersion', 'enabled', 'providers', 'agents', 'roles', 'fixer', 'limits', 'verification', 'setup', 'approvalBeforeArchive', 'baselineOnTouch', 'review', 'architect', 'rolePrompts', 'efficiency', 'guardrails'], '$')
   if (config.schemaVersion !== 1) fail('schemaVersion', 'expected 1')
   if (config.enabled !== undefined && typeof config.enabled !== 'boolean') fail('enabled', 'expected boolean')
   if (!Array.isArray(config.providers)) fail('providers', 'expected an array')
@@ -202,6 +202,7 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     catch (error) { fail('guardrails', error instanceof Error ? error.message.replace(/^guardrails\.?/, '').trim() || 'invalid' : 'invalid') }
   }
   if (config.approvalBeforeArchive !== undefined && typeof config.approvalBeforeArchive !== 'boolean') fail('approvalBeforeArchive', 'expected boolean')
+  if (config.baselineOnTouch !== undefined && typeof config.baselineOnTouch !== 'boolean') fail('baselineOnTouch', 'expected boolean')
   let review: RuntimeConfig['review']
   if (config.review !== undefined) {
     const raw = object(config.review, 'review')
@@ -217,11 +218,15 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
   let architect: RuntimeConfig['architect']
   if (config.architect !== undefined) {
     const raw = object(config.architect, 'architect')
-    keys(raw, ['onLowConfidence'], 'architect')
+    keys(raw, ['onLowConfidence', 'clarifications'], 'architect')
     architect = {}
     if (raw.onLowConfidence !== undefined) {
       if (raw.onLowConfidence !== 'ask' && raw.onLowConfidence !== 'proceed') fail('architect.onLowConfidence', 'expected "ask" or "proceed"')
       architect.onLowConfidence = raw.onLowConfidence
+    }
+    if (raw.clarifications !== undefined) {
+      if (raw.clarifications !== 'ask-on-high' && raw.clarifications !== 'always-proceed') fail('architect.clarifications', 'expected "ask-on-high" or "always-proceed"')
+      architect.clarifications = raw.clarifications
     }
   }
   let rolePrompts: RuntimeConfig['rolePrompts']
@@ -242,6 +247,7 @@ export function validateRuntimeConfig(input: unknown, options: { registeredProvi
     ...(rolePrompts === undefined ? {} : { rolePrompts }),
     ...(config.limits === undefined ? {} : { limits: { ...config.limits as RuntimeConfig['limits'] } }),
     ...(config.approvalBeforeArchive === undefined ? {} : { approvalBeforeArchive: config.approvalBeforeArchive }),
+    ...(config.baselineOnTouch === undefined ? {} : { baselineOnTouch: config.baselineOnTouch }),
     ...(review === undefined ? {} : { review }),
     ...(architect === undefined ? {} : { architect }),
     ...(guardrails === undefined ? {} : { guardrails }),

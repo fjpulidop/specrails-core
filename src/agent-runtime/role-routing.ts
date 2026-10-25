@@ -3,7 +3,8 @@ import type { WorkflowState } from './workflow-types.js'
 import type { RoleExecutionState } from './role-state.js'
 import { isBuiltinRole } from './executor-types.js'
 
-export type InvocationKind = 'initial' | 'correction' | 'repair' | 'deepen' | 'session-fallback'
+/** `baseline`: the baseline-on-touch turns (architect plan, developer characterization stage), attributed separately. */
+export type InvocationKind = 'initial' | 'correction' | 'repair' | 'deepen' | 'session-fallback' | 'baseline'
 export function failedCandidateCount(checkpoint: Pick<WorkflowState, 'history'>): number {
   let candidate: string | undefined
   const failures = new Set<string>()

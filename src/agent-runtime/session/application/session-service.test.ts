@@ -308,6 +308,47 @@ describe('SessionService — stop, limits and failures', () => {
     expect(of(ctx.events(sessionId), 'turn.completed')[0]).toMatchObject({ status: 'failed', error: expect.stringContaining('inactivity') })
   })
 
+  it('starts a new paragraph when the turn streams text again after a tool call', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    driver.emit(
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'turn.output', channel: 'text', delta: 'Running the typecheck.' },
+      { kind: 'turn.output', channel: 'text', delta: ' Still the same message.' },
+      { kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'started' },
+      { kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'completed' },
+      { kind: 'turn.output', channel: 'text', delta: 'The worktree has no node_modules.' },
+      { kind: 'turn.tool', toolUseId: 't2', name: 'Bash', phase: 'started' },
+      { kind: 'turn.output', channel: 'text', delta: '\nAlready separated.' },
+      { kind: 'turn.completed', status: 'completed', text: 'done', usage: { costUsd: null, inputTokens: null, outputTokens: null, cacheReadTokens: null, cacheWriteTokens: null } },
+    )
+    await tick()
+    const text = of(ctx.events(sessionId), 'turn.output').map((event) => event.delta).join('')
+    expect(text).toBe('Running the typecheck. Still the same message.\n\nThe worktree has no node_modules.\nAlready separated.')
+  })
+
+  it('gives a running tool call the wider tool inactivity limit and restores the turn limit when it completes', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    driver.emit({ kind: 'turn.started', trigger: 'input', inputIds: ['u1'] }, { kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'started' })
+    ctx.clock.advance(DEFAULT_LIMITS.toolInactivityMs - 1)
+    await tick()
+    expect(driver.closed).toBeNull()
+    driver.emit({ kind: 'turn.tool', toolUseId: 't1', name: 'Bash', phase: 'completed' })
+    ctx.clock.advance(DEFAULT_LIMITS.turnInactivityMs + 1)
+    await tick()
+    expect(of(ctx.events(sessionId), 'turn.completed')[0]).toMatchObject({ status: 'failed', error: 'No provider activity before the inactivity limit' })
+  })
+
+  it('fails a turn whose tool call stays silent past the tool inactivity limit', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    driver.emit({ kind: 'turn.started', trigger: 'input', inputIds: ['u1'] }, { kind: 'subagent.started', subagentId: 'f1', parentId: null, agentKind: 'foreground', description: 'fg' }, { kind: 'subagent.output', subagentId: 'f1', channel: 'tool', tool: { toolUseId: 's1', name: 'Bash', phase: 'started' } })
+    ctx.clock.advance(DEFAULT_LIMITS.toolInactivityMs + 1)
+    await tick()
+    expect(of(ctx.events(sessionId), 'turn.completed')[0]).toMatchObject({ status: 'failed', error: expect.stringContaining('tool inactivity limit') })
+  })
+
   it('defers updates while sub-agents run and applies them when the session goes idle', async () => {
     const ctx = setup()
     const { sessionId, driver } = await openAndSend(ctx)

@@ -237,6 +237,20 @@ describe('Claude argv', () => {
     expect(args).not.toContain('--strict-mcp-config')
   })
 
+  it('keeps native sub-agents in a read-only tool set and denies them every write tool', () => {
+    const args = spec({ subagents: 'enabled', permissions: 'read-only', tools: { mode: 'read-only', deny: ['WebFetch'] } })
+    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Agent,Task')
+    // Deny rules bind sub-agents too, including project agents that declare their own tools.
+    expect(args[args.indexOf('--disallowedTools') + 1]).toBe('WebFetch,Write,Edit,MultiEdit,NotebookEdit,Bash')
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+    // Delegated sub-agents run as Core child sessions: the native tool stays off.
+    const delegated = spec({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex', model: 'gpt-5.6-luna' }, tools: { mode: 'read-only' } })
+    expect(delegated[delegated.indexOf('--tools') + 1]).toBe('Read,Grep,Glob')
+    expect(delegated[delegated.indexOf('--disallowedTools') + 1]).toBe('Agent,Task')
+    // A full tool set is left to the permission mode; nothing extra is denied.
+    expect(spec({ subagents: 'enabled', permissions: 'read-only' })).not.toContain('--disallowedTools')
+  })
+
   it('resumes, sets effort and prefers a prompt file when given', () => {
     const args = spec({ subagents: 'enabled' }, { providerSessionRef: 'abc', effort: 'high', systemPrompt: 'be brief' })
     expect(args.slice(args.indexOf('--resume'), args.indexOf('--resume') + 2)).toEqual(['--resume', 'abc'])

@@ -163,7 +163,7 @@ describe('packaged programmatic runtime CLI', () => {
         if (system.includes('architect task') && !body.messages.some(item => item.role === 'tool')) {
           const files = [
             ['proposal', 'proposal.md', '## Why\nReturn the requested value.\n## What Changes\n- Update value.\n## Capabilities\n### New Capabilities\n- `feature`: requested value.\n### Modified Capabilities\nNone.\n## Impact\ncode.cjs'],
-            ['design', 'design.md', '# Design\nReturn the frozen value in code.cjs'],
+            ['design', 'design.md', '# Design\nReturn the frozen value in code.cjs\n## Non-Goals\n- Nothing beyond code.cjs.\n'],
             ['specs', 'specs/feature/spec.md', '## ADDED Requirements\n### Requirement: Requested value\nThe system SHALL return 2.\n#### Scenario: Read value\n- **WHEN** reading the value\n- **THEN** return 2.\n'],
             ['tasks', 'tasks.md', '- [ ] 1. Implement feature\n'],
           ]

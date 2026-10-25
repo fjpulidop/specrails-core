@@ -94,6 +94,8 @@ export function validateWorkflowDefinition(input: unknown, registry: PieceRegist
             if (typeof roleId !== 'string' || !definition.roles.includes(roleId)) add('role_undeclared', path + '/params/roleId', 'Used role must appear in definition.roles')
             if (typeof roleId !== 'string' || !Object.hasOwn(roles, roleId)) add('role_not_found', path + '/params/roleId', 'Used role is not configured')
             if (node.kind === 'decider' && typeof roleId === 'string' && roles[roleId]?.access !== 'read') add('invalid_role_access', path + '/params/roleId', 'Decider role must be read-only')
+            // A correction round edits code. Portable (structural) validation cannot know an unresolved role's access; execution validates again.
+            if (node.kind === 'role-turn' && node.params.stance === 'fixer' && typeof roleId === 'string' && Object.hasOwn(roles, roleId) && !unresolved.includes(roleId) && roles[roleId]?.access !== 'write') add('invalid_role_access', path + '/params/stance', 'The fixer stance requires a role with write access')
           }
           // derive-change always invokes Core's engine role `deriver`.
           if (node.kind === 'derive-change') {

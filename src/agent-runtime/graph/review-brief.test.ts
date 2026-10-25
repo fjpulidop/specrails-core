@@ -92,11 +92,13 @@ describe('reviewer output schema', () => {
   })
 
   it('round-trips a Codex strict reply with null optional brief fields', () => {
-    const raw = { ...verdict, brief: { behaviourChanges: null, invariantsTouched: null, untested: null, risks: [risk('low', 1)], humanChecks: null, divergences: null } }
+    // Strict structured output requires every optional field to be present as null.
+    const raw = { ...verdict, acceptance: { ...verdict.acceptance, findingLocations: null }, brief: { behaviourChanges: null, invariantsTouched: null, untested: null, risks: [risk('low', 1)], humanChecks: null, divergences: null } }
     expect(new Ajv().compile(codexOutputSchema(REVIEW_OUTPUT_SCHEMA))(raw)).toBe(true)
     const restored = restoreOptionalFields(raw, REVIEW_OUTPUT_SCHEMA) as Record<string, unknown>
     expect(restored.brief).toEqual({ risks: [risk('low', 1)] })
-    expect(new Ajv().compile(codexOutputSchema(REVIEW_OUTPUT_SCHEMA))({ ...verdict, brief: null })).toBe(true)
+    expect((restored.acceptance as Record<string, unknown>).findingLocations).toBeUndefined()
+    expect(new Ajv().compile(codexOutputSchema(REVIEW_OUTPUT_SCHEMA))({ ...verdict, acceptance: { ...verdict.acceptance, findingLocations: null }, brief: null })).toBe(true)
   })
 
   it('leaves the approval gate untouched by the brief', () => {

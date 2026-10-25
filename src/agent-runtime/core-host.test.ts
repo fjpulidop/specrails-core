@@ -18,11 +18,30 @@ import type { WorkflowState } from './workflow-types.js'
 import { compactState, runRuntimeCommand } from './cli.js'
 import { DEVELOPER_OUTPUT_SCHEMA } from './prompts.js'
 import { runtimeEfficiency } from './efficiency.js'
+import { efficiencySummary } from './efficiency-summary.js'
 import { runRecovery } from './recovery.js'
 import { definitionFingerprint, runWorkflow } from './workflow.js'
 import { coreNodes, type CoreNodeDeps } from './graph/nodes.js'
 import { CORE_NODE_ORDER } from './graph/state.js'
 import { resolveReviewPolicy } from './graph/review-policy.js'
+
+/**
+ * OpenSpec names the archive folder with its own local date, which differs from
+ * the journal's UTC date around midnight; locate the change's folder instead.
+ */
+function archivedChangeFile(file: string): string {
+  const archive = path.join(context.artifactRoot, 'openspec', 'changes', 'archive')
+  const folders = readdirSync(archive).filter(name => /^\d{4}-\d{2}-\d{2}-/.test(name) && name.slice(11) === change)
+  if (folders.length !== 1) throw new Error(`Expected one archived ${change}, found ${folders.join(', ') || 'none'}`)
+  return path.join(archive, folders[0]!, file)
+}
+
+// Most cases drive one to four real workflows (git, OpenSpec, spawned
+// verification). Healthy macos-latest runs take up to ~27 s per case (run
+// 39913609133); loaded ones exceeded the 60 s default on cases that pass in
+// 15-20 s (runs 39675761584, 39738608562, 39743878063). Windows keeps the
+// global 180 s ceiling; explicit per-case budgets below still apply.
+vi.setConfig({ testTimeout: process.platform === 'win32' ? 180_000 : 120_000 })
 
 const legacyFingerprints = JSON.parse(readFileSync(new URL('./__fixtures__/implementation-workflow-fingerprint.json', import.meta.url), 'utf8')) as Array<{ fingerprint: string; attempts: number; compactDeveloper: boolean }>
 
@@ -32,7 +51,7 @@ let config: RuntimeConfig
 const change = 'programmatic-feature'
 const usage = { costUsd: 0.1, inputTokens: 20, outputTokens: 10 }
 const architecture = {
-  proposal: '# Feature\nImplement the frozen feature.', design: '# Design\nUpdate both selected repositories.',
+  proposal: '# Feature\nImplement the frozen feature.', design: '# Design\nUpdate both selected repositories.\n## Non-Goals\n- No change outside the two repositories.\n',
   tasks: [{ title: 'Implement the feature and validate both repositories' }],
   specs: [{ name: 'feature', content: '## ADDED Requirements\n### Requirement: Implement shared behavior\nBoth repositories SHALL return 2.\n#### Scenario: Requested behavior\n- **WHEN** the feature is called\n- **THEN** Both repositories return 2.\n' }], confidence: 'high',
 }
@@ -750,7 +769,228 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(answered[0]).toContain('1. Yes, one shared module.')
     expect(state.steps.architect?.visits).toBe(1)
     expect(state.pendingQuestion).toBeUndefined()
-    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
+    expect(JSON.parse(readFileSync(archivedChangeFile('design-confidence.json'), 'utf8'))).toEqual({ confidence: 'high' })
+  })
+
+  describe('architect clarifications', () => {
+    const blockingQuestion = 'Should archived projects appear in search?'
+    const recordFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'clarifications.json'), 'utf8'))
+
+    it('pauses before planning on a high-impact question without a safe default and resumes with the answer', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') {
+          if (request.prompt.includes('## Answers from the requester')) return result({ ...architecture, design: architecture.design + '## Assumptions\n- Archived projects: excluded, as answered.\n', clarifications: [{ question: blockingQuestion, impact: 'high', default: 'Excluded, as answered' }] })
+          // Clarification-only reply: no artifacts are authored before the answer.
+          return result({ confidence: 'high', clarifications: [{ question: blockingQuestion, impact: 'high', default: null }, { question: 'Page size?', impact: 'low', default: '25' }] })
+        }
+        if (request.role === 'developer') { develop(); return result('Done') }
+        return result(review)
+      })
+      const paused = await runCoreWorkflow(opts(registry))
+      expect(paused.status).toBe('paused')
+      expect(paused.pendingQuestion).toMatchObject({ stepId: 'architect', question: blockingQuestion })
+      expect(calls.map(call => call.role)).toEqual(['architect'])
+      expect(calls[0]!.prompt).toContain('Clarification policy: ask-on-high')
+      expect(existsSync(active('proposal.md'))).toBe(false)
+      expect(inspectPipeline(context).phases.architect.status).toBe('blocked')
+      expect(recordFile()).toMatchObject({ schemaVersion: 1, change, policy: 'ask-on-high', status: 'awaiting-answers', blocking: [{ question: blockingQuestion, impact: 'high', default: null }], answers: [] })
+      const state = await runCoreWorkflow(opts(registry, { resume: true, answer: 'Exclude archived projects.' }))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+      expect(calls[1]!.prompt).toContain('1. Exclude archived projects.')
+      expect(recordFile()).toMatchObject({ status: 'proceeded', blocking: [], answers: ['Exclude archived projects.'], assumptions: ['- Archived projects: excluded, as answered.'] })
+      expect(state.steps.architect?.output).toMatchObject({ clarifications: [{ question: blockingQuestion, impact: 'high', default: 'Excluded, as answered' }] })
+    })
+
+    it('proceeds on low-impact clarifications and records the assumptions written in design.md', async () => {
+      const design = architecture.design + '## Assumptions\n- Page size? Assumed 25, as in the projects list.\n'
+      const { registry, calls } = fake(async request => request.role === 'architect'
+        ? result({ ...architecture, design, clarifications: [{ question: 'Page size?', impact: 'low', default: '25' }] })
+        : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(recordFile()).toMatchObject({ status: 'proceeded', clarifications: [{ question: 'Page size?', impact: 'low', default: '25' }], blocking: [], assumptions: ['- Page size? Assumed 25, as in the projects list.'] })
+    })
+
+    it('proceeds without clarifications and records an empty list', async () => {
+      const { registry, calls } = fake()
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(recordFile()).toMatchObject({ status: 'proceeded', clarifications: [], blocking: [], answers: [], assumptions: [] })
+      expect(state.steps.architect?.output).toMatchObject({ clarifications: [] })
+    })
+
+    it('never pauses under always-proceed', async () => {
+      config = { ...config, architect: { clarifications: 'always-proceed' } }
+      const design = architecture.design + '## Assumptions\n- Archived projects: excluded by default.\n'
+      const { registry, calls } = fake(async request => request.role === 'architect'
+        ? result({ ...architecture, design, clarifications: [{ question: blockingQuestion, impact: 'high', default: null }] })
+        : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls[0]!.prompt).toContain('Clarification policy: always-proceed')
+      expect(recordFile()).toMatchObject({ policy: 'always-proceed', status: 'proceeded', assumptions: ['- Archived projects: excluded by default.'] })
+    })
+
+    it('repairs a design without Non-Goals in the same architect session', async () => {
+      let architectCalls = 0
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') {
+          architectCalls++
+          if (architectCalls === 1) return { ...result({ ...architecture, design: '# Design\nUpdate both selected repositories.' }), sessionId: 'arch' }
+          expect(request.resumeSessionId).toBe('arch')
+          expect(request.prompt).toContain('Invalid design.md')
+          writeFileSync(active('design.md'), architecture.design)
+          return result({ confidence: 'high' })
+        }
+        return request.role === 'developer' ? (develop(), result('Done')) : result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'reviewer'])
+    })
+
+    it('fails the architect when the repaired design still has no Non-Goals', async () => {
+      let architectCalls = 0
+      const { registry } = fake(async request => request.role === 'architect'
+        ? (++architectCalls === 1 ? result({ ...architecture, design: '# Design\n## Non-Goals\n<!-- What is explicitly out of scope -->\n' }) : result({ confidence: 'high' }))
+        : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('failed')
+      expect(state.error).toContain('Invalid design.md')
+    })
+  })
+
+  describe('requirement trace', () => {
+    const id = 'feature/implement-shared-behavior'
+    const traceFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'spec-trace.json'), 'utf8'))
+
+    it('asks the developer to tag touched requirements, binds the trace to the receipt and shows it to the reviewer', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return result(architecture)
+        if (request.role === 'developer') {
+          develop()
+          write(path.join(context.repositories[0]!.path, 'code.test.cjs'), `// spec: ${id}\nrequire('node:assert').equal(require('./code.cjs'), 2)\n`)
+          return result('Done')
+        }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      const developer = calls.find(call => call.role === 'developer')!.prompt
+      expect(developer).toContain('## Requirement tags')
+      expect(developer).toContain('- `' + id + '`')
+      const report = traceFile()
+      expect(report).toMatchObject({ schemaVersion: 1, evidence: 'receipt', changes: [change], touched: [id], touchedUndemonstrated: [], requirements: 1 })
+      expect(report.receiptId).toBe(journalFile().verification?.id)
+      const reviewer = calls.find(call => call.role === 'reviewer')!.prompt
+      expect(reviewer).toContain('Requirement trace (advisory, bound to receipt')
+      expect(reviewer).toContain('Requirements demonstrated 1/1')
+      expect(reviewer).toContain('Every requirement this change adds or modifies is demonstrated.')
+      expect(reviewer).toContain('9. Spec claims')
+      expect(journalFile().acceptance?.findings).toContain(`Spec trace (advisory, receipt ${String(report.receiptId)}): Requirements demonstrated 1/1; touched by this change 1/1.`)
+      expect(journalFile().acceptance?.checks.some(check => check.name.includes('trace'))).toBe(false)
+    })
+
+    it('reports an untagged requirement to the reviewer without failing verification', async () => {
+      const { registry, calls } = fake()
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(traceFile()).toMatchObject({ touchedUndemonstrated: [id], undemonstrated: [{ id, reason: 'no-test' }] })
+      expect(calls.find(call => call.role === 'reviewer')!.prompt).toContain(`Not demonstrated by a tagged test that a passing verification command ran: ${id} (no-test).`)
+      expect(inspectPipeline(context).completion.validation).toBe('verified')
+    })
+  })
+
+  describe('baseline on touch', () => {
+    const radius = '## Blast radius\n- `code.cjs`: returns 2\n- `back:code.cjs`: returns 2\n'
+    const touching = { ...architecture, design: architecture.design + radius }
+    const baselineFile = (): Record<string, unknown> => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'baseline.json'), 'utf8'))
+    const characterize = (value: number) => { for (const repository of context.repositories) write(path.join(repository.path, 'code.test.cjs'), `// spec: legacy-code/returns-the-configured-value\nif (require('./code.cjs') !== ${value}) process.exit(3)\n`) }
+    const tick = (prefix: string) => write(active('tasks.md'), readFileSync(active('tasks.md'), 'utf8').replace(`- [ ] ${prefix}`, `- [x] ${prefix}`))
+    /** Architect that answers the baseline turn by inserting the Baseline group and an as-built spec. */
+    async function architectTurn(request: AgentRequest): Promise<AgentResult> {
+      if (!request.prompt.includes('## Baseline before the change')) return result(touching)
+      const tools = new OpenSpecTools(request.openspec!)
+      await tools.execute({ action: 'instructions', artifact: 'tasks' })
+      await tools.execute({ action: 'write_artifact', path: 'tasks.md', content: '## 0. Baseline\n- [ ] 0.1 Characterize code.cjs\n\n## 1. Change\n' + readFileSync(active('tasks.md'), 'utf8') })
+      await tools.execute({ action: 'write_artifact', path: 'specs/legacy-code/spec.md', content: '## ADDED Requirements\n### Requirement: Returns the configured value\nThe module SHALL return its configured value.\n#### Scenario: Read\n- **WHEN** required\n- **THEN** it returns the configured value\n' })
+      return result({ confidence: 'high' })
+    }
+    const developerSummary = { summary: 'Characterized', files: [], tests: ['code.test.cjs'], verification: 'none', incomplete: [] }
+    beforeEach(() => {
+      config = { ...config, baselineOnTouch: true, verification: context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['code.test.cjs'] })) }
+    })
+
+    it('records the files of each archived change in the capability map', async () => {
+      config = { ...config, baselineOnTouch: false, verification: context.repositories.map(repository => ({ repositoryId: repository.id, command: process.execPath, args: ['-e', 'if(require("./code.cjs")!==2)process.exit(9)'] })) }
+      const state = await runCoreWorkflow(opts(fake().registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'capability-map.json'), 'utf8'))).toEqual({ schemaVersion: 1, capabilities: { feature: { files: ['back:code.cjs', 'code.cjs'], changes: [change] } } })
+      expect(existsSync(path.join(pipelineStateDirectory(context), 'baseline.json'))).toBe(false)
+    })
+
+    it('characterizes an uncovered module on the base code before the change, attributing its cost apart', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer' && request.prompt.includes('## Baseline stage (this turn only)')) { characterize(1); tick('0.1'); return result(developerSummary) }
+        if (request.role === 'developer') { develop(); characterize(2); return result({ ...developerSummary, summary: 'Implemented', files: ['code.cjs'] }) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer', 'developer', 'reviewer'])
+      const record = baselineFile()
+      expect(record).toMatchObject({ change, status: 'passed', detection: { uncovered: ['code.cjs', 'back:code.cjs'] }, tests: ['code.test.cjs'] })
+      const receipt = JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'receipts', `${String(record.receiptId)}.json`), 'utf8'))
+      expect(receipt).toMatchObject({ valid: true })
+      expect(calls[3]!.prompt).toContain('## Baseline\n')
+      expect(calls[4]!.prompt).toContain('This change started with a Baseline')
+      const summary = efficiencySummary(state, context, config)
+      expect(summary.invocations.byKind.baseline).toBe(2)
+      expect(summary.baseline).toEqual({ invocations: 2, roles: ['architect', 'developer'], costUsd: 0.2, inputTokens: 40, outputTokens: 20 })
+    })
+
+    it('stops with a host blocker when the characterization tests fail on the base code', async () => {
+      const { registry, calls } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer') { characterize(2); tick('0.1'); return result(developerSummary) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('blocked')
+      expect(state.error).toContain('Characterization tests fail on the base code')
+      expect(state.error).toContain('(baseline_characterization_failed)')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'architect', 'developer'])
+      expect(baselineFile()).toMatchObject({ status: 'failed', tests: ['code.test.cjs'] })
+      expect(readFileSync(path.join(context.repositories[0]!.path, 'code.cjs'), 'utf8')).toBe('module.exports = 1\n')
+    })
+
+    it('stops when the baseline stage edits the module itself', async () => {
+      const { registry } = fake(async request => {
+        if (request.role === 'architect') return architectTurn(request)
+        if (request.role === 'developer') { develop(); characterize(2); return result(developerSummary) }
+        return result(review)
+      })
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status).toBe('blocked')
+      expect(state.error).toContain('The baseline stage changed non-test files (code.cjs')
+      expect(baselineFile()).toMatchObject({ status: 'violated' })
+    })
+
+    it('adds nothing when a spec already covers the touched module', async () => {
+      write(path.join(context.artifactRoot, 'openspec', 'specs', 'value', 'spec.md'), '# value Specification\n\n## Purpose\nThe shared value.\n\n## Requirements\n### Requirement: Value\nThe system SHALL keep the value in code.cjs.\n\n#### Scenario: Read\n- **WHEN** code.cjs is required\n- **THEN** it returns the value\n')
+      write(path.join(context.artifactRoot, 'openspec', 'capability-map.json'), JSON.stringify({ schemaVersion: 1, capabilities: { feature: { files: ['back:code.cjs'], changes: ['earlier'] } } }))
+      git(context.artifactRoot, ['add', '.']); git(context.artifactRoot, ['-c', 'user.name=Runtime Fixture', '-c', 'user.email=runtime@example.invalid', 'commit', '-qm', 'specs'])
+      for (const repository of context.repositories) { write(path.join(repository.path, 'code.test.cjs'), "if (require('./code.cjs') !== 2) process.exit(3)\n"); git(repository.path, ['add', '.']); git(repository.path, ['-c', 'user.name=Runtime Fixture', '-c', 'user.email=runtime@example.invalid', 'commit', '-qm', 'test']) }
+      const { registry, calls } = fake(async request => request.role === 'architect' ? result(touching) : request.role === 'developer' ? (develop(), result('Done')) : result(review))
+      const state = await runCoreWorkflow(opts(registry))
+      expect(state.status, state.error).toBe('succeeded')
+      expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer'])
+      expect(baselineFile()).toMatchObject({ status: 'not-needed', detection: { covered: ['code.cjs', 'back:code.cjs'], uncovered: [] } })
+    })
   })
 
   it('lets the architect investigate once in its own session before anyone is asked', async () => {
@@ -841,7 +1081,7 @@ describe('programmatic Core host with real evidence gates', () => {
     expect(calls.map(call => call.role)).toEqual(['architect', 'developer', 'reviewer', 'developer', 'reviewer'])
     expect(calls[2]!.prompt).toContain('`score` is at least 95')
     expect(calls[2]!.prompt).toContain('`security` ≥ 91')
-    expect(JSON.parse(readFileSync(path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, 'confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
+    expect(JSON.parse(readFileSync(archivedChangeFile('confidence-score.json'), 'utf8'))).toMatchObject({ overall: 96 })
   })
 
   describe('reviewer risk brief', () => {
@@ -853,7 +1093,7 @@ describe('programmatic Core host with real evidence gates', () => {
       risks: [risk('low', 1), risk('high', 2)],
       humanChecks: ['Run the CLI by hand'], divergences: [],
     }
-    const archived = (file: string) => path.join(context.artifactRoot, 'openspec', 'changes', 'archive', `${journalFile().createdAt.slice(0, 10)}-${change}`, file)
+    const archived = (file: string) => archivedChangeFile(file)
     const briefFile = () => JSON.parse(readFileSync(path.join(pipelineStateDirectory(context), 'review-brief.json'), 'utf8'))
     function reviewing(replies: unknown[]) {
       let reviews = 0
@@ -914,7 +1154,8 @@ describe('programmatic Core host with real evidence gates', () => {
       const state = await runCoreWorkflow(opts(registry))
       expect(state.status, state.error).toBe('succeeded')
       expect(briefFile().brief.risks.map((item: { ref: string }) => item.ref)).toEqual(['code.cjs:2', 'code.cjs:4', 'code.cjs:7', 'code.cjs:3', 'code.cjs:6'])
-      expect(journalFile().acceptance!.findings).toEqual([
+      // The advisory spec-trace finding (requirement traceability) is asserted by its own tests.
+      expect(journalFile().acceptance!.findings.filter((finding: string) => !finding.startsWith('Spec trace (advisory'))).toEqual([
         "Additional low data risk (beyond the brief's top 5): risk 1 (code.cjs:1)",
         "Additional low data risk (beyond the brief's top 5): risk 5 (code.cjs:5)",
       ])

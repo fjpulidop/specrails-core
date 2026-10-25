@@ -10,6 +10,7 @@ import { admitVerificationProposals } from '../../verification-proposals.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
 import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../../prompts.js'
+import { projectRulesContext } from '../../project-rules.js'
 import { EngineError, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
@@ -18,7 +19,7 @@ const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false,
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
@@ -36,6 +37,12 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   environmentRetry?: { installs: InstallOutcome[] }
 } = {}): Promise<PieceResult> {
   const roleId = text(params.roleId), descriptor = resolveRoleDescriptor(deps.config, roleId)
+  // `stance: 'fixer'` makes the turn a correction round: only a write role can
+  // correct code. The built-in developer takes the FIXER instructions (and the
+  // fixer engine when one is configured); a custom role only labels its events.
+  const stance = params.stance === 'fixer' ? 'fixer' as const : undefined
+  if (stance && descriptor.access !== 'write') throw new EngineError('invalid_arguments', `The fixer stance requires a role with write access; ${roleId} is ${descriptor.access}`)
+  const fixerEngine = stance && roleId === 'developer' ? deps.config.fixer : undefined
   // Agents run sandboxed and cannot install what the repository needs (Codex
   // cannot even write the Playwright browser cache): the host prepares it
   // before any writer turn and says so in the task.
@@ -47,7 +54,8 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const schema = params.structuredOutput as JsonObject | undefined
   const validate = schema ? ajv.compile(schema) : undefined
   const roleState = deps.roleState(context)
-  const previous = params.sessionContinuity !== 'none' ? roleState.read().sessions[roleId]?.sessionId : undefined
+  // Sessions never carry across engines: a turn on the fixer engine always starts fresh.
+  const previous = params.sessionContinuity !== 'none' && !fixerEngine ? roleState.read().sessions[roleId]?.sessionId : undefined
   const openspec = deps.openspec?.(context)
   if (descriptor.openspecSkill && !openspec?.[roleId]) throw new EngineError('openspec_binding_required', 'Role requires a scoped OpenSpec binding: ' + roleId)
   const invoke = createRoleInvoker({ context: deps.context, config: deps.config, registry: deps.registry, roleState, openspec,
@@ -55,7 +63,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const before = deps.executionSnapshot(context).candidate
   const memoryIdentity = { roleId, descriptor: json(descriptor), tier: roleState.read().routes[roleId]?.tier ?? 'base',
     candidateHash: before?.hash ?? null, scopeId: context.frame.scope.id, nodePath: context.frame.nodePath,
-    repositories: deps.context.repositories.map(repository => ({ id: repository.id, path: repository.path })) }
+    repositories: deps.context.repositories.map(repository => ({ id: repository.id, path: repository.path })), ...(stance ? { stance } : {}) }
   const memoryKey = contentDigest(memoryIdentity)
   const saved = await advisoryMemory(context, async () => {
     const memory = deps.memory(context)
@@ -67,8 +75,10 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
   const adopted = adoptedVerificationOutputs(context.state.$outputs)
   const derivation = roleId === 'reviewer' ? committedDerivation(context.state.$outputs) : undefined
-  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: descriptor.prompt, verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}) }) + '\n## Current workflow task\n' + task
+  const projectRules = roleId === 'architect' || roleId === 'reviewer' ? projectRulesContext(deps.context) : undefined
+  const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: stance && roleId === 'developer' ? deps.config.rolePrompts?.fixer : descriptor.prompt, ...(stance && roleId === 'developer' ? { stance } : {}), verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}), ...(projectRules ? { projectRules } : {}) }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
+    ...(stance ? { stance } : {}), ...(fixerEngine ? { agentOverride: fixerEngine } : {}),
     structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
     const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output
     if (validate && !validate(normalized)) throw new Error('Invalid structured role response: ' + ajv.errorsText(validate.errors))
@@ -101,7 +111,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
       text: boundedText(result.text, 4000), lastAttemptId: context.frame.attemptId })
   })
   return { outcome: 'next', output: { candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, text: boundedText(result.text), ...(result.value ? { structured: json(result.value) } : {}) },
-    history: [historyEntry(context, result.text)], ...(params.sessionContinuity !== 'none' && session ? { session: { sessionId: session.sessionId, identity: session.identity } } : {}) }
+    history: [historyEntry(context, result.text)], ...(params.sessionContinuity !== 'none' && !fixerEngine && session ? { session: { sessionId: session.sessionId, identity: session.identity } } : {}) }
 }
 
 /** The coverage report a committed `derive-change` output carries (its derivation.json), for the reviewer. */

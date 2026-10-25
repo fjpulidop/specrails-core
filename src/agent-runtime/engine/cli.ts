@@ -12,8 +12,9 @@ import { validateWorkflowDefinition } from './definition-validator.js'
 import { configuredRoles } from './preflight.js'
 import { validationPieceRegistry } from './pieces/index.js'
 import { NODE_KINDS_VERSION } from './piece-registry.js'
-import { cancelRun, createRun, definitionRunDirectory, freezeRunRequest, frozenRequestEngine, frozenRequestFile, resumeRun, signalRun } from './runs.js'
+import { cancelRun, createRun, pauseRun, definitionRunDirectory, freezeRunRequest, frozenRequestEngine, frozenRequestFile, resumeRun, signalRun } from './runs.js'
 import { statusRun } from './run-status.js'
+import { classifyFailure } from '../failure-classification.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
 
 export { NODE_KINDS_VERSION }
@@ -49,7 +50,7 @@ function directory(flags: Flags): string {
  * created before its request was materialized) still resolves to this engine.
  */
 export function isDefinitionCommand(flags: Flags, command: string): boolean {
-  if (['workflows', 'fork', 'signal', 'cancel'].includes(command) || flags.definition !== undefined && command === 'run') return true
+  if (['workflows', 'fork', 'signal', 'cancel', 'pause'].includes(command) || flags.definition !== undefined && command === 'run') return true
   if (!['resume', 'status'].includes(command)) return false
   if (flags['run-dir'] !== undefined) return true
   if (flags.context === undefined) return false
@@ -60,6 +61,12 @@ export function isDefinitionCommand(flags: Flags, command: string): boolean {
 
 /** Public workflow identity carried by status and results, matching the frozen request block. */
 const workflowIdentity = (workflow: { id: string; version: string; source: string }) => ({ ...workflow, definitionHash: workflow.version, engine: 2 as const })
+
+/** `failure` (contract 5.8): the structured classification of a failed or blocked definition run; absent otherwise. */
+export function definitionFailure(state: { status: string; steps?: unknown; recentFailures?: unknown; nextStep?: unknown; error?: unknown }) {
+  const failure = classifyFailure({ status: state.status, error: state.error, steps: state.steps as never, recentFailures: state.recentFailures as never, nextStep: state.nextStep })
+  return failure ? { failure } : {}
+}
 
 export async function runDefinitionCommand(flags: Flags, positionals: string[], emit: (value: unknown) => void): Promise<number> {
   const command = positionals[0]
@@ -78,13 +85,17 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   }
   if (command === 'status') {
     const status = await statusRun(directory(flags), flags.compact === true)
-    emit({ ...status, workflow: workflowIdentity(status.workflow) }); return 0
+    emit({ ...status, ...definitionFailure(status.state), workflow: workflowIdentity(status.workflow) }); return 0
   }
   if (command === 'signal') {
     if (flags.stdin !== true) throw new EngineError('invalid_arguments', 'Signal requires --stdin')
     const text = new TextDecoder('utf-8', { fatal: true }).decode(await stdinBytes(MAX_STEERING_BYTES))
     const message = await signalRun(directory(flags), text, optional(flags, 'request-id'))
     emit({ type: 'runtime-signal-accepted', id: message.id, acceptedAt: message.createdAt }); return 0
+  }
+  if (command === 'pause') {
+    // Exit 0 for every outcome: a terminal or already stopped run is a reported no-op.
+    emit({ type: 'runtime-pause-result', ...await pauseRun(directory(flags), { requestId: optional(flags, 'request-id'), reason: optional(flags, 'reason') }) }); return 0
   }
   if (command === 'cancel') { emit({ type: 'runtime-cancellation-accepted', ...await cancelRun(directory(flags), optional(flags, 'request-id')) }); return 0 }
   const cutOptions = () => ({ ...(flags['scope-id'] === undefined ? {} : { scopeId: required(flags, 'scope-id') }),
@@ -138,7 +149,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       const current = result.state.usage[key], prior = previous ? previous.state.usage[key] : 0
       return current === null || prior === null ? null : Math.max(0, current - prior)
     }
-    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
+    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, ...definitionFailure({ ...result.state, ...('error' in result ? { error: result.error } : {}) }), revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
       ...('forkOf' in result ? { forkOf: result.forkOf } : {}), ...('error' in result ? { error: result.error } : {}),
       usage: result.state.usage, invocationUsage: { costUsd: delta('costUsd'), inputTokens: delta('inputTokens'), outputTokens: delta('outputTokens') }, metrics: result.metrics, efficiencySummary: result.efficiencySummary })
     return result.state.status === 'succeeded' ? 0 : result.state.status === 'paused' ? 2 : 1

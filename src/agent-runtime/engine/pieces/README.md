@@ -38,8 +38,10 @@ without calling that decision again, and records the answer in history.
 Malformed non-question output keeps the existing single-repair policy.
 
 Captures and expression regexes use a constant VM script, 50 ms timeout, 200
-pattern characters and at most 32,000 input characters. User input supplies only
-data. Provider text, shell output and history are separately bounded.
+pattern characters and at most 32,000 input characters. The timeout is
+wall-clock, so a timed-out match is retried once: a GC or scheduler pause cannot
+fail a cheap pattern, while a catastrophic one still fails (at most 2 × 50 ms).
+User input supplies only data. Provider text, shell output and history are separately bounded.
 
 A `role-turn` for a role with write access renders the complete host
 verification plan in its instructions: the configured checks for the
@@ -48,6 +50,16 @@ param names a committed node output, that output's `structured.verification`
 proposals for repositories without a configured check (the same admission rule
 the `verify` piece applies to `additionalCommandsFrom`), deduplicated. Read-only
 roles receive no plan block. The turn never runs those commands.
+
+`stance: 'fixer'` makes a `role-turn` a correction round. It requires a write
+role (`invalid_role_access` at publication, `invalid_arguments` at execution).
+The built-in `developer` then renders the FIXER instructions with
+`rolePrompts.fixer` and runs on `config.fixer` when one is configured, always
+in a fresh session (`agentOverride` in `graph/roles.ts`, mirroring the legacy
+`implementationVisit`). A custom write role only gets the `fixer` label on its
+request and events. `derive-change` takes the matching `feedback` param to
+re-derive the existing change in place after such a round; `flow-spec.json`
+wires both into a bounded repair loop.
 
 ## Verification and OpenSpec
 

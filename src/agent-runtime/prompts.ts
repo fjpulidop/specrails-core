@@ -3,9 +3,11 @@ import type { PipelineContext, VerificationCommand } from '../pipeline/pipeline-
 import { DEFAULT_REVIEW_POLICY, REVIEW_ASPECTS, type ReviewPolicy } from './graph/review-policy.js'
 import type { DeveloperRecord } from './graph/state.js'
 import { REVIEW_BRIEF_RISK_LIMIT, REVIEW_BRIEF_SCHEMA, REVIEW_RISK_AREAS } from './graph/review-brief.js'
+import { CLARIFICATIONS_SCHEMA, CLARIFICATION_LIMIT, DEFAULT_CLARIFICATION_POLICY, type ClarificationPolicy } from './graph/clarifications.js'
+import type { ProjectRulesContext } from './project-rules.js'
 
 /** Bump whenever the wording changes: the version is part of the frozen run identity. */
-export const ROLE_INSTRUCTIONS_VERSION = '16'
+export const ROLE_INSTRUCTIONS_VERSION = '17'
 const OUTPUT_TAIL = 6_000
 /** One senior engineer, rendered once per role prompt (never repeated inside it): the identity the implement pipeline's roles share. */
 const ENGINEER = 'a T-shaped principal engineer with decades of delivery across web, mobile and backend systems: deep in software design and testing, broad across product, UX, data, security, infrastructure and operations; fluent in hexagonal (ports and adapters) architecture, SOLID, design patterns, Clean Code, The Pragmatic Programmer, refactoring, legacy-code seams and AI-assisted development. You work for the user, the operator and the next maintainer, and you treat AI-generated code, including your own, with the scepticism owed to any untrusted contribution.'
@@ -37,13 +39,22 @@ export interface RoleInstructionOptions {
   /** A reviewer pass after a correction round: only these files changed since its previous verdict, and these criteria it already certified as met. */
   reReview?: ReReviewContext
   planning?: 'full' | 'proportional'
+  /** The architect's clarification policy (`architect.clarifications`); Core's default when omitted. */
+  clarifications?: ClarificationPolicy
   /** The change so far, measured by Core from git against the run's base (rendered lines). */
   changeSet?: string[]
   /** Files the host verification regenerated and kept in the candidate; merged with `feedback.verification.adoptedOutputs`. */
   adoptedOutputs?: AdoptedOutput[]
   /** The run's `derive-change` coverage report (derivation.json), rendered for the reviewer. */
   derivation?: DerivationReport
+  /** Requirement ids (`capability/slug`) the change adds, modifies or renames: the developer tags one test for each. */
+  requirementTags?: string[]
+  /** Baseline on touch: characterization tests that passed on the base code before the change (developer and reviewer). */
+  baseline?: BaselineContext
+  /** `.specrails/rules.json`: discovered gates (architect, as the default verification proposal) and `humanOnly` rules (reviewer, as human checks). */
+  projectRules?: ProjectRulesContext
 }
+export interface BaselineContext { receiptId?: string; tests: string[]; uncovered: string[] }
 export interface AdoptedOutput { repositoryId?: string; path: string }
 /** The derivation.json fields the reviewer reads; written by the `derive-change` piece, never by a role. */
 export interface DerivationReport { files: number; explained: number; unexplainedFiles: string[]; confidence?: string; [key: string]: unknown }
@@ -60,6 +71,7 @@ export const ARCHITECT_OUTPUT_SCHEMA: Record<string, unknown> = {
     referencePatterns: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
     riskFlags: { ...stringArray, maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 1000 } },
     question: { type: 'string', description: 'Only with low confidence: the single question whose answer decides the design.' },
+    clarifications: CLARIFICATIONS_SCHEMA,
     verification: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['repositoryId', 'command', 'args'], properties: { repositoryId: { type: 'string' }, command: { type: 'string' }, args: stringArray, cwd: { type: 'string' } } } },
   },
 }
@@ -123,6 +135,9 @@ export const REVIEW_OUTPUT_SCHEMA: Record<string, unknown> = {
           evidence: { ...stringArray, minItems: 1 }, scope: { type: 'string' }, limitations: { type: 'string' },
         } } },
         findings: stringArray,
+        findingLocations: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['finding', 'path'], properties: {
+          finding: { type: 'integer', minimum: 0 }, path: { type: 'string' }, line: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
+        } } },
       },
     },
     brief: REVIEW_BRIEF_SCHEMA,
@@ -185,6 +200,13 @@ function conventionsSection(): string[] {
   ]
 }
 
+/** How the architect's clarifications are settled for this run (`architect.clarifications`). */
+function clarificationPolicyLine(policy: ClarificationPolicy): string {
+  return policy === 'ask-on-high'
+    ? 'Clarification policy: ask-on-high. If a `high` clarification has no safe default (`default: null`), stop before planning: author no artifacts and reply with `confidence` and `clarifications` only; Core asks the requester and resumes you with the answers. Otherwise plan on your defaults and record them under `## Assumptions` in design.md.'
+    : 'Clarification policy: always-proceed. Never stop for clarifications: plan on your best default for each one (state a default even when none is fully safe) and record them under `## Assumptions` in design.md.'
+}
+
 function answersSection(answers: string[] | undefined): string[] {
   if (!answers?.length) return []
   return [
@@ -206,10 +228,12 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     'You are the Specrails architect, ' + ENGINEER,
     FOCUS,
     '',
+    `0. Clarify before planning. Read the ticket and the code it names, then list the ambiguities whose answer would change the design: at most ${CLARIFICATION_LIMIT}, most consequential first, none when the ticket is clear (never invent one to fill the list). Give each an \`impact\` (\`high\`: a different answer changes user-visible behaviour, persisted data, a public contract or most of the plan; \`medium\`: it changes part of the plan; \`low\`: a detail) and the \`default\` you would assume, or \`null\` when no default is safe. Answers from the requester below are authoritative: never ask them again.`,
     '1. Orient quickly: locate the code the change touches, the tests that cover it and the conventions that apply. Calibrate depth to the blast radius. A localized change gets a short proposal, focused design and only the tasks it needs; a cross-cutting change earns a full impact analysis. Investigate only as far as it changes a design decision.',
     'In design.md include a Local reference patterns section: cite actual repository paths and symbols for the closest existing implementation and its tests. Explain async rendering/state updates, error propagation and test setup when relevant. Check installed framework versions. If no equivalent exists, state that explicitly; never invent references.',
     '2. Choose the design with the smallest blast radius that fully satisfies the criteria and the repository\'s conventions. Extend the existing module, seam or helper before adding a file, layer or abstraction; keep dependencies pointing inward and follow the layering the code already uses; introduce a port, interface, pattern or abstraction only where a real substitution or variation boundary exists today, never as ceremony; prefer composition and plain functions; keep public signatures, exported contracts, schemas and persisted formats unchanged unless a criterion requires it, and then name every affected caller; add no dependency the design cannot justify; plan no rename, move, reformat or clean-up the change does not need, and record what you noticed as out-of-scope findings in design.md. Call out risks, edge cases, failure paths and compatibility concerns.',
     'Design judgement: understand before you change (a guard, branch or workaround you cannot explain stays until you can; reconstruct its intent from tests and history). Prefer reversible decisions, the simplest design that could work and a thin vertical slice first, so the earliest task proves the riskiest assumption; record rejected alternatives in design.md, one line each. Make illegal states unrepresentable; make failure paths, idempotency, concurrency, cancellation, timeouts, persistence and backward compatibility explicit; design security in at the boundary the change touches (parse and validate input, authorize where the repository does, no secrets or personal data in code or logs, least privilege); keep errors, logging, metrics, migrations and persisted-format changes consistent with the repository and additive. Design for the platform the change touches: web (state, accessibility, i18n, loading and error states), mobile (lifecycle, offline, permissions, battery, platform conventions), backend (transactions, idempotent retries, validation at the boundary, observability). State the performance assumption of any hot path instead of optimizing speculatively. Confirm every API, signature, option and version against the source or the installed package, never from memory.',
+    'design.md always contains a `## Non-Goals` section with at least one line naming what this change deliberately does not do, and, when you listed clarifications and proceed, a `## Assumptions` section with one line per clarification: the question and the answer you assumed. Core checks both and returns a design without them for repair.',
     '3. Declare the blast radius in design.md under a `Blast radius` heading: every file to create or modify (inside the repository scope when one is declared), each with the reason it must change, including every artifact the change makes stale (localized strings in every locale the repository ships, user or API documentation, schema and contract files, configuration examples, migrations). That list is the developer\'s boundary and the reviewer\'s checklist; a file the plan does not name must not change.',
     '4. Break the work into ordered, atomic tasks. Each task names concrete files from the blast radius and includes its own tests: behavior assertions, failure paths, deterministic, in the repository\'s existing test style. Every task must be completable by an agent that can only edit files and run commands: never add tasks such as "run the test suite", "verify", "test manually in a browser", "commit" or "open a PR". Core runs verification and the host owns delivery.',
     '5. Execute the official OpenSpec fast-forward skill. Query status and instructions in dependency order; author the real delta specs and other artifacts using those templates and project rules. Preserve existing requirements through OpenSpec delta semantics. Do not fabricate complete replacement specs.',
@@ -222,9 +246,10 @@ function architectSection(verification: VerificationCommand[] | undefined, defin
     'Reply with exactly one JSON object and nothing else: no prose before or after it, no Markdown fence.',
     '',
     '```',
-    '{"confidence":"high|medium|low","question":"Only with low confidence","verification":[{"repositoryId":"<id>","command":"npm","args":["test"]}]}',
+    '{"confidence":"high|medium|low","question":"Only with low confidence","clarifications":[{"question":"…","impact":"high|medium|low","default":"the answer you would assume, or null"}],"verification":[{"repositoryId":"<id>","command":"npm","args":["test"]}]}',
     '```',
     '- `question`: omit unless confidence is `low`; then one precise question a product owner can answer in a sentence.',
+    '- `clarifications`: the list from step 0; omit or leave empty when the ticket is clear. Each `question` is one sentence a product owner can answer.',
     '- `verification`: optional; commands for repositories that have no configured check, run without a shell (`command` plus an `args` array, optional `cwd` relative to the repository checkout and inside its scope).',
     '- Author the documents using the official workflow before returning metadata. Core does not generate your artifacts.',
     '- Optional planning metadata: `planningDepth` (focused|full), a bounded `planningReason`, `referencePatterns` (verified paths/symbols), and `riskFlags`. Missing metadata means full. Focused planning never removes official artifacts or acceptance criteria. Multi-repository, migration, public-contract and security changes need full planning.',
@@ -321,12 +346,13 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     'Check, in this order:',
     '1. Spec completeness: every requirement in the change specs and every acceptance criterion is implemented. Cross-reference each one against the code.',
     '2. Task completion: every task in `tasks.md` is `- [x]` and is backed by real code and tests, not just a ticked box.',
-    '3. Test quality: new behavior has tests that assert on behavior, cover error paths, and would fail without the change. Missing tests for production code, tests without assertions and tests that restate the implementation are blocking issues.',
+    '3. Test quality: new behavior has tests that assert on behavior, cover error paths, and would fail without the change. Missing tests for production code, tests without assertions and tests that restate the implementation are blocking issues. Every requirement this change adds or modifies is claimed by at least one test tag (`[spec:<capability>/<slug>]` in the test title or a `spec: <capability>/<slug>` comment on the line before it); a touched requirement the requirement trace below reports as not demonstrated is an issue naming the requirement id and the test to tag.',
     '4. Blast radius: compare the change set below with the files design.md and tasks.md name. A file the plan did not name, a hunk no task explains (reformatting, import reordering, renames, comment rewrites, type widening, deleted or rewritten tests outside the tasks, regenerated lockfiles, snapshots or generated files' + (adopted ? ' other than the host-adopted verification output listed below' : '') + ', new dependencies, widened public signatures) or an edit to a shared module without a stated reason is an issue to REVERT, not to polish: name the file and the hunk. Trace every criterion to the narrowest code that satisfies it; code beyond that is suspect. Unjustified blast radius lowers `architectural_alignment` and `pattern_adherence`.',
     '5. Correctness and conventions: types and signatures fit the codebase, patterns match the repository, imports and error handling are consistent, no dead code, debug output or placeholders. Architecture: the change respects the dependency direction and boundaries the repository already follows; domain logic placed in an adapter, an adapter imported from the domain, a bypassed existing port or helper, a duplicated utility that already exists, or a new abstraction with one implementation and no variation point is an issue when it breaks a convention the code enforces and a finding otherwise. Platform correctness as far as the change touches it: web state, accessibility, loading and error states; mobile lifecycle, offline and permissions; backend transactions, idempotency and validation at the boundary.',
     '6. Security: no secrets, injection, path traversal, unsafe deserialization, missing authorization or new attack surface. Scale scrutiny to what the change touches.',
     '7. Performance: no obvious N+1, unbounded loops or blocking work on hot paths introduced by the change.',
     '8. What tests rarely catch: swallowed or context-free errors, missing cancellation, timeouts or cleanup, races and partial failures, retries without idempotency, empty, huge, malformed or boundary inputs, time zones and Unicode, secrets or personal data in logs, non-additive migrations or persisted-format changes, a removed guard or branch without a stated reason (understand before approving its removal), and artifacts the change made stale: localized strings in every locale the repository ships, documentation, schemas, configuration examples. Missing stale-artifact updates inside the planned blast radius are issues; concerns outside it are findings.',
+    '9. Spec claims: for each capability this change touches (its delta specs under the change, and `openspec/specs/<capability>/spec.md` when it exists), compare what the requirements and scenarios claim with what the code does. A claim the code contradicts is a divergence for the brief (`divergences`), with the requirement and the observed behaviour at `file:line`. It is an issue only when this change introduced the contradiction.',
     '',
     'Judge BEHAVIOUR against the acceptance criteria, never the shape of the code against the wording of the plan: module layout, file lists, class or function names, naming conventions and implementation techniques named in the ticket, the design or a "contract layer" are suggestions the developer may legitimately improve on. A working implementation that satisfies a criterion by other means is correct; asking to rename, move or rewrite it to match the plan\'s wording is NOT an issue. Only a criterion that is not met, a defect, a missing test or a regression is.',
     '',
@@ -358,6 +384,7 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `acceptance.criteria`: one entry per criterion listed above, with the same `specId` and `criterionIndex`; Core records the frozen requirement text itself.',
     '- `acceptance.checks`: Core records the verification commands it ran; add only supplementary checks you performed by inspection, each with what it measured (`scope`) and what it leaves out (`limitations`). Never mark an inspection as `required`.',
     '- `acceptance.findings`: concrete conclusions, risks and resolutions; an empty array when there are none.',
+    '- `acceptance.findingLocations` (optional): for a finding about one place in the change, `{"finding":<index in findings>,"path":"<repository-relative file>","line":<first line>,"endLine":<last line>}`; omit `line`/`endLine` when only the file is known and omit the entry when the finding is not about one place. Never guess a location.',
     '- When corrections are required, set `approved` to false and list each issue as one concrete, actionable line naming the file and what must change: a file in the change set, or a test the change must add. The developer receives these lines verbatim.',
     '- Never raise a score or a criterion status to pass a gate, and never approve with open issues or unresolved criteria.',
     '',
@@ -374,10 +401,64 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `untested`: code paths the diff touches that no test in the verification plan exercises, by repository-relative `path` with the reason.',
     `- \`risks\`: at most ${REVIEW_BRIEF_RISK_LIMIT}, most severe first. Every risk names a \`ref\` as \`file:line\`, a \`severity\` (\`high\`, \`medium\`, \`low\`), an \`area\` (${REVIEW_RISK_AREAS.map(area => '`' + area + '`').join(', ')}) and \`whatToLookAt\`: the concrete thing a human should inspect. A risk is not an issue: blocking problems still go in \`issues\`.`,
     '- `humanChecks`: what you cannot verify read-only (running the UI, real credentials, production data, performance under load, a manual flow), one concrete check per line.',
-    '- `divergences`: reserved; leave it an empty array.',
+    '- `divergences`: spec claims of a touched capability that the code contradicts (check 9): `capability`, `requirement` (its id `capability/slug`) and `observed`, what the code does instead with `file:line`. An empty array when the specs and the code agree.',
     '',
   )
   return lines
+}
+
+/** Asks the architect, in its session, to add the Baseline task group for code no capability covers. */
+export function baselinePlanInstructions(uncovered: readonly string[]): string {
+  return [
+    '## Baseline before the change',
+    '',
+    'The blast radius reaches code no capability in `openspec/specs/` covers yet:',
+    ...uncovered.slice(0, 50).map(file => `- \`${file}\``),
+    '',
+    'Before the change tasks, add a Baseline so the change starts from described, tested behaviour:',
+    '1. In `tasks.md`, insert a `## 0. Baseline` group before every other group. Its tasks: characterization tests that pin what each listed module does TODAY (one test file per module, in the repository\'s test style, in a location the verification commands run), and the minimal as-built spec below.',
+    '2. Add the as-built spec as `## ADDED Requirements` in `specs/<capability>/spec.md`, naming a capability for the module; one requirement per behaviour the characterization tests pin, each with a scenario. Each Baseline task tells the developer to tag its test with `[spec:<capability>/<slug>]` of the requirement it demonstrates.',
+    '3. Characterization tests describe current behaviour, never the behaviour this change wants. Core runs them against the unchanged code before the developer may touch the module, and stops the run if they fail.',
+    '',
+    'Update `tasks.md` and the delta spec through the workflow (instructions, then write_artifact). Do not change the rest of the plan. Reply with the same JSON object as before.',
+  ].join('\n') + '\n'
+}
+/** The developer's first turn under baseline on touch: characterization only, against the unchanged code. */
+export function baselineStageInstructions(uncovered: readonly string[]): string {
+  return [
+    '## Baseline stage (this turn only)',
+    '',
+    `Complete ONLY the \`Baseline\` task group in \`tasks.md\` now: the characterization tests that pin the current behaviour of ${uncovered.slice(0, 20).map(file => '`' + file + '`').join(', ')}, tagged with their as-built requirement ids. Leave every other task for your next turn.`,
+    'Do not modify any non-test file. Right after this turn Core runs the verification commands against the unchanged code; the run stops if a characterization test fails or a non-test file changed. Mark only the Baseline tasks `- [x]` and list the characterization test files under `tests`.',
+    '',
+  ].join('\n')
+}
+function baselineSection(role: AgentRole, baseline: BaselineContext | undefined): string[] {
+  if (!baseline || !(role === 'developer' || role === 'reviewer')) return []
+  const tests = baseline.tests.slice(0, 30).map(file => `- \`${file}\``)
+  return role === 'developer' ? [
+    '## Baseline',
+    '',
+    `The characterization tests passed on the unchanged code (receipt ${baseline.receiptId ?? 'unknown'}). They pin today's behaviour of the modules this change touches; when the change alters that behaviour on purpose, update the affected test and its as-built requirement through the change tasks and say so in summary. Do not weaken them otherwise.`,
+    ...tests, '',
+  ] : [
+    '## Baseline',
+    '',
+    `This change started with a Baseline: characterization tests for ${baseline.uncovered.slice(0, 10).map(file => '`' + file + '`').join(', ')} passed on the unchanged code (receipt ${baseline.receiptId ?? 'unknown'}). Check that every as-built requirement the Baseline added describes behaviour its tagged characterization test demonstrates against that code, not desired behaviour; an as-built requirement without such a test, or one that describes behaviour the code does not have, is an issue.`,
+    ...tests, '',
+  ]
+}
+
+/** The requirements the developer tags so Core can trace them to tests (spec-trace). */
+function requirementTagsSection(ids: string[] | undefined): string[] {
+  if (!ids?.length) return []
+  return [
+    '## Requirement tags',
+    '',
+    'Tag at least one test for each requirement this change adds or modifies, so Core can prove it is demonstrated: put `[spec:<id>]` in the test title, or a comment `// spec: <id>` (`# spec: <id>` in Python or shell) on the line before the test. Tag the test that exercises the requirement, in a file the verification commands run. Requirement ids:',
+    ...ids.slice(0, 50).map(id => `- \`${id}\``),
+    '',
+  ]
 }
 
 /** The developer's summary is a claim for the reviewer to check, never evidence by itself. */
@@ -427,6 +508,20 @@ function adoptedOutputSection(role: AgentRole, adopted: AdoptedOutput[]): string
   ]
 }
 
+/** The advisory requirement ↔ test trace Core recorded with the passing receipt. */
+function specTraceLines(trace: Record<string, unknown> | undefined): string[] {
+  if (!trace || typeof trace.summary !== 'string') return []
+  const ids = (value: unknown): string[] => Array.isArray(value) ? value.map(item => typeof item === 'string' ? item : record(item) && typeof record(item)!.id === 'string' ? `${String(record(item)!.id)} (${String(record(item)!.reason ?? 'no-test')})` : '').filter(Boolean) : []
+  const touched = ids(trace.touched), missing = ids(trace.touchedUndemonstrated)
+  const untagged = Array.isArray(trace.untagged) ? trace.untagged.map(record).filter(Boolean).map(tag => `${String(tag!.file)}:${String(tag!.line)} \`${String(tag!.tag)}\``) : []
+  return [
+    '', `Requirement trace (advisory, bound to receipt ${String(trace.receiptId ?? 'unknown')}): ${trace.summary}.`,
+    ...(touched.length ? [`Requirements this change adds or modifies: ${touched.map(id => '`' + id + '`').join(', ')}.`] : []),
+    ...(missing.length ? [`Not demonstrated by a tagged test that a passing verification command ran: ${missing.join(', ')}.`] : touched.length ? ['Every requirement this change adds or modifies is demonstrated.'] : []),
+    ...(untagged.length ? [`Tags that match no requirement (typo, renamed or removed requirement): ${untagged.slice(0, 10).join(', ')}.`] : []),
+  ]
+}
+
 function feedbackSection(feedback: RoleFeedback | undefined, focused = false): string[] {
   const lines: string[] = []
   const verification = record(feedback?.verification)
@@ -436,6 +531,7 @@ function feedbackSection(feedback: RoleFeedback | undefined, focused = false): s
     lines.push(verification.valid === true ? (Array.isArray(verification.commands) && verification.commands.length ? 'All verification commands passed.' : 'No automated verification command was available for this run.') : 'Verification did not pass.')
     if (unverified.length) lines.push(`Repositories without an automated check (inspect their changes with extra care): ${unverified.map(id => '`' + id + '`').join(', ')}.`)
     if (typeof verification.reason === 'string') lines.push(verification.reason)
+    lines.push(...specTraceLines(record(verification.specTrace)))
     const incomplete = Array.isArray(verification.incompleteTasks) ? verification.incompleteTasks.filter(item => typeof item === 'string') : []
     if (incomplete.length) lines.push('', 'Tasks still unchecked in `tasks.md`:', ...incomplete.map(item => `- ${item}`))
     const commands = Array.isArray(verification.commands) ? verification.commands.map(record).filter(Boolean) as Record<string, unknown>[] : []
@@ -536,6 +632,30 @@ const DERIVER_INSTRUCTIONS = [
 const ENGINE_ROLE_INSTRUCTIONS: Record<EngineRole, string> = { deriver: DERIVER_INSTRUCTIONS }
 
 /** What the reviewer must do with a `derive-change` coverage report; rendered only when the run has one. */
+/** Discovered gates offered as the default verification proposal when the host configured none. */
+function projectGatesSection(context: PipelineContext, rules: ProjectRulesContext | undefined, verification: VerificationCommand[] | undefined): string[] {
+  if (!rules?.gates.length || verification?.length) return []
+  return [
+    '## Project gates (default verification)',
+    '',
+    `\`specrails-core rules inventory\` found these gates in repository \`${context.artifactRepositoryId}\` (\`.specrails/rules.json\`). No verification command is configured by the host, so in step 6 propose from them first, as \`command\` plus \`args\`, keeping only the gates that exercise this change and that pass on the current code:`,
+    ...rules.gates.map(gate => `- \`${gate.id}\` (${gate.kind}): \`${gate.command}\``),
+    '',
+  ]
+}
+
+/** The project's human-only written rules, handed to the reviewer as candidate human checks. */
+function humanRulesSection(rules: ProjectRulesContext | undefined): string[] {
+  if (!rules?.humanOnly.length) return []
+  return [
+    '## Project rules that need a human',
+    '',
+    'Only a person can judge these written project rules (`.specrails/rules.json`, status `humanOnly`). For each one this change could break, add one line to `brief.humanChecks`: the rule, its source and what to look at in this change. They are not issues for the developer; never claim them verified.',
+    ...rules.humanOnly.map(rule => `- ${rule.text} (${rule.source})`),
+    '',
+  ]
+}
+
 function derivationSection(derivation: DerivationReport | undefined): string[] {
   if (!derivation) return []
   const unexplained = derivation.unexplainedFiles.slice(0, 200)
@@ -579,12 +699,17 @@ export function roleInstructions(roleOrDescriptor: AgentRole | RoleDescriptor, c
     ...conventionsSection(),
     ...scopeSection(context, change),
     ...(role === 'architect' ? answersSection(options.answers) : []),
+    ...(role === 'architect' ? [clarificationPolicyLine(options.clarifications ?? DEFAULT_CLARIFICATION_POLICY)] : []),
     ...(role === 'architect' ? [options.planning === 'full' || context.repositories.length > 1 ? 'Planning policy: full impact analysis is required for this run.' : 'Planning policy: proportional; use focused planning only for a clear local change without migration, public-contract or security risks.'] : []),
     ...(role === 'reviewer' ? developerSummarySection(options.developer) : []),
     ...changeSetSection(role, options.stance, options.changeSet),
     ...(role === 'developer' ? discardedSection(options.developer) : []),
+    ...(role === 'developer' ? requirementTagsSection(options.requirementTags) : []),
+    ...baselineSection(role, options.baseline),
     ...(role === 'reviewer' ? reReviewSection(options.reReview) : []),
     ...(role === 'reviewer' ? derivationSection(options.derivation) : []),
+    ...(role === 'architect' ? projectGatesSection(context, options.projectRules, options.verification) : []),
+    ...(role === 'reviewer' ? humanRulesSection(options.projectRules) : []),
     ...adoptedOutputSection(role, adopted),
     ...feedback,
   ]
@@ -615,5 +740,5 @@ export function deepenInstructions(question: string | undefined): string {
 
 /** Asks a structured role to resend a malformed reply without repeating its work. */
 export function repairInstructions(role: AgentRole, problem: string): string {
-  return `Your previous reply could not be used: ${problem}\n\nDo not redo the ${role} work. Reply again with exactly one JSON object matching the output contract, with no prose before or after it and no Markdown fence.\n`
+  return `Your previous reply could not be used: ${problem}\n\nDo not redo the ${role} work beyond what this problem names (fix a named artifact through the workflow first). Reply again with exactly one JSON object matching the output contract, with no prose before or after it and no Markdown fence.\n`
 }

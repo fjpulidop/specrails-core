@@ -31,6 +31,19 @@ describe('definition admission', () => {
     expect(rejected.ok).toBe(false)
     if (!rejected.ok) expect(rejected.errors.map(error => error.code)).toContain('invalid_expression')
   })
+  it('admits the role-turn fixer stance only for a write role, deferring unresolved roles in portable validation', () => {
+    const value = draft()
+    value.roles = ['fixer-role']
+    value.nodes.check = { kind: 'role-turn', params: { roleId: 'fixer-role', prompt: 'Correct the findings', stance: 'fixer' }, ends: { next: 'done', failed: null } }
+    expect(validateWorkflowDefinition(value, validationPieceRegistry(), { 'fixer-role': { access: 'write' } }).ok).toBe(true)
+    expect(validateWorkflowDefinition(value, validationPieceRegistry(), { 'fixer-role': { access: 'read' } })).toMatchObject({ ok: false,
+      errors: [{ code: 'invalid_role_access', path: '/nodes/check/params/stance', message: 'The fixer stance requires a role with write access' }] })
+    expect(validateWorkflowDefinition(value, validationPieceRegistry(), {}, { structural: true }).ok).toBe(true)
+    const unknown = draft(); unknown.roles = ['fixer-role']
+    unknown.nodes.check = { kind: 'role-turn', params: { roleId: 'fixer-role', prompt: 'Correct', stance: 'reviewer' }, ends: { next: 'done', failed: null } }
+    expect(validateWorkflowDefinition(unknown, validationPieceRegistry(), { 'fixer-role': { access: 'write' } })).toMatchObject({ ok: false, errors: [expect.objectContaining({ code: 'invalid_piece_params', path: '/nodes/check/params/stance' })] })
+  })
+
   it('publishes a raw draft, roundtrips its hash and preserves absence of defaults', () => {
     const result = validateWorkflowDefinition(draft(), registry)
     expect(result.ok).toBe(true)

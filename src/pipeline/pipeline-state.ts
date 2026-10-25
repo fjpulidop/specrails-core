@@ -89,10 +89,14 @@ export interface AcceptanceCheck {
   scope: string
   limitations: string
 }
+/** Where in the change one finding applies (contract 5.9). `finding` indexes `findings`; `path` is repository-relative. */
+export interface FindingLocation { finding: number; path: string; line?: number; endLine?: number }
 export interface AcceptanceReport {
   criteria: AcceptanceCriterion[]
   checks: AcceptanceCheck[]
   findings: string[]
+  /** Optional anchors for findings (contract 5.9); absent when the reviewer named none. */
+  findingLocations?: FindingLocation[]
 }
 export interface AcceptanceReceipt extends AcceptanceReport {
   scopeHash: string; candidateHash: string; artifactHash: string; recordedAt: string; planHash?: string
@@ -347,7 +351,7 @@ export function bindImplementationExclusions(contextInput: PipelineContext, excl
     if (!repository) continue // A scoped child receives the parent union, filtered to its frozen repositories.
     repositoryExclusions[id] = [...new Set(paths)].sort()
     for (const item of repositoryExclusions[id]!) {
-      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:changes|specs)\/[a-z0-9][a-z0-9./-]*$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
+      if (!/^(?:[a-zA-Z0-9][a-zA-Z0-9._-]*\/)*openspec\/(?:(?:changes|specs)\/[a-z0-9][a-z0-9./-]*|capability-map\.json)$/.test(item)) fail('Implementation artifact exclusion is outside declared OpenSpec artifacts')
       safeChild(repository.path, item)
     }
   }
@@ -516,7 +520,8 @@ export function initializePipeline(contextInput: unknown, change: string): Pipel
       schemaVersion: 1, runId: context.runId, change, context, scopeHash: digest(canonical(context)), revision: 0,
       createdAt: now, updatedAt: now,
       phases: Object.fromEntries(PHASES.map((phase) => [phase, { status: 'pending' }])) as PipelineState['phases'],
-      artifactExclusions: ['openspec/changes/' + change],
+      // The capability map is Core metadata the archive step rewrites (graph/capability-map.ts), never part of the reviewed candidate.
+      artifactExclusions: ['openspec/changes/' + change, 'openspec/capability-map.json'],
     }
     atomicJson(path.join(pipelineStateDirectory(context), 'context.json'), context)
     saveState(state)
@@ -621,6 +626,31 @@ export function frozenAcceptanceCriteria(contextInput: unknown): Array<Pick<Acce
 export function validateAcceptanceReport(contextInput: unknown, input: unknown): AcceptanceReport {
   return acceptanceReport(validatePipelineContext(contextInput), input)
 }
+const MAX_FINDING_LOCATIONS = 50
+/**
+ * Keeps only well-formed anchors for the findings that exist. A malformed
+ * anchor is dropped, never fatal: a location is advisory and must not fail an
+ * otherwise valid review.
+ */
+export function sanitizeFindingLocations(value: unknown, findingCount: number): FindingLocation[] {
+  if (!Array.isArray(value)) return []
+  const out: FindingLocation[] = []
+  const seen = new Set<number>()
+  for (const raw of value) {
+    if (out.length >= MAX_FINDING_LOCATIONS) break
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue
+    const row = raw as Record<string, unknown>
+    const finding = row.finding
+    if (typeof finding !== 'number' || !Number.isInteger(finding) || finding < 0 || finding >= findingCount || seen.has(finding)) continue
+    const filePath = typeof row.path === 'string' ? row.path.trim().replace(/\\/g, '/').replace(/^\.\//, '') : ''
+    if (!filePath || filePath.length > 500 || filePath.startsWith('/') || /^[A-Za-z]:/.test(filePath) || filePath.includes('\0') || filePath.split('/').includes('..')) continue
+    const line = typeof row.line === 'number' && Number.isInteger(row.line) && row.line >= 1 && row.line <= 10_000_000 ? row.line : undefined
+    const endLine = line !== undefined && typeof row.endLine === 'number' && Number.isInteger(row.endLine) && row.endLine > line && row.endLine <= 10_000_000 ? row.endLine : undefined
+    seen.add(finding)
+    out.push({ finding, path: filePath, ...(line !== undefined ? { line } : {}), ...(endLine !== undefined ? { endLine } : {}) })
+  }
+  return out
+}
 function nonempty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0 }
 function evidence(value: unknown): value is string[] { return Array.isArray(value) && value.length > 0 && value.every(nonempty) }
 function acceptanceReport(context: PipelineContext, input: unknown): AcceptanceReport {
@@ -652,7 +682,9 @@ function acceptanceReport(context: PipelineContext, input: unknown): AcceptanceR
       || !evidence(check.evidence) || !nonempty(check.scope) || !nonempty(check.limitations)) fail('Check needs status, evidence, measurement scope and limitations')
     return { name: check.name, status: check.status as AcceptanceCheck['status'], required: check.required, evidence: check.evidence, scope: check.scope, limitations: check.limitations }
   })
-  return { criteria, checks, findings: report.findings as string[] }
+  const findings = report.findings as string[]
+  const findingLocations = sanitizeFindingLocations(report.findingLocations, findings.length)
+  return { criteria, checks, findings, ...(findingLocations.length ? { findingLocations } : {}) }
 }
 function inspectAcceptance(state: PipelineState): { valid: boolean; status: PipelineCompletion['validation']; reasons: string[]; receipt?: AcceptanceReceipt } {
   const receipt = state.acceptance

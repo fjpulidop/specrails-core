@@ -25,10 +25,16 @@ export function projectRunStatus(ledger: RunLedger, compact = true) {
   const failures = ledger.db.sqlite.prepare("SELECT node_path,scope_id,branch,status,attempt,visit,ended_at,error_code,error_message FROM attempts WHERE run_id=? AND status IN ('failed','interrupted','blocked') ORDER BY started_at DESC LIMIT 8").all(ledger.runId)
   const lease = ledger.lease.current()
   const recoverable = ledger.db.sqlite.prepare("SELECT a.node_path,a.scope_id,a.attempt_id,a.status,v.effect FROM attempts a JOIN visits v ON a.visit_id=v.visit_id JOIN steps s ON s.last_attempt_id=a.attempt_id WHERE a.run_id=? AND a.terminal_digest IS NULL AND a.status IN ('running','interrupted') AND v.effect='write'").all(ledger.runId)
+  // A requested pause (runtime pause) records its reason on the workflow_paused event.
+  const pauseEvent = row.status === 'paused' && !pending.length
+    ? ledger.db.sqlite.prepare("SELECT at,payload_json FROM events WHERE run_id=? AND type='workflow_paused' ORDER BY sequence DESC LIMIT 1").get(ledger.runId) : undefined
+  const pausePayload = pauseEvent ? (JSON.parse(String(pauseEvent.payload_json)) as { payload?: { requestId?: unknown; reason?: unknown } }).payload : undefined
+  const pause = pausePayload && typeof pausePayload.reason === 'string' && typeof pausePayload.requestId === 'string'
+    ? { requestId: pausePayload.requestId, reason: pausePayload.reason, at: String(pauseEvent!.at) } : undefined
   const next = pending[0]?.nodePath ?? (row.status === 'succeeded' || row.status === 'cancelled' ? null : base.nextStep)
   const state = { ...(compact ? { runId: base.runId, traceId: base.traceId, status: base.status, updatedAt: base.updatedAt, usage: base.usage,
     ...(base.pendingApproval ? { pendingApproval: base.pendingApproval } : {}), ...(base.pendingQuestion ? { pendingQuestion: base.pendingQuestion } : {}) } : base),
-    nextNodePath: next, nextStep: next,
+    nextNodePath: next, nextStep: next, ...(pause ? { pause } : {}),
     steps: Object.fromEntries(steps.map(step => [String(step.node_path), { kind: String(step.kind), status: String(step.status), visits: Number(step.visits) }])),
     scopes: steps.map(step => {
       // Read only the current committed attempt. A previous successful visit is

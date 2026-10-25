@@ -66,9 +66,13 @@ export class RunLedger {
     if (visit.saver_checkpoint_ns === null) this.db.put('visits', { ...visit, saver_checkpoint_ns: task.taskCheckpointNs })
     return visit
   }
-  private checkAdmission(): void {
+  /** `pause` only at attempt admission: an admitted attempt finishes all of its invocations. */
+  private checkAdmission(options: { pause?: boolean } = {}): void {
     const row = this.run(), budget = this.db.get('budget', { run_id: this.runId })!
     if (this.db.sqlite.prepare("SELECT 1 FROM control_inbox WHERE run_id=? AND kind='cancel' AND consumed_at IS NULL").get(this.runId)) throw new EngineError('aborted', 'Cancellation requested')
+    // A cooperative pause lets the current attempts settle and refuses the next one.
+    const pause = options.pause ? new ControlInbox(this.db, this.runId).pauseRequested() : undefined
+    if (pause) throw new EngineError('paused', 'Pause requested', { requestId: pause.requestId, reason: pause.reason })
     if (this.options.failFast && Number(row.consecutive_failures) >= this.options.failFast) throw new EngineError('fail_fast', 'Consecutive AI failure limit reached')
     const duration = this.activeDurationMs()
     if ((budget.max_tokens !== null && Number(budget.known_tokens) >= Number(budget.max_tokens)) ||
@@ -102,7 +106,7 @@ export class RunLedger {
         this.db.put('runs', { ...this.run(), status: 'running', active_started_at: this.run().active_started_at ?? at })
         return frame
       }
-      this.checkAdmission()
+      this.checkAdmission({ pause: true })
       if (prior?.status === 'running' && prior.lease_epoch === this.token.epoch && !prior.inherited) throw new EngineError('attempt_running', 'The task is already executing')
       if (prior && (prior.status === 'running' || prior.status === 'interrupted') && input.effect === 'write' && !prior.recovery_authorized) throw new EngineError('recover_required', 'An interrupted write requires explicit recovery')
       if (prior?.status === 'running') {

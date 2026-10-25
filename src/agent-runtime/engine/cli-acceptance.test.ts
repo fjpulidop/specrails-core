@@ -139,6 +139,33 @@ describe.each(Object.keys(entries) as Entry[])('structured fatal errors through 
   })
 })
 
+describe.each(Object.keys(entries) as Entry[])('cooperative pause through %s', entry => {
+  it('requests a pause from a live owner, reports stopped and terminal runs as no-ops, and resumes', async () => {
+    const { contextFile: source } = await pausedRun(entry, 'pausable')
+    // Waiting on a human answer is already a stop.
+    const idle = await invoke(entry, ['pause', '--context', source, '--request-id', 'idle-1'])
+    expect(idle.code, idle.stderr).toBe(0)
+    expect(idle.lines).toHaveLength(1)
+    expect(idle.last).toEqual({ type: 'runtime-pause-result', runId: 'pausable', requestId: 'idle-1', reason: 'requested', outcome: 'already-paused', status: 'paused' })
+    const db = await RunDatabase.open(database('pausable')), lease = new RunLease(db, 'pausable'), token = lease.acquire('resident-executor')
+    try {
+      const requested = await invoke(entry, ['pause', '--context', source, '--request-id', 'budget-1', '--reason', 'budget'])
+      expect(requested.code, requested.stderr).toBe(0)
+      expect(requested.last).toMatchObject({ type: 'runtime-pause-result', requestId: 'budget-1', reason: 'budget', outcome: 'requested', createdAt: expect.any(String) })
+      // The same idempotency key is accepted again with the original record.
+      expect((await invoke(entry, ['pause', '--context', source, '--request-id', 'budget-1', '--reason', 'budget'])).last).toEqual(requested.last)
+      expect(fatal(await invoke(entry, ['pause', '--context', source, '--request-id', 'budget-1', '--reason', 'requested']))).toMatchObject({ code: 'control_conflict' })
+      expect(fatal(await invoke(entry, ['pause', '--context', source, '--reason', 'Budget Limit']))).toMatchObject({ code: 'invalid_arguments' })
+    } finally { lease.release(token); db.close() }
+    const resumed = await invoke(entry, ['resume', '--context', source, '--answer', 'yes'])
+    expect(resumed.code, JSON.stringify(resumed.last) + resumed.stderr).toBe(0)
+    expect(resumed.last).toMatchObject({ status: 'succeeded', completion: { ok: true } })
+    const terminal = await invoke(entry, ['pause', '--context', source])
+    expect(terminal.code, terminal.stderr).toBe(0)
+    expect(terminal.last).toMatchObject({ type: 'runtime-pause-result', outcome: 'terminal', status: 'succeeded' })
+  })
+})
+
 describe('status and efficiency summary', () => {
   it('reports engineVersion 2, lease, workflow, completion and an active duration that excludes human wait', async () => {
     const { contextFile: source, result } = await pausedRun('dist/agent-runtime/cli.js', 'timed')

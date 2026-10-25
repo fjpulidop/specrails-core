@@ -10,6 +10,7 @@ The release machinery itself is described in [CI and publishing](ci-cd.md).
 |---|---|---|
 | `latest` | Every release, published automatically by the `Release` workflow after a green CI run on `main`. | Desktop development builds and anyone who wants fixes first. |
 | `stable` | A release published at least **7 days** ago, with no follow-up patch of the same minor in that week, and whose tag CI is green. Promoted **monthly**, by hand. | Teams that prefer fewer, settled upgrades. The Desktop `stable` channel pins this tag. |
+| `maintenance-4` | The last 4.x release (currently `4.12.1`). | Installs pinned to Core 4 that cannot move to the current major yet. |
 
 ```sh
 npm install specrails-core@stable
@@ -43,6 +44,29 @@ It uses the `NPM_TOKEN` secret. The token needs permission to manage dist-tags f
 A security fix can be promoted outside the monthly cadence. The 7-day window still applies.
 If a vulnerability needs a faster fix, release a patch and point `stable` users to `latest` in
 the advisory instead of bypassing the guard.
+
+### 4.x maintenance
+
+Core 4 is closed to features. `maintenance-4` receives only fixes for security issues and
+for defects that break an existing 4.x install (installation, upgrade or platform
+failures, such as 4.12.1's Windows path quoting); everything else is fixed on the current
+major only. A maintenance fix:
+
+- is cherry-picked from `main` when the code still matches, onto a `release/4.<minor>.<patch>`
+  branch cut from the newest `v4.*` tag, and released as the next 4.x patch with its own
+  `v4.*` tag and changelog entry;
+- never changes the 4.x Desktop ⇄ Core contract, CLI flags or runtime output;
+- is published by hand with `npm publish --tag maintenance-4`, so `latest` and `stable`
+  never move back to 4.x. The automatic `Release` workflow publishes from `main` only and
+  never touches this tag.
+
+```sh
+npm install specrails-core@maintenance-4
+```
+
+When 4.x maintenance ends, the end is announced in the changelog of the current major and
+the tag stays on the final 4.x release. Users should plan the move to the current major
+rather than rely on the tag.
 
 ## Contract versioning
 

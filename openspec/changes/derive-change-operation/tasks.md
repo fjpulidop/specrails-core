@@ -17,3 +17,10 @@
 
 - [x] 4.1 `integration-contract.json` 5.3 with `agentRuntime.deriveChange`, `runtime api` capability `deriveChange: 1`, parity tests.
 - [x] 4.2 Docs: engine-v2 pieces (regenerated catalog), definition format (Flow Spec), Desktop integration, agent runtime roles and capabilities.
+
+## 5. Bounded correction loop
+
+- [x] 5.1 `role-turn` `stance: 'fixer'` (write roles only; developer FIXER instructions, `rolePrompts.fixer`, `config.fixer` without session carry-over) with validator and unit tests.
+- [x] 5.2 `derive-change` `feedback` param: bounded, fenced re-derivation section; unit tests.
+- [x] 5.3 `flow-spec.json` correction loop (`correctionLimit` 2, `fix-progress`, `changes-requested`) and integration tests: one resolving round, persistent rejection, unchanged candidate, failing check.
+- [x] 5.4 Docs and `integration-contract.json` (`deriveChange.params.feedback`, `deriveChange.correctionLoop`) without a contract or capability bump.

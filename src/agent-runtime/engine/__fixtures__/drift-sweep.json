@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "drift-sweep",
+  "title": "Drift sweep",
+  "journal": "ledger-only",
+  "change": "none",
+  "entry": "sweep",
+  "maxTransitions": 10,
+  "roles": [
+    "drift-auditor"
+  ],
+  "nodes": {
+    "sweep": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "drift-auditor",
+        "prompt": "Drift sweep, read-only: edit nothing. For every capability directory under openspec/specs/, read spec.md and compare what each `### Requirement:` and its scenarios claim with what the code does today. Report each claim the code contradicts as a divergence: `capability` (the directory name), `requirement` (its id `capability/slug`: the requirement name lowercased, accents removed, every run of other characters one dash) and `observed` (what the code does instead, with file:line). Also list requirements you could not check and why. Report only contradictions you can show in the code; an untested or unclear claim is not a divergence.",
+        "structuredOutput": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "divergences",
+            "unchecked"
+          ],
+          "properties": {
+            "divergences": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "capability",
+                  "requirement",
+                  "observed"
+                ],
+                "properties": {
+                  "capability": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "requirement": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "observed": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            },
+            "unchecked": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "ends": {
+        "next": "done",
+        "invalid": "failed",
+        "failed": "failed"
+      }
+    },
+    "done": {
+      "kind": "end",
+      "params": {
+        "outcome": "success"
+      },
+      "ends": {}
+    },
+    "failed": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure"
+      },
+      "ends": {}
+    }
+  },
+  "version": "d3b029b795357721244ca1fc70fccca5ad45290cccb14a85c0108dc6a9379dd0"
+}

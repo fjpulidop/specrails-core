@@ -5,6 +5,23 @@ import { nativeSubagentsAllowed } from '../../domain/policy.js'
 /** Tools that launch sub-agents in Claude Code; removed when policy disables sub-agents. */
 export const CLAUDE_SUBAGENT_TOOLS = ['Agent', 'Task'] as const
 export const CLAUDE_READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'] as const
+/**
+ * Built-in tools that change files or run commands. A read-only session that
+ * allows native sub-agents also denies them: deny rules bind every sub-agent of
+ * the session, including project-defined agents that name their own tools.
+ */
+export const CLAUDE_WRITE_TOOLS = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'] as const
+
+/**
+ * The read-only tool set. Native sub-agents keep the parent's restriction
+ * (verified live with Claude Code 2.1.309: a general-purpose sub-agent of a
+ * `--tools Read,Grep,Glob,Agent` session saw only those tools and could not
+ * write), so the sub-agent tool is offered when the policy allows them.
+ * `Task` is the tool's legacy name; unknown names in `--tools` are ignored.
+ */
+export function claudeReadOnlyTools(policy: DriverOpenSpec['policy']): string[] {
+  return [...CLAUDE_READ_ONLY_TOOLS, ...(nativeSubagentsAllowed(policy) ? CLAUDE_SUBAGENT_TOOLS : [])]
+}
 
 function mcpConfig(servers: readonly McpServerSpec[]): string {
   return JSON.stringify({
@@ -39,9 +56,10 @@ export function claudeArgs(spec: DriverOpenSpec, options: { systemPromptFile?: s
   else args.push('--permission-mode', policy.permissions === 'read-only' ? 'plan' : 'acceptEdits')
 
   if (policy.tools.mode === 'none') args.push('--tools', '')
-  else if (policy.tools.mode === 'read-only') args.push('--tools', CLAUDE_READ_ONLY_TOOLS.join(','))
+  else if (policy.tools.mode === 'read-only') args.push('--tools', claudeReadOnlyTools(policy).join(','))
   if (policy.tools.allow?.length) args.push('--allowedTools', policy.tools.allow.join(','))
-  const denied = [...new Set([...(policy.tools.deny ?? []), ...(!nativeSubagentsAllowed(policy) ? CLAUDE_SUBAGENT_TOOLS : [])])]
+  const readOnlySubagents = policy.tools.mode === 'read-only' && nativeSubagentsAllowed(policy)
+  const denied = [...new Set([...(policy.tools.deny ?? []), ...(!nativeSubagentsAllowed(policy) ? CLAUDE_SUBAGENT_TOOLS : []), ...(readOnlySubagents ? CLAUDE_WRITE_TOOLS : [])])]
   if (denied.length) args.push('--disallowedTools', denied.join(','))
 
   if (policy.mcp.servers.length) args.push('--mcp-config', mcpConfig(policy.mcp.servers))

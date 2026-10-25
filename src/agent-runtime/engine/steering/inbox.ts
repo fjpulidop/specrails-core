@@ -8,6 +8,7 @@ export const MAX_STEERING_CHARACTERS = 20_000
 export const MAX_STEERING_BYTES = 80_000
 export const MAX_PENDING_STEERING = 128
 export const MAX_PENDING_STEERING_BYTES = 512 * 1024
+export const PAUSE_REASON = /^[a-z][a-z0-9-]{0,63}$/
 export interface SteeringMessage { id: string; text: string; sender: string; createdAt: string; consumedByAttemptId?: string; consumedAt?: string }
 export interface SteeringReceipt {
   id: string; acceptedAt: string; preview: string; length: number
@@ -36,7 +37,14 @@ export class ControlInbox {
     return { requestId: String(row.request_id), createdAt: String(row.created_at) }
   }
 
-  private appendControl(kind: 'cancel' | 'steer', payload: JsonValue, requestId: string): DatabaseRow {
+  /** Cooperative pause: the owner stops before admitting its next attempt and settles `paused`. */
+  pause(reason: string, requestId: string = randomUUID()): { requestId: string; createdAt: string; reason: string } {
+    if (!PAUSE_REASON.test(reason)) throw new EngineError('invalid_arguments', 'Pause reason must be a lowercase token of 1–64 characters (for example requested or budget)')
+    const row = this.appendControl('pause', { reason }, requestId)
+    return { requestId: String(row.request_id), createdAt: String(row.created_at), reason: (JSON.parse(String(row.payload_json)) as { reason: string }).reason }
+  }
+
+  private appendControl(kind: 'cancel' | 'steer' | 'pause', payload: JsonValue, requestId: string): DatabaseRow {
     if (!requestId || requestId.length > 256) throw new EngineError('invalid_arguments', 'Control request ID must contain 1–256 characters')
     const encoded = canonicalJson(payload)
     return this.database.transaction('control-appended', () => {
@@ -54,7 +62,8 @@ export class ControlInbox {
       }
       const at = new Date().toISOString()
       this.database.put('control_inbox', { request_id: requestId, run_id: this.runId, kind, payload_json: encoded, created_at: at, received_sequence: run.next_event_sequence })
-      appendRunEvent(this.database, this.runId, kind === 'steer' ? 'steering_received' : 'cancellation_requested', { requestId }, {}, at)
+      appendRunEvent(this.database, this.runId, kind === 'steer' ? 'steering_received' : kind === 'pause' ? 'pause_requested' : 'cancellation_requested',
+        kind === 'pause' ? { requestId, reason: (payload as { reason: string }).reason } : { requestId }, {}, at)
       return this.database.get('control_inbox', { request_id: requestId })!
     })
   }
@@ -94,6 +103,18 @@ export class ControlInbox {
 
   cancellationRequested(): boolean {
     return !!this.database.sqlite.prepare("SELECT 1 FROM control_inbox WHERE run_id=? AND kind='cancel' AND consumed_at IS NULL").get(this.runId)
+  }
+  /** The oldest unconsumed pause request, if any. */
+  pauseRequested(): { requestId: string; reason: string; createdAt: string } | undefined {
+    const row = this.database.sqlite.prepare("SELECT * FROM control_inbox WHERE run_id=? AND kind='pause' AND consumed_at IS NULL ORDER BY received_sequence,request_id LIMIT 1").get(this.runId)
+    return row ? { requestId: String(row.request_id), reason: (JSON.parse(String(row.payload_json)) as { reason: string }).reason, createdAt: String(row.created_at) } : undefined
+  }
+  /** Marks every pending pause request consumed. Callers hold the lease inside their own transaction. */
+  consumePauses(): void {
+    const at = new Date().toISOString()
+    for (const row of this.database.sqlite.prepare("SELECT * FROM control_inbox WHERE run_id=? AND kind='pause' AND consumed_at IS NULL").all(this.runId)) {
+      this.database.put('control_inbox', { ...row, consumed_at: at })
+    }
   }
   acknowledgeCancellation(token: ExecutionLease): void {
     this.database.transaction('cancellation-consumed', () => {

@@ -7,6 +7,7 @@ export const DEFAULT_LIMITS: SessionLimits = Object.freeze({
   stallMs: 15 * 60_000,
   backgroundMaxMs: 2 * 60 * 60_000,
   turnInactivityMs: 5 * 60_000,
+  toolInactivityMs: 60 * 60_000,
   maxSettleHandoffs: 3,
   settleDebounceMs: 1_500,
 })
@@ -16,6 +17,7 @@ const LIMIT_BOUNDS: Readonly<Record<keyof SessionLimits, readonly [number, numbe
   stallMs: [1_000, 24 * 60 * 60_000],
   backgroundMaxMs: [1_000, 7 * 24 * 60 * 60_000],
   turnInactivityMs: [1_000, 24 * 60 * 60_000],
+  toolInactivityMs: [1_000, 24 * 60 * 60_000],
   maxSettleHandoffs: [0, 20],
   settleDebounceMs: [0, 60_000],
 })
