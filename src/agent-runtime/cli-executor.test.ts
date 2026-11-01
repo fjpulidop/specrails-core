@@ -361,4 +361,10 @@ describe('Claude Sonnet generation', () => {
     const args = buildCliInvocation('claude', request({ model: 'haiku' })).args
     expect(args[args.indexOf('--model') + 1]).toBe('claude-haiku-5-5')
   })
+  it('pins Fable 5.1 for the fable alias and keeps an explicit Fable 5 id', () => {
+    const pinned = buildCliInvocation('claude', request({ model: 'fable' })).args
+    expect(pinned[pinned.indexOf('--model') + 1]).toBe('claude-fable-5-1')
+    const explicit = buildCliInvocation('claude', request({ model: 'claude-fable-5' })).args
+    expect(explicit[explicit.indexOf('--model') + 1]).toBe('claude-fable-5')
+  })
 })

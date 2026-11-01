@@ -771,4 +771,4 @@ and durable evidence contracts. Legacy `implementationSteps: 1` remains availabl
 for saved definitions and retained runs. See the
 [generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
 
-Claude catalog aliases `sonnet` and `opus` resolve to `claude-sonnet-5-5` and `claude-opus-5-5` respectively. Explicit model IDs remain unchanged for reproducible saved requests.
+Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. Explicit model IDs remain unchanged for reproducible saved requests.
