@@ -614,8 +614,25 @@ function taskGate(state: PipelineState): void {
 }
 /** Stable indices refer to the frozen scope, never to rewritten design text.
  * When no explicit AC list exists, the frozen description is the requirement. */
+/** Heading of the intent block a host prepends to a spec's description (Desktop
+ *  `renderIntentForAgents`): why and outcome, never a requirement to certify. */
+const INTENT_BLOCK_HEADING = /^## Intent \(/m
+/**
+ * The requirement a spec without acceptance criteria freezes: its description
+ * minus the intent block. A hypothesis is validated with users after the
+ * change ships and its success signals are measured then; freezing them would
+ * make the reviewer demand evidence no code can give.
+ */
+export function requirementFromDescription(description: string, title: string): string {
+  const start = description.search(INTENT_BLOCK_HEADING)
+  if (start === -1) return description || title
+  const rest = description.slice(start + 1)
+  const next = rest.search(/^## /m)
+  const stripped = (description.slice(0, start) + (next === -1 ? '' : rest.slice(next))).trim()
+  return stripped || title
+}
 function frozenCriteria(context: PipelineContext): Array<Pick<AcceptanceCriterion, 'specId' | 'criterionIndex' | 'requirement'>> {
-  return context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [spec.description || spec.title])
+  return context.specs.flatMap(spec => (spec.acceptanceCriteria?.length ? spec.acceptanceCriteria : [requirementFromDescription(spec.description, spec.title)])
     .map((requirement, criterionIndex) => ({ specId: String(spec.id), criterionIndex, requirement })))
 }
 /** The frozen requirements an acceptance report must certify, in scope order. */

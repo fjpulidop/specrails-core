@@ -41,7 +41,7 @@ describe('Desktop integration contract', () => {
     expect(contract.configSchema.fields.agents).toMatch(/deprecated/i)
     for (const preset of ['balanced', 'budget', 'max']) expect(contract.modelPresets[preset].overrides).toEqual({})
     expect(readFileSync(new URL('../../integration-contract.json', import.meta.url), 'utf8')).not.toMatch(/\bsr-/)
-    expect(contract.agentRuntime.instructionsVersion).toBe('17')
+    expect(contract.agentRuntime.instructionsVersion).toBe('18')
   })
 
   it('documents cooperative pause with the outcomes and reason grammar Core enforces', () => {

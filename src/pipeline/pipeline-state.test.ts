@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -919,5 +919,15 @@ describe('finding locations (contract 5.9)', () => {
       { finding: 3, path: 'src/d.ts', line: 4 },
     ])
     expect(sanitizeFindingLocations(undefined, 3)).toEqual([])
+  })
+})
+
+describe('requirementFromDescription', () => {
+  it('freezes the description minus the intent block, never the hypothesis or its signals', () => {
+    const intent = '## Intent (source of truth for why and for the outcome, never for how)\n\n### Problem\n\nPlayers cannot tell they improved.\n\n### How we will know\n\n- Players recognise improvement\n'
+    expect(requirementFromDescription(`${intent}\n## Problem Statement\n\nShow the previous game next to the score.`, 'T')).toBe('## Problem Statement\n\nShow the previous game next to the score.')
+    expect(requirementFromDescription(intent, 'Perceive your progress')).toBe('Perceive your progress')
+    expect(requirementFromDescription('Plain idea', 'T')).toBe('Plain idea')
+    expect(requirementFromDescription('', 'T')).toBe('T')
   })
 })
