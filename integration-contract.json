@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.9",
+  "schemaVersion": "5.10",
   "providers": {
     "claude": {
       "cli": {
