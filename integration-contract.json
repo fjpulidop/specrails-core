@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.9",
+  "schemaVersion": "5.10",
   "providers": {
     "claude": {
       "cli": {
@@ -415,7 +415,7 @@
     "specificationFormat": "Architect specs are OpenSpec delta specs authored through the official fast-forward skill (ADDED/MODIFIED/REMOVED/RENAMED requirements); existing requirements are preserved through delta semantics and merged into main specs by OpenSpec archive. Complete replacement specs are not fabricated.",
     "compatibility": "Additive to integration schema 4 and execution context schema 1. Legacy workflows and profile v1 remain supported. Hosts must check RUNTIME_API_VERSION, not infer runtime support from Core major version.",
     "documentation": "docs/agent-runtime.md",
-    "instructionsVersion": "17",
+    "instructionsVersion": "18",
     "workflowVersion": "7",
     "engines": [
       1,

@@ -174,7 +174,7 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `a
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
 | `setupCommands: 1` | The runtime configuration accepts `setup` and the `verify` piece runs it before each plan (`setup: 'configured'` or an inline list) |
-| `deriveChange: 1` | The `derive-change` piece and the `deriver` engine role: derive an OpenSpec change from an existing diff (Flow), with deterministic Blast-radius coverage in `derivation.json` (see `agentRuntime.deriveChange` in `integration-contract.json`) |
+| `deriveChange: 1` | The `derive-change` piece and the `deriver` engine role: derive an OpenSpec change from an existing diff (Intent mode, formerly Flow), with deterministic Blast-radius coverage in `derivation.json` (see `agentRuntime.deriveChange` in `integration-contract.json`) |
 | `sessions: 1` | `runtime host --stdio --scope <projectKey\|global>` serves long-lived agent sessions (Claude, Codex, executor-backed providers) with sub-agents, durable journals under `~/.specrails/sessions/<scope>/` and the [session protocol](agent-sessions/protocol.md). Batch operations are unaffected. |
 | `flowSessions: 1` | `session.send` accepts `delivery: 'interrupt'`: the running turn ends `interrupted` and the input runs next, ahead of queued inputs; drivers declare `capabilities.interrupt` (`native` or `emulated`). See [deliveries](agent-sessions/protocol.md#deliveries). |
 | `reviewBrief: 1` | The reviewer returns an optional advisory risk brief, recorded at every verdict and exposed in `runtime-result.reviewBrief` (see [Reviewer risk brief](#reviewer-risk-brief)) |
@@ -771,4 +771,4 @@ and durable evidence contracts. Legacy `implementationSteps: 1` remains availabl
 for saved definitions and retained runs. See the
 [generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
 
-Claude catalog aliases `sonnet` and `opus` resolve to `claude-sonnet-5-5` and `claude-opus-5-5` respectively. Explicit model IDs remain unchanged for reproducible saved requests.
+Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. Explicit model IDs remain unchanged for reproducible saved requests.

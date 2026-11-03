@@ -134,7 +134,7 @@ function verificationProposals(structured: JsonObject | undefined): JsonValue[] 
 }
 
 /**
- * Writes the OpenSpec change for a diff that already exists (Flow mode): the
+ * Writes the OpenSpec change for a diff that already exists (Intent mode, formerly Flow): the
  * `deriver` authors the artifacts, then Core measures coverage, completed tasks,
  * strict validation and the archive preflight itself. Coverage gaps never fail
  * the node; they reach the reviewer through derivation.json as issues.

@@ -118,7 +118,7 @@ Archives a change with the pinned CLI through Core's recoverable write set, prep
 
 ### `derive-change`
 
-Writes the OpenSpec change for code that already exists (Flow mode), then checks it deterministically. The piece measures the change set with the same `changeSet` the reviewer sees (base: `repositories[].baseSha`, or HEAD at the first measurement, to the working tree; `.specrails/` and the change's own directory excluded). An empty change set fails the node with `empty_change_set` before any provider call.
+Writes the OpenSpec change for code that already exists (Intent mode, formerly Flow), then checks it deterministically. The piece measures the change set with the same `changeSet` the reviewer sees (base: `repositories[].baseSha`, or HEAD at the first measurement, to the working tree; `.specrails/` and the change's own directory excluded). An empty change set fails the node with `empty_change_set` before any provider call.
 
 1. It runs the Core engine role `deriver` (read-only code access, all OpenSpec artifacts, the `openspec-ff-change` skill, the architect's provider assignment) through the same role-turn path, with the rendered change set, the base commits and the bounded conversation summary. The definition must declare `deriver` in `roles`; its instructions are Core's and cannot be configured.
 2. Core then measures coverage itself: every changed path must appear in the `## Blast radius` section of `design.md` (whole-path match; several repositories also accept `<repositoryId>/<path>` or `<repositoryId>:<path>`). Missing paths become `unexplainedFiles`. Coverage never fails the node: a reviewer `role-turn` later in the run receives the report and must raise each unexplained file as an issue.

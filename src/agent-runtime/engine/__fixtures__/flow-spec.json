@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "flow-spec",
-  "title": "Flow Spec",
+  "title": "Intent Spec",
   "journal": "ledger-only",
   "change": "new",
   "entry": "init",
@@ -167,7 +167,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Correct the code Flow built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
+        "prompt": "Correct the code the Intent session built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -246,10 +246,10 @@
       "kind": "end",
       "params": {
         "outcome": "failure",
-        "reason": "Flow → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
+        "reason": "Intent → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
       },
       "ends": {}
     }
   },
-  "version": "4434e9a51f42e2d93762c7d3539c00f3f2102c064e107c636f6bb261221b5b44"
+  "version": "c4808c58c9929da165d9156e9cc02e06f45134e06de26cf57930b11d0812ea04"
 }

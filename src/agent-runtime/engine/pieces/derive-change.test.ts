@@ -193,7 +193,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(fixer.prompt).not.toContain('HOST DEVELOPER DEFINITION')
     expect(fixer.prompt).not.toContain('## Your task: implementation')
     expect(fixer.prompt).toContain('Missing test for the default export')
-    expect(fixer.prompt).toContain(`Correct the code Flow built for change ${change}`)
+    expect(fixer.prompt).toContain(`Correct the code the Intent session built for change ${change}`)
     expect(readFileSync(path.join(repository, 'src/value.test.cjs'), 'utf8')).toContain('extended by correction round 1')
 
     expect(requests[0]!.prompt).not.toContain('## Re-derivation after a correction round')
@@ -228,7 +228,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(result.state.status).toBe('failed')
     expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
     expect(result.completion).toMatchObject({ ok: false })
-    expect(result.completion!.reasons).toContain('Flow → Spec: the reviewer requested changes that 2 correction round(s) did not resolve. Latest findings: '
+    expect(result.completion!.reasons).toContain('Intent → Spec: the reviewer requested changes that 2 correction round(s) did not resolve. Latest findings: '
       + JSON.stringify({ approved: false, issues: ['Still missing the boundary test (review 3)'] }))
     expect(requests[5]!.prompt).toContain('Still missing the boundary test (review 2)')
     expect(requests[6]!.prompt).toContain('Still missing the boundary test (review 2)')
