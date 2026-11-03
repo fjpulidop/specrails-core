@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.1](https://github.com/fjpulidop/specrails-core/compare/v6.7.0...v6.7.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* Intent wording for the Intent -&gt; Spec reference and pin Fable 5.1 ([#446](https://github.com/fjpulidop/specrails-core/issues/446)) ([d9ef55a](https://github.com/fjpulidop/specrails-core/commit/d9ef55add52af08ab1658a1a15edc9203df90da3))
+
 ## [6.7.0](https://github.com/fjpulidop/specrails-core/compare/v6.6.5...v6.7.0) (2026-10-25)
 
 
