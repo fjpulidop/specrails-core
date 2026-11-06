@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.2](https://github.com/fjpulidop/specrails-core/compare/v6.7.1...v6.7.2) (2026-11-06)
+
+
+### Bug Fixes
+
+* **verify:** report stop reasons and keep npm test inside the limits ([#450](https://github.com/fjpulidop/specrails-core/issues/450)) ([6eea80b](https://github.com/fjpulidop/specrails-core/commit/6eea80bb3744d1755c1bdab636af635f65540d3f))
+
 ## [6.7.1](https://github.com/fjpulidop/specrails-core/compare/v6.7.0...v6.7.1) (2026-11-03)
 
 
