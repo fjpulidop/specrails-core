@@ -10,6 +10,10 @@ import { IMPLEMENTATION_STEP_OUTCOMES } from './implementation-step.js'
 import { validateWorkflowDefinition } from '../definition-validator.js'
 import { validationPieceRegistry } from './index.js'
 
+// Each case drives real Git/OpenSpec workflows. Windows keeps the same ceiling as
+// vitest.config.ts, because a per-test value overrides that wider global budget.
+const WORKFLOW_TIMEOUT_MS = process.platform === 'win32' ? 180_000 : 90_000
+
 const fixtures: ReturnType<typeof implementationFixture>[] = []
 afterEach(() => { for (const f of fixtures.splice(0)) f.dispose() })
 function definition() {
@@ -35,7 +39,7 @@ it('executes distinct host-authored phases with real acceptance and archive gate
   const result = await createRun({ ...f, definition: published(), change: 'native-implementation' })
   expect(result, JSON.stringify({ state: result.state, error: (result as unknown as {error?: unknown}).error })).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer', 'reviewer'])
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('resumes an archive approval using committed phase state without repeating the agents', async () => {
   const f = implementationFixture(true); fixtures.push(f)
@@ -44,7 +48,7 @@ it('resumes an archive approval using committed phase state without repeating th
   const resumed = await resumeRun(path.join(pipelineStateDirectory(f.context), 'agent-workflow'), { registry: f.registry, answers: Object.fromEntries((result.state.pendingInterrupts ?? []).map(item => [item.id, { approved: true }])) })
   expect(resumed, JSON.stringify(resumed.state)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.filter(request => request.role === 'developer')).toHaveLength(1)
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('refuses mixed wrapper/operation journals and ambiguous phase scopes', () => {
   const raw = definition()
@@ -65,7 +69,7 @@ it('rebinds a fork before verification without mutating its source or trusting p
   expect(result, JSON.stringify({ state: result.state, error: 'error' in result ? result.error : undefined })).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(readFileSync(path.join(directory, 'run.sqlite'))).toEqual(before)
   expect(f.requests.filter(request => request.role === 'reviewer')).toHaveLength(2)
-}, process.platform === 'win32' ? 180000 : 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('executes renamed phases inside a component with isolated private state', async () => {
   const f = implementationFixture(); fixtures.push(f)
@@ -83,7 +87,7 @@ it('executes renamed phases inside a component with isolated private state', asy
   }, components: { recipe: { entry: names.architect, nodes, outputs: ['next', 'failed'] } } }
   const result = await createRun({ ...f, definition: published(graph), change: 'native-implementation' })
   expect(result, JSON.stringify({ state: result.state, error: 'error' in result ? result.error : undefined })).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('cannot certify implementation delivery by routing around acceptance and archive', async () => {
   const f = implementationFixture(); fixtures.push(f)
@@ -93,7 +97,7 @@ it('cannot certify implementation delivery by routing around acceptance and arch
   expect(result.state.status).toBe('failed')
   expect(result.completion?.verified).toBe(false)
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer'])
-}, 60000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('routes real verification failure through the independent fixer and verifies its new candidate', async () => {
   const f = implementationFixture(); fixtures.push(f)
@@ -107,7 +111,7 @@ it('routes real verification failure through the independent fixer and verifies 
   expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer', 'developer', 'reviewer'])
   expect(result.state.steps.fixer.status).toBe('succeeded')
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('inherits archived evidence for a late fork without creating another implementation', async () => {
   const f = implementationFixture(); fixtures.push(f)
@@ -118,7 +122,7 @@ it('inherits archived evidence for a late fork without creating another implemen
   const result = await resumeRun(fork.directory, { registry: f.registry })
   expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests).toHaveLength(calls)
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
 
 it('requires explicit recovery for an interrupted developer write and retains committed architecture', async () => {
   const f = implementationFixture(); fixtures.push(f)
@@ -140,4 +144,4 @@ it('requires explicit recovery for an interrupted developer write and retains co
   const resumed = await resumeRun(directory, { registry: f.registry, recover: ['developer'] })
   expect(resumed, JSON.stringify(resumed)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.filter(request => request.role === 'architect')).toHaveLength(1)
-}, 90000)
+}, WORKFLOW_TIMEOUT_MS)
