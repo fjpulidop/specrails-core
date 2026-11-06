@@ -5,7 +5,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { isMain } from './release-utils.mjs'
 
-export const RUNTIME_FILES = ['src/agent-runtime/core-host.test.ts', 'src/agent-runtime/compact-runtime.test.ts',
+export const RUNTIME_FILES = ['src/agent-runtime/core-host-roles.test.ts', 'src/agent-runtime/core-host-archive.test.ts',
+  'src/agent-runtime/core-host-planning.test.ts', 'src/agent-runtime/core-host-recovery.test.ts', 'src/agent-runtime/compact-runtime.test.ts',
   'src/agent-runtime/engine/fork.test.ts', 'src/agent-runtime/engine/implementation-compiler.test.ts']
 export const RUNTIME_PARTS = 3
 export const RECOVERY_FILE = 'src/agent-runtime/engine/robustness.test.ts'
