@@ -5,6 +5,10 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     environment: 'node',
     globals: false,
+    // The default reporter prints little when stdout is not a terminal, and this
+    // suite then stays silent for minutes: Specrails verification stops a command
+    // after 5 silent minutes. CI keeps its default reporters (GitHub annotations).
+    ...(process.stdout.isTTY || process.env.CI ? {} : { reporters: ['verbose'] }),
     // Safety net: pin SPECRAILS_REGISTRY_HOME to a throwaway tmp dir so no test
     // can write the relocation registry/workspace into the real ~/.specrails.
     setupFiles: ['src/installer/__tests__/vitest-setup.ts'],

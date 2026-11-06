@@ -40,6 +40,14 @@ describe('classifyFailure', () => {
     expect(classifyFailure({ status: 'blocked', error: 'Verification output is not deterministic: x (verification_nondeterministic_output)' })?.kind).toBe('environment')
   })
 
+  it('classifies a verification command stopped by its limits as timeout, not as environment or agent inactivity', () => {
+    const silent = 'A verification command failed: Verification command produced no output for 5 min and was stopped: a test is probably hanging'
+    expect(classifyFailure({ status: 'failed', error: { code: 'verification_timeout', message: silent } })).toMatchObject({ kind: 'timeout', confidence: 'high', detail: silent })
+    expect(classifyFailure({ status: 'failed', error: silent })?.kind).toBe('timeout')
+    expect(classifyFailure({ status: 'failed', error: { code: 'verification_timeout', message: 'A verification command failed: Verification command timed out' } })?.kind).toBe('timeout')
+    expect(classifyFailure({ status: 'failed', error: { code: 'verification_execution_error', message: 'A verification command failed: Verification command was killed by SIGKILL from outside the runner' } })?.kind).toBe('environment')
+  })
+
   it('classifies run-limit stops as blocked (baseline, budget, correction limit)', () => {
     expect(classifyFailure({ status: 'blocked', error: 'The characterization tests fail on the unchanged code (baseline_characterization_failed)' })).toMatchObject({ kind: 'blocked', confidence: 'high' })
     expect(classifyFailure({ status: 'blocked', error: 'Implementation correction limit reached; inspect the feedback in the log and resume to grant more attempts' })?.kind).toBe('blocked')

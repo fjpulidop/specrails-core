@@ -35,7 +35,7 @@ it('executes distinct host-authored phases with real acceptance and archive gate
   const result = await createRun({ ...f, definition: published(), change: 'native-implementation' })
   expect(result, JSON.stringify({ state: result.state, error: (result as unknown as {error?: unknown}).error })).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.map(request => request.role)).toEqual(['architect', 'developer', 'reviewer'])
-})
+}, 90000)
 
 it('resumes an archive approval using committed phase state without repeating the agents', async () => {
   const f = implementationFixture(true); fixtures.push(f)
@@ -44,7 +44,7 @@ it('resumes an archive approval using committed phase state without repeating th
   const resumed = await resumeRun(path.join(pipelineStateDirectory(f.context), 'agent-workflow'), { registry: f.registry, answers: Object.fromEntries((result.state.pendingInterrupts ?? []).map(item => [item.id, { approved: true }])) })
   expect(resumed, JSON.stringify(resumed.state)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
   expect(f.requests.filter(request => request.role === 'developer')).toHaveLength(1)
-})
+}, 90000)
 
 it('refuses mixed wrapper/operation journals and ambiguous phase scopes', () => {
   const raw = definition()

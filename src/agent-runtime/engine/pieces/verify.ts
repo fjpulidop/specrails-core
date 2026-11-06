@@ -145,7 +145,7 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
         repositories: deps.context.repositories.map(repository => ({ id: repository.id, path: repository.path })),
         planHash: contentDigest(json(request)), concurrency: concurrency ?? 1 }
       const infrastructureFailure = (receipt: VerificationReceipt): boolean => receipt.commands.some(command => command.exitCode === -1 && command.outcome !== 'cancelled')
-      const executionError = (receipt: VerificationReceipt) => ({ status: 'failed' as const, error: { code: 'verification_execution_error', message: receipt.reason ?? 'A verification command could not complete' } })
+      const executionError = (receipt: VerificationReceipt) => ({ status: 'failed' as const, error: { code: receipt.commands.some(command => command.exitCode === -1 && command.outcome === 'timed-out') ? 'verification_timeout' : 'verification_execution_error', message: receipt.reason ?? 'A verification command could not complete' } })
       const blocked = (blocker: HostBlocker, output: JsonObject): PieceResult => ({
         outcome: params.hostBlockers === true ? 'blocked' : 'fail',
         ...(params.hostBlockers === true ? { status: 'blocked' as const, error: { code: 'verification_host_precondition', message: `${blocker.reason} ${blocker.requiredAction}` } } : {}),

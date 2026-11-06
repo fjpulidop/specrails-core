@@ -789,6 +789,48 @@ it('stops a verification command that goes silent (a hanging test) and names the
   } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
 })
 
+it('reports why a silent command was stopped in the live log and the receipt reason, without terminal escapes', async () => {
+  initializePipeline(context, change)
+  process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
+  try {
+    const live: string[] = []
+    const receipt = await verifyPipeline(context, request('process.stdout.write("\\u001b[33m  4) rotation on locked cells\\u001b[39m\\n"); setInterval(() => {}, 1000)'), text => live.push(text))
+    expect(receipt.reason).toMatch(/^A verification command failed: Verification command produced no output for \d+ s and was stopped/)
+    expect(receipt.reason).toContain('Last output: 4) rotation on locked cells')
+    expect(receipt.commands[0]!.terminationReason).toContain('produced no output')
+    expect(live.join('')).toContain('produced no output')
+  } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
+})
+
+it('reports the total timeout as the reason a command was stopped', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 })) })
+  expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
+  expect(receipt.reason).toBe('A verification command failed: Verification command timed out')
+})
+
+it.skipIf(process.platform === 'win32')('names the signal when something outside the runner killed the command', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, request('process.kill(process.pid, "SIGKILL"); setInterval(() => {}, 1000)'))
+  expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
+  expect(receipt.reason).toContain('killed by SIGKILL from outside the runner')
+})
+
+it('names a command that could not start', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: path.join(os.tmpdir(), 'specrails-no-such-binary'), args: [] })) })
+  expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
+  expect(receipt.reason).toContain('could not start')
+})
+
+it('keeps the generic reason for a command that failed on its own', async () => {
+  initializePipeline(context, change)
+  const receipt = await verifyPipeline(context, request('process.exit(3)'))
+  expect(receipt.commands[0]).toMatchObject({ exitCode: 3 })
+  expect(receipt.commands[0]).not.toHaveProperty('terminationReason')
+  expect(receipt.reason).toBe('A verification command failed')
+})
+
 it('pages redacted evidence after worktree removal and rejects cross-section cursors', async () => {
   initializePipeline(context, change)
   const receipt = await verifyPipeline(context, request('process.stdout.write("🙂".repeat(20000)); process.stderr.write("diagnostic")'))
