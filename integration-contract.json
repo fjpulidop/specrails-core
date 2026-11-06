@@ -341,7 +341,7 @@
         "provider_limit": "the provider reported a session, usage, rate or quota limit",
         "environment": "the host environment cannot run verification (credentials, toolchain, setup command, non-deterministic generated output, edits outside the scope)",
         "blocked": "a configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change",
-        "timeout": "the total execution or active-duration limit elapsed, or a verification command hit its total or silence limit",
+        "timeout": "the total execution or active-duration limit elapsed",
         "tool_inactivity": "the agent produced no tool call, reply or usage within the idle limit",
         "crash": "the provider process, endpoint, lease or storage failed under the run",
         "unknown": "no documented signal matched"
