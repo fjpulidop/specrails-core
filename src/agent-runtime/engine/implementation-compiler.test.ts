@@ -62,7 +62,8 @@ async function engine(f: ReturnType<typeof fixture>) {
   if (!validated.ok) throw new Error(JSON.stringify(validated.errors))
   const published = validated.definition
   RunLedger.initialize(db, { runId: f.context.runId, workflowId: published.id, definitionHash: published.version, definition: published, request: {}, runtimeIdentity: {}, source: 'definition' })
-  const lease = new RunLease(db, f.context.runId), token = lease.acquire('fixture')
+  // No heartbeat runs here (runs.ts owns that), so the lease must outlast the test.
+  const lease = new RunLease(db, f.context.runId), token = lease.acquire('fixture', WORKFLOW_TIMEOUT_MS)
   ledger = new RunLedger(db, token, { maxTransitions: 30 })
   const execution = new DefinitionExecution(ledger, new EngineEventStream(cursor => ledger.events(cursor), () => {}), new AbortController().signal)
   const port: NodeExecutionPort = { enter: input => execution.enter(input), execute: (frame, effect, operation) => execution.execute(frame, effect, operation),
