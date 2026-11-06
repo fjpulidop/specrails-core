@@ -60,9 +60,11 @@ export function providerLimitReset(message: string): string | undefined {
 const PROVIDER_LIMIT = /\byou(?:'|’)?ve (?:hit|reached) your (?:session|usage|weekly|daily|monthly|plan)?\s*limit\b|\berror type rate_limit\b|\bHTTP 429\b|\b429 Too Many Requests\b|\brate[ _-]?limit(?:ed|s)? (?:exceeded|reached|hit)\b|\brate_limit_error\b|\binsufficient_quota\b|\busage limit (?:reached|exceeded)\b|\bRESOURCE_EXHAUSTED\b|\bquota (?:exceeded|exhausted)\b/i
 const ENVIRONMENT_CODES = new Set(['verification_host_precondition', 'verification_nondeterministic_output', 'verification_execution_error'])
 const ENVIRONMENT_TEXT = /Verification cannot run in this environment|Verification output is not deterministic|\(verification_nondeterministic_output\)|setup command .* failed|could not undo them|outside the repository scope/i
+// A verification command stopped by its own limits is not the agent going quiet, whatever words the stop reason uses.
+const VERIFICATION_TIMEOUT_TEXT = /Verification command (?:timed out|produced no output)|verification deadline exhausted/i
 const IDLE_CODES = new Set(['idle_timeout'])
 const IDLE_TEXT = /\bidle timeout\b|no tool call, reply or usage for|no output for \d/i
-const TIMEOUT_CODES = new Set(['timeout'])
+const TIMEOUT_CODES = new Set(['timeout', 'verification_timeout'])
 const TIMEOUT_TEXT = /total execution limit|active-duration budget exhausted|execution timed out|reached its time budget/i
 const CRASH_CODES = new Set(['lease_lost', 'storage_corrupt', 'provider_request_error', 'incomplete_response', 'terminal_conflict'])
 const CRASH_TEXT = /execution failed \(exit \d+\)|exited without a successful final result|lost its endpoint|process exited|\bcrashed\b|\bSIGKILL\b|\bSIGSEGV\b/i
@@ -123,6 +125,7 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
     const resetAt = providerLimitReset(haystack)
     return done('provider_limit', resetAt ? { resetAt } : {}, true)
   }
+  if (code === 'verification_timeout' || VERIFICATION_TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
   if (IDLE_CODES.has(code) || IDLE_TEXT.test(haystack)) return done('tool_inactivity', {}, true)
   if (TIMEOUT_CODES.has(code) || TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
   if (code === 'baseline_characterization_failed' || /\(baseline_characterization_failed\)/.test(haystack)) return done('blocked')

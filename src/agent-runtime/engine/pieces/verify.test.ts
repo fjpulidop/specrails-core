@@ -160,6 +160,21 @@ describe('engine v2 environment repair', () => {
     expect(await f.run({ commands: 'configured', hostBlockers: true })).toMatchObject({ outcome: 'blocked', output: { blocker: { kind: 'environment-variable' } } })
   })
 
+  it('fails with a typed timeout that names the stop reason when a command hits its limit', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'setInterval(() => {}, 1000)'], timeoutMs: 200 }]
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: 'A verification command failed: Verification command timed out' } })
+  })
+
+  it('keeps the execution-error code for a command stopped by anything other than a limit', async () => {
+    const f = fixture()
+    f.deps.config.verification = [{ repositoryId: 'repo', command: path.join(tmpdir(), 'specrails-no-such-binary'), args: [] }]
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_execution_error' } })
+    expect((result.error as { message: string }).message).toContain('could not start')
+  })
+
   it('leaves an ordinary assertion failure exactly as before: no install, no blocker, outcome fail', async () => {
     const f = fixture()
     f.deps.config.verification = [f.check('unit.cjs', 'FAIL src/game.spec.ts\n  ● clears lines\n    expect(received).toBe(expected)', 1)]

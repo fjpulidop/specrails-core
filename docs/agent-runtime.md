@@ -405,7 +405,7 @@ A run that ends `failed` or `blocked` reports why in one typed record, so a host
 | `provider_limit` | The provider reported a session, usage, rate or quota limit. `resetAt` is the provider's own wording of when it resets, never reformatted |
 | `environment` | The host environment cannot run verification: credentials, toolchain, a failing setup command, non-deterministic generated output, edits outside the scope |
 | `blocked` | A configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change |
-| `timeout` | The total execution or active-duration limit elapsed |
+| `timeout` | The total execution or active-duration limit elapsed, or a verification command hit its total or silence limit (`detail` names which) |
 | `tool_inactivity` | The agent produced no tool call, reply or usage within the idle limit |
 | `crash` | The provider process, endpoint, lease or storage failed under the run |
 | `unknown` | No documented signal matched; always `confidence: "low"` |

@@ -3,6 +3,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
+import { stripVTControlCharacters } from 'node:util'
 
 export type PipelinePhase = 'architect' | 'developer' | 'reviewer' | 'archive' | 'ship' | 'ci'
 export type PhaseStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'skipped'
@@ -59,7 +60,8 @@ export interface CommandReceipt {
   pending?: boolean; evidenceId?: string; stdout?: string; stderr?: string; outputTruncated?: boolean
   key?: string; label?: string; configuredTimeoutMs?: number; appliedTimeoutMs?: number; deadline?: number
   outcome?: 'passed' | 'failed' | 'cancelled' | 'timed-out' | 'interrupted'
-
+  /** Why the command ended without an exit status of its own: stopped by the runner, killed by a signal, or never started. */
+  terminationReason?: string
 }
 export interface VerificationReceipt {
   id: string; kind: 'full' | 'scoped'; scopeHash: string; candidateHash: string; planHash?: string
@@ -484,7 +486,7 @@ export function candidateChangedReceipt(receipt: VerificationReceipt, before: Ca
   const selfMutation: VerificationSelfMutation = { files: files.slice(0, SELF_MUTATION_FILE_LIMIT), ...(files.length > SELF_MUTATION_FILE_LIMIT ? { omittedFiles: files.length - SELF_MUTATION_FILE_LIMIT } : {}),
     commands: receipt.commands.filter(command => command.disposition !== 'reused' && command.disposition !== 'not-run').map(command => ({ repositoryId: command.repositoryId, label: command.label ?? command.key ?? [command.command, ...command.args].join(' ').slice(0, 256) })) }
   const failed = receipt.commands.some(command => command.exitCode !== 0)
-  return { ...receipt, valid: false, reason: `${failed ? 'A verification command failed. ' : ''}Verification commands modified ${describeModifiedFiles(selfMutation)}`, selfMutation }
+  return { ...receipt, valid: false, reason: `${failed ? `${(receipt.reason ?? 'A verification command failed').replace(/\.$/, '')}. ` : ''}Verification commands modified ${describeModifiedFiles(selfMutation)}`, selfMutation }
 }
 function activeArtifactPath(state: PipelineState): string { return state.archivePath ?? path.join(state.context.artifactRoot, 'openspec', 'changes', state.change) }
 function artifactFingerprint(state: PipelineState): string {
@@ -937,11 +939,19 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   let lastOutputAt = Date.now()
   let lastOutputLine = ''
   let outcome: CommandReceipt['outcome']
+  let terminationReason: string | undefined
   let output = ''
   const streams = { stdout: '', stderr: '' }
   let outputTruncated = false
   const redact = (text: string) => redactRuntimeText(text, { ...process.env, ...overrides })
   let exitCode = -1
+  // The reason is the one fact a reader needs from a command that ended abnormally,
+  // so it goes to the live log and the receipt, not only to the evidence tail.
+  const terminate = (reason: string): void => {
+    terminationReason = reason
+    output = (output + '\n' + reason).slice(-32_000)
+    try { log(redact(reason) + '\n') } catch { /* observer */ }
+  }
   await new Promise<void>((resolve) => {
     let child: ReturnType<typeof spawn>
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -953,7 +963,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     const stop = (reason: string): void => {
       if (done || stopping) return
       stopping = true
-      output = (output + '\n' + reason).slice(-32_000)
+      terminate(reason)
       if (child?.pid) {
         if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], { windowsHide: true, timeout: 5000 })
         else { try { process.kill(-child.pid, 'SIGKILL') } catch { /* already exited */ } }
@@ -968,7 +978,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     try {
       const invocation = verificationInvocation(command.command, command.args, command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
-    } catch (error) { output = String(error); finish(-1); return }
+    } catch (error) { terminate(`Verification command could not start: ${String(error)}`); finish(-1); return }
     for (const stream of ['stdout', 'stderr'] as const) {
       const decoder = new StringDecoder('utf8')
       let liveLine = '', droppingLine = false
@@ -982,7 +992,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
         }
         output = (output + text).slice(-32_000)
         lastOutputAt = Date.now()
-        const lastLine = text.trim().split('\n').pop()?.trim()
+        const lastLine = stripVTControlCharacters(text).trim().split('\n').pop()?.trim()
         if (lastLine) lastOutputLine = lastLine.slice(0, 200)
         // Redact whole bounded lines, so chunk boundaries cannot split credentials.
         for (const part of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
@@ -997,8 +1007,11 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       child[stream]?.on('data', (chunk: Buffer) => receive(decoder.write(chunk)))
       child[stream]?.on('end', () => { receive(decoder.end()); if (liveLine) { try { log(redact(liveLine)) } catch { /* observer */ } } })
     }
-    child.on('error', (error) => { output = (output + error.message).slice(-32_000); if (!child.pid) finish(-1) })
-    child.on('close', (code) => finish(code ?? -1))
+    child.on('error', (error) => { if (child.pid) output = (output + error.message).slice(-32_000); else { terminate(`Verification command could not start: ${error.message}`); finish(-1) } })
+    child.on('close', (code, killedBy) => {
+      if (code === null && killedBy && !stopping && !done) terminate(`Verification command was killed by ${killedBy} from outside the runner (for example out of memory).`)
+      finish(code ?? -1)
+    })
     signal?.addEventListener('abort', abort, { once: true })
     timer = setTimeout(() => { outcome = 'timed-out'; stop('Verification command timed out') }, appliedTimeoutMs)
     if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
@@ -1013,7 +1026,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     if (bytes.length > 1024 * 1024) outputTruncated = true
     return new StringDecoder('utf8').write(bytes.subarray(0, 1024 * 1024))
   }
-  return { evidenceId, stdout: persisted(streams.stdout), stderr: persisted(streams.stderr), outputTruncated, ...(command.key ? { key: command.key } : {}), ...(command.label ? { label: command.label } : {}), configuredTimeoutMs, appliedTimeoutMs, ...(deadline === undefined ? {} : { deadline }), outcome, repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, environmentPolicy: 'isolated-transport-v1', environmentHash: hash, environmentKeys: keys, environmentOverrideKeys: overrideKeys, environmentOverridesHash: overridesHash, exitCode, durationMs: Date.now() - started, output: redact(output) }
+  return { evidenceId, stdout: persisted(streams.stdout), stderr: persisted(streams.stderr), outputTruncated, ...(command.key ? { key: command.key } : {}), ...(command.label ? { label: command.label } : {}), configuredTimeoutMs, appliedTimeoutMs, ...(deadline === undefined ? {} : { deadline }), outcome, ...(terminationReason ? { terminationReason: redact(terminationReason) } : {}), repositoryId: command.repositoryId, command: command.command, args: command.args, cwd: command.cwd, environmentPolicy: 'isolated-transport-v1', environmentHash: hash, environmentKeys: keys, environmentOverrideKeys: overrideKeys, environmentOverridesHash: overridesHash, exitCode, durationMs: Date.now() - started, output: redact(output) }
 }
 export interface VerificationSnapshot { eligible: boolean; reason: string; inputHash?: string; toolchainHash?: string }
 /** Host opt-in is a declaration of determinism, not inferred hermeticity. */
@@ -1195,7 +1208,7 @@ export async function executeVerification(contextInput: unknown, raw: unknown, e
   const draft: VerificationReceipt = {
     id: randomUUID(), ...(evidence.planHash ? { planHash: evidence.planHash } : {}), kind: request.kind as 'full' | 'scoped', scopeHash: evidence.scopeHash, candidateHash, commands: results, ...(notRunEvidenceIds.length ? { notRunEvidenceIds } : {}),
     completedAt: new Date().toISOString(), valid: !signal?.aborted && (options.deadline === undefined || Date.now() <= options.deadline) && results.length === commands.length && results.every((result) => result.exitCode === 0),
-    ...(results.some((result) => result.exitCode !== 0) ? { reason: 'A verification command failed' } : {}),
+    ...(results.some((result) => result.exitCode !== 0) ? { reason: failedVerificationReason(results) } : {}),
     ...(unverifiedRepositories.length ? { unverifiedRepositories } : {}),
   }
   const receipt = await evidence.commitReceipt(changed ? candidateChangedReceipt(draft, evidence.candidateManifest, evidence.currentManifest && (() => evidence.currentManifest!())) : draft)
@@ -1203,6 +1216,11 @@ export async function executeVerification(contextInput: unknown, raw: unknown, e
     await options.onEvidence?.('check-invalidated', { executionId: result.evidenceId ?? '', repositoryId: result.repositoryId, checkId: result.key ?? '', label: result.label ?? result.command, reason: receipt.reason ?? 'Verification did not complete successfully' })
   }
   return receipt
+}
+/** Names why a command was stopped when it was; a sibling cancelled by that failure is never the cause. */
+function failedVerificationReason(results: CommandReceipt[]): string {
+  const cause = results.find(result => result.exitCode !== 0 && result.outcome !== 'cancelled' && result.terminationReason)
+  return cause ? `A verification command failed: ${cause.terminationReason}` : 'A verification command failed'
 }
 function verificationPlan(context: PipelineContext, raw: unknown) {
   const request = object(raw)
