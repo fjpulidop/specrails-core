@@ -658,6 +658,11 @@ changed precondition before retrying, preserving the original worktree.
 ## Scoped recovery API
 
 Capability `scopedRecovery: 1` exposes `runtime recovery --context <json> --stdin`.
+
+Recovery detects v2 from `<pipeline>/<runId>/agent-workflow/run.sqlite`, taking precedence over the legacy `<pipeline>/<runId>/agent-workflow/<runId>/checkpoint.json`. A saved but unreadable SQLite store produces actionable `recovery_unsupported_engine`, never a missing-run error or legacy fallback. The frozen SQLite context must match the requested run.
+
+Inspect, history and file observations open SQLite read-only: no schema migration, permission repair, checkpoint or journal creation. They retain the recovery-history directory lock and refuse a live SQLite execution lease. A ledger-only run without implementation bindings still supports diagnostic inspection; verification is reported invalid with an unavailable-evidence reason. File/history reads need only validated SQLite scope, so they remain available when a bound journal is missing; inspect and mutations fail actionably if required journal authority is missing or conflicting. Saved checks come only from an integrity-valid saved plan. Observations do not certify an atomic snapshot or workflow completion.
+
 The JSON actions are inspect, history (optional offset), list_files, read_file,
 diff, patch and check. File actions require a repositoryId from the frozen context
 and a relative path. Patch requires expectedHash, one unique oldText/newText
@@ -666,16 +671,16 @@ kind openspec or kind verification with an ID from inspect's registered checks;
 no submitted command/argv is accepted. The CLI requires the retained runtime
 identity before dispatch. Desktop maps patch to write and check to destructive.
 
-Recovery holds the workflow lease, rejects archived/completed mutations and
+Legacy recovery holds its directory workflow lease. V2 patch/check first validate candidate and archive authority read-only, then hold both that history lock and the SQLite RunLease used by the engine. They reread authority under ownership and refuse concurrent changes. Acknowledgement never bypasses a live owner. Write leases may update SQLite lease/revision/timing metadata, but never checkpoint or candidate certification. Heartbeat loss cancels owned checks; locks and handles are released after subprocess settlement. Recovery rejects archived/completed mutations and
 requires explicit acknowledgement of interrupted writes. It reuses WorkspaceTools
 for bounded UTF-8 reads/diffs and atomic writes, adds protected-plan and portable
 path checks, and records bounded attempts in a separate write-ahead history.
-Same operation IDs never blindly rerun; changed requests with an old ID fail.
+Same operation IDs replay the recorded outcome without another edit; changed requests with an old ID fail. V2 repairs require an authoritative root journal or a unique full-scope bound journal. Missing candidate/archive authority or ambiguous scopes fail closed with `recovery_unsupported_engine`, naming the action and recommending inspection and a supported fork while preserving the original worktree. No scope is guessed and no journal is fabricated.
 Interrupted patches reconcile by their after-hash; uncertain checks remain
 interrupted. Repeated failed checks require a stated changed precondition.
 
 Verification checks use the frozen plan and existing scoped receipts with a
-45-second deadline. OpenSpec validation reports must contain successful results,
+45-second deadline under the same engine lease and parent recovery history. A failed/pending/interrupted check on an unchanged current candidate requires `changedPrecondition`; an actual patch changes that candidate hash. Only IDs listed by inspect can select saved commands. OpenSpec validation reports must contain successful results,
 not merely an exit code of zero. Neither operation grants acceptance or marks
 workflow phases complete. Resume remains responsible for the required gates.
 
