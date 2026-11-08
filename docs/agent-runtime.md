@@ -567,7 +567,7 @@ Runs admitted under an earlier OpenSpec pin (Core 6.6.4 and older pin 1.4.1) are
 
 The architect loads `openspec-ff-change`, calls `new`, `status` and artifact `instructions`, and writes the artifacts itself through `write_artifact`. The developer loads `openspec-apply-change`, reads the real apply context and updates task checkboxes. The reviewer loads `openspec-verify-change`, inspects code and the real apply context, then reports acceptance evidence. `verify` is not an artifact ID for `openspec instructions`. Questions map to LangGraph interruptions; progress narration replaces provider-specific TodoWrite helpers.
 
-All current headless adapters explicitly use **official skill-document adaptation**, not a claim of native slash-command activation. The tool returns the exact generated skill; Core does not maintain copies of its templates in prompts.ts. CLI adapters use a local stdio MCP server named `specrails_openspec`; API adapters expose the same implementation as `openspec_workflow`.
+All current headless adapters explicitly use **official skill-document adaptation**, not a claim of native slash-command activation. The tool returns the exact generated skill; Core does not maintain copies of its templates in prompts.ts. CLI adapters use a local stdio MCP server named `specrails_openspec`; API adapters expose the same implementation as `openspec_workflow`. The role prompt names the tool the way its transport shows it (`mcp__specrails_openspec__workflow` on CLI providers) and says that `load_skill`, `write_progress` and the other operations are values of its `action` argument, not separate tools, so a model that loads tools on demand searches for the right name.
 
 | Transport | OpenSpec binding |
 | --- | --- |

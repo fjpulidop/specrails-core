@@ -465,9 +465,20 @@ describe('CLI executor invocation contract', () => {
   it('preserves the Claude architect prompt and pins the Sonnet alias to 5.5', async () => {
     const context = { schemaVersion: 1, runId: 'snapshot', backlogRoot: '/workspace', artifactRoot: '/repo/app', artifactRepositoryId: 'app', repositories: [{ id: 'app', name: 'App', path: '/repo/app' }], ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Snapshot feature', description: 'Keep prompts frozen', acceptanceCriteria: ['Prompt is unchanged'] }] } as PipelineContext
     const openspec: OpenSpecRoleContext = { root: '/repo/app', change: 'snapshot-change', stateDirectory: '/repo/app/.specrails/state', cli: '/opt/openspec.js', skillPath: '/opt/skills/openspec-ff-change/SKILL.md', skillHash: 'abc', role: 'architect' }
-    const prompt = openSpecPrompt(openspec) + roleInstructions('architect', context, 'snapshot-change', { verification: [{ repositoryId: 'app', command: 'npm', args: ['test'] }] })
+    const prompt = openSpecPrompt(openspec, 'mcp') + roleInstructions('architect', context, 'snapshot-change', { verification: [{ repositoryId: 'app', command: 'npm', args: ['test'] }] })
     const invocation = buildCliInvocation('claude', { role: 'architect', prompt, cwd: '/repo/app', allowedRoots: ['/repo/app'], model: 'sonnet', maxTurns: 50 }, { mcpConfigFile: '/tmp/mcp.json' })
     await expect(JSON.stringify(invocation, null, 2)).toMatchFileSnapshot('./__fixtures__/claude-architect-invocation.snapshot.json')
+  })
+
+  it('names the scoped tool each transport really exposes and its actions as arguments', () => {
+    const openspec: OpenSpecRoleContext = { root: '/repo/app', change: 'c', stateDirectory: '/repo/app/.specrails/state', cli: '/opt/openspec.js', skillPath: '/opt/skills/openspec-apply-change/SKILL.md', skillHash: 'abc', role: 'developer' }
+    const cli = openSpecPrompt(openspec, 'mcp')
+    expect(cli).toContain('mcp__specrails_openspec__workflow')
+    expect(cli).toContain('there is no tool named openspec_workflow on this provider')
+    expect(cli).toMatch(/write_progress[^.]*are values of its action argument, not separate tools/)
+    const fn = openSpecPrompt(openspec)
+    expect(fn).toContain('the openspec_workflow tool.')
+    expect(fn).not.toContain('mcp__specrails_openspec__workflow')
   })
 })
 
