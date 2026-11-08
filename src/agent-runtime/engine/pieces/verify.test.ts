@@ -162,7 +162,10 @@ describe('engine v2 environment repair', () => {
 
   it('fails with a typed timeout that names the stop reason when a command hits its limit', async () => {
     const f = fixture()
-    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'setInterval(() => {}, 1000)'], timeoutMs: 200 }]
+    // The silence bound is capped at the timeout, so a silent command races two
+    // 200 ms timers (and loses on a slow Windows runner). Steady output leaves
+    // only the wall-clock limit.
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 }]
     const result = await f.run({ commands: 'configured', hostBlockers: true })
     expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: 'A verification command failed: Verification command timed out' } })
   })
