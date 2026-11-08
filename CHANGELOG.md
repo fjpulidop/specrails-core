@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.3](https://github.com/fjpulidop/specrails-core/compare/v6.7.2...v6.7.3) (2026-11-08)
+
+
+### Bug Fixes
+
+* **verify:** run project commands with the login-shell PATH ([#454](https://github.com/fjpulidop/specrails-core/issues/454)) ([40e736a](https://github.com/fjpulidop/specrails-core/commit/40e736a99f8fc6225ebc6e970027efdddbf3d74e))
+
 ## [6.7.2](https://github.com/fjpulidop/specrails-core/compare/v6.7.1...v6.7.2) (2026-11-06)
 
 
