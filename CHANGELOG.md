@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.4](https://github.com/fjpulidop/specrails-core/compare/v6.7.3...v6.7.4) (2026-11-08)
+
+
+### Bug Fixes
+
+* **openspec:** name the scoped tool the way each transport shows it ([#456](https://github.com/fjpulidop/specrails-core/issues/456)) ([3046abc](https://github.com/fjpulidop/specrails-core/commit/3046abc56f758a86eaf763b9b6a91a604d17e671))
+
 ## [6.7.3](https://github.com/fjpulidop/specrails-core/compare/v6.7.2...v6.7.3) (2026-11-08)
 
 
