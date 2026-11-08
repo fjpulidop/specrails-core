@@ -92,6 +92,7 @@ describe('four CLI execution contracts', () => {
       if (invocation.args[0] === '--help') return { stdout: '--admin-policy', stderr: '', exitCode: 0 }
       inspected = true
       expect(invocation.stdin).toContain('explicit skill-document adaptation')
+      expect(invocation.stdin).toContain('the workflow tool of MCP server specrails_openspec')
       expect(invocation.stdin!.indexOf('Official OpenSpec workflow binding')).toBeLessThan(invocation.stdin!.indexOf(input.prompt))
       if (provider === 'codex') {
         expect(invocation.args).toContain('read-only')

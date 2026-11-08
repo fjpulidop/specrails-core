@@ -247,7 +247,7 @@ export class CliExecutor implements AgentExecutor {
     this.validateLimits(request)
     const scope = canonicalWorkspace(request.cwd, request.allowedRoots)
     if (this.provider === 'kimi' && request.nativeCommand) request = await renderKimiRequest(request, this.options)
-    const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
+    const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec, 'mcp') : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
     let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0, observedSession: string | undefined
     const assistantIds = new Set<string>()
