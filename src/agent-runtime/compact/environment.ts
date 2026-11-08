@@ -13,6 +13,7 @@ import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import semver from 'semver'
+import { projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
@@ -305,7 +306,7 @@ export async function installEnvironment(roots: readonly string[], io: InstallIo
   for (const root of roots) {
     for (const plan of io.plan ? io.plan(root) : plannedInstalls(root, io.failureOutput ?? '')) {
       io.onEvent?.({ kind: 'tool-start', tool: plan.command, detail: `${plan.args.join(' ')} (${path.basename(root)})` })
-      const run = (): Promise<HostRun> => runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: process.env })
+      const run = (): Promise<HostRun> => runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: projectCommandEnvironment(process.env) })
       let result = await run()
       // A model that writes package-lock.json by hand invents integrity hashes
       // (npm EINTEGRITY) or pins versions that never existed (ETARGET/E404 on a
@@ -332,7 +333,7 @@ export async function installEnvironment(roots: readonly string[], io: InstallIo
         const preload = ipv4FirstPreload()
         if (preload) {
           io.onEvent?.({ kind: 'text', text: `Environment: the browser download timed out; retrying ${plan.command} ${plan.args.join(' ')} over IPv4` })
-          result = await runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: { ...process.env, NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(preload)}`.trim() } })
+          result = await runHost(spawn, plan.command, plan.args, { cwd: root, encoding: 'utf8', timeout: plan.timeoutMs ?? io.timeoutMs ?? 5 * 60_000, windowsHide: true, env: { ...projectCommandEnvironment(process.env), NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --require ${JSON.stringify(preload)}`.trim() } })
         }
       }
       io.onEvent?.({ kind: 'tool-end', tool: plan.command })
@@ -382,7 +383,7 @@ export async function missingPlaywrightBrowsers(root: string, spawn: HostSpawn =
   const cli = playwrightCli(root)
   if (!cli) return []
   const browsers = configuredPlaywrightBrowsers(root)
-  const result = await runHost(spawn, cli.command, [...cli.args, 'install', '--dry-run', ...browsers], { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true, env: process.env })
+  const result = await runHost(spawn, cli.command, [...cli.args, 'install', '--dry-run', ...browsers], { cwd: root, encoding: 'utf8', timeout: 30_000, windowsHide: true, env: projectCommandEnvironment(process.env) })
   if (result.status !== 0) return []
   const locations = [...String(result.stdout ?? '').matchAll(/Install location:\s+(.+?)\s*$/gm)].map(match => match[1]!)
   return locations.length && locations.some(location => !existsSync(location)) ? browsers : []
@@ -470,7 +471,7 @@ export async function runGroupCheck(roots: readonly string[], io: { spawn?: Host
     if (!check) continue
     const label = `${check.command} ${check.args.join(' ')}`
     io.onEvent?.({ kind: 'tool-start', tool: check.command, detail: `${check.args.join(' ')} (${path.basename(root)}, group check)` })
-    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...process.env, CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
+    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...projectCommandEnvironment(process.env), CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
     io.onEvent?.({ kind: 'tool-end', tool: check.command })
     const timedOut = result.error?.message?.includes('ETIMEDOUT') || result.signal === 'SIGKILL'
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.replace(/\u001b\[[0-9;]*m/g, '').trim().slice(-6000)

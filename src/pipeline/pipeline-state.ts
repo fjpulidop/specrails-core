@@ -156,6 +156,46 @@ export function verificationEnvironment(env: NodeJS.ProcessEnv, overrides: Recor
   const normalized = normalizeVerificationEnvironment(env, platform)
   return { ...Object.fromEntries(Object.entries(normalized).filter(([key]) => !TRANSPORT_ENV_KEYS.has(key))), ...normalizeVerificationEnvironment(overrides, platform) }
 }
+const LOGIN_PATH_BEGIN = '__SPECRAILS_LOGIN_PATH_BEGIN__'
+const LOGIN_PATH_END = '__SPECRAILS_LOGIN_PATH_END__'
+const loginPathCache = new Map<string, string | null>()
+/** Returns the PATH a login shell builds from `env`, or null when it cannot tell. */
+export type LoginShellPathProbe = (shell: string, env: NodeJS.ProcessEnv) => string | null
+function probeLoginShellPath(shell: string, env: NodeJS.ProcessEnv): string | null {
+  const result = spawnSync(shell, ['-l', '-c', `printf '${LOGIN_PATH_BEGIN}%s${LOGIN_PATH_END}' "$PATH"`], { env, encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
+  if (result.status !== 0 || typeof result.stdout !== 'string') return null
+  const begin = result.stdout.indexOf(LOGIN_PATH_BEGIN)
+  const end = begin < 0 ? -1 : result.stdout.indexOf(LOGIN_PATH_END, begin)
+  return end < 0 ? null : result.stdout.slice(begin + LOGIN_PATH_BEGIN.length, end) || null
+}
+/**
+ * The environment for the project's own commands (dependency installs and
+ * verification). Agents run their commands through a login shell, which
+ * re-reads the user's profile and usually puts the user's own Node first. A
+ * host such as Desktop starts this process with its private runtime first
+ * instead. Running installs and checks with a different Node than the agents
+ * breaks native addons on one side (NODE_MODULE_VERSION mismatch), so project
+ * commands use the login-shell PATH too. The inherited entries stay after it,
+ * so a machine without its own Node still finds the host's.
+ */
+export function projectCommandEnvironment(env: NodeJS.ProcessEnv, options: { platform?: NodeJS.Platform; shell?: string; probe?: LoginShellPathProbe } = {}): NodeJS.ProcessEnv {
+  const platform = options.platform ?? process.platform
+  if (platform === 'win32' || env.SPECRAILS_PROJECT_LOGIN_PATH === '0') return env
+  if (!options.probe && env.VITEST) return env
+  const shell = options.shell ?? (env.SHELL || '/bin/sh')
+  const inherited = env.PATH ?? ''
+  let login: string | null | undefined
+  if (options.probe) login = options.probe(shell, env)
+  else {
+    const key = shell + '\0' + inherited
+    login = loginPathCache.get(key)
+    if (login === undefined) { login = probeLoginShellPath(shell, env); loginPathCache.set(key, login) }
+  }
+  if (!login) return env
+  const seen = new Set<string>()
+  const merged = [...login.split(':'), ...inherited.split(':')].filter((dir) => dir && !seen.has(dir) && Boolean(seen.add(dir)))
+  return { ...env, PATH: merged.join(':') }
+}
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 function fail(message: string): never { throw new Error(message) }
@@ -928,7 +968,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const keys = verificationEnvironmentKeys(process.env, overrideKeys)
   const hash = environmentHash(keys)
   const overridesHash = digest(canonical(overrides))
-  const env = verificationEnvironment(process.env, overrides)
+  const env = verificationEnvironment(projectCommandEnvironment(process.env), overrides)
   const configuredTimeoutMs = command.timeoutMs ?? 15 * 60_000
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
   // A test that never returns (a `while` that cannot exit) keeps a runner at
