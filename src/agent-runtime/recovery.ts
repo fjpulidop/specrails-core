@@ -1,12 +1,16 @@
 import { z } from 'zod'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path'
-import { acquireWorkflowLease, fingerprint, readWorkflowState } from './durable-store.js'
+import { acquireWorkflowLease, fingerprint } from './durable-store.js'
+import { acquireRecoveryExecutionLease, requireRecoveryMutationAuthority, detectRecoveryEngine, readRecoveryAuthority, type RecoveryExecutionLease, RecoveryUnsupportedEngineError } from './recovery-engine-adapter.js'
 import { WorkspaceTools } from './workspace-tools.js'
 import { artifactPath, hash, resolveOpenSpecCli, runOpenSpec } from './openspec.js'
 import { write } from './graph/artifacts.js'
-import { expandedPlanCommands, readVerificationPlan } from './verification-plan.js'
-import { inspectPipeline, pipelineStateDirectory, validatePipelineContext, verifyPipeline } from '../pipeline/pipeline-state.js'
+import { expandedPlanCommands } from './verification-plan.js'
+import { pipelineStateDirectory, validatePipelineContext, verifyPipeline } from '../pipeline/pipeline-state.js'
+
+export { RecoveryUnsupportedEngineError } from './recovery-engine-adapter.js'
+export type RecoveryErrorCode = 'runtime_recovery_blocked' | 'recovery_unsupported_engine'
 
 const file = { repositoryId: z.string().min(1).max(128), path: z.string().min(1).max(1024) }
 const operation = { operationId: z.string().uuid(), reason: z.string().trim().min(1).max(2000), acknowledgeInterrupted: z.boolean().optional(), changedPrecondition: z.string().trim().min(1).max(2000).optional() }
@@ -41,22 +45,25 @@ function safePath(raw: string, mutation: boolean): string {
 export async function runRecovery(contextInput: unknown, input: unknown, signal?: AbortSignal): Promise<unknown> {
   const context = validatePipelineContext(contextInput), request = recoveryRequestSchema.parse(input)
   const directory = pipelineStateDirectory(context), workflowDirectory = path.join(directory, 'agent-workflow')
-  if (!await readWorkflowState(workflowDirectory, context.runId)) throw new Error('Recovery requires an existing saved run')
+  const engine = await detectRecoveryEngine(directory)
+  if (!engine) throw new Error('Recovery requires an existing saved run')
   const release = await acquireWorkflowLease(workflowDirectory, context.runId)
+  let execution: RecoveryExecutionLease | undefined
   try {
-    const state = (await readWorkflowState(workflowDirectory, context.runId))!
-    const inspection = inspectPipeline(context) // verifies the frozen scope against the journal
+    const authority = await readRecoveryAuthority(directory, engine, request.action, context)
+    if (authority.activeLease) throw new Error('Another executor holds this run lease')
+    const state = authority.state, inspection = authority.inspection
     const historyPath = artifactPath(directory, 'recovery-history.json')
     const history = existsSync(historyPath) ? JSON.parse(readFileSync(historyPath, 'utf8')) as Attempt[] : []
     if (!Array.isArray(history) || history.length > 100) throw new Error('Invalid recovery history')
-    const plan = readVerificationPlan(context)
+    const plan = authority.plan
     if (request.action === 'history') {
       const offset = request.offset ?? 0, ordered = [...history].reverse()
       return { attempts: ordered.slice(offset, offset + 20), total: history.length, ...(offset + 20 < history.length ? { nextOffset: offset + 20 } : {}) }
     }
     if (request.action === 'inspect') return {
       runId: context.runId, status: state.status, nextStep: state.nextStep, repositories: context.repositories,
-      verification: { valid: inspection.verification.valid, reasons: inspection.verification.reasons },
+      verification: inspection ? { valid: inspection.verification.valid, reasons: inspection.verification.reasons } : { valid: false, reasons: ['Implementation journal evidence is unavailable; this is a diagnostic observation only'] },
       checks: plan?.entries.map(entry => ({ id: entry.id, label: entry.label, repositoryId: entry.command.repositoryId, command: entry.command.command, args: entry.command.args, cwd: entry.command.cwd })) ?? [],
       attempts: history.slice(-10),
     }
@@ -76,10 +83,17 @@ export async function runRecovery(contextInput: unknown, input: unknown, signal?
       result.entries = result.entries.filter(entry => { try { safePath(request.path === '.' ? entry.name : request.path + '/' + entry.name, false); return true } catch { return false } })
       return result
     }
-    if (state.status === 'succeeded' || inspection.phases.archive.status === 'done') throw new Error('Completed or archived runs cannot be repaired; inspect their delivery instead')
+    if (engine === 'v2') requireRecoveryMutationAuthority(authority, request.action)
+    if (!inspection) throw new Error('Implementation journal evidence is unavailable')
+    if (authority.completed || authority.archived) throw new Error('Completed or archived runs cannot be repaired; inspect their delivery instead')
     if ((state.status === 'running' || Object.values(state.steps).some(step => ['running', 'interrupted'].includes(step.status))) && !request.acknowledgeInterrupted) throw new Error('Inspect interrupted writes and explicitly acknowledge them before repairing')
     if (request.action === 'check' && (request.kind === 'verification' ? !request.checkId : request.checkId !== undefined)) throw new Error('Verification requires a saved checkId; OpenSpec validation does not accept one')
-    const save = () => write(historyPath, JSON.stringify(history, null, 2) + '\n')
+    if (engine === 'v2' && request.action === 'check' && request.kind === 'verification' && !plan) throw new RecoveryUnsupportedEngineError(request.action, 'saved verification plan authority is unavailable')
+    if (engine === 'v2') {
+      execution = await acquireRecoveryExecutionLease(directory, context, authority, request.action, signal)
+      signal = execution.signal
+    }
+    const save = () => { execution?.assertOwnership(); write(historyPath, JSON.stringify(history, null, 2) + '\n') }
     const requestHash = fingerprint(request)
     const previous = history.find(attempt => attempt.operationId === request.operationId)
     if (previous) {
@@ -112,26 +126,29 @@ export async function runRecovery(contextInput: unknown, input: unknown, signal?
     }
     history.push(attempt); save() // write-ahead record: an uncertain attempt is never blindly replayed
     try {
+      execution?.assert()
       signal?.throwIfAborted()
       if (request.action === 'patch') {
         workspace!.execute('apply_patch', { path: request.path, expectedHash: request.expectedHash, oldText: request.oldText, newText: request.newText })
         attempt.status = 'applied'
       } else if (request.kind === 'openspec') {
-        const output = await runOpenSpec(resolveOpenSpecCli(), context.artifactRoot, ['validate', '--all', '--strict', '--no-interactive', '--json'], signal)
+        const output = await runOpenSpec(resolveOpenSpecCli(), (authority.journalContext ?? context).artifactRoot, ['validate', '--all', '--strict', '--no-interactive', '--json'], signal)
         attempt.output = output.slice(-16_000)
         const report = JSON.parse(output) as { items?: { valid?: boolean }[]; summary?: { totals?: { failed?: number } } }
         if (!report.items?.length || report.items.some(item => item.valid !== true) || report.summary?.totals?.failed !== 0) throw new Error('OpenSpec did not report successful validation of any specs/changes; inspect the saved output')
+        execution?.assert(); signal?.throwIfAborted()
         attempt.status = 'passed'
       } else {
         if (!plan) throw new Error('No saved verification plan is available')
-        const command = expandedPlanCommands(context, plan).find(item => item.key === request.checkId)
+        const command = expandedPlanCommands(authority.journalContext ?? context, plan).find(item => item.key === request.checkId)
         if (!command) throw new Error('checkId does not belong to the saved verification plan')
-        const receipt = await verifyPipeline(context, { kind: 'scoped', planHash: plan.planHash, commands: [command] }, text => { attempt.output = ((attempt.output ?? '') + text).slice(-16_000) }, signal, { deadline: Date.now() + 45_000 })
+        const receipt = await verifyPipeline(authority.journalContext ?? context, { kind: 'scoped', planHash: plan.planHash, commands: [command] }, text => { attempt.output = ((attempt.output ?? '') + text).slice(-16_000) }, signal, { deadline: Date.now() + 45_000 })
+        execution?.assert(); signal?.throwIfAborted()
         attempt.status = receipt.valid ? 'passed' : 'failed'
         if (!receipt.valid) attempt.error = receipt.reason ?? 'Verification failed'
       }
     } catch (error) { attempt.status = 'failed'; attempt.error = (error instanceof Error ? error.message : String(error)).slice(-6000) }
     attempt.completedAt = new Date().toISOString(); save()
     return { ...attempt, notice: 'A repair/check is not workflow completion. Resume revalidates all required gates in the original run.' }
-  } finally { await release() }
+  } finally { try { execution?.release() } finally { await release() } }
 }

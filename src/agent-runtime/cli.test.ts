@@ -6,7 +6,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { normalizeRuntimeConfig } from './config.js'
-import { runRuntimeCommand } from './cli.js'
+import { RecoveryUnsupportedEngineError } from './recovery.js'
+import { runRuntimeCommand, runtimeFailure } from './cli.js'
 import { coreRuntimeIdentity } from './core-host.js'
 import { validateWorkflowDefinition } from './engine/definition-validator.js'
 import { validationPieceRegistry } from './engine/pieces/index.js'
@@ -307,4 +308,9 @@ describe('frozen request contract for engine v2', () => {
     expect(forkResumed.code, JSON.stringify(forkResumed.last)).toBe(0)
     expect(forkResumed.last).toMatchObject({ type: 'runtime-result', engineVersion: 2, status: 'succeeded', runId: 'cli-fork', forkOf: context.runId, workflow: { id: 'cli-definition', engine: 2 } })
   }, 30000)
+})
+
+it('serializes unsupported recovery as the existing structured runtime failure', () => {
+  const error = new RecoveryUnsupportedEngineError('patch', 'candidate/archive authority is unavailable')
+  expect(runtimeFailure(error)).toMatchObject({ error: { code: 'recovery_unsupported_engine', message: expect.stringContaining('Recovery patch'), details: { action: 'patch', recommendation: expect.stringContaining('fork') } } })
 })
