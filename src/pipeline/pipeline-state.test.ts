@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -539,6 +539,34 @@ describe('application environment evidence', () => {
     expect(verificationEnvironment(base, { CLAUDECODE: 'explicit' }, 'win32').CLAUDECODE).toBe('explicit')
     expect(verificationEnvironment(base, { PATH: 'requested' }, 'linux')).toMatchObject({ Path: 'inherited', PATH: 'requested', claudecode: '1' })
     expect(() => verificationEnvironment({ Path: 'one', PATH: 'two' }, {}, 'win32')).toThrow('Ambiguous verification environment key: PATH')
+  })
+
+  it('runs project commands with the login-shell PATH first and keeps the host entries after it', () => {
+    const host = { PATH: '/app/runtimes/node/bin:/usr/bin', HOME: '/home/user' }
+    const probe = vi.fn(() => '/opt/homebrew/bin:/usr/bin:/app/runtimes/node/bin')
+    expect(projectCommandEnvironment(host, { platform: 'darwin', shell: '/bin/zsh', probe }))
+      .toEqual({ ...host, PATH: '/opt/homebrew/bin:/usr/bin:/app/runtimes/node/bin' })
+    expect(probe).toHaveBeenCalledWith('/bin/zsh', host)
+    // A profile that replaces PATH outright must not hide the host's own runtime.
+    expect(projectCommandEnvironment(host, { platform: 'linux', probe: () => '/opt/node/bin' }).PATH).toBe('/opt/node/bin:/app/runtimes/node/bin:/usr/bin')
+    // No answer from the shell, Windows, or an explicit opt-out keep the inherited environment.
+    expect(projectCommandEnvironment(host, { platform: 'linux', probe: () => null })).toBe(host)
+    expect(projectCommandEnvironment(host, { platform: 'win32', probe })).toBe(host)
+    expect(projectCommandEnvironment({ ...host, SPECRAILS_PROJECT_LOGIN_PATH: '0' }, { platform: 'linux', probe }).PATH).toBe(host.PATH)
+    // An explicit PATH override in the verification plan still wins.
+    expect(verificationEnvironment(projectCommandEnvironment(host, { platform: 'linux', probe }), { PATH: 'requested' }, 'linux').PATH).toBe('requested')
+  })
+
+  it.skipIf(process.platform === 'win32')('reads the PATH a real login shell builds from the user profile', () => {
+    const home = mkdtempSync(path.join(os.tmpdir(), 'specrails-login-path-'))
+    try {
+      const own = path.join(home, 'own-node', 'bin'), bundled = path.join(home, 'bundled', 'bin')
+      writeFileSync(path.join(home, '.profile'), `PATH="${own}:$PATH"; export PATH\n`)
+      const env = { PATH: `${bundled}:/usr/bin:/bin`, HOME: home }
+      const dirs = projectCommandEnvironment(env, { platform: process.platform, shell: '/bin/sh' }).PATH!.split(':')
+      expect(dirs.indexOf(own)).toBeGreaterThanOrEqual(0)
+      expect(dirs.indexOf(own)).toBeLessThan(dirs.indexOf(bundled))
+    } finally { rmSync(home, { recursive: true, force: true }) }
   })
 
   it('reuses verification across agent sessions and a host process without session identity', () => {
