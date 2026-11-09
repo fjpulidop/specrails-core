@@ -110,6 +110,17 @@ it('answers a durable question after closing SQLite without repeating a provider
   expect(resumed.state.usage).toMatchObject({ inputTokens: 3, outputTokens: 2, costUsd: 0.01 })
 })
 
+it('gives the answer to a question to the next turn through {{history.text}}', async () => {
+  const f = fixture({ ask: { kind: 'question', params: { text: 'Which tab opens the question?' }, ends: { next: 'plan' } },
+    plan: { kind: 'prompt', params: { engine: { provider: 'fixture' }, text: 'Plan. Context and human answers: {{history.text}}', access: 'read', appendHistory: false }, ends: { next: 'done', failed: null } }, done })
+  const first = await createRun(f)
+  const question = first.state.pendingInterrupts[0]
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [question.id]: { answer: 'Details inside Log' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(1)
+  expect(f.requests[0]!.prompt).toContain('[ask] Human question: Which tab opens the question?\nHuman answer:\n{"answer":"Details inside Log"}')
+})
+
 it('rejects an answer for the wrong interrupt without altering its pending question', async () => {
   const f = fixture({ ask: { kind: 'question', params: { text: 'Continue?' }, ends: { next: 'done' } }, done })
   await createRun(f)

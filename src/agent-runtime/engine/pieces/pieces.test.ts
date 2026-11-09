@@ -91,7 +91,8 @@ describe('reviewed piece catalog and control', () => {
     await expect(f.run('question', { text: 'Choose a scope' })).rejects.toThrow('PAUSED')
     expect(f.requests).toEqual([])
     f.execution.interrupt = request => { expect(request).toMatchObject({ scopeId: 'root', attemptId: 'attempt', kind: 'question' }); return { answer: 'only app' } }
-    expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'only app' }, nodePath: 'node' }] })
+    expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'only app' }, nodePath: 'node' }],
+      history: [{ nodePath: 'node', text: 'Human question: Choose a scope\nHuman answer:\n{"answer":"only app"}' }] })
   })
   it('binds approval to the pre-interrupt candidate across a changed workspace', async () => {
     const f = fixture(), before = f.deps.executionSnapshot(f.execution).candidate!.hash
