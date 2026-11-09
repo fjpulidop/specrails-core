@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.7.5](https://github.com/fjpulidop/specrails-core/compare/v6.7.4...v6.7.5) (2026-11-09)
+
+
+### Bug Fixes
+
+* **engine:** give question answers to later turns through the history ([#459](https://github.com/fjpulidop/specrails-core/issues/459)) ([2e63198](https://github.com/fjpulidop/specrails-core/commit/2e6319801fa8ffdef5e521f92fd572def2751b7b))
+
 ## [6.7.4](https://github.com/fjpulidop/specrails-core/compare/v6.7.3...v6.7.4) (2026-11-08)
 
 
