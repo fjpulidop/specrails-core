@@ -2,7 +2,7 @@
 
 A piece is a node kind the engine knows how to execute. The catalog is closed: `createPieceRegistry(dependencies)` (`src/agent-runtime/engine/pieces/index.ts`) binds the reviewed pieces to one execution, and `validationPieceRegistry()` returns the same descriptors and parameter validators without initializing providers, a journal or a project store. A definition selects kinds from this catalog by name; it cannot register code, callbacks or expressions that execute JavaScript.
 
-`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 8 with 20 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
+`specrails-core runtime workflows list` emits `{ type: 'runtime-workflows', nodeKindsVersion, nodeKinds: PieceDescriptor[], definitionSchema, builtins }`. The current catalog is `nodeKindsVersion` 9 with 21 kinds (`NODE_KINDS_VERSION` in `src/agent-runtime/engine/piece-registry.ts`). This branch advertises engine 2 and the same catalog through `runtime api` and `integration-contract.json`. Required integration and package/platform gates must pass before publication.
 
 ## Descriptor model
 
@@ -147,6 +147,15 @@ Pauses with a `gate` interrupt whose prompt is `reason`. In the current implemen
 
 - Outcomes: `next`. Effect: read. Writes `$outputs[nodeId] = { response }`.
 
+### `host-task`
+
+Pauses the run with a **machine** interrupt (capability `hostTasks`, contract 5.11): the definition asks the host for an effect Core cannot perform — waiting for a pull request's CI, pushing a commit, preparing a base merge. Core knows nothing about the effect; it transports the request and validates the result. The interrupt payload is `{ kind: 'host-task', task, input, outcomes, effect, timeoutMs?, candidate: { hash, verified, receiptId? }, nodePath, scopeId, attemptId }`, listed in `pendingInterrupts` of `runtime-result` and `runtime status`. The process exits 2 and holds no lease while the host works, so long waits cost nothing and survive host restarts.
+
+- Parameters: `task` (`^[a-z0-9][a-z0-9.-]{0,63}$`), `input` (object, interpolated), `outcomes` (1–8 unique labels, never `failed`), `effect` (`read` | `write`), optional `timeoutMs` (a hint copied to the request: Core cannot time a paused run) and `requiresVerified` (when the current candidate is not verified the node ends `failed` with `unverified_candidate` and never pauses).
+- Resume: `runtime resume --interrupt-id <id> --host-result <file>` with JSON `{ outcome, output? }`. `outcome` must be declared or `failed`; `output` is at most 256 KiB. Invalid results are refused (`invalid_resume`) before anything is persisted. `--answer`/`--approve` are refused for a host-task interrupt and `--host-result` for a human one. A persisted answer is immutable. Interrupt ids are deterministic per node task (a fork from before the node presents the same id), so hosts key a host task by run id and interrupt id.
+- Outcomes: the declared `outcomes` plus `failed`. Effect: the declared `effect`. A `write` terminal without a receipt clears `$verified`; declare `read` for an effect that keeps the working tree byte-identical (a commit or push), and `write` for one that changes it (a merge).
+- Writes `$outputs[nodeId] = { task, outcome, result, candidateHash }` (`candidateHash` is measured when the node resumes, after the host's effect) with `result` deep-redacted by the shared secret redaction, and one `$history` line `Host task <task>: <outcome>`. A host `failed` fails the node with `host_task_failed` (message from `output.detail`).
+
 ### `map`
 
 Fans out one component body over a frozen collection. `over` is `'tickets'` (the frozen `context.specs`), `'repositories'` (the frozen `context.repositories`) or `{ outputsOf: nodeId, path }` (a dotted path inside `$outputs[nodeId]` that must resolve to an array, `map_input_missing` otherwise). At most 10,000 items are admitted (`map_input_limit`); `ends.next` must target a `join`.
@@ -194,7 +203,7 @@ Terminates the current body. `completion.ok` is `outcome === 'success'`; `comple
 ## Descriptor reference (generated)
 
 <!-- piece-catalog:generated:start -->
-Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 8, 20 kinds, in registration order.
+Generated from `validationPieceRegistry().catalog()`: `nodeKindsVersion` 9, 21 kinds, in registration order.
 Do not edit this section by hand; regenerate it with `SPECRAILS_UPDATE_DOCS=1 npx vitest run src/agent-runtime/engine/docs-examples.test.ts`.
 
 ### Descriptor: `prompt`
@@ -545,6 +554,25 @@ Exactly one of: `argv`, `commandLine`.
 | `change` | yes | string (1–128 chars) |
 | `summaryPath` | no | string (1–512 chars) matching `^(?![\\/])(?![A-Za-z]:)(?!.*(?:^|[\\/])\.{1,2}(?:[\\/]|$))[^\u0000]+$` |
 | `feedback` | no | string (≤ 32000 chars) |
+
+### Descriptor: `host-task`
+
+| Field | Value |
+| --- | --- |
+| Effect | `derived` |
+| Requires AI | no |
+| Store access | `none` |
+| Declared outcomes | `failed` |
+| Additional parameters | rejected |
+
+| Parameter | Required | Type |
+| --- | --- | --- |
+| `task` | yes | string matching `^[a-z0-9][a-z0-9.-]{0,63}$` |
+| `input` | no | object |
+| `outcomes` | yes | array of string matching `^[a-z][a-z0-9-]{0,31}$` (1–8 items) |
+| `effect` | yes | `"read"` / `"write"` |
+| `timeoutMs` | no | integer (1–2147483647) |
+| `requiresVerified` | no | boolean |
 <!-- piece-catalog:generated:end -->
 
 ## Workflow-defined agents (catalog 7)

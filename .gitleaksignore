@@ -1,0 +1,3 @@
+# Fake GitHub token in the host-task redaction test; the test now assembles it at runtime (be641220).
+1d5673704d2a2efcd970cb5c2b00dee58e491002:src/agent-runtime/engine/pieces/host-task.test.ts:github-pat:55
+1d5673704d2a2efcd970cb5c2b00dee58e491002:src/agent-runtime/engine/pieces/host-task.test.ts:github-pat:58

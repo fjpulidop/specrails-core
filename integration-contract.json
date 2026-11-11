@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.10",
+  "schemaVersion": "5.11",
   "providers": {
     "claude": {
       "cli": {
@@ -251,7 +251,7 @@
     "apiOperation": "runtime api emits {type: runtime-api, apiVersion, coreVersion, runtimeIdentity, workflowVersions, engineVersion, engines, nodeKindsVersion, nodeKinds, capabilities, guardrails}; does not invoke providers",
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
-    "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed",
+    "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed; a host-task interrupt (capability hostTasks) is a machine interrupt resumed only with resume --interrupt-id <id> --host-result <json>",
     "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event, verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
     "reviewGate": "review.minScore and review.aspects may only tighten Core's own gate (minScore 70, security 75, other aspects 60); the pipeline journal enforces the floor",
     "acceptance": "The reviewer certifies every frozen acceptance criterion by specId and criterionIndex; Core records the verification commands it ran as required checks and binds the report to the exact candidate before the reviewer verdict",
@@ -375,6 +375,24 @@
       "resume": "runtime resume continues a paused run from its last committed step without repeating it and discards pause requests that arrived before the resume",
       "documentation": "docs/agent-runtime.md#pausing-a-run"
     },
+    "hostTasks": {
+      "version": 1,
+      "capability": "hostTasks",
+      "nodeKind": "host-task",
+      "params": {
+        "task": "required; ^[a-z0-9][a-z0-9.-]{0,63}$, the host-owned effect to perform (Desktop: pr.update-base, pr.checks, pr.sync, pr.rerun-failed)",
+        "input": "optional object; interpolated like every parameter",
+        "outcomes": "required; 1-8 unique outcome labels (^[a-z][a-z0-9-]{0,31}$), never failed; the node outcomes are these plus failed",
+        "effect": "required; read | write. A write terminal clears $verified; declare read for an effect that keeps the working tree (commit, push)",
+        "timeoutMs": "optional host hint copied to the request; Core cannot time a paused run",
+        "requiresVerified": "optional; when true and the current candidate is not verified the node ends failed (unverified_candidate) without pausing"
+      },
+      "interrupt": "pendingInterrupts[] item {id, nodePath, scopeId, attemptId, kind: host-task, value: {kind: host-task, task, input, outcomes, effect, timeoutMs?, candidate: {hash, verified, receiptId?}, nodePath, scopeId, attemptId}} in runtime-result and runtime status; the run exits 2 with no live process or lease",
+      "resume": "specrails-core runtime resume --context <json> | --run-dir <dir> --interrupt-id <id> --host-result <file>; the file is JSON {outcome, output?} with outcome declared or failed and output at most 262144 bytes, validated before it is persisted; --answer/--approve are invalid_resume for a host-task interrupt and --host-result for a human one; a durable answer is immutable (same result: no-op, different: answer_conflict)",
+      "output": "$outputs[node] = {task, outcome, result, candidateHash} (candidateHash measured on resume, after the host effect) with result deep-redacted (shared secret redaction); history line \"Host task <task>: <outcome>\"; outcome failed fails the node with host_task_failed",
+      "hostObligations": "resolve without a person, idempotently by interrupt id (a restart or fork may present the same interrupt again), and never present it as waiting for a human",
+      "documentation": "docs/engine-v2/pieces.md#host-task"
+    },
     "configSchemaPath": "schemas/agent-runtime.schema.json",
     "configSchemaExport": "specrails-core/schemas/agent-runtime.schema.json",
     "projectConfigPath": ".specrails/agent-runtime.json",
@@ -424,7 +442,7 @@
     "engine": {
       "version": 2,
       "definitionSchema": "schemas/workflow-definition.schema.json",
-      "nodeKindsVersion": 8
+      "nodeKindsVersion": 9
     },
     "nodeKinds": [
       "prompt",
@@ -446,7 +464,8 @@
       "map",
       "implementation",
       "join",
-      "derive-change"
+      "derive-change",
+      "host-task"
     ],
     "implementationSteps": {
       "version": 1,

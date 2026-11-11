@@ -254,6 +254,7 @@ export const workflowDefinitionSchema = {
             "implementation-step",
             "derive-change",
             "artifact-contract",
+            "host-task",
             "end"
           ]
         },

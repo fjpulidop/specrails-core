@@ -16,6 +16,7 @@ import { cancelRun, createRun, pauseRun, definitionRunDirectory, freezeRunReques
 import { statusRun } from './run-status.js'
 import { classifyFailure } from '../failure-classification.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
+import { HOST_TASK_OUTPUT_LIMIT_BYTES } from './pieces/host-task.js'
 
 export { NODE_KINDS_VERSION }
 type Flags = Record<string, string | boolean>
@@ -131,6 +132,22 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
         previous = await statusRun(target)
       }
       const answers: Record<string, JsonValue> = {}, pending = previous.state.pendingInterrupts
+      const selected = flags['interrupt-id'] === undefined ? undefined : pending.find(item => item.id === required(flags, 'interrupt-id'))
+      // A host-task interrupt is a machine interrupt: only --host-result answers it, and --host-result answers nothing else.
+      if ((flags.answer !== undefined || flags.approve !== undefined) && (selected?.kind === 'host-task' || (flags['interrupt-id'] === undefined && pending.length > 0 && pending.every(item => item.kind === 'host-task')))) {
+        throw new EngineError('invalid_resume', 'A host-task interrupt is resumed with --host-result, not --answer or --approve')
+      }
+      if (flags['host-result'] !== undefined) {
+        if (flags.answer !== undefined || flags.approve !== undefined || flags.recover !== undefined || flags.invalidate !== undefined) throw new EngineError('invalid_arguments', '--host-result cannot be combined with --answer, --approve, --recover or --invalidate')
+        if (flags['interrupt-id'] === undefined) throw new EngineError('invalid_arguments', '--host-result requires --interrupt-id')
+        if (!selected) throw new EngineError('interrupt_not_found', 'The selected interrupt is not pending')
+        if (selected.kind !== 'host-task') throw new EngineError('invalid_resume', 'Only a host-task interrupt accepts --host-result')
+        const file = required(flags, 'host-result')
+        if (readFileSync(file).byteLength > HOST_TASK_OUTPUT_LIMIT_BYTES + 4096) throw new EngineError('invalid_resume', `Host result exceeds ${HOST_TASK_OUTPUT_LIMIT_BYTES} bytes`)
+        let value: unknown
+        try { value = read(file) } catch { throw new EngineError('invalid_resume', 'Host result is not valid JSON') }
+        answers[selected.id] = value as JsonValue
+      }
       if (flags.answer !== undefined) {
         const matches = pending.filter(item => item.kind === 'question' && (flags['interrupt-id'] === undefined || item.id === required(flags, 'interrupt-id')))
         if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Select one pending question with --interrupt-id')

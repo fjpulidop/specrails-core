@@ -20,6 +20,7 @@ import { ledgerBudget } from './invocation-context.js'
 import { composeDefinitionRuntime } from './composition.js'
 import { createEngineTelemetry } from './otel.js'
 import { describeDefinition } from './graph-description.js'
+import { validateHostTaskResult } from './pieces/host-task.js'
 
 export const definitionRunDirectory = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-workflow')
 /** Frozen request shared with the legacy runtime (contracts.md section 9); `workflow.engine` selects the resume engine. */
@@ -207,6 +208,12 @@ function validateAnswers(ledger: RunLedger, answers: Record<string, JsonValue>):
   for (const [id, value] of Object.entries(answers)) {
     const request = known.get(id)
     if (!request) throw new EngineError('interrupt_not_found', 'Unknown interrupt ID')
+    if (request.kind === 'host-task') {
+      const payload = request.value && typeof request.value === 'object' && !Array.isArray(request.value) ? request.value : {}
+      const outcomes = Array.isArray(payload.outcomes) ? payload.outcomes.filter((item): item is string => typeof item === 'string') : []
+      validateHostTaskResult(value, outcomes)
+      continue
+    }
     const object = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
     if (request.kind === 'question' ? typeof object.answer !== 'string' || !object.answer.trim() : object.approved !== true) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
   }
