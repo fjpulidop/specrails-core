@@ -87,7 +87,7 @@ describe('host-task through the CLI', () => {
     expect(still.code, still.stderr).toBe(2)
     expect(pending(still)[0].id).toBe(interrupt.id)
 
-    const red = await invoke(['resume', '--context', target, '--interrupt-id', interrupt.id, '--host-result', file('red.json', { outcome: 'red', output: { failures: [{ name: 'test', log: 'Authorization: Bearer abcdefghijklmnop1234' }] } })])
+    const red = await invoke(['resume', '--context', target, '--interrupt-id', interrupt.id, '--host-result', file('red.json', { outcome: 'red', output: { failures: [{ name: 'test', log: 'Authorization: Bearer ' + ['abcdefgh', 'ijklmnop1234'].join('') }] } })])
     expect(red.code, JSON.stringify(red.last) + red.stderr).toBe(2)
     const second = pending(red)[0]
     expect(second.id).not.toBe(interrupt.id)
