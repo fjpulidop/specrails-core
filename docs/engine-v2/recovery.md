@@ -2,7 +2,7 @@
 
 Always inspect the retained original runtime. `runtime status --context context.json --compact` is read-only: it reports the lease, pending interrupts, recoverable attempts, completion, workflow identity, usage and committed event cursor without opening a provider.
 
-A paused run normally has no lease. Answer a question with `runtime resume --context context.json --answer 'the answer'`; select an interrupt with `--interrupt-id` when necessary. Approvals use `--approve` with the saved node path. Resume uses frozen inputs and rejects replacement definitions or configuration.
+A paused run normally has no lease. Answer a question with `runtime resume --context context.json --answer 'the answer'`; select an interrupt with `--interrupt-id` when necessary. Approvals use `--approve` with the saved node path. A `host-task` interrupt is answered only by the host, with `--interrupt-id <id> --host-result <file>`; after a restart the host re-dispatches it from `runtime status` (the interrupt and any persisted answer survive), and a repeated resume with the already persisted result is refused as no longer pending rather than applied twice. Resume uses frozen inputs and rejects replacement definitions or configuration.
 
 An active lease blocks competing execution. After a crash, wait until the lease expires. Expiry alone does not authorize repeating an uncertain write: inspect `state.recoverableSteps`, review the worktree and pass the exact returned `attemptId` to `--recover`. Already committed effects are reused. Explicit recovery may repeat an effect whose external result was not committed; the engine does not claim exactly-once external shell or provider side effects in that uncertainty window.
 

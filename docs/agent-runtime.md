@@ -171,6 +171,7 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `a
 | `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
+| `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
 | `setupCommands: 1` | The runtime configuration accepts `setup` and the `verify` piece runs it before each plan (`setup: 'configured'` or an inline list) |

@@ -233,12 +233,40 @@ export interface HumanInterrupt {
   attemptId: string
 }
 
+/**
+ * A machine interrupt (contract 5.11, capability `hostTasks`): the definition asks
+ * the host for an effect Core cannot perform. The host resolves it on its own and
+ * resumes with `runtime resume --host-result <file> --interrupt-id <id>`; it is
+ * never presented as waiting for a person.
+ */
+export interface HostTaskInterrupt {
+  kind: 'host-task'
+  task: string
+  input: JsonObject
+  outcomes: string[]
+  effect: EngineEffect
+  timeoutMs?: number
+  /** Core's attestation at interrupt time; the host never computes Core's fingerprint. */
+  candidate: { hash: string | null; verified: boolean; receiptId?: string }
+  nodePath: string
+  scopeId: string
+  attemptId: string
+}
+
+/** The host's answer to a `host-task` interrupt. */
+export interface HostTaskResult {
+  outcome: string
+  output?: JsonValue
+}
+
+export type EngineInterrupt = HumanInterrupt | HostTaskInterrupt
+
 export interface PieceExecutionContext {
   state: CoreDefinitionState
   frame: AttemptFrame
   signal: AbortSignal
   progress(event: TransientEngineEvent): void
-  interrupt(request: HumanInterrupt): JsonValue
+  interrupt(request: EngineInterrupt): JsonValue
 }
 
 export interface PieceDescriptor {

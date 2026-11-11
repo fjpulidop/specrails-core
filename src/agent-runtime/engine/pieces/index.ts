@@ -12,6 +12,7 @@ import { verifyPiece } from './verify.js'
 import { implementationStepPiece } from './implementation-step.js'
 import { assignPiece } from './assign.js'
 import { deriveChangePiece } from './derive-change.js'
+import { hostTaskPiece } from './host-task.js'
 
 export type { PieceDependencies, PieceStatePort } from './ports.js'
 
@@ -27,5 +28,5 @@ export function validationPieceRegistry(): PieceRegistry {
 
 function registry(bindings: PieceDependencyProvider): PieceRegistry {
   return new PieceRegistry([promptPiece(bindings), roleTurnPiece(bindings), deciderPiece(bindings), verifyPiece(bindings), shellPiece(bindings),
-    artifactContractPiece(bindings), ...openSpecPieces(bindings), ...controlPieces(bindings), assignPiece(), implementationStepPiece(bindings), ...compositionPieces(), deriveChangePiece(bindings)])
+    artifactContractPiece(bindings), ...openSpecPieces(bindings), ...controlPieces(bindings), assignPiece(), implementationStepPiece(bindings), ...compositionPieces(), deriveChangePiece(bindings), hostTaskPiece(bindings)])
 }
