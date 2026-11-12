@@ -1,5 +1,13 @@
 # Changelog
 
+## [6.8.0](https://github.com/fjpulidop/specrails-core/compare/v6.7.5...v6.8.0) (2026-11-12)
+
+
+### Features
+
+* **engine:** host-task machine interrupts for host-owned effects ([#463](https://github.com/fjpulidop/specrails-core/issues/463)) ([b8b9837](https://github.com/fjpulidop/specrails-core/commit/b8b983795575d896d2ce5389e8ab0d86aff034f4))
+* **engine:** machine-wide verification turns so concurrent runs share the CPU ([#464](https://github.com/fjpulidop/specrails-core/issues/464)) ([a3d893c](https://github.com/fjpulidop/specrails-core/commit/a3d893ccbc362357fcc5252795e511848a5776c7))
+
 ## [6.7.5](https://github.com/fjpulidop/specrails-core/compare/v6.7.4...v6.7.5) (2026-11-09)
 
 
