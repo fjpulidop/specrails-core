@@ -1,3 +1,4 @@
+import { acquireVerificationSlot, type ReleaseSlot } from '../../verification-slots.js'
 import { admitVerificationProposals } from '../../verification-proposals.js'
 import { stripVTControlCharacters } from 'node:util'
 import { contentDigest } from '../canonical-json.js'
@@ -137,10 +138,29 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       if (setupCommands.length) validateVerificationRequest(deps.context, setupRequest)
       const progress = (text: string): void => context.progress({ type: 'verification-output', payload: { text } })
       const concurrency = (params.maxConcurrency as number | undefined) ?? deps.config.efficiency?.verification?.maxConcurrency
-      const run = (plan: typeof request | typeof setupRequest, maxConcurrency: number | undefined): Promise<VerificationReceipt> => executeVerification(deps.context, plan, deps.verification(context), progress, context.signal, {
-        deadline: verificationDeadline(deps, context), maxConcurrency, idleTimeoutMs: deps.config.guardrails?.['verify-idle-timeout'] === false ? 0 : undefined,
-        onEvidence: async (kind, payload) => context.progress({ type: 'runtime-efficiency-event', payload: { kind, ...payload } }),
-      })
+      // One machine-wide verification turn per run: runs verify in their own
+      // worktrees but share the CPU, and concurrent full suites make timing
+      // tests fail. The deadline is taken once the turn is held.
+      const run = async (plan: typeof request | typeof setupRequest, maxConcurrency: number | undefined): Promise<VerificationReceipt> => {
+        let release: ReleaseSlot = () => {}
+        let waitedSince: number | undefined
+        try {
+          release = await acquireVerificationSlot({ signal: context.signal, onWait: holders => {
+            waitedSince = Date.now()
+            progress(`[verification] Waiting for a verification turn: ${holders.length > 1 ? `${holders.length} other runs are` : 'another run is'} verifying on this machine.`)
+          } })
+        } catch (error) {
+          // Cancelled while waiting: let verification observe the aborted signal and settle as cancelled.
+          if (!context.signal.aborted) throw error
+        }
+        if (waitedSince !== undefined && !context.signal.aborted) progress(`[verification] Verification turn acquired after ${Math.round((Date.now() - waitedSince) / 1000)} s.`)
+        try {
+          return await executeVerification(deps.context, plan, deps.verification(context), progress, context.signal, {
+            deadline: verificationDeadline(deps, context), maxConcurrency, idleTimeoutMs: deps.config.guardrails?.['verify-idle-timeout'] === false ? 0 : undefined,
+            onEvidence: async (kind, payload) => context.progress({ type: 'runtime-efficiency-event', payload: { kind, ...payload } }),
+          })
+        } finally { release() }
+      }
       const identity = { candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, scopeId: context.frame.scope.id,
         repositories: deps.context.repositories.map(repository => ({ id: repository.id, path: repository.path })),
         planHash: contentDigest(json(request)), concurrency: concurrency ?? 1 }
