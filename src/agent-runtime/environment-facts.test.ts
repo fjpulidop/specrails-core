@@ -15,9 +15,8 @@ function repo(files: Record<string, string>): string {
 }
 const host = (answers: Record<string, { status: number | null; stdout?: string; stderr?: string }>): ProbeRunner & { calls: string[] } => {
   const calls: string[] = []
-  const runner = ((command: string, args: string[]) => { calls.push([command, ...args].join(' ')); const answer = answers[command] ?? { status: null }; return { status: answer.status, stdout: answer.stdout ?? '', stderr: answer.stderr ?? '' } }) as ProbeRunner & { calls: string[] }
-  runner.calls = calls
-  return runner
+  const probe: ProbeRunner = (command, args) => { calls.push([command, ...args].join(' ')); const answer = answers[command] ?? { status: null }; return { status: answer.status, stdout: answer.stdout ?? '', stderr: answer.stderr ?? '' } }
+  return Object.assign(probe, { calls })
 }
 
 describe('environment facts', () => {
