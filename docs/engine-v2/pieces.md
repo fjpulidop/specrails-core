@@ -591,6 +591,11 @@ rejects symlinks, and retains the fingerprint in scope-owned private state.
 Proposal, design, specs and task descriptions must remain identical; task
 checkboxes may change. Missing, empty, changed or incomplete artifacts emit
 `fail`, while unsafe paths/limits fail execution. Outcomes: `pass`, `fail`, `failed`.
+`freeze` also refuses a plan whose tasks edit the change's proposal.md, design.md or
+delta specs (the artifact is the object of an editing verb, or the target of recording
+evidence): such a task can never be completed after the freeze. It emits `fail` with
+`reason: 'tasks_edit_frozen_artifacts'`, the offending `tasks`, and a history note the
+planning role repairs from. Citing those artifacts ("as described in design.md") is fine.
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement
