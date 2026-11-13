@@ -2,6 +2,7 @@ import { closeSync, openSync, readFileSync, readSync, realpathSync, statSync } f
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { PipelineContext } from '../pipeline/pipeline-state.js'
+import { environmentFacts, renderEnvironmentFacts } from './environment-facts.js'
 
 /** Small, provider-independent map of facts from the admitted checkout. Never
  * follows a documentation link out of scope or invents verification commands. */
@@ -100,6 +101,10 @@ export function repositoryContextSnapshot(context: PipelineContext): RepositoryC
     for (const file of ['mvnw', 'gradlew', 'pnpm-lock.yaml', 'yarn.lock', 'package-lock.json', 'src/main/resources/openapi.yml']) {
       if (read(file) !== undefined) lines.push(`Tooling/contract file: ${file}`)
     }
+    // Host-measured facts go first in the budget's tail-safe position: they are short and decisive.
+    let facts: string[] = []
+    try { facts = renderEnvironmentFacts(environmentFacts(repo.path)) } catch { /* a probe failure never blocks a role */ }
+    lines.splice(0, 0, ...facts)
     const full = lines.join('\n')
     const body = full.slice(0, budget)
     if (body.length < full.length) omitted.push(...sources.map(source => source.path))

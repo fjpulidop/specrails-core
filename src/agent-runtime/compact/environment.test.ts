@@ -29,6 +29,13 @@ describe('isEnvironmentFailure', () => {
 })
 
 describe('hostPreconditionFailure', () => {
+  it('names a system Python that refuses installs (PEP 668) and an unreachable Docker daemon', async () => {
+    const { hostPrecondition } = await import('./environment.js')
+    expect(hostPrecondition('error: externally-managed-environment\n\n× This environment is externally managed')).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('venv') })
+    expect(hostPrecondition('permission denied while trying to connect to the Docker daemon socket at unix:///Users/x/.docker/run/docker.sock: connect: operation not permitted')).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Start Docker') })
+    expect(hostPrecondition('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?')).toMatchObject({ kind: 'environment' })
+    expect(hostPrecondition('AssertionError: expected 3 to equal 4')).toBeUndefined()
+  })
   it('names failures only the host can repair: missing variables, rejected credentials, unreachable registries', () => {
     // Observed verbatim: Yarn Berry refusing to run any script without the token its .yarnrc.yml references.
     expect(hostPreconditionFailure('Usage Error: Environment variable not found (NODE_AUTH_TOKEN) in /w/ticket-199/.yarnrc.yml (in /w/ticket-199/.yarnrc.yml)\n\nYarn Package Manager - 4.5.0')).toContain('NODE_AUTH_TOKEN')
