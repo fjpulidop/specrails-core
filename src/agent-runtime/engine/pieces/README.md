@@ -128,6 +128,19 @@ and a history entry naming each offending `path:line` requirement, so the
 planning role can fix it before the plan freezes. Both failure kinds add a history
 entry; the project tree is never written.
 
+A main spec that predates OpenSpec's format cannot be repaired by any delta, and
+the planning role may not edit main specs. `legacyMainSpecs()` names those specs
+from the archive output: a rebuilt spec that fails for a missing `## Purpose`
+(OpenSpec adds a missing `## Requirements` itself), or a spec whose requirement
+headers sit outside `## Requirements` ("structurally invalid"). For them
+`describeArchivePreflight` tells the planner to move the requirements to a delta
+for a new capability with only `## ADDED Requirements` and to delete the delta
+that targeted the legacy spec. Other rebuilt-spec errors, such as a requirement
+with no SHALL/MUST body, keep the generic reconcile advice. OpenSpec stops at the
+first unwritable spec, so the guidance also asks the planner to check the other
+main specs it targets. The reason keeps the last 2000 characters of the output,
+which hold the final copy of the failing block.
+
 ## Native implementation and recovery
 
 `implementation.ts` adapts the existing six Core nodes and their acceptance,

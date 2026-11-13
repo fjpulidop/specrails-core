@@ -42,11 +42,41 @@ export async function previewOpenSpecArchive(artifactRoot: string, change: strin
   }
 }
 
+/**
+ * Main specs that predate OpenSpec's format, named from `openspec archive` output: a free-form spec
+ * with no `## Purpose` section, or with requirement headers outside a `## Requirements` section.
+ * No delta can repair either, and the planning role may not edit main specs. Other rebuilt-spec
+ * failures (a requirement with no SHALL/MUST body, a missing scenario) are repairable and stay out.
+ * OpenSpec stops at the first unwritable spec, so a second legacy target surfaces on the next run.
+ */
+export function legacyMainSpecs(reason: string): string[] {
+  const names = new Set<string>()
+  const lines = reason.split('\n')
+  lines.forEach((line, index) => {
+    const rebuilt = /^Validation errors in rebuilt spec for (\S+) \(will not write changes\):$/.exec(line)
+    const structural = /^(\S+): target spec is structurally invalid\b/.exec(line)
+    if (!rebuilt && !structural) return
+    const block: string[] = []
+    for (const next of lines.slice(index + 1)) {
+      if (/^(Aborted\.|Validation errors in rebuilt spec for )/.test(next) || /^\S+: target spec is structurally invalid\b/.test(next)) break
+      block.push(next)
+    }
+    const legacy = rebuilt
+      ? block.some(item => /^\s*✗ .*(must have a Purpose section|must have a Requirements section|Missing required sections\. Expected headers: "## Purpose")/.test(item))
+      : block.some(item => item.includes('outside the main ## Requirements section'))
+    if (legacy) names.add((rebuilt ?? structural)![1].replace(/:$/, ''))
+  })
+  return [...names]
+}
+
 /** Plain-text guidance for the planning role's history. */
 export function describeArchivePreflight(change: string, preflight: Extract<ArchivePreflight, { valid: false }>): string {
+  const legacy = legacyMainSpecs(preflight.reason)
   return [
     `OpenSpec validates change ${change}, but archiving it would fail. OpenSpec's archive output:`,
     preflight.reason,
-    'Reconcile each delta with openspec/specs: MODIFIED and RENAMED headers must name an existing requirement exactly, and ADDED requirements must not exist yet.',
+    legacy.length
+      ? `The main spec${legacy.length > 1 ? 's' : ''} ${legacy.map(name => `openspec/specs/${name}/spec.md`).join(', ')} predate${legacy.length > 1 ? '' : 's'} OpenSpec's format (no ## Purpose or ## Requirements section), and no delta can repair that. Do not edit main specs and do not target ${legacy.join(', ')}: move these requirements to a delta for a new capability (openspec/changes/${change}/specs/<new-capability>/spec.md with only ## ADDED Requirements) and delete the delta that targeted ${legacy.length > 1 ? 'them' : 'it'}. OpenSpec stops at the first such spec, so check every other main spec you target the same way.`
+      : 'Reconcile each delta with openspec/specs: MODIFIED and RENAMED headers must name an existing requirement exactly, and ADDED requirements must not exist yet.',
   ].join('\n')
 }
