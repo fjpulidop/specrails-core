@@ -203,6 +203,8 @@ This is a conservative text diagnostic over the last 16,000 characters of captur
 
 Verification failures return to the fixer. `limits.maxAttempts` bounds fixer invocations (default: 3), after which Core blocks with `Implementation correction limit reached`. An explicit resume grants a fresh budget. If the fixer repeatedly reports no defect, inspect the quoted verification evidence before resuming; rerunning an unchanged command cannot correct a diagnostic false positive.
 
+A verification command without its own `timeoutMs` runs for at most 15 minutes (`DEFAULT_VERIFICATION_TIMEOUT_MS`): tests, lint and type checks. An admitted proposal that runs a repository script (an acceptance check such as an uncached container build, migrations and a restart) gets 60 minutes (`ACCEPTANCE_SCRIPT_TIMEOUT_MS`). Either way, a command that prints nothing for 5 minutes is stopped (`SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, guardrail `verify-idle-timeout`).
+
 ## Environment facts
 
 Every role's repository reference starts with environment facts the host measures for the checkout (`environment-facts.ts`, capability `environmentFacts: 1`), cached for ten minutes:

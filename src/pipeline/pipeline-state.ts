@@ -5,6 +5,12 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { stripVTControlCharacters } from 'node:util'
 
+/** Wall-clock limit of one verification command without its own `timeoutMs` (tests, lint, type checks). */
+export const DEFAULT_VERIFICATION_TIMEOUT_MS = 15 * 60_000
+/** Limit for an agent-proposed acceptance script (an uncached container build, migrations, a restart);
+ * ordinary checks keep the default. A silent command is still stopped by the idle bound. */
+export const ACCEPTANCE_SCRIPT_TIMEOUT_MS = 60 * 60_000
+
 export type PipelinePhase = 'architect' | 'developer' | 'reviewer' | 'archive' | 'ship' | 'ci'
 export type PhaseStatus = 'pending' | 'running' | 'done' | 'blocked' | 'failed' | 'skipped'
 export interface PipelineSpec { id: string | number; title: string; description: string; repositoryIds?: string[]; acceptanceCriteria?: string[] }
@@ -899,7 +905,7 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
   if (!withinRepositoryScope(repo, path.relative(repo.path, cwd).split(path.sep).join('/'))) fail('Verification cwd escapes selected code workspace')
   const env = command.env === undefined ? undefined : object(command.env)
   if (env && Object.values(env).some((value) => typeof value !== 'string' || value.includes('\0'))) fail('Invalid verification environment')
-  const timeoutMs = command.timeoutMs === undefined ? 15 * 60_000 : Number(command.timeoutMs)
+  const timeoutMs = command.timeoutMs === undefined ? DEFAULT_VERIFICATION_TIMEOUT_MS : Number(command.timeoutMs)
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2 * 60 * 60_000) fail('Invalid verification timeout')
   if (command.policy !== undefined) {
     const policy = object(command.policy)
@@ -969,7 +975,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const hash = environmentHash(keys)
   const overridesHash = digest(canonical(overrides))
   const env = verificationEnvironment(projectCommandEnvironment(process.env), overrides)
-  const configuredTimeoutMs = command.timeoutMs ?? 15 * 60_000
+  const configuredTimeoutMs = command.timeoutMs ?? DEFAULT_VERIFICATION_TIMEOUT_MS
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
   // A test that never returns (a `while` that cannot exit) keeps a runner at
   // 100 % CPU and silent until the wall-clock timeout; the silence is the
