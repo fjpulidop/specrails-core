@@ -194,7 +194,8 @@ export class RunLedger {
       consecutive_failures: visit.requires_ai ? (status === 'succeeded' ? 0 : Number(this.run().consecutive_failures) + 1) : this.run().consecutive_failures,
       ...(completesRun ? { completion_json: canonicalJson(result.completion), status: result.completion!.ok ? 'succeeded' : 'failed',
         active_duration_ms: this.activeDurationMs(), active_started_at: null } : {}) })
-    return [this.event(frame, `step_${status}`, { outcome: result.outcome, ...(result.error ? { error: result.error } : {}) }),
+    const reason = result.outcome === 'fail' ? failReason(result) : undefined
+    return [this.event(frame, `step_${status}`, { outcome: result.outcome, ...(result.error ? { error: result.error } : {}), ...(reason ? { reason } : {}) }),
       ...(completesRun ? [appendRunEvent(this.db, this.runId, result.completion!.ok ? 'workflow_succeeded' : 'workflow_failed', result.completion as unknown as JsonValue, {}, at)] : [])]
   }
 
@@ -483,4 +484,16 @@ export class RunLedger {
     if (!Number.isSafeInteger(after) || after < 0) throw new EngineError('invalid_arguments', 'Event cursor must be a non-negative integer')
     return this.db.sqlite.prepare('SELECT payload_json FROM events WHERE run_id=? AND sequence>? AND inherited=0 ORDER BY sequence').all(this.runId, after).map(row => JSON.parse(String(row.payload_json)) as DurableEngineEvent)
   }
+}
+
+/**
+ * Why a check sent the run back (`fail` outcome): the step's own history note
+ * (what the planning role repairs from), else a machine `output.reason`. Hosts
+ * show it under the failed step; it is bounded and never the whole output.
+ */
+export function failReason(result: Pick<PieceResult, 'history' | 'output'>): string | undefined {
+  const note = [...(result.history ?? [])].reverse().find(entry => typeof entry.text === 'string' && entry.text.trim())?.text
+  const fallback = result.output && typeof result.output === 'object' && !Array.isArray(result.output) && typeof result.output.reason === 'string' ? result.output.reason : undefined
+  const text = (note ?? fallback)?.trim()
+  return text ? (text.length > 4000 ? text.slice(0, 3999) + '…' : text) : undefined
 }

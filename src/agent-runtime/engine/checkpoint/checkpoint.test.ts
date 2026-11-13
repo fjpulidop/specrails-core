@@ -9,7 +9,7 @@ import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
 import { RunDatabase } from './database.js'
 import { RunLease } from './lease.js'
-import { RunLedger } from './ledger.js'
+import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
 
 const cleanup: Array<() => Promise<void>> = []
@@ -31,6 +31,23 @@ const admission = (taskId = 'task', nodePath = 'work', overrides: Partial<NodeAd
   retry: { maxAttempts: 3 }, ...overrides,
 })
 const config = { configurable: { thread_id: 'run', checkpoint_ns: '', checkpoint_id: 'checkpoint' } }
+
+describe('the reason a check sent the run back', () => {
+  it('rides on the fail step event, from the step history note', async () => {
+    const { db, ledger } = await fixture(), frame = ledger.enter(admission('task', 'validate', { kind: 'openspec-validate', requiresAI: false }))
+    const history = [{ id: 'a:validate', transition: 1, attempt: 1, ordinal: 0, nodePath: 'validate', text: 'OpenSpec validation failed for change c.\n- specs/x: missing Purpose' }]
+    const marker = ledger.terminal(frame, { outcome: 'fail', output: {}, history })
+    await new SqliteRunSaver(db, ledger).putWrites(config, [['value', 1], ['$commit', marker]], 'task')
+    const event = ledger.events().find(item => item.type === 'step_succeeded')!
+    expect(event.payload).toEqual({ outcome: 'fail', reason: 'OpenSpec validation failed for change c.\n- specs/x: missing Purpose' })
+  })
+
+  it('is absent on every other outcome and bounded when present', () => {
+    expect(failReason({ output: { reason: 'tasks_missing' } })).toBe('tasks_missing')
+    expect(failReason({ output: {} })).toBeUndefined()
+    expect(failReason({ history: [{ id: 'h', transition: 1, attempt: 1, ordinal: 0, nodePath: 'n', text: 'x'.repeat(5000) }] })).toHaveLength(4000)
+  })
+})
 
 describe('durable checkpoint and ledger boundary', () => {
   it('rolls back pending writes, terminal result and event sequence as one transaction', async () => {
