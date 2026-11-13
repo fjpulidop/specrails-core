@@ -65,6 +65,13 @@ describe('tasks that edit frozen artifacts', () => {
       '4. Update `openspec/changes/other/design.md`', '5. Modify requirements.txt and run the tests']
     expect(tasksEditingFrozenArtifacts(fine.map(text => ({ text })), 'feature')).toEqual([])
   })
+  it('accepts a task that forbids editing them (a real repaired plan, deckdex-mtg)', () => {
+    const repaired = ['1.1 Modify only the SQLAlchemy declaration in `requirements.txt` to exactly `sqlalchemy>=2.0,<2.1`, once the baseline fresh-image diagnostic described in design.md confirms selection of the absent psycopg driver. Do not modify proposal.md, design.md or delta specs during implementation; only task completion markers may change in this checklist.',
+      "2. Never update design.md; don't edit proposal.md", '3. Fix the parser without changing `openspec/changes/feature/specs/example/spec.md`']
+    expect(tasksEditingFrozenArtifacts(repaired.map(text => ({ text })), 'feature')).toEqual([])
+    // A negation elsewhere in the task does not hide a real edit.
+    expect(tasksEditingFrozenArtifacts([{ text: 'Do not touch tests. Update design.md with the results' }], 'feature')).toHaveLength(1)
+  })
   it('refuses to freeze such a plan and tells the planner why', async () => {
     const f = fixture()
     writeFileSync(path.join(f.directory, 'tasks.md'), field.map(text => `- [ ] ${text}`).join('\n') + '\n- [ ] 3. Implement requirement\n')

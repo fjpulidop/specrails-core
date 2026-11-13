@@ -14,15 +14,21 @@ export function taskCheckboxes(tasks: string): Array<{ done: boolean; text: stri
  * Tasks that ask the implementer to edit an artifact that freezes before implementation:
  * the change's proposal.md, design.md or delta specs. Only checkboxes may change after the
  * freeze, so such a task can never be completed. Citing them is fine ("as described in
- * design.md"); the artifact must be the object of an editing verb, or the target of
- * recording/writing evidence.
+ * design.md", "do not modify design.md"); the artifact must be the object of an editing
+ * verb that is not negated, or the target of recording/writing evidence.
  */
 export function tasksEditingFrozenArtifacts(tasks: ReadonlyArray<{ text: string }>, change: string): string[] {
   const escaped = change.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const artifact = '[`\'"]?(?:openspec/changes/' + escaped + '/(?:proposal\\.md|design\\.md|specs/)|(?:proposal|design)\\.md\\b)'
   const edit = new RegExp('\\b(?:modify|modifies|update|updates|edit|edits|amend|amends|change|changes|rewrite|rewrites|fill in|fills in|append to|appends to|add to|adds to|write to|writes to)\\b(?:\\s+\\S+){0,3}?\\s+' + artifact, 'i')
   const record = new RegExp('\\b(?:record|records|write|writes|append|appends|log|logs|document|documents)\\b[^.;\\n]{0,80}?\\b(?:in|into|to)\\s+(?:the\\s+)?' + artifact, 'i')
-  return tasks.filter(task => edit.test(task.text) || record.test(task.text)).map(task => task.text)
+  // "Do not modify design.md" is the opposite instruction: skip a verb negated just before it.
+  const negated = /(?:\b(?:not|never|no|nor|without|avoid|avoiding)|n't)\s+(?:\S+\s+){0,2}$/i
+  // Only the current clause can negate the verb ("Do not touch tests. Update design.md" asks for an edit).
+  const clause = (before: string): string => before.split(/[.;!?:]\s/).pop() ?? before
+  const asks = (pattern: RegExp, task: string): boolean => [...task.matchAll(new RegExp(pattern.source, 'gi'))]
+    .some(match => !negated.test(clause(task.slice(Math.max(0, match.index - 40), match.index))))
+  return tasks.filter(task => asks(edit, task.text) || asks(record, task.text)).map(task => task.text)
 }
 
 /** A reusable artifact invariant, with no agent roles, phase order or successor policy. */
