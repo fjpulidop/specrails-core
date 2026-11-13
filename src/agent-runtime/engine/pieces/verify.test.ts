@@ -183,6 +183,10 @@ describe('engine v2 environment repair', () => {
     f.deps.config.verification = [f.check('unit.cjs', 'FAIL src/game.spec.ts\n  ● clears lines\n    expect(received).toBe(expected)', 1)]
     const result = await f.run({ commands: 'configured', hostBlockers: true })
     expect(result).toMatchObject({ outcome: 'fail', receipt: { valid: false }, verified: null, output: { valid: false, noProgressCount: 1 } })
+    // A short summary a role prompt can carry (a baseline run before the developer is shown this way).
+    const summary = (result.output as { summary: string }).summary
+    expect(summary).toMatch(/unit\.cjs.*\(repo[,)].*: exit 1/)
+    expect(summary.length).toBeLessThanOrEqual(2000)
     expect(result).not.toHaveProperty('status')
     expect(result.output).not.toHaveProperty('blocker')
     expect(result.output).not.toHaveProperty('environmentRepair')

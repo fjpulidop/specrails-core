@@ -203,6 +203,18 @@ This is a conservative text diagnostic over the last 16,000 characters of captur
 
 Verification failures return to the fixer. `limits.maxAttempts` bounds fixer invocations (default: 3), after which Core blocks with `Implementation correction limit reached`. An explicit resume grants a fresh budget. If the fixer repeatedly reports no defect, inspect the quoted verification evidence before resuming; rerunning an unchanged command cannot correct a diagnostic false positive.
 
+## Environment facts
+
+Every role's repository reference starts with environment facts the host measures for the checkout (`environment-facts.ts`, capability `environmentFacts: 1`), cached for ten minutes:
+
+- Toolchain targets: Python and Node versions from `FROM python:`/`FROM node:` lines in Dockerfiles (root and one directory down), `.python-version`, `runtime.txt`, `.nvmrc`, `.node-version`, `.tool-versions` (pinned) and `requires-python` (a range is not a pin).
+- Interpreters on the host PATH (`python3`, the pinned `python3.X`, `node`), and whether a project virtual environment (`.venv`, `venv`) exists. A bare `python3` that does not satisfy the pinned target is called out, so checks run in a venv instead of on a newer system Python.
+- Docker reachability (`docker info`) when the repository has Dockerfiles or Compose files. A read-only sandboxed role may be denied the Docker socket; the facts say that is a sandbox limit, not a host blocker.
+
+Roles are told to trust these facts over older notes. Verification also classifies two host preconditions: a system Python that refuses installs (PEP 668, `externally-managed-environment`, kind `toolchain`, with a venv action) and an unreachable Docker daemon (kind `environment`).
+
+Each `verify` output carries a bounded `summary` (one line per command with its exit code and first failure facts; capability `verificationSummary: 1`), small enough for a host to template into a role prompt, for example a baseline run before the developer.
+
 ## Questions and approvals
 
 The graph pauses through LangGraph interrupts; the host resumes it with the matching answer.
