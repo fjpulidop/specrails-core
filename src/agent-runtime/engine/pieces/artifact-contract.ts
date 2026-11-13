@@ -3,11 +3,26 @@ import { artifactPath } from '../../openspec.js'
 import { contentDigest } from '../canonical-json.js'
 import { EngineError, type JsonObject, type Piece, type PieceResult } from '../contracts.js'
 import type { PieceDependencyProvider } from './ports.js'
-import { idSchema, paramsSchema, text } from './shared.js'
+import { historyEntry, idSchema, paramsSchema, text } from './shared.js'
 
 /** Every checkbox task of an OpenSpec tasks.md, in order. */
 export function taskCheckboxes(tasks: string): Array<{ done: boolean; text: string }> {
   return [...tasks.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm)].map(match => ({ done: match[1] !== ' ', text: match[2].trim() }))
+}
+
+/**
+ * Tasks that ask the implementer to edit an artifact that freezes before implementation:
+ * the change's proposal.md, design.md or delta specs. Only checkboxes may change after the
+ * freeze, so such a task can never be completed. Citing them is fine ("as described in
+ * design.md"); the artifact must be the object of an editing verb, or the target of
+ * recording/writing evidence.
+ */
+export function tasksEditingFrozenArtifacts(tasks: ReadonlyArray<{ text: string }>, change: string): string[] {
+  const escaped = change.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const artifact = '[`\'"]?(?:openspec/changes/' + escaped + '/(?:proposal\\.md|design\\.md|specs/)|(?:proposal|design)\\.md\\b)'
+  const edit = new RegExp('\\b(?:modify|modifies|update|updates|edit|edits|amend|amends|change|changes|rewrite|rewrites|fill in|fills in|append to|appends to|add to|adds to|write to|writes to)\\b(?:\\s+\\S+){0,3}?\\s+' + artifact, 'i')
+  const record = new RegExp('\\b(?:record|records|write|writes|append|appends|log|logs|document|documents)\\b[^.;\\n]{0,80}?\\b(?:in|into|to)\\s+(?:the\\s+)?' + artifact, 'i')
+  return tasks.filter(task => edit.test(task.text) || record.test(task.text)).map(task => task.text)
 }
 
 /** A reusable artifact invariant, with no agent roles, phase order or successor policy. */
@@ -49,6 +64,13 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
       if (!Object.keys(files).some(name => name.startsWith('specs/')) || Object.values(files).some(source => !source.trim())) return { outcome: 'fail', output: { reason: 'empty_artifacts' } }
       const tasks = taskCheckboxes(files['tasks.md'])
       if (!tasks.length) return { outcome: 'fail', output: { reason: 'tasks_missing' } }
+      if (params.action === 'freeze') {
+        const frozenEdits = tasksEditingFrozenArtifacts(tasks, change)
+        if (frozenEdits.length) return { outcome: 'fail', output: { reason: 'tasks_edit_frozen_artifacts', tasks: frozenEdits.slice(0, 20) },
+          history: [historyEntry(context, [`The plan for change ${change} cannot freeze: these tasks edit proposal.md, design.md or the change's delta specs, which freeze before implementation (the implementer may only tick tasks):`,
+            ...frozenEdits.slice(0, 20).map(task => '- ' + task.slice(0, 300)),
+            'Rewrite each as work on repository files. Do not ask anyone to record evidence in frozen artifacts: host verification and the review keep the evidence.'].join('\n'))] }
+      }
       // Completion may change checkboxes, never the approved task descriptions.
       files['tasks.md'] = files['tasks.md'].replace(/^(\s*[-*]\s+\[)[ xX](\]\s+)/gm, '$1 $2')
       const fingerprint = contentDigest(files), key = text(params.contractId)
