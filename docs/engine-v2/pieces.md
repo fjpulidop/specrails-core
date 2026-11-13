@@ -591,6 +591,11 @@ rejects symlinks, and retains the fingerprint in scope-owned private state.
 Proposal, design, specs and task descriptions must remain identical; task
 checkboxes may change. Missing, empty, changed or incomplete artifacts emit
 `fail`, while unsafe paths/limits fail execution. Outcomes: `pass`, `fail`, `failed`.
+`freeze` also refuses a plan whose tasks edit the change's proposal.md, design.md or
+delta specs (the artifact is the object of an editing verb, or the target of recording
+evidence): such a task can never be completed after the freeze. It emits `fail` with
+`reason: 'tasks_edit_frozen_artifacts'`, the offending `tasks`, and a history note the
+planning role repairs from. Citing those artifacts ("as described in design.md") is fine.
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement
@@ -598,7 +603,13 @@ repositories lacking configured commands. A repository with configured checks
 gains only proposals that run exactly one package script it declares in its
 `package.json` (`npm test`, `npm run <script>`, `pnpm|yarn [run] <script>`, no
 extra arguments), so a change whose acceptance needs, say, `npm run test:e2e`
-gets host evidence for it; other proposals and duplicates are ignored
+gets host evidence for it. It also gains proposals that run a file the repository
+holds with a plain interpreter (`python3.11 scripts/check_startup.py`,
+`.venv/bin/python …`, `node`, `bash`, `sh`, `ruby`, `php`): the file must exist
+when verification runs and stay inside the repository, and inline code (`-c`,
+`-m`, `-e`) is refused. A Python or shell project's real acceptance check (for
+example a real-container startup) then gets host receipts too. Other proposals
+and duplicates are ignored
 (`verification-proposals.ts`, shared with the plan `role-turn` shows writers via
 `verificationProposalsFrom`). The normal scoped command validation,
 subprocess execution and full receipt requirements apply. This cannot accept an

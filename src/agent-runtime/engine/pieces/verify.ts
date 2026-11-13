@@ -16,6 +16,20 @@ import { NONDETERMINISTIC_OUTPUT_CODE, adoptedOutputNote, checkoutRelative, envi
 /** Keep real subprocess diagnostics in committed outputs for subsequent agents.
  * The full command evidence remains in the receipt; prioritize failed checks
  * when the output budget is exhausted. */
+/**
+ * One short line per command (exit code and the first failure facts), small enough to template
+ * into a role prompt: a baseline run before the developer is shown this way, never its full output.
+ */
+export function verificationSummary(receipt: VerificationReceipt): string {
+  const lines = receipt.commands.map(command => {
+    const head = `${[command.command, ...command.args].join(' ')} (${command.repositoryId}${command.cwd && command.cwd !== '.' ? ', ' + command.cwd : ''}): exit ${command.exitCode}`
+    const facts = command.exitCode !== 0 ? verificationFailureSummary(command).slice(0, 3).map(line => '  ' + line.slice(0, 240)) : []
+    return [head, ...facts].join('\n')
+  })
+  const text = lines.join('\n') || 'No verification commands ran.'
+  return text.length > 2000 ? text.slice(0, 1999) + '…' : text
+}
+
 function verificationDiagnostics(receipt: VerificationReceipt) {
   let remaining = 32_000
   const outputs = new Map<number, string>()
@@ -242,7 +256,7 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       const verified = receipt.valid && receipt.commands.length > 0 && !receipt.unverifiedRepositories?.length
       const output = { receiptId: receipt.id, valid: receipt.valid, candidateHash: adopted ? receipt.candidateHash : identity.candidateHash, noProgressCount: count, ...(receipt.reason ? { reason: receipt.reason } : {}), ...(stalled ? { reason: 'Verification failed three times without candidate changes' } : {}),
         ...(setup ? { setup } : {}), ...(environmentRepair ? { environmentRepair } : {}), ...(receipt.selfMutation ? { selfMutation: json(receipt.selfMutation) } : {}),
-        ...(adoptedOutputs.length ? { adoptedOutputs: json(adoptedOutputs) } : {}), ...verificationDiagnostics(receipt) }
+        ...(adoptedOutputs.length ? { adoptedOutputs: json(adoptedOutputs) } : {}), summary: verificationSummary(receipt), ...verificationDiagnostics(receipt) }
       const vars = { [progressKey]: { fingerprint, count, ...(adoptedOutputs.length ? { adopted: json(adoptedOutputs) } : {}) } }
       if (nondeterministic) return { outcome: params.hostBlockers === true ? 'blocked' : 'failed', status: params.hostBlockers === true ? 'blocked' : 'failed', vars, receipt: receiptEvidence(receipt), verified: null,
         error: { code: NONDETERMINISTIC_OUTPUT_CODE, message: `${nondeterministic.reason}. ${nondeterministic.requiredAction}` }, output: { ...output, valid: false, blocker: json(nondeterministic) } }

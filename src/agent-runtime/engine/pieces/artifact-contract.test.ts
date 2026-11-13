@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import type { JsonValue, PieceExecutionContext } from '../contracts.js'
-import { artifactContractPiece } from './artifact-contract.js'
+import { artifactContractPiece, tasksEditingFrozenArtifacts } from './artifact-contract.js'
 import type { PieceDependencies } from './ports.js'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })))
@@ -48,4 +48,38 @@ it('rejects empty tasks and symlinked specs without reading outside the artifact
   symlinkSync(path.join(f.directory, 'design.md'), path.join(f.directory, 'specs/leak.md'))
   await expect(f.run('freeze')).rejects.toThrow('symlinks')
   expect(readFileSync(path.join(f.directory, 'design.md'), 'utf8')).toBe('Approved design')
+})
+
+describe('tasks that edit frozen artifacts', () => {
+  // Two tasks of a real plan (deckdex-mtg) the implementer could never complete.
+  const field = [
+    '1.1 Modify `openspec/changes/feature/design.md` Runtime evidence with the unmodified fresh backend image\'s identity.',
+    '2.1 If task 1.1 confirms the incompatibility, modify only the SQLAlchemy line in `requirements.txt` to `sqlalchemy>=2.0,<2.1` and update `openspec/changes/feature/design.md` Runtime evidence with the corrected results.',
+  ]
+  it('names tasks whose object is proposal.md, design.md or a delta spec, or that record evidence there', () => {
+    const edits = [...field, '3. Record the container results in design.md', '4. Update proposal.md with the final scope', '5. Edit openspec/changes/feature/specs/example/spec.md to add a scenario']
+    expect(tasksEditingFrozenArtifacts(edits.map(text => ({ text })), 'feature')).toEqual(edits)
+  })
+  it('accepts tasks that only cite them, and other changes or repository files', () => {
+    const fine = ['1. Add the endpoint described in design.md', '2. Implement the requirement per `openspec/changes/feature/specs/example/spec.md`', '3. Update docs/design.md for users',
+      '4. Update `openspec/changes/other/design.md`', '5. Modify requirements.txt and run the tests']
+    expect(tasksEditingFrozenArtifacts(fine.map(text => ({ text })), 'feature')).toEqual([])
+  })
+  it('accepts a task that forbids editing them (a real repaired plan, deckdex-mtg)', () => {
+    const repaired = ['1.1 Modify only the SQLAlchemy declaration in `requirements.txt` to exactly `sqlalchemy>=2.0,<2.1`, once the baseline fresh-image diagnostic described in design.md confirms selection of the absent psycopg driver. Do not modify proposal.md, design.md or delta specs during implementation; only task completion markers may change in this checklist.',
+      "2. Never update design.md; don't edit proposal.md", '3. Fix the parser without changing `openspec/changes/feature/specs/example/spec.md`']
+    expect(tasksEditingFrozenArtifacts(repaired.map(text => ({ text })), 'feature')).toEqual([])
+    // A negation elsewhere in the task does not hide a real edit.
+    expect(tasksEditingFrozenArtifacts([{ text: 'Do not touch tests. Update design.md with the results' }], 'feature')).toHaveLength(1)
+  })
+  it('refuses to freeze such a plan and tells the planner why', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.directory, 'tasks.md'), field.map(text => `- [ ] ${text}`).join('\n') + '\n- [ ] 3. Implement requirement\n')
+    const result = await f.run('freeze')
+    expect(result).toMatchObject({ outcome: 'fail', output: { reason: 'tasks_edit_frozen_artifacts', tasks: field } })
+    expect(result.history?.[0].text).toContain('Rewrite each as work on repository files')
+    // A check of an already frozen contract is unaffected (only freeze judges the plan).
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [ ] 1. Implement requirement\n')
+    expect(await f.run('freeze')).toMatchObject({ outcome: 'pass' })
+  })
 })

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { bindVerificationPlan, pipelineStateDirectory, validateVerificationRequest, type PipelineContext, type VerificationCommand, type HostCheckPolicy } from '../pipeline/pipeline-state.js'
+import { bindVerificationPlan, DEFAULT_VERIFICATION_TIMEOUT_MS, pipelineStateDirectory, validateVerificationRequest, type PipelineContext, type VerificationCommand, type HostCheckPolicy } from '../pipeline/pipeline-state.js'
 import { assertProposalInScope, withScopeDefault } from './change-scope.js'
 import { fingerprint } from './durable-store.js'
 import { child, write } from './graph/artifacts.js'
@@ -92,7 +92,7 @@ export function validateProposedChecks(context: PipelineContext, raw: unknown): 
 }
 
 function normalized(command: VerificationCommand): VerificationCommand {
-  return JSON.parse(JSON.stringify({ ...command, args: [...command.args], cwd: command.cwd ?? '.', timeoutMs: command.timeoutMs ?? 15 * 60_000 }))
+  return JSON.parse(JSON.stringify({ ...command, args: [...command.args], cwd: command.cwd ?? '.', timeoutMs: command.timeoutMs ?? DEFAULT_VERIFICATION_TIMEOUT_MS }))
 }
 function entry(key: string, label: string, command: VerificationCommand, origin: PlanEntry['origins'][number], harness?: PlanEntry['harness']): PlanEntry {
   const definition = normalized(command)

@@ -158,7 +158,7 @@ specrails-core runtime resume --context .specrails/context.json --approve archiv
 
 The commands work in macOS shells and PowerShell; quote paths and answers containing spaces. Verification uses `command` plus an `args` array, not a shell command string. Prefer portable Node/npm commands over Bash scripts when the project supports Windows.
 
-Run and resume emit JSON lines: `workflow-event` (the durable ledger events), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
+Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a step that ends with the `fail` outcome, such as `openspec-validate` sending the plan back, carries a bounded `reason` taken from its history note so hosts can show why under the step), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
 `runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the seventeen piece kinds registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `component`, `map`, `implementation`, `join`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
 
@@ -202,6 +202,20 @@ The `exit-code-honesty` guardrail catches test harnesses that print failures but
 This is a conservative text diagnostic over the last 16,000 characters of captured output, not a universal parser for every test framework. Test commands must still propagate real failures through their exit status. When the guardrail rejects output, the log includes the matching line so the reported failure can be checked against the runner's results.
 
 Verification failures return to the fixer. `limits.maxAttempts` bounds fixer invocations (default: 3), after which Core blocks with `Implementation correction limit reached`. An explicit resume grants a fresh budget. If the fixer repeatedly reports no defect, inspect the quoted verification evidence before resuming; rerunning an unchanged command cannot correct a diagnostic false positive.
+
+A verification command without its own `timeoutMs` runs for at most 15 minutes (`DEFAULT_VERIFICATION_TIMEOUT_MS`): tests, lint and type checks. An admitted proposal that runs a repository script (an acceptance check such as an uncached container build, migrations and a restart) gets 60 minutes (`ACCEPTANCE_SCRIPT_TIMEOUT_MS`). Either way, a command that prints nothing for 5 minutes is stopped (`SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, guardrail `verify-idle-timeout`).
+
+## Environment facts
+
+Every role's repository reference starts with environment facts the host measures for the checkout (`environment-facts.ts`, capability `environmentFacts: 1`), cached for ten minutes:
+
+- Toolchain targets: Python and Node versions from `FROM python:`/`FROM node:` lines in Dockerfiles (root and one directory down), `.python-version`, `runtime.txt`, `.nvmrc`, `.node-version`, `.tool-versions` (pinned) and `requires-python` (a range is not a pin).
+- Interpreters on the host PATH (`python3`, the pinned `python3.X`, `node`), and whether a project virtual environment (`.venv`, `venv`) exists. A bare `python3` that does not satisfy the pinned target is called out, so checks run in a venv instead of on a newer system Python.
+- Docker reachability (`docker info`) when the repository has Dockerfiles or Compose files. A read-only sandboxed role may be denied the Docker socket; the facts say that is a sandbox limit, not a host blocker.
+
+Roles are told to trust these facts over older notes. Verification also classifies two host preconditions: a system Python that refuses installs (PEP 668, `externally-managed-environment`, kind `toolchain`, with a venv action) and an unreachable Docker daemon (kind `environment`).
+
+Each `verify` output carries a bounded `summary` (one line per command with its exit code and first failure facts; capability `verificationSummary: 1`), small enough for a host to template into a role prompt, for example a baseline run before the developer.
 
 ## Questions and approvals
 

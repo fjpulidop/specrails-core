@@ -174,6 +174,11 @@ export function hostPrecondition(output: string): HostPrecondition | undefined {
   if (/npm (?:ERR!|error) code (?:ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ETIMEDOUT|ECONNRESET)\b/.test(text) || /ERR_PNPM_META_FETCH_FAIL\b/.test(text)
     || new RegExp(String.raw`\b(?:ENOTFOUND|EAI_AGAIN)\b[^\n]{0,200}${REGISTRY}|${REGISTRY}[^\n]{0,200}\b(?:ENOTFOUND|EAI_AGAIN)\b`, 'i').test(text)) return { kind: 'network', reason: 'the package registry cannot be reached from the verification environment',
     requiredAction: 'Give the verification environment network access to the package registry, then retry the run.' }
+  // PEP 668: Homebrew/Debian Pythons refuse system-wide installs; the fix is a project venv, not a code edit.
+  if (/error: externally-managed-environment\b/.test(text)) return { kind: 'toolchain', reason: 'the system Python refuses package installs (PEP 668 externally managed environment), so verification needs a project virtual environment',
+    requiredAction: 'Add setup commands that create a project virtual environment with the Python version the project targets (for example `python3.11 -m venv .venv` and `.venv/bin/pip install -r requirements.txt`), run the checks with `.venv/bin/python`, then retry the run.' }
+  if (/(?:permission denied|operation not permitted)[^\n]{0,240}docker\.sock|Cannot connect to the Docker daemon at\b/i.test(text)) return { kind: 'environment', reason: 'the Docker daemon is not reachable from the verification process',
+    requiredAction: 'Start Docker (Docker Desktop or the daemon) and make its socket available to the user Specrails runs as, then retry the run.' }
   if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return { kind: 'credential', reason: 'git credentials needed to fetch a dependency are not available to verification commands',
     requiredAction: 'Make the git credentials that fetch the dependency (an SSH key or credential helper) available to Specrails, then retry the run.' }
   return undefined
