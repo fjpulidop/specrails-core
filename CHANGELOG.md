@@ -1,5 +1,17 @@
 # Changelog
 
+## [6.9.0](https://github.com/fjpulidop/specrails-core/compare/v6.8.0...v6.9.0) (2026-11-14)
+
+
+### Features
+
+* **runtime:** smarter runs (environment facts, fail reasons, frozen-artifact tasks) ([#470](https://github.com/fjpulidop/specrails-core/issues/470)) ([ef80372](https://github.com/fjpulidop/specrails-core/commit/ef8037293e9235204e8d9e0fb74371f634ccea75))
+
+
+### Bug Fixes
+
+* **runtime:** steer the planner off legacy main specs in the archive preflight ([#466](https://github.com/fjpulidop/specrails-core/issues/466)) ([0fc0fab](https://github.com/fjpulidop/specrails-core/commit/0fc0fab74535fd23f1e5a8b0addd861470669010))
+
 ## [6.8.0](https://github.com/fjpulidop/specrails-core/compare/v6.7.5...v6.8.0) (2026-11-12)
 
 
