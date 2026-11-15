@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.9.1](https://github.com/fjpulidop/specrails-core/compare/v6.9.0...v6.9.1) (2026-11-15)
+
+
+### Bug Fixes
+
+* **runtime:** put archive preflight guidance before OpenSpec output ([#472](https://github.com/fjpulidop/specrails-core/issues/472)) ([7adae7b](https://github.com/fjpulidop/specrails-core/commit/7adae7bbb687775731318cc54826b39703813852))
+
 ## [6.9.0](https://github.com/fjpulidop/specrails-core/compare/v6.8.0...v6.9.0) (2026-11-14)
 
 
