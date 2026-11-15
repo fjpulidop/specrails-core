@@ -1,5 +1,17 @@
 # Changelog
 
+## [6.10.0](https://github.com/fjpulidop/specrails-core/compare/v6.9.1...v6.10.0) (2026-11-15)
+
+
+### Features
+
+* **sessions:** report Codex generated images as turn.image ([#474](https://github.com/fjpulidop/specrails-core/issues/474)) ([31bd6d0](https://github.com/fjpulidop/specrails-core/commit/31bd6d01df23d54a4247588925edd21d61ba5f0e))
+
+
+### Bug Fixes
+
+* **engine:** allow Windows regex watchdog scheduling headroom ([#475](https://github.com/fjpulidop/specrails-core/issues/475)) ([b6f680a](https://github.com/fjpulidop/specrails-core/commit/b6f680a54e6b76b9deddd823ddd10f5f7512be86))
+
 ## [6.9.1](https://github.com/fjpulidop/specrails-core/compare/v6.9.0...v6.9.1) (2026-11-15)
 
 
