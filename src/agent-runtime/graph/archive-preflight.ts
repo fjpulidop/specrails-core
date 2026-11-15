@@ -69,14 +69,19 @@ export function legacyMainSpecs(reason: string): string[] {
   return [...names]
 }
 
-/** Plain-text guidance for the planning role's history. */
+/**
+ * Plain-text guidance for the planning role's history. The guidance comes before OpenSpec's output:
+ * a history entry is bounded (1500 characters by default) and the output alone can reach 2000, so
+ * guidance placed after it was always cut and the planner kept targeting an unwritable main spec.
+ */
 export function describeArchivePreflight(change: string, preflight: Extract<ArchivePreflight, { valid: false }>): string {
   const legacy = legacyMainSpecs(preflight.reason)
   return [
-    `OpenSpec validates change ${change}, but archiving it would fail. OpenSpec's archive output:`,
-    preflight.reason,
+    `OpenSpec validates change ${change}, but archiving it would fail.`,
     legacy.length
-      ? `The main spec${legacy.length > 1 ? 's' : ''} ${legacy.map(name => `openspec/specs/${name}/spec.md`).join(', ')} predate${legacy.length > 1 ? '' : 's'} OpenSpec's format (no ## Purpose or ## Requirements section), and no delta can repair that. Do not edit main specs and do not target ${legacy.join(', ')}: move these requirements to a delta for a new capability (openspec/changes/${change}/specs/<new-capability>/spec.md with only ## ADDED Requirements) and delete the delta that targeted ${legacy.length > 1 ? 'them' : 'it'}. OpenSpec stops at the first such spec, so check every other main spec you target the same way.`
+      ? `The main spec${legacy.length > 1 ? 's' : ''} ${legacy.map(name => `openspec/specs/${name}/spec.md`).join(', ')} ${legacy.length > 1 ? 'are' : 'is'} malformed (no ## Purpose or ## Requirements section, or requirement or delta headers outside ## Requirements), and no delta can repair that. Do not edit main specs and do not target ${legacy.join(', ')}: move these requirements to a delta for a new capability (openspec/changes/${change}/specs/<new-capability>/spec.md with only ## ADDED Requirements) and delete the delta that targeted ${legacy.length > 1 ? 'them' : 'it'}. OpenSpec stops at the first such spec, so check every other main spec you target the same way.`
       : 'Reconcile each delta with openspec/specs: MODIFIED and RENAMED headers must name an existing requirement exactly, and ADDED requirements must not exist yet.',
+    `OpenSpec's archive output:`,
+    preflight.reason,
   ].join('\n')
 }

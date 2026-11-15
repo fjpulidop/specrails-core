@@ -139,7 +139,12 @@ that targeted the legacy spec. Other rebuilt-spec errors, such as a requirement
 with no SHALL/MUST body, keep the generic reconcile advice. OpenSpec stops at the
 first unwritable spec, so the guidance also asks the planner to check the other
 main specs it targets. The reason keeps the last 2000 characters of the output,
-which hold the final copy of the failing block.
+which hold the final copy of the failing block. The guidance precedes that output
+in the note: a history entry is bounded (1500 characters by default), so guidance
+placed after the output was cut and the planner kept re-targeting the malformed
+spec until the repair budget ran out. A main spec with a stray delta header (such
+as `## REMOVED Requirements` left by a bad archive) is classified the same way,
+since OpenSpec reports the requirements after it as outside `## Requirements`.
 
 ## Native implementation and recovery
 
