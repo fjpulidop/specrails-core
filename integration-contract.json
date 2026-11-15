@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.11",
+  "schemaVersion": "5.12",
   "providers": {
     "claude": {
       "cli": {
@@ -581,6 +581,7 @@
         "turn.started",
         "turn.output",
         "turn.tool",
+        "turn.image",
         "turn.completed",
         "subagent.started",
         "subagent.phase",

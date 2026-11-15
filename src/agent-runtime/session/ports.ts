@@ -62,6 +62,8 @@ export type DriverEvent =
   | { kind: 'turn.started'; trigger: 'input' | 'continuation'; inputIds: string[] }
   | { kind: 'turn.output'; channel: OutputChannel; delta: string }
   | ({ kind: 'turn.tool' } & ToolActivity)
+  /** The provider generated an image and saved it locally (`path` is absolute). */
+  | { kind: 'turn.image'; imageId: string; path: string; mimeType: string; prompt?: string }
   | { kind: 'turn.completed'; status: 'completed' | 'failed' | 'stopped'; text: string; error?: string; usage: ReportedUsage }
   | { kind: 'subagent.started'; subagentId: string; parentId: string | null; agentKind: SubagentKind; agentType?: string; description: string; prompt?: string }
   | { kind: 'subagent.phase'; subagentId: string; phase: SubagentPhase; reason?: string }

@@ -38,6 +38,8 @@ export type SessionEventBody =
   | { type: 'turn.started'; turnId: string; origin: TurnOrigin; inputIds: string[]; trigger?: { subagentIds: string[] } }
   | { type: 'turn.output'; turnId: string; channel: OutputChannel; delta: string }
   | ({ type: 'turn.tool'; turnId: string } & ToolActivity)
+  /** An image the provider generated during the turn, saved by the provider at `path` (absolute, local). */
+  | { type: 'turn.image'; turnId: string; imageId: string; path: string; mimeType: string; prompt?: string }
   | { type: 'turn.completed'; turnId: string; status: 'completed' | 'failed' | 'stopped' | 'interrupted'; text: string; error?: string; usage: Usage }
   | { type: 'subagent.started'; subagentId: string; parentId: string | null; kind: SubagentKind; agentType?: string; description: string; prompt?: string; delegated?: { driver: string; model: string } }
   | { type: 'subagent.phase'; subagentId: string; phase: SubagentPhase; reason?: string }
@@ -73,6 +75,7 @@ export const SESSION_EVENT_TYPES = Object.freeze([
   'turn.started',
   'turn.output',
   'turn.tool',
+  'turn.image',
   'turn.completed',
   'subagent.started',
   'subagent.phase',

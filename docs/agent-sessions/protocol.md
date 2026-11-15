@@ -117,6 +117,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `turn.started` | `turnId, origin: 'user' \| 'subagent' \| 'system', inputIds, trigger?: { subagentIds }` |
 | `turn.output` | `turnId, channel: 'text' \| 'thinking', delta` |
 | `turn.tool` | `turnId, toolUseId, name, phase: 'started' \| 'completed', input?, output?, isError?` |
+| `turn.image` | `turnId, imageId, path, mimeType, prompt?` — an image the provider generated in the turn, saved by the provider at the absolute local `path` (Codex `imageGeneration`). Image bytes never enter the journal; the host copies the file if it keeps it |
 | `turn.completed` | `turnId, status: 'completed' \| 'failed' \| 'stopped' \| 'interrupted', text, error?, usage: Usage` |
 | `subagent.started` | `subagentId, parentId \| null, kind: 'foreground' \| 'background', agentType?, description, prompt?` |
 | `subagent.phase` | `subagentId, phase: 'running' \| 'idle' \| 'failed' \| 'stopped' \| 'killed' \| 'interrupted', reason?` |

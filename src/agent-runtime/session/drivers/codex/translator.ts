@@ -1,4 +1,5 @@
 import type { SubagentPhase } from '../../domain/types.js'
+import type { ToolActivity } from '../../domain/events.js'
 import type { DriverEvent } from '../../ports.js'
 import type { ReportedUsage } from '../../domain/usage.js'
 
@@ -31,6 +32,11 @@ function toolName(item: Json): string {
   if (type === 'mcpToolCall') return `${str(item.server) ?? 'mcp'}.${str(item.tool) ?? 'tool'}`
   if (type === 'collabAgentToolCall') return `agent.${str(item.tool) ?? 'call'}`
   return type
+}
+
+function imageMimeType(path: string): string {
+  const ext = path.toLowerCase().split('.').pop()
+  return ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png'
 }
 
 function toolFailed(item: Json): boolean {
@@ -219,6 +225,8 @@ export class CodexTranslator {
     } else if (type === 'subAgentActivity') {
       // Child turns carry progress, results and phase; only the start registers.
       if (str(item.kind) === 'started') events.push(...this.registerChild(owner, str(item.agentThreadId), describeAgentPath(str(item.agentPath))))
+    } else if (type === 'imageGeneration') {
+      events.push(...this.imageGeneration(owner, id, item, completed))
     } else if (TOOL_ITEMS.has(type)) {
       const name = toolName(item)
       if (!this.startedTools.has(id)) {
@@ -233,6 +241,29 @@ export class CodexTranslator {
       }
     }
     if (completed) this.completedItems.add(id)
+    return events
+  }
+
+  /**
+   * `imageGeneration` items (codex-cli 0.160): the image is written to `savedPath`
+   * and also inlined as base64 in `result`. The base64 never enters the journal:
+   * the activity shows a tool call, and the root thread's image is reported by
+   * path so the host can attach it to the reply. A child thread's image stays a
+   * tool result of that sub-agent.
+   */
+  private imageGeneration(owner: string | null, id: string, item: Json, completed: boolean): DriverEvent[] {
+    const events: DriverEvent[] = []
+    const prompt = str(item.revisedPrompt)
+    const emit = (tool: ToolActivity) => events.push(owner === null ? { kind: 'turn.tool', ...tool } : { kind: 'subagent.output', subagentId: owner, channel: 'tool', tool })
+    if (!this.startedTools.has(id)) {
+      this.startedTools.add(id)
+      emit({ toolUseId: id, name: 'imageGeneration', phase: 'started', input: prompt ?? null })
+    }
+    if (!completed) return events
+    const savedPath = str(item.savedPath)
+    const failed = toolFailed(item) || !!item.failure || !savedPath
+    emit({ toolUseId: id, name: 'imageGeneration', phase: 'completed', output: preview(failed ? (item.failure ?? item.error ?? { status: item.status }) : savedPath), ...(failed ? { isError: true } : {}) })
+    if (!failed && owner === null) events.push({ kind: 'turn.image', imageId: id, path: savedPath!, mimeType: imageMimeType(savedPath!), ...(prompt ? { prompt } : {}) })
     return events
   }
 
