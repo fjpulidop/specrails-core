@@ -20,6 +20,8 @@ export function redactSessionEvent(event: SessionEvent): SessionEvent {
       return { ...event, delta: redactSecrets(event.delta) }
     case 'turn.tool':
       return { ...event, ...redactTool(event) }
+    case 'turn.image':
+      return event.prompt === undefined ? event : { ...event, prompt: redactSecrets(event.prompt) }
     case 'turn.completed':
       return { ...event, text: redactSecrets(event.text), ...(event.error === undefined ? {} : { error: redactSecrets(event.error) }) }
     case 'subagent.started':

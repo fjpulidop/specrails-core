@@ -48,7 +48,7 @@ return, including the in-memory snapshot of a live session. What the provider
 receives is never changed: input is delivered as the host sent it.
 
 **What is redacted.** Free text and tool I/O: `input.accepted.text`,
-`turn.output.delta`, `turn.tool.input`/`output`, `turn.completed.text`/`error`,
+`turn.output.delta`, `turn.tool.input`/`output`, `turn.image.prompt`, `turn.completed.text`/`error`,
 `subagent.started.description`/`prompt`, `subagent.output.delta`/`tool`,
 `subagent.result.summary`, `reason` fields and `provider.diagnostic.message`;
 in snapshots, the open turn text and sub-agent descriptions, reasons and

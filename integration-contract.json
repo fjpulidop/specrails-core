@@ -581,6 +581,7 @@
         "turn.started",
         "turn.output",
         "turn.tool",
+        "turn.image",
         "turn.completed",
         "subagent.started",
         "subagent.phase",

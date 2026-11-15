@@ -214,6 +214,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       return event.channel === 'text' ? { ...state, openTurn: { ...turn, text: turn.text + event.delta } } : state
     }
     case 'turn.tool':
+    case 'turn.image':
       requireOpenTurn(state, event.turnId)
       return state
     case 'turn.completed': {

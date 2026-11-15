@@ -442,6 +442,12 @@ export class ActiveSession {
         this.commit([{ type: 'turn.tool', turnId: turn.turnId, ...tool }])
         return
       }
+      case 'turn.image': {
+        const turn = this.requireTurn()
+        const { kind: _kind, ...image } = event
+        this.commit([{ type: 'turn.image', turnId: turn.turnId, ...image, ...(image.prompt ? { prompt: image.prompt.slice(0, 4_000) } : {}) }])
+        return
+      }
       case 'turn.completed':
         return this.completeTurn(event.status, event.text, event.usage, event.error)
       case 'subagent.started':
