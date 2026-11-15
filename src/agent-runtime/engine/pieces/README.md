@@ -37,10 +37,12 @@ read-only result before asking a human; answering resumes the continue branch
 without calling that decision again, and records the answer in history.
 Malformed non-question output keeps the existing single-repair policy.
 
-Captures and expression regexes use a constant VM script, 50 ms timeout, 200
-pattern characters and at most 32,000 input characters. The timeout is
-wall-clock, so a timed-out match is retried once: a GC or scheduler pause cannot
-fail a cheap pattern, while a catastrophic one still fails (at most 2 × 50 ms).
+Captures and expression regexes use a constant VM script, a 50 ms timeout
+(250 ms on Windows), 200 pattern characters and at most 32,000 input characters.
+The timeout is wall-clock, so a timed-out match is retried once to tolerate GC
+or scheduler pauses. Windows gets extra scheduling headroom after a simple
+match exhausted both 50 ms attempts on a loaded runner. Catastrophic patterns
+still fail after at most two timed attempts (100 ms, or 500 ms on Windows).
 User input supplies only data. Provider text, shell output and history are separately bounded.
 
 A `role-turn` for a role with write access renders the complete host

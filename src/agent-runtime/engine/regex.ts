@@ -2,12 +2,15 @@ import { Script } from 'node:vm'
 import { EngineError } from './contracts.js'
 
 const matchScript = new Script('new RegExp(pattern).exec(text)', { filename: 'core-bounded-pattern' })
-export const PATTERN_TIMEOUT_MS = 50
+// The VM watchdog uses wall-clock time, including scheduler pauses. Windows
+// runners have exhausted both 50 ms attempts on /^PA.*$/ against "PASS".
+// Keep a finite budget there with enough room for thread scheduling.
+export const PATTERN_TIMEOUT_MS = process.platform === 'win32' ? 250 : 50
 /**
  * Attempts per match. The VM timeout is wall-clock: a garbage-collection pause or
  * a descheduled thread on a loaded machine can exceed it while a simple pattern
  * runs. A catastrophic pattern times out on every attempt, so one retry keeps the
- * bound (at most 2 × 50 ms) without failing a cheap match on scheduler noise.
+ * bound (at most 2 × PATTERN_TIMEOUT_MS) while tolerating scheduler noise.
  */
 export const PATTERN_ATTEMPTS = 2
 

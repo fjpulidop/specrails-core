@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { boundedPattern, interpolateParams, parseExpression } from './expressions.js'
 import { initialDefinitionState } from './state.js'
-import { capturePattern, PATTERN_ATTEMPTS } from './regex.js'
+import { capturePattern, PATTERN_ATTEMPTS, PATTERN_TIMEOUT_MS } from './regex.js'
 
 describe('closed condition expressions', () => {
   const state = initialDefinitionState({ count: 2, text: 'PASS', changeId: 'example' })
@@ -30,7 +30,7 @@ describe('closed condition expressions', () => {
     expect(capturePattern('^PA(.*)$', 'PASS', paused)).toEqual(['PASS', 'SS'])
     expect(calls).toBe(2)
     calls = 0
-    expect(() => capturePattern('(a+)+b', 'aaaa', () => { calls++; throw timeout() })).toThrow('exceeded 50 ms')
+    expect(() => capturePattern('(a+)+b', 'aaaa', () => { calls++; throw timeout() })).toThrow(`exceeded ${PATTERN_TIMEOUT_MS} ms`)
     expect(calls).toBe(PATTERN_ATTEMPTS)
     calls = 0
     expect(() => capturePattern('[', 'x', () => { calls++; throw new SyntaxError('Invalid regular expression') })).toThrow('Invalid regular expression')
