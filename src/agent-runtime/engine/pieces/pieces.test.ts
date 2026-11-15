@@ -11,7 +11,7 @@ import type { RoleExecutionState } from '../../role-state.js'
 import type { WorkflowStepContext } from '../../workflow-types.js'
 import type { JsonValue, PieceExecutionContext, PieceResult } from '../contracts.js'
 import { SqliteProjectStore } from '../store/sqlite-store.js'
-import { capturePattern } from '../regex.js'
+import { capturePattern, PATTERN_TIMEOUT_MS } from '../regex.js'
 import { initialDefinitionState } from '../state.js'
 import { createPieceRegistry } from './index.js'
 import type { PieceDependencies } from './ports.js'
@@ -149,7 +149,7 @@ describe('reviewed piece catalog and control', () => {
   it('bounds catastrophic regex matching without accepting user JavaScript', () => {
     expect(capturePattern('change: ([a-z-]+)', 'change: feature-x')).toEqual(['change: feature-x', 'feature-x'])
     const start = Date.now()
-    expect(() => capturePattern('a+a+a+a+b', 'a'.repeat(32_000))).toThrow('50 ms')
+    expect(() => capturePattern('a+a+a+a+b', 'a'.repeat(32_000))).toThrow(`${PATTERN_TIMEOUT_MS} ms`)
     expect(Date.now() - start).toBeLessThan(1500)
     expect(() => capturePattern('('.repeat(201), '')).toThrow('200')
     expect(capturePattern('"; process.exit(); //', 'innocent')).toBeNull()
