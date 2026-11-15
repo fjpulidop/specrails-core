@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { describeArchivePreflight, legacyMainSpecs, previewOpenSpecArchive } from './archive-preflight.js'
 import { openSpecPieces } from '../engine/pieces/openspec.js'
+import { mergeHistory } from '../engine/state.js'
 import type { PieceExecutionContext } from '../engine/contracts.js'
 import type { PieceDependencies } from '../engine/pieces/ports.js'
 
@@ -50,7 +51,7 @@ describe('OpenSpec archive preflight', () => {
     const reason = (preflight as Extract<typeof preflight, { valid: false }>).reason
     expect(legacyMainSpecs(reason)).toEqual(['api'])
     const text = describeArchivePreflight('versions', preflight as Extract<typeof preflight, { valid: false }>)
-    expect(text).toContain('openspec/specs/api/spec.md predates OpenSpec')
+    expect(text).toContain('openspec/specs/api/spec.md is malformed')
     expect(text).toContain('openspec/changes/versions/specs/<new-capability>/spec.md')
     expect(text).not.toContain('MODIFIED and RENAMED headers')
   })
@@ -114,6 +115,23 @@ describe('OpenSpec archive preflight', () => {
       // generic advice applies.
       expect(legacyMainSpecs(reason.slice(reason.lastIndexOf('rebuilt spec for') + 5))).toEqual([])
     })
+  })
+
+  it('keeps the guidance inside a bounded history entry for a main spec with a stray delta header', async () => {
+    // Field case: an archive left "## REMOVED Requirements" inside a main spec; the planner never
+    // saw the guidance because it followed OpenSpec's output and the history entry cut it.
+    const added = `## ADDED Requirements\n### Requirement: Docker startup\n\nThe backend SHALL start in Docker.\n\n${scenario}`
+    const corrupt = `${mainSpec}\n## REMOVED Requirements\n\n### Requirement: Old buttons\n**Reason**: Native controls.\n**Migration**: None.\n`
+    const preflight = await previewOpenSpecArchive(project(added, corrupt), 'versions')
+    expect(preflight).toMatchObject({ valid: false })
+    const reason = (preflight as Extract<typeof preflight, { valid: false }>).reason
+    expect(reason).toContain('target spec is structurally invalid')
+    expect(legacyMainSpecs(reason)).toEqual(['api'])
+    const text = describeArchivePreflight('versions', { valid: false, reason: reason.padStart(2000, '.') })
+    const [entry] = mergeHistory([], [{ id: 'h', transition: 1, attempt: 1, ordinal: 0, nodePath: 'validate', text }], 1500)
+    expect(entry).toMatchObject({ truncated: true })
+    expect(entry!.text).toContain('do not target api')
+    expect(entry!.text).toContain('delete the delta that targeted it')
   })
 
   it('passes once the delta modifies an existing requirement, including one whose SHALL wraps', async () => {
