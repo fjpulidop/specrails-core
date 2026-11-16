@@ -1298,7 +1298,7 @@ function placePipelineRuntime(input: Pick<ScaffoldInput, 'scriptDir' | 'artifact
       const provider = input.provider
       writeFileLf(configPath, JSON.stringify({ schemaVersion: 1, enabled: true,
         providers: [{ id: provider, kind: 'cli', cli: provider }],
-        agents: Object.fromEntries(['architect', 'developer', 'reviewer'].map(role => [role, { provider, maxTurns: 100 }])), verification: [],
+        agents: Object.fromEntries(['architect', 'developer', 'reviewer'].map(role => [role, { provider }])), verification: [],
       }, null, 2) + '\n')
     }
     return 3 + traced

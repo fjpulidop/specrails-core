@@ -44,8 +44,8 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
     const openspec = request.openspec ? new OpenSpecTools(request.openspec, controller.signal) : undefined
     const evidenceScope = request.openspec?.evidenceScope && request.role !== 'architect' ? request.openspec.evidenceScope : undefined
     const definitions = [...toolset.definitions(), ...(openspec ? [OPENSPEC_TOOL_DEFINITION] : []), ...(evidenceScope ? [{ type: 'function', function: { name: 'read_verification_evidence', description: 'Read host verification evidence and source files with opaque IDs and bounded cursors. List to discover IDs.', parameters: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, section: { type: 'string', enum: ['summary', 'stdout', 'stderr', 'source'] }, sourceId: { type: 'string' }, cursor: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } } } } }] : [])]
-    const maxTurns = request.maxTurns ?? 100
-    if (!Number.isSafeInteger(maxTurns) || maxTurns < 1) throw new AgentExecutionError('maxTurns must be a positive integer', 'invalid_limit')
+    // Unset maxTurns means no turn limit; timeouts and cost budgets still bound the run.
+    if (request.maxTurns !== undefined && (!Number.isSafeInteger(request.maxTurns) || request.maxTurns < 1)) throw new AgentExecutionError('maxTurns must be a positive integer', 'invalid_limit')
     // The compact pipelines are several bounded model calls per role (the
     // architect alone is ~8); a role budget sized for one agentic call would
     // cut them off. Scale the DEFAULT only — an explicit timeout is respected.
@@ -95,7 +95,7 @@ export class OpenAICompatibleExecutor implements AgentExecutor {
         { role: 'user', content: (request.openspec ? openSpecPrompt(request.openspec) : '') + request.prompt },
       ]
       const { text } = await runToolLoop({
-        client, messages, tools: definitions, maxTurns, contextWindowTokens, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), onEvent, signal: controller.signal,
+        client, messages, tools: definitions, maxTurns: request.maxTurns ?? Number.POSITIVE_INFINITY, contextWindowTokens, ...(maxOutputTokens === undefined ? {} : { maxOutputTokens }), onEvent, signal: controller.signal,
         execute: async (name, args) => name === 'read_verification_evidence' && evidenceScope ? JSON.stringify(readVerificationEvidence(evidenceScope, args as Parameters<typeof readVerificationEvidence>[1])) : name === 'openspec_workflow' && openspec ? JSON.stringify(await openspec.execute(args as Parameters<OpenSpecTools['execute']>[0])) : toolset.execute(name, args),
       })
       request.onEvent?.({ kind: 'text', text })
