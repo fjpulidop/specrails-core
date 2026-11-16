@@ -192,7 +192,7 @@ describe('four CLI execution contracts', () => {
     await expect(new CliExecutor(provider, { runProcess }).execute(request())).rejects.toMatchObject({ code: 'provider_execution_error' })
   })
   it.each([
-    ['error_max_turns', 'max_turns', 'limit of 100 turns'],
+    ['error_max_turns', 'max_turns', 'its own turn limit'],
     ['error_max_budget_usd', 'cost_budget', 'cost budget'],
     ['error_max_structured_output_retries', 'structured_output_retries', 'structured output retries'],
   ])('preserves Claude termination reason %s and billed usage', async (subtype, code, message) => {
@@ -209,8 +209,8 @@ describe('four CLI execution contracts', () => {
   })
   it('names the role, its effective turn ceiling and the fix in a max-turns failure', async () => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype: 'error_max_turns', is_error: true, usage: { input_tokens: 1, output_tokens: 1 } }), stderr: '', exitCode: 1 }))
-    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer' }))).rejects.toMatchObject({ message: expect.stringMatching(/reached the configured limit of 100 turns for developer\. Raise maxTurns for role developer \(unset: Core default 100\)/) })
-    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer', maxTurns: 300 }))).rejects.toMatchObject({ message: expect.stringMatching(/limit of 300 turns for developer\. Raise maxTurns for role developer and start a new run/) })
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer' }))).rejects.toMatchObject({ message: expect.stringMatching(/reached its own turn limit for developer\. Core sets no limit for role developer; check the provider's own configuration and start a new run/) })
+    await expect(new CliExecutor('claude', { runProcess }).execute(request({ role: 'developer', maxTurns: 300 }))).rejects.toMatchObject({ message: expect.stringMatching(/limit of 300 turns for developer\. Raise or remove maxTurns for role developer and start a new run/) })
   })
   it('probes Kimi capability without billing and uses a disposable enforced read-only agent when available', async () => {
     const runProcess = vi.fn<CliProcessRunner>(async invocation => {
@@ -349,6 +349,21 @@ it('preserves every built-in argv byte against the C0 baseline', () => {
   expect(baseline.sourceCommit).toBe('6ab6b3ce')
   expect(baseline.fixtures).toHaveLength(12)
   for (const fixture of baseline.fixtures) expect(buildCliInvocation(fixture.provider, fixture.request, fixture.options), `${fixture.provider}/${fixture.request.role}`).toEqual(fixture.invocation)
+})
+
+describe('turn limits', () => {
+  it('passes no --max-turns when the role sets no maxTurns, and the configured value when it does', () => {
+    expect(buildCliInvocation('claude', request({ role: 'developer' })).args).not.toContain('--max-turns')
+    const args = buildCliInvocation('claude', request({ role: 'developer', maxTurns: 450 })).args
+    expect(args[args.indexOf('--max-turns') + 1]).toBe('450')
+  })
+  it('does not stop an unlimited Codex run however many tool events it streams', async () => {
+    const events = Array.from({ length: 150 }, (_, index) => ({ type: 'item.completed', item: { id: `cmd-${index}`, type: 'command_execution', command: 'true', exit_code: 0 } }))
+    const stdout = jsonl(...events, { type: 'item.completed', item: { id: 'final', type: 'agent_message', text: 'done' } }, { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } })
+    const runProcess = vi.fn<CliProcessRunner>(async (_invocation, options) => { for (const line of stdout.trim().split('\n')) options.onLine?.(line); return { stdout, stderr: '', exitCode: 0 } })
+    await expect(new CliExecutor('codex', { runProcess }).execute(request({ role: 'developer' }))).resolves.toMatchObject({ text: 'done' })
+    await expect(new CliExecutor('codex', { runProcess }).execute(request({ role: 'developer', maxTurns: 100 }))).rejects.toMatchObject({ code: 'max_turns' })
+  })
 })
 
 describe('Claude Sonnet generation', () => {

@@ -56,7 +56,7 @@ describe('installed provider pipeline fixtures', () => {
     const runtimeStatus = spawnSync(process.execPath, [path.join(workspace, '.specrails/runtime/agent-runtime.mjs'), 'status', '--context', contextFile], { cwd: workspace, encoding: 'utf8' })
     expect(runtimeStatus.status, runtimeStatus.stderr).toBe(0)
     expect(JSON.parse(runtimeStatus.stdout)).toMatchObject({ type: 'runtime-status', state: null })
-    expect(JSON.parse(readFileSync(path.join(workspace, '.specrails/agent-runtime.json'), 'utf8')).agents.developer).toEqual({ provider, maxTurns: 100 })
+    expect(JSON.parse(readFileSync(path.join(workspace, '.specrails/agent-runtime.json'), 'utf8')).agents.developer).toEqual({ provider })
     const runtime = path.join(workspace, '.specrails', 'runtime', 'pipeline.mjs')
     const call = (...args: string[]) => spawnSync(process.execPath, [runtime, ...args, '--context', contextFile], { cwd: workspace, encoding: 'utf8' })
     expect(call('init', '--change', 'aggregate-change').status).toBe(0)

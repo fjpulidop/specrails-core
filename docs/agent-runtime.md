@@ -49,9 +49,9 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
     }
   ],
   "agents": {
-    "architect": { "provider": "claude", "maxTurns": 100 },
-    "developer": { "provider": "codex", "maxTurns": 100 },
-    "reviewer": { "provider": "claude", "maxTurns": 100 }
+    "architect": { "provider": "claude" },
+    "developer": { "provider": "codex" },
+    "reviewer": { "provider": "claude" }
   },
   "limits": { "maxAttempts": 3, "timeoutMs": 900000 },
   "verification": [
@@ -73,7 +73,7 @@ Save this as `.specrails/agent-runtime.json`, adapting the verification command 
 
 A CLI role's optional `model` is passed to that provider; omitting it uses the CLI's default. Provider IDs are aliases, so you can configure several endpoints or replace an executor without changing workflow code.
 
-To use the local endpoint, set the desired role to `{"provider":"local","model":"your-installed-model-id","maxTurns":100}`. The endpoint must support `POST <baseUrl>/chat/completions`, OpenAI-style function tool calls and a final assistant result. Its model must actually be able to use these tools; a chat-only endpoint is insufficient for the developer role. The example port is a placeholder for your own running server.
+To use the local endpoint, set the desired role to `{"provider":"local","model":"your-installed-model-id"}`. The endpoint must support `POST <baseUrl>/chat/completions`, OpenAI-style function tool calls and a final assistant result. Its model must actually be able to use these tools; a chat-only endpoint is insufficient for the developer role. The example port is a placeholder for your own running server.
 
 For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provider configuration and set that variable in the process launching Core. Omit `apiKeyEnv` when no key is required. URLs cannot contain credentials, query parameters or fragments. Verification commands inherit process credentials; do not put secrets into their persisted `env` overrides.
 
@@ -172,6 +172,7 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a s
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
+| `unlimitedTurns: 1` | A role or engine without `maxTurns` runs with no turn limit (Claude gets no `--max-turns`; Codex, Gemini, Kimi and OpenAI-compatible loops stop counting). Older Cores applied a default of 100. Timeouts and cost budgets still bound the run |
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
 | `setupCommands: 1` | The runtime configuration accepts `setup` and the `verify` piece runs it before each plan (`setup: 'configured'` or an inline list) |
@@ -441,7 +442,7 @@ The reviewer may anchor a finding to a place in the change with `acceptance.find
 
 | Setting | Behavior |
 | --- | --- |
-| `agents.<role>.maxTurns` | Bounded role/tool interaction, default 100; provider transports enforce their available turn/tool events |
+| `agents.<role>.maxTurns` | Optional role/tool interaction limit. Unset means no turn limit (timeouts and cost budgets still apply); when set, provider transports enforce it on their available turn/tool events |
 | `limits.maxAttempts` | Maximum development visits per invocation, including correction cycles, default 3; an explicit resume starts a fresh budget |
 | `limits.timeoutMs` | Workflow duration limit and provider timeout; default provider timeout is 15 minutes when omitted |
 | `limits.maxTokens` | Rejects missing required usage or an observed overrun; CLI accounting may arrive only after a call |

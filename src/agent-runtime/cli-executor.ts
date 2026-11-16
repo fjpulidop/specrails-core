@@ -44,7 +44,7 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
   const resume = request.resumeSessionId
   switch (provider) {
     case 'claude': return { command: 'claude', ...(request.nativeCommand ? {} : { stdin: request.prompt }), args: [
-      '-p', ...(request.nativeCommand ? [request.prompt] : []), '--output-format', 'stream-json', '--verbose', '--max-turns', String(request.maxTurns ?? 100), ...model,
+      '-p', ...(request.nativeCommand ? [request.prompt] : []), '--output-format', 'stream-json', '--verbose', ...(request.maxTurns === undefined ? [] : ['--max-turns', String(request.maxTurns)]), ...model,
       ...(request.effort === undefined ? [] : ['--effort', request.effort]),
       // Project instructions and rules stay visible; the user's global config,
       // memory and plugins never leak into an autonomous role.
@@ -312,7 +312,7 @@ export class CliExecutor implements AgentExecutor {
             if (event.type === 'tool_use') turns++
             if (event.type === 'message' && event.role === 'assistant' && typeof event.content === 'string') delta = event.content
           } else if (this.provider === 'kimi' && event.role === 'assistant') { turns++; delta = typeof event.content === 'string' ? event.content : textBlocks(event.content) }
-          if (turns > (request.maxTurns ?? 100)) throw new AgentExecutionError('CLI exceeded its configured turn/tool limit', 'max_turns', parseCliOutput(this.provider, stream).usage)
+          if (request.maxTurns !== undefined && turns > request.maxTurns) throw new AgentExecutionError('CLI exceeded its configured turn/tool limit', 'max_turns', parseCliOutput(this.provider, stream).usage)
           for (const tool of cliToolEvents(this.provider, event)) request.onEvent?.(tool)
           if (delta) request.onEvent?.({ kind: 'text', text: delta })
         },
@@ -321,7 +321,7 @@ export class CliExecutor implements AgentExecutor {
       request.onEvent?.({ kind: 'usage', usage: parsed.usage })
       if (parsed.failureKind) {
         const message = parsed.failureKind === 'max_turns'
-          ? `${this.provider} reached the configured limit of ${request.maxTurns ?? 100} turns for ${request.role}. Raise maxTurns for role ${request.role}${request.maxTurns === undefined ? ' (unset: Core default 100)' : ''} and start a new run; partial changes stay in the worktree for inspection.`
+          ? `${this.provider} reached ${request.maxTurns === undefined ? 'its own turn limit' : `the configured limit of ${request.maxTurns} turns`} for ${request.role}. ${request.maxTurns === undefined ? `Core sets no limit for role ${request.role}; check the provider's own configuration` : `Raise or remove maxTurns for role ${request.role}`} and start a new run; partial changes stay in the worktree for inspection.`
           : parsed.failureKind === 'cost_budget' ? `${this.provider} reached its configured cost budget.` : `${this.provider} exhausted structured output retries.`
         throw new AgentExecutionError(message, parsed.failureKind, parsed.usage)
       }

@@ -54,7 +54,7 @@ export async function executeKimiReadonlyAcp(request: AgentRequest, options: { r
           // the assistant turn after the last tool invocation.
           text = ''
           turns++
-          if (turns > (request.maxTurns ?? 100)) throw new AgentExecutionError('Kimi ACP exceeded its tool limit', 'max_turns')
+          if (request.maxTurns !== undefined && turns > request.maxTurns) throw new AgentExecutionError('Kimi ACP exceeded its tool limit', 'max_turns')
           request.onEvent?.(toolEvent(typeof update.title === 'string' ? update.title : 'kimi-tool', { ...record(update.rawInput), paths: Array.isArray(update.locations) ? update.locations.map(location => record(location).path) : [] }))
         }
         if (update.sessionUpdate === 'current_mode_update' && update.currentModeId !== mode) throw new AgentExecutionError('Kimi left its read-only mode', 'tool_policy_violation')
