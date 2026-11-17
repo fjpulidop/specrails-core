@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.11.0](https://github.com/fjpulidop/specrails-core/compare/v6.10.0...v6.11.0) (2026-11-16)
+
+
+### Features
+
+* **runtime:** run roles without a turn limit when maxTurns is unset ([#477](https://github.com/fjpulidop/specrails-core/issues/477)) ([2192c8d](https://github.com/fjpulidop/specrails-core/commit/2192c8d267c00f4e1d6fd9d6c81bbef4e13931db))
+
 ## [6.10.0](https://github.com/fjpulidop/specrails-core/compare/v6.9.1...v6.10.0) (2026-11-15)
 
 
