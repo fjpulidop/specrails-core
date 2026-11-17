@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.11.1](https://github.com/fjpulidop/specrails-core/compare/v6.11.0...v6.11.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **runtime:** run CLI agents with no total time limit unless one is set ([#479](https://github.com/fjpulidop/specrails-core/issues/479)) ([83c537a](https://github.com/fjpulidop/specrails-core/commit/83c537a41806a54bd377a3beb89a92e659596ef5))
+
 ## [6.11.0](https://github.com/fjpulidop/specrails-core/compare/v6.10.0...v6.11.0) (2026-11-16)
 
 
