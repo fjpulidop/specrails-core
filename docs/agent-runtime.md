@@ -444,7 +444,7 @@ The reviewer may anchor a finding to a place in the change with `acceptance.find
 | --- | --- |
 | `agents.<role>.maxTurns` | Optional role/tool interaction limit. Unset means no turn limit (timeouts and cost budgets still apply); when set, provider transports enforce it on their available turn/tool events |
 | `limits.maxAttempts` | Maximum development visits per invocation, including correction cycles, default 3; an explicit resume starts a fresh budget |
-| `limits.timeoutMs` | Workflow duration limit and provider timeout; default provider timeout is 15 minutes when omitted |
+| `limits.timeoutMs` | Workflow duration limit and provider timeout. When omitted, CLI providers (Claude, Codex, Gemini, Kimi CLI and ACP) run with no total time limit and stop only after 15 minutes without output (idle timeout); the OpenAI-compatible loop keeps its 15-minute default (45 minutes for compact role pipelines) |
 | `limits.maxTokens` | Rejects missing required usage or an observed overrun; CLI accounting may arrive only after a call |
 | `limits.maxCostUsd` | Accepted by the built-in Claude executor through its native dollar limit; rejected by built-in Codex and OpenAI-compatible executors |
 

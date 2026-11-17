@@ -69,6 +69,13 @@ describe('Kimi 0.27 read-only ACP compatibility', () => {
     expect(runProcess.mock.calls[0][1]).toMatchObject({ timeoutMs: 0, idleTimeoutMs })
   })
 
+  it('runs ACP with no total time limit when the request sets none', async () => {
+    const input = request(), fake = harness(input)
+    const runProcess = vi.fn(fake.runProcess)
+    await executeKimiReadonlyAcp(input, { runProcess })
+    expect(runProcess.mock.calls[0][1]).toMatchObject({ timeoutMs: 0 })
+  })
+
   it('negotiates observed 0.27 mode options before prompting and serves scoped source reads', async () => {
     const input = request(), fake = harness(input)
     const result = await executeKimiReadonlyAcp(input, fake)
