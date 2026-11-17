@@ -18,6 +18,9 @@ import { assertGeminiAdminPolicyAvailable, GEMINI_READONLY_POLICY } from './gemi
 /** Claude's print-mode answer to `--resume <id>` when no transcript exists for that ID in this project. */
 const CLAUDE_SESSION_MISSING = /No conversation found with session ID/i
 
+
+/** An invocation without `timeoutMs` has no total time limit; the idle timeout still stops one that goes silent. */
+const NO_TOTAL_TIME_LIMIT = 0
 export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
 interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
@@ -288,7 +291,7 @@ export class CliExecutor implements AgentExecutor {
         writeFileSync(codexSchemaFile, JSON.stringify(codexOutputSchema(request.outputSchema)), { mode: 0o600 })
       }
       const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
-        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? 60 * 60_000, idleTimeoutMs: request.idleTimeoutMs ?? 15 * 60_000, env: executionEnv,
+        cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? NO_TOTAL_TIME_LIMIT, idleTimeoutMs: request.idleTimeoutMs ?? 15 * 60_000, env: executionEnv,
         onLine: line => {
           stream += line + '\n'
           let event: Record<string, unknown>

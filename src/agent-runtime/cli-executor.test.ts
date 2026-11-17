@@ -156,6 +156,13 @@ describe('four CLI execution contracts', () => {
     expect(result.usage.costUsd).toBe(provider === 'claude' ? 0.1 : null)
     if (provider === 'kimi') expect(result.usage.inputTokens).toBeNull()
   })
+  it.each(['claude', 'codex', 'gemini', 'kimi'] as const)('runs %s with no total time limit unless the request sets one, keeping the idle timeout', async provider => {
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: fixtures[provider], stderr: '', exitCode: 0 }))
+    await new CliExecutor(provider, { runProcess }).execute(request())
+    expect(runProcess.mock.calls[0][1]).toMatchObject({ timeoutMs: 0, idleTimeoutMs: 15 * 60_000 })
+    await new CliExecutor(provider, { runProcess }).execute(request({ timeoutMs: 90_000, idleTimeoutMs: 30_000 }))
+    expect(runProcess.mock.calls[1][1]).toMatchObject({ timeoutMs: 90_000, idleTimeoutMs: 30_000 })
+  })
   it('deduplicates Claude assistant usage and includes cache input without treating internal notifications as completion', () => {
     const assistant = { type: 'assistant', message: { id: 'one', content: [{ type: 'text', text: 'working' }], usage: { input_tokens: 10, output_tokens: 3, cache_read_input_tokens: 8, cache_creation_input_tokens: 2 } } }
     const partial = parseCliOutput('claude', jsonl(assistant, assistant, { type: 'result', origin: { kind: 'task-notification' }, result: '', usage: { input_tokens: 0, output_tokens: 0 } }))
