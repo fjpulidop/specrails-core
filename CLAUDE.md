@@ -6,7 +6,7 @@ Agent workflow engine for specrails-desktop: a deterministic installer that rend
 
 | Layer | Tech |
 |-------|------|
-| CLI + installer | TypeScript (ESM, strict), Node ≥ 20.19.0, macOS/Linux/Windows |
+| CLI + installer | TypeScript (ESM, strict), Node ≥ 22.22.3, macOS/Linux/Windows |
 | Runtime | @langchain/langgraph state graph, provider CLI executors, OpenAI-compatible chat loop |
 | Specs | OpenSpec (pinned in `pinned-versions.json`) |
 | Tests | vitest (OS × Node CI matrix) |

@@ -4,10 +4,10 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 
 ## Quality gates
 
-`CI` runs for pushes to `main`, pull requests to `main`, and manual dispatches. Feature branches are checked through their PR, avoiding two complete matrix runs for every update. The post-merge main push still runs the entire release gate. It has read-only repository permissions, cancels superseded runs on the same branch/PR, and has bounded job timeouts.
+`CI` runs for pushes to `main`, every pull request (including stacked PRs that target another branch), and manual dispatches. Feature branches are checked through their PR, avoiding two complete matrix runs for every update. The post-merge main push still runs the entire release gate. It has read-only repository permissions, cancels superseded runs on the same branch/PR, and has bounded job timeouts.
 
-- Typecheck/build on the exact supported Node minimum, **20.19.0**.
-- Full Vitest and release-guard tests on **Linux, macOS and Windows**, with **Node 20.19.0, 22 and 24**.
+- Typecheck/build on the exact supported Node minimum, **22.22.3**.
+- Full Vitest and release-guard tests on **Linux, macOS and Windows**, with **Node 22.22.3 and 24**.
 - Every OS/Node combination runs one complete set of partitions (`scripts/ci-tests.mjs`). Vitest parallelizes files but runs the tests of one file serially, so the slow runtime integration suites (`core-host-*`, a single ~15 min file until it was split so `npm test` fits the verification limit, plus `compact-runtime`, `fork` and `implementation-compiler`) are split by collected test location: `runtime-K/N`, two slices on Linux and three elsewhere. A partition may combine slices with `+` (run in sequence in one job); macOS, limited to five concurrent runners, uses three similar-length combined jobs per Node version. Parameterized cases stay together, and the runner checks its selected inventory against Vitest before running, failing if any assigned test is missing or extra.
 - `general` runs every other suite, then the real CLI recovery suite with one worker and one concurrent case, so its thirty-node subprocess trees do not compete with other suites while waiting for the unchanged production lease TTL. Windows, which is CPU-bound there, instead uses `general-K/N` (Vitest file shards) plus a separate `recovery` job. `scripts/ci-tests.test.mjs` fails if any combination's set is incomplete, overlapping or mixed.
 - The slowest jobs are listed first in the workflow so they start first when the account's concurrent runner pool is saturated.
@@ -16,7 +16,9 @@ Core's release workflow publishes the **same npm tarball that passed CI**. It do
 - A checksum-verified actionlint binary validates workflow syntax, expressions and action inputs (shellcheck is not included).
 - A checksum-verified Gitleaks binary scans Git history with redacted output.
 - On Node 24 on each OS, `scripts/verify-package.mjs` packs the built package, checks its file inventory, installs the tarball into an isolated temporary consumer with lifecycle scripts disabled, and executes both published CLI entry points. It materializes/assembles all four providers and runs the assembled pipeline helper against four frozen fixture scopes. No global install, real project registry, provider login or model call is used.
-- C1 adds a separate `engine-spikes` matrix on Linux x64, macOS arm64 (`macos-15`) and Windows x64, using Desktop's exact Node **22.22.3**. It runs the [engine decision probes](engine-v2/spikes/README.md), checks private storage permissions/ACLs, checks that prototypes stay out of the package, and exercises the real npm tarball on that Node. It also invokes the exact pinned Desktop assembler with the locked Core source and records its source-bundle/lock hashes. This lane does not repeat coverage or replace the supported Node/OS matrix. Evidence is retained for 14 days even on failure; a green local probe does not substitute for all platform artifacts. Runner architectures follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) and are asserted in the job.
+- `engine-robustness` installs the packed package on Linux x64, macOS arm64 (`macos-15`) and Windows x64 and runs the real CLI crash-recovery harness against it (`SPECRAILS_VERIFY_ENGINE_ROBUSTNESS=1 node scripts/verify-package.mjs`).
+- `definition-evaluation` runs the offline definition corpus for the `implementation` and `implementation-component` reference definitions (see [Reproducible evaluation](agent-runtime.md#reproducible-evaluation)).
+- `engine-spikes`, on the same three platforms with Node **22.22.3**, reruns the [engine decision probes](engine-v2/spikes/README.md), checks private storage permissions/ACLs, checks that prototypes stay out of the package, and exercises the real npm tarball. It also invokes the exact pinned Desktop assembler with the locked Core source and records its source-bundle/lock hashes. These lanes do not repeat coverage or replace the supported Node/OS matrix. Evidence is retained for 14 days even on failure; a green local probe does not substitute for all platform artifacts. Runner architectures follow the [GitHub runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners) and are asserted in the job.
 
 The Linux/Node 24 coverage partitions are also that matrix combination’s full test run, so coverage does not repeat an already executed suite. After the release-guard tests and the merged coverage thresholds pass, the `coverage` job runs the package consumer smoke and uploads `core-package` for 14 days, containing the `.tgz` and `release-manifest.json` (package/version, Git SHA and SHA-512 integrity). The manifest is only written after the consumer smoke succeeds.
 
@@ -28,7 +30,7 @@ npm run test:scripts       # hermetic release and CI partition regressions
 npm run check:package      # build and consumer smoke; prints its temporary artifact directory
 # To choose where the verified tarball is kept:
 node scripts/verify-package.mjs /absolute/path/to/temporary-package-output
-# C1 experiments only, after build, using Node exactly 22.22.3:
+# Engine decision probes only, after build, using Node exactly 22.22.3:
 npm run test:engine-spikes -- --output /absolute/path/to/engine-spike-evidence
 ```
 
@@ -60,8 +62,8 @@ No cross-repository notification is sent. Desktop pins Core deliberately (bundle
 
 Use **Actions → Release → Run workflow**, from the trusted main workflow, and provide an **existing** stable tag (`vX.Y.Z`). This path does not create a tag or bump versions. It checks main ancestry/version agreement, runs typecheck, release-guard tests and the full suite with coverage, then rebuilds, packs and consumer-tests that exact tag on Linux/Node 24 in a read-only preparation job. A separate publication job downloads those verified bytes; dependency installs and tests never have OIDC or npm credentials.
 
-Manual recovery deliberately works without an old CI artifact. It does not rerun the full historical OS/Node matrix; normal automatic releases require that matrix. Tags predating these validation scripts cannot use this recovery path. If an identical version is already on npm, publication is skipped and both notifications are retried. Different bytes at that version, an older version than `latest`, missing tags or incompatible versions stop the run. npm versions are immutable; do not force around a mismatch.
+Manual recovery deliberately works without an old CI artifact. It does not rerun the full historical OS/Node matrix; normal automatic releases require that matrix. Tags predating these validation scripts cannot use this recovery path. If an identical version is already on npm, publication is skipped. Different bytes at that version, an older version than `latest`, missing tags or incompatible versions stop the run. npm versions are immutable; do not force around a mismatch.
 
-For a failed initial CI gate, first repair/rerun CI for that commit, then rerun Release. Expired artifacts or a tag created at another main SHA can be recovered with the existing-tag manual path. If downstream notification failed, rerunning only its job is also sufficient and does not touch npm.
+For a failed initial CI gate, first repair/rerun CI for that commit, then rerun Release. Expired artifacts or a tag created at another main SHA can be recovered with the existing-tag manual path.
 
 The workflows and hermetic fixtures validate the release machinery locally; successful native Windows/macOS CI, token permissions, OIDC configuration and a real publication can only be confirmed by their respective hosted runs.

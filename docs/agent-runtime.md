@@ -25,7 +25,7 @@ This page describes the current source implementation, **runtime API 1**, workfl
 ## Requirements and ownership
 
 - Node.js **22.22.3+** and Git on macOS, Linux or Windows. Individual provider CLIs may require a newer Node release.
-- Installed and authenticated Claude or Codex CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
+- Installed and authenticated Claude Code, Codex, Gemini or Kimi CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
 - A frozen execution context and a new change name. Verification commands are optional: configured commands run as given, the architect proposes the project's own checks for repositories that have none, and a repository with no automated check is admitted and recorded as unverified in the receipt.
 - `ownership.git: "host"`. The runtime implements and archives; its caller owns worktrees, commits, pushes, pull requests and backlog delivery. It rejects Core-owned Git delivery rather than reporting success while shipping remains pending.
 
@@ -79,7 +79,7 @@ For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provi
 
 The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
 
-The [integration contract](../integration-contract.json) is schema 5.8, API 1, legacy workflow 7 and role instructions 17. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
+The [integration contract](../integration-contract.json) is schema 5.12, API 1, legacy workflow 7 and role instructions 18. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
@@ -160,15 +160,18 @@ The commands work in macOS shells and PowerShell; quote paths and answers contai
 
 Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a step that ends with the `fail` outcome, such as `openspec-validate` sending the plan back, carries a bounded `reason` taken from its history note so hosts can show why under the step), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
-`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the seventeen piece kinds registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `component`, `map`, `implementation`, `join`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
+`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the 21 piece kinds of catalog `nodeKindsVersion` 9 registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `artifact-contract`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `implementation-step`, `component`, `map`, `implementation`, `join`, `derive-change`, `host-task`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
 
 | Capability | Meaning |
 | --- | --- |
 | `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal`, `cancel` and `pause` operate on those runs |
+| `workflowAgentSteps: 1` | Definitions compose arbitrary configured `role-turn` agents and `artifact-contract` checks (see [workflow-defined agents](engine-v2/pieces.md#workflow-defined-agents-catalog-7)) |
+| `implementationSteps: 1` | Legacy `implementation-step` piece, retained for saved definitions and frozen runs |
 | `workflowDefinitions: 1` | `runtime workflows list` and `runtime workflows validate --stdin` expose the piece catalog, definition schema and Core-computed definition hash |
 | `openRoles: 1` | Declared roles with explicit access, artifact and instruction policies |
 | `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
 | `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
+| `forkIdempotency: 1` | `runtime fork --request-id` retries an interrupted fork safely (see [recovery](engine-v2/recovery.md)) |
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
@@ -180,6 +183,8 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a s
 | `sessions: 1` | `runtime host --stdio --scope <projectKey\|global>` serves long-lived agent sessions (Claude, Codex, executor-backed providers) with sub-agents, durable journals under `~/.specrails/sessions/<scope>/` and the [session protocol](agent-sessions/protocol.md). Batch operations are unaffected. |
 | `flowSessions: 1` | `session.send` accepts `delivery: 'interrupt'`: the running turn ends `interrupted` and the input runs next, ahead of queued inputs; drivers declare `capabilities.interrupt` (`native` or `emulated`). See [deliveries](agent-sessions/protocol.md#deliveries). |
 | `reviewBrief: 1` | The reviewer returns an optional advisory risk brief, recorded at every verdict and exposed in `runtime-result.reviewBrief` (see [Reviewer risk brief](#reviewer-risk-brief)) |
+| `environmentFacts: 1`, `verificationSummary: 1` | See [Environment facts](#environment-facts) |
+| `architectClarifications: 1`, `specTrace: 1`, `baselineOnTouch: 1`, `rulesInventory: 1`, `failureClassification: 1`, `findingLocations: 1` | Described in their own sections below |
 | `efficientRoleExecution: 1`, `reproducibleVerification: 1`, `implementationEfficiencyMetrics: 1`, `compactAgentLoop: 1`, `configurableGuardrails: 1`, `compactOutputBudget: 1`, `roleThinkingControl: 1`, `repositoryScope: 1` | Existing built-in workflow capabilities; unchanged |
 
 `engines` lists the engines this package can launch: `1` is the legacy built-in pipeline (`runtime run` without `--definition`) and `2` is workflow definitions. `integration-contract.json` mirrors it as `agentRuntime.engines`. A Core without engine 1 (planned for Core 7) advertises `[2]`; hosts then refuse a legacy launch before admission with `legacy_engine_unavailable`. Hosts that meet a Core predating the field treat it as `[1, 2]` when `engineV2: 1` is advertised, otherwise `[1]`.
@@ -560,7 +565,7 @@ The summary contains `total` and `phases` (architect, developer, verify, reviewe
 - The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. In engine v2, the next fenced owner closes abandoned calls as interrupted and emits their unknown usage exactly once, retaining unreported budget reservations. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
 - Total execution duration accumulates active workflow time, excluding time parked for human approval between invocations. Phase time includes phase overhead; do not add agent time to phase time. A phase without an end timestamp has unknown duration.
 
-Role instructions are version 17 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
+Role instructions are version 18 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
 
 To evaluate the first efficiency changes, select a fixed set of representative tasks and reset each task to the same base revision. Keep provider/model settings and acceptance criteria fixed. Save status JSON for every run, including failures and manual recovery, and compare:
 
@@ -702,14 +707,6 @@ Verification checks use the frozen plan and existing scoped receipts with a
 not merely an exit code of zero. Neither operation grants acceptance or marks
 workflow phases complete. Resume remains responsible for the required gates.
 
-### Claude Opus selection
-
-For Claude CLI roles, `model: opus` resolves to `claude-opus-5-5` (Opus 5.5).
-Explicit model IDs pass through unchanged, including older generations, and other
-providers are unaffected. This applies to base and escalation invocations.
-Claude Code owns the native thinking and tool protocol; Core does not send
-Anthropic Messages API parameters.
-
 ## Efficiency policy
 
 Architect, developer and reviewer keep their official OpenSpec workflow: fast-forward, apply and verify. Verification remains deterministic Core execution, not a fourth AI agent. Custom role text does not replace the mandatory scope, response or OpenSpec protocol.
@@ -789,11 +786,11 @@ This source tree is a development package. Publishing Core and updating Desktop'
 
 ## Desktop-owned workflow composition
 
-Core exposes `workflowAgentSteps: 1` and catalog version 7 for workflow-defined
-agent steps. Desktop supplies arbitrary custom roles, task schemas and explicit
+Core exposes `workflowAgentSteps: 1` for workflow-defined agent steps
+(introduced with catalog 7; the current catalog is 9). Desktop supplies arbitrary custom roles, task schemas and explicit
 artifact/verification/review/approval nodes. Core executes generic primitives
 and durable evidence contracts. Legacy `implementationSteps: 1` remains available
 for saved definitions and retained runs. See the
 [generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
 
-Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. Explicit model IDs remain unchanged for reproducible saved requests.
+Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. This applies to base and escalation invocations of Claude CLI roles; other providers are unaffected. Explicit model IDs, including older generations, pass through unchanged for reproducible saved requests. Claude Code owns the native thinking and tool protocol; Core sends no Messages API parameters.
