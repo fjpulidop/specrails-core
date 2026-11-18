@@ -210,7 +210,7 @@ describe('four CLI execution contracts', () => {
   it("keeps Claude's own error sentence from its final result frame (a session limit is then classifiable)", async () => {
     const stdout = jsonl({ type: 'system', subtype: 'init', session_id: 's1' }, { type: 'result', subtype: 'success', is_error: true, num_turns: 1, result: "You've hit your session limit · resets 3am (Europe/Madrid)", total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } })
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout, stderr: '', exitCode: 1 }))
-    const failure = await new CliExecutor('claude', { runProcess }).execute(request()).catch(error => error as AgentExecutionError)
+    const failure = await new CliExecutor('claude', { runProcess }).execute(request()).then(() => { throw new Error('expected a provider failure') }, (error: unknown) => error as AgentExecutionError)
     expect(failure).toMatchObject({ code: 'provider_execution_error', message: expect.stringContaining("You've hit your session limit · resets 3am (Europe/Madrid)") })
     expect(failure.message).not.toContain('did not report a diagnostic')
     expect(classifyFailure({ status: 'failed', error: { code: failure.code, message: failure.message } })).toMatchObject({ kind: 'provider_limit', resetAt: '3am (Europe/Madrid)' })
