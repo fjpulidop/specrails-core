@@ -90,3 +90,12 @@ describe('CodexTranslator context usage', () => {
     expect(complete(translator, 'turn-2').context).toEqual({ usedTokens: 5_000, windowTokens: null, model: 'gpt' })
   })
 })
+
+describe('CodexTranslator usage limits', () => {
+  it('reports account/rateLimits/updated as a typed rate-limit event without a thread', () => {
+    const translator = new CodexTranslator()
+    const events = translator.notification('account/rateLimits/updated', { rateLimits: { limitId: 'codex', primary: { usedPercent: 85, windowDurationMins: 300, resetsAt: 1791386108 }, rateLimitReachedType: null } })
+    expect(events).toEqual([{ kind: 'rate-limit', rateLimit: expect.objectContaining({ status: 'allowed', rateLimitType: 'codex:primary', utilization: 0.85 }) }])
+    expect(translator.notification('account/rateLimits/updated', { rateLimits: {} })).toEqual([])
+  })
+})

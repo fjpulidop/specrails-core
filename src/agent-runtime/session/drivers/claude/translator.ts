@@ -1,5 +1,6 @@
 import type { ContextUsage, SubagentPhase } from '../../domain/types.js'
 import type { DriverEvent } from '../../ports.js'
+import { claudeRateLimit } from '../../../provider-rate-limits.js'
 
 /**
  * Anti-corruption layer for Claude Code `--output-format stream-json`.
@@ -23,7 +24,7 @@ const TASK_PHASE: Readonly<Record<string, SubagentPhase>> = Object.freeze({
 /** System subtypes that carry nothing the session model needs. */
 const IGNORED_SYSTEM = new Set(['thinking_tokens', 'task_summary', 'post_turn_summary', 'status', 'hook_response', 'hook_started'])
 // `control_response` acknowledges our interrupt (`still_queued` lists commands that survive it).
-const IGNORED_TYPES = new Set(['rate_limit_event', 'stream_event', 'keep_alive', 'control_response'])
+const IGNORED_TYPES = new Set(['stream_event', 'keep_alive', 'control_response'])
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -92,6 +93,11 @@ export class ClaudeTranslator {
       case 'assistant': return this.assistant(frame)
       case 'user': return this.user(frame)
       case 'result': return this.result(frame)
+      case 'rate_limit_event': {
+        // The account's usage limits, reported with each request (snapshot, not delta).
+        const rateLimit = claudeRateLimit(frame.rate_limit_info)
+        return rateLimit ? [{ kind: 'rate-limit', rateLimit }] : this.unknown('rate_limit_event:malformed')
+      }
       default:
         if (type && IGNORED_TYPES.has(type)) return []
         return this.unknown(`type:${type ?? '<missing>'}`)

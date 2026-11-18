@@ -391,3 +391,24 @@ describe('Claude Sonnet generation', () => {
     expect(explicit[explicit.indexOf('--model') + 1]).toBe('claude-fable-5')
   })
 })
+
+describe('Claude usage limits in CLI runs', () => {
+  const limitEvent = (status: string) => ({ type: 'rate_limit_event', rate_limit_info: { status, resetsAt: 1791368400, rateLimitType: 'five_hour', unifiedWindows: { five_hour: { utilization: status === 'rejected' ? 1 : 0.82, resetsAt: 1791368400 } } } })
+  const streaming = (stdout: string, exitCode: number): CliProcessRunner => async (_invocation, options) => {
+    for (const line of stdout.split('\n').filter(Boolean)) options.onLine?.(line)
+    return { stdout, stderr: '', exitCode }
+  }
+
+  it('reports each usage-limit state as a rate-limit agent event', async () => {
+    const events: unknown[] = []
+    const stdout = jsonl(limitEvent('allowed_warning'), ...fixtures.claude.trim().split('\n').map(line => JSON.parse(line)))
+    await new CliExecutor('claude', { runProcess: streaming(stdout, 0) }).execute(request({ onEvent: event => events.push(event) }))
+    expect(events).toContainEqual({ kind: 'rate-limit', provider: 'claude', rateLimit: expect.objectContaining({ status: 'allowed_warning', utilization: 0.82, resetsAt: new Date(1791368400_000).toISOString() }) })
+  })
+
+  it('fails a refused invocation with the typed provider_limit code and the ISO reset', async () => {
+    const stdout = jsonl(limitEvent('rejected'), { type: 'result', subtype: 'success', is_error: true, result: "You've hit your session limit · resets 3am (Europe/Madrid)" })
+    const failure = new CliExecutor('claude', { runProcess: streaming(stdout, 1) }).execute(request())
+    await expect(failure).rejects.toMatchObject({ code: 'provider_limit', message: expect.stringContaining(`usage limit reached (five_hour window, resets ${new Date(1791368400_000).toISOString()})`) })
+  })
+})

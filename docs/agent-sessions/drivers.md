@@ -23,6 +23,7 @@ It adapts to each driver's declared capabilities.
 | Tokens | per turn | cumulative per thread (deltas) | per turn |
 | Context window fill (`turn.completed.context`) | last main-agent request + `modelUsage` window | `tokenUsage.last` + `modelContextWindow` | not reported |
 | Deferred MCP tools (`capabilities.deferredMcpTools`) | `true`: tool search (`ToolSearch`) stays in every tool set, so MCP tools load on demand | `false` | `false` |
+| Usage limits (`capabilities.reportsRateLimits`, `provider.rate-limit`) | `true`: `rate_limit_event` per request | `true`: `account/rateLimits/updated` | `false` |
 | MCP isolation (`inheritUserScope: false`) | `--strict-mcp-config` | user servers disabled one by one | provider default |
 
 A policy a driver cannot enforce fails `session.open` with

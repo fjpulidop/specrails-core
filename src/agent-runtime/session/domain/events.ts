@@ -3,6 +3,7 @@ import type {
   ContextUsage,
   InputDelivery,
   OutputChannel,
+  RateLimitInfo,
   SessionPhase,
   SessionPolicy,
   SubagentKind,
@@ -51,6 +52,8 @@ export type SessionEventBody =
   | { type: 'output.truncated'; scope: { turnId: string } | { subagentId: string }; droppedEvents: number; droppedBytes: number }
   | { type: 'notice.interruption'; subagentIds: string[]; inputIds: string[] }
   | { type: 'provider.diagnostic'; level: 'info' | 'warning'; code: string; message: string }
+  /** The provider account's usage-limit state, as last reported (replaces the previous one). */
+  | { type: 'provider.rate-limit'; rateLimit: RateLimitInfo }
 
 export type SessionEventType = SessionEventBody['type']
 
@@ -87,4 +90,5 @@ export const SESSION_EVENT_TYPES = Object.freeze([
   'output.truncated',
   'notice.interruption',
   'provider.diagnostic',
+  'provider.rate-limit',
 ] as const satisfies readonly SessionEventType[])

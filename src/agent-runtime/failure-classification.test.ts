@@ -19,6 +19,13 @@ describe('classifyFailure', () => {
     expect(classifyFailure({ status: 'failed', error: 'Usage limit reached' })?.resetAt).toBeUndefined()
   })
 
+  it('carries the ISO reset of a typed usage-limit refusal next to the provider\'s wording', () => {
+    const result = classifyFailure({ status: 'failed', error: { code: 'provider_limit', message: "claude usage limit reached (five_hour window, resets 2026-11-18T14:00:00.000Z). You've hit your session limit · resets 3pm (Europe/Madrid)" } })
+    expect(result).toMatchObject({ kind: 'provider_limit', confidence: 'high', resetsAt: '2026-11-18T14:00:00.000Z', resetAt: '3pm (Europe/Madrid)' })
+    expect(classifyFailure({ status: 'failed', error: { code: 'provider_limit', message: 'claude usage limit reached (five_hour window).' } })).toMatchObject({ kind: 'provider_limit' })
+    expect(classifyFailure({ status: 'failed', error: { code: 'provider_limit', message: 'claude usage limit reached (five_hour window).' } })?.resetsAt).toBeUndefined()
+  })
+
   it('classifies tests that kept failing, counting correction rounds', () => {
     const result = classifyFailure({
       status: 'blocked', nextStep: 'fixer',

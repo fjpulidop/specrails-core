@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.13')
+    expect(contract.schemaVersion).toBe('5.14')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -95,6 +95,9 @@ describe('Desktop integration contract', () => {
     expect(sessions.capabilities).toEqual(Object.keys(SESSION_HOST_CAPABILITIES))
     expect(sessions.deliveries).toEqual([...SESSION_DELIVERIES])
     expect(sessions.deferredMcpTools).toMatch(/drivers\[\]\.capabilities\.deferredMcpTools/)
+    expect(sessions.rateLimits).toMatch(/provider\.rate-limit/)
+    expect(sessions.rateLimits).toMatch(/capabilities\.reportsRateLimits/)
+    expect(contract.agentRuntime.failureClassification.record).toContain('resetsAt?')
     const send = validatorFor('session.send')!
     for (const delivery of sessions.deliveries) expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery } })).toBe(true)
     expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery: 'later' } })).toBe(false)

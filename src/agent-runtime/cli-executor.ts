@@ -1,6 +1,8 @@
 import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
 import { assertEffortSupported, cliCapabilities } from './capabilities.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
+import { claudeRateLimit, describeRateLimit, isRejected } from './provider-rate-limits.js'
+import type { RateLimitInfo } from './session/domain/types.js'
 import { toolEvent } from './tool-event.js'
 import { openSpecPrompt, openSpecPolicy, writeOpenSpecBridge } from './openspec.js'
 import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -252,6 +254,8 @@ export class CliExecutor implements AgentExecutor {
     if (this.provider === 'kimi' && request.nativeCommand) request = await renderKimiRequest(request, this.options)
     const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec, 'mcp') : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
+    // The account's last reported usage-limit state: a refusal explains a failed invocation.
+    let rateLimit: RateLimitInfo | undefined
     let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0, observedSession: string | undefined
     const assistantIds = new Set<string>()
     const scratch = (): string => temporary ??= mkdtempSync(path.join(tmpdir(), 'specrails-' + this.provider + '-role-'))
@@ -301,6 +305,11 @@ export class CliExecutor implements AgentExecutor {
             observedSession = sessionId
             request.onEvent?.({ kind: 'session', sessionId })
           }
+          if (this.provider === 'claude' && event.type === 'rate_limit_event') {
+            const reported = claudeRateLimit(event.rate_limit_info)
+            if (reported) { rateLimit = reported; request.onEvent?.({ kind: 'rate-limit', provider: this.provider, rateLimit: reported }) }
+            return
+          }
           let delta = ''
           if (this.provider === 'claude' && event.type === 'assistant') {
             const message = object(event.message)
@@ -335,6 +344,10 @@ export class CliExecutor implements AgentExecutor {
           throw new AgentExecutionError('claude has no stored conversation for the resumed session', 'session_not_found', parsed.usage)
         }
         const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
+        // The provider refused the request on the account's usage limit: a typed, schedulable cause.
+        if (rateLimit && isRejected(rateLimit)) {
+          throw new AgentExecutionError(`${this.provider} usage limit reached (${describeRateLimit(rateLimit)}).${diagnostic ? ' ' + diagnostic : ''}`, 'provider_limit', parsed.usage)
+        }
         throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`, 'provider_execution_error', parsed.usage)
       }
       if (!parsed.terminal || !parsed.text.trim()) throw new AgentExecutionError(`${this.provider} exited without a successful final result`, 'incomplete_response', parsed.usage)

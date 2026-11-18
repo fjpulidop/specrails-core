@@ -24,6 +24,7 @@ export const CODEX_DESCRIPTOR: DriverDescriptor = Object.freeze({
     // `turn/interrupt`, then `turn/start` once the turn completed (sequenced by the application).
     interrupt: 'native' as const,
     deferredMcpTools: false,
+    reportsRateLimits: true,
     usage: Object.freeze({ costUsd: 'none' as const, tokens: 'cumulative' as const }),
   }),
 })

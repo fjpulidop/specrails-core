@@ -2,6 +2,7 @@ import type { ContextUsage, SubagentPhase } from '../../domain/types.js'
 import type { ToolActivity } from '../../domain/events.js'
 import type { DriverEvent } from '../../ports.js'
 import type { ReportedUsage } from '../../domain/usage.js'
+import { codexRateLimit } from '../../../provider-rate-limits.js'
 
 /**
  * Anti-corruption layer for `codex app-server` notifications (codex-cli 0.153.4
@@ -99,6 +100,11 @@ export class CodexTranslator {
     if (method === 'error') {
       const message = str(obj(params.error).message) ?? 'Codex reported an error'
       return [{ kind: 'diagnostic', level: 'warning', code: params.willRetry === true ? 'provider.retrying' : 'provider.error', message: message.slice(0, 2_000) }]
+    }
+    // Account-wide, not per thread: the plan's usage windows.
+    if (method === 'account/rateLimits/updated') {
+      const rateLimit = codexRateLimit(params.rateLimits)
+      return rateLimit ? [{ kind: 'rate-limit', rateLimit }] : []
     }
     if (!threadId) return []
     if (threadId === this.rootThread) return this.root(method, params)

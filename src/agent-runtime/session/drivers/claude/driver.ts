@@ -26,6 +26,7 @@ export const CLAUDE_DESCRIPTOR: DriverDescriptor = Object.freeze({
     interrupt: 'native' as const,
     // `ToolSearch` stays in every tool set Core passes (see argv.ts).
     deferredMcpTools: true,
+    reportsRateLimits: true,
     usage: Object.freeze({ costUsd: 'session-cumulative' as const, tokens: 'per-turn' as const }),
   }),
 })

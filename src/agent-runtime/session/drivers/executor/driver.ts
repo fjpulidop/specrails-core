@@ -26,6 +26,7 @@ export function executorDescriptor(id: string, displayName: string): DriverDescr
       // No turn-level stop that keeps a session: abort the invocation, then run the input next.
       interrupt: 'emulated' as const,
       deferredMcpTools: false,
+      reportsRateLimits: false,
       usage: Object.freeze({ costUsd: 'per-turn' as const, tokens: 'per-turn' as const }),
     }),
   })
@@ -106,6 +107,8 @@ class ExecutorDriverSession implements DriverSession {
             const id = `tool-${++this.toolSeq}`
             openTools.push(id)
             this.sink({ kind: 'turn.tool', toolUseId: id, name: event.tool ?? 'tool', phase: 'started', ...(event.detail ? { input: event.detail } : {}) })
+          } else if (event.kind === 'rate-limit' && event.rateLimit) {
+            this.sink({ kind: 'rate-limit', rateLimit: event.rateLimit })
           } else if (event.kind === 'tool-end') {
             const id = openTools.shift()
             if (id) this.sink({ kind: 'turn.tool', toolUseId: id, name: event.tool ?? 'tool', phase: 'completed', ...(event.detail ? { output: event.detail } : {}) })

@@ -12,6 +12,7 @@ import {
 import type {
   ContextUsage,
   InputDelivery,
+  RateLimitInfo,
   InputState,
   SessionPhase,
   SessionPolicy,
@@ -98,6 +99,8 @@ export interface SessionSnapshot {
   /** Interrupted work the agent has not been told about yet. */
   pendingInterruptions: { subagentIds: string[]; inputIds: string[] }
   closedReason: string | null
+  /** The provider account's last reported usage-limit state; absent until the driver reports one. */
+  rateLimit?: RateLimitInfo
 }
 
 export function emptySnapshot(sessionId: string): SessionSnapshot {
@@ -149,7 +152,7 @@ function requireOpenTurn(state: SessionSnapshot, turnId: string): OpenTurn {
  * contains foldable events and replay equals the live state.
  */
 export function applyEvent(state: SessionSnapshot, event: SessionEvent): SessionSnapshot {
-  if (state.status === 'closed' && event.type !== 'provider.diagnostic') {
+  if (state.status === 'closed' && event.type !== 'provider.diagnostic' && event.type !== 'provider.rate-limit') {
     throw new SessionError('session_closed', `Session ${state.sessionId} is closed`)
   }
   switch (event.type) {
@@ -291,6 +294,8 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
           inputIds: state.pendingInterruptions.inputIds.filter((id) => !event.inputIds.includes(id)),
         },
       }
+    case 'provider.rate-limit':
+      return { ...state, rateLimit: event.rateLimit }
     case 'output.truncated':
     case 'provider.diagnostic':
       return state

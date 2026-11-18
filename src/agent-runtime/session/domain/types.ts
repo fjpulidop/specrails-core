@@ -153,6 +153,12 @@ export interface DriverCapabilities {
    * connectors cost almost no context until used. Absent on older Cores.
    */
   deferredMcpTools?: boolean
+  /**
+   * The driver reports the provider account's usage limits as
+   * `provider.rate-limit` events (Claude `rate_limit_event`, Codex
+   * `account/rateLimits/updated`). Absent on older Cores.
+   */
+  reportsRateLimits?: boolean
   usage: UsageSemantics
 }
 
@@ -168,4 +174,40 @@ export interface Attachment {
   kind: 'image' | 'file'
   path: string
   mimeType?: string
+}
+
+/**
+ * How the provider answered against the account's usage limit:
+ * `allowed`, `allowed_warning` (allowed, close to the limit) or `rejected`
+ * (requests are refused until the window resets).
+ */
+export type RateLimitStatus = 'allowed' | 'allowed_warning' | 'rejected'
+
+/** One usage window of the account (provider id such as `five_hour`, `seven_day`, `codex:primary`). */
+export interface RateLimitWindow {
+  /** Fraction used, 0..1 (may exceed 1 when the provider reports overuse); null when unreported. */
+  utilization: number | null
+  /** ISO-8601 time the window resets; null when unreported. */
+  resetsAt: string | null
+  /** Length of the window in minutes, when the provider states it. */
+  windowMinutes?: number
+}
+
+/**
+ * The provider account's usage-limit state as last reported (session protocol
+ * `provider.rate-limit`, runtime `agent-event` kind `rate-limit`). A snapshot,
+ * not a delta: each report replaces the previous one. Window ids are the
+ * provider's own and opaque to Core.
+ */
+export interface RateLimitInfo {
+  status: RateLimitStatus
+  /** Window the status refers to (the binding one); null when unreported. */
+  rateLimitType: string | null
+  /** ISO-8601 reset of that window; null when unreported. */
+  resetsAt: string | null
+  /** Utilization (0..1) of that window, when reported. */
+  utilization: number | null
+  windows: Record<string, RateLimitWindow>
+  /** Pay-as-you-go overage beyond the plan, when the provider reports it. */
+  overage: { status: RateLimitStatus | null; inUse: boolean; disabledReason: string | null; resetsAt: string | null } | null
 }

@@ -130,3 +130,11 @@ describe('Claude translator context usage', () => {
     expect(completed([init(), result()]).context).toBeUndefined()
   })
 })
+
+describe('Claude usage limits', () => {
+  it('translates rate_limit_event into a typed rate-limit event', () => {
+    const translator = new ClaudeTranslator()
+    const events = translator.translate({ type: 'rate_limit_event', session_id: 'sess-1', rate_limit_info: { status: 'rejected', resetsAt: 1791368400, rateLimitType: 'five_hour', unifiedWindows: { five_hour: { utilization: 1, resetsAt: 1791368400 } } } })
+    expect(events).toEqual([{ kind: 'rate-limit', rateLimit: expect.objectContaining({ status: 'rejected', rateLimitType: 'five_hour', resetsAt: new Date(1791368400_000).toISOString(), utilization: 1 }) }])
+  })
+})

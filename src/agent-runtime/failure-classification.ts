@@ -18,6 +18,8 @@ export interface FailureClassification {
   rounds?: number
   /** `provider_limit` only: the provider's own wording of when it resets ("3am (Europe/Madrid)"), never reformatted. */
   resetAt?: string
+  /** `provider_limit` only: ISO-8601 reset time reported by the provider's typed usage-limit event (contract 5.14). */
+  resetsAt?: string
   /** One short plain sentence taken from the run's own error; bounded, redacted upstream. */
   detail?: string
   /** The step a `runtime resume` continues from, when resuming can help. */
@@ -58,6 +60,8 @@ export function providerLimitReset(message: string): string | undefined {
 }
 
 const PROVIDER_LIMIT = /\byou(?:'|’)?ve (?:hit|reached) your (?:session|usage|weekly|daily|monthly|plan)?\s*limit\b|\berror type rate_limit\b|\bHTTP 429\b|\b429 Too Many Requests\b|\brate[ _-]?limit(?:ed|s)? (?:exceeded|reached|hit)\b|\brate_limit_error\b|\binsufficient_quota\b|\busage limit (?:reached|exceeded)\b|\bRESOURCE_EXHAUSTED\b|\bquota (?:exceeded|exhausted)\b/i
+/** `… usage limit reached (five_hour window, resets 2026-11-18T03:00:00.000Z)` written by the CLI executor. */
+const TYPED_RESET = /usage limit reached \([^)]*?\bresets (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\)/
 const ENVIRONMENT_CODES = new Set(['verification_host_precondition', 'verification_nondeterministic_output', 'verification_execution_error'])
 const ENVIRONMENT_TEXT = /Verification cannot run in this environment|Verification output is not deterministic|\(verification_nondeterministic_output\)|setup command .* failed|could not undo them|outside the repository scope/i
 // A verification command stopped by its own limits is not the agent going quiet, whatever words the stop reason uses.
@@ -121,9 +125,12 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   const done = (kind: FailureKind, extra: Partial<FailureClassification> = {}, resume = false): FailureClassification =>
     ({ kind, ...base, ...(detail ? { detail } : {}), ...(resume ? resumable : {}), ...extra, confidence: kind === 'unknown' ? 'low' : 'high' })
 
-  if (PROVIDER_LIMIT.test(haystack)) {
-    const resetAt = providerLimitReset(haystack)
-    return done('provider_limit', resetAt ? { resetAt } : {}, true)
+  if (code === 'provider_limit' || PROVIDER_LIMIT.test(haystack)) {
+    // The executor's typed refusal names the window's reset as an ISO time; the
+    // provider's own wording (`resetAt`) is read from the rest of the message.
+    const resetsAt = TYPED_RESET.exec(haystack)?.[1]
+    const resetAt = providerLimitReset(haystack.replace(TYPED_RESET, 'usage limit reached'))
+    return done('provider_limit', { ...(resetAt ? { resetAt } : {}), ...(resetsAt && Number.isFinite(Date.parse(resetsAt)) ? { resetsAt: new Date(resetsAt).toISOString() } : {}) }, true)
   }
   if (code === 'verification_timeout' || VERIFICATION_TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
   if (IDLE_CODES.has(code) || IDLE_TEXT.test(haystack)) return done('tool_inactivity', {}, true)

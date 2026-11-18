@@ -284,7 +284,7 @@ describe('Claude translator edge cases', () => {
     expect(translator.translate({ type: 'mystery' })).toHaveLength(1)
     expect(translator.translate({ type: 'mystery' })).toHaveLength(0)
     expect(translator.translate({ type: 'system', subtype: 'brand_new' })[0]).toMatchObject({ kind: 'diagnostic', code: 'provider.unknown' })
-    expect(translator.translate({ type: 'rate_limit_event' })).toEqual([])
+    expect(translator.translate({ type: 'rate_limit_event' })).toEqual([{ kind: 'diagnostic', level: 'info', code: 'provider.unknown', message: 'Unrecognised Claude frame (rate_limit_event:malformed)' }])
   })
 
   it('ignores an orphan notification result and receipts for inputs it did not write', () => {

@@ -47,7 +47,10 @@ Each driver descriptor in `drivers` may carry `capabilities.interrupt:
 MCP tools: only their names reach the prompt and a tool's schema loads when the
 model searches for it, so attached connectors cost almost no context until
 used. It is `true` for `claude` and `false` for the others; treat its absence
-as `false` (an older Core).
+as `false` (an older Core). `capabilities.reportsRateLimits: true` means the
+driver journals the provider account's usage limits as `provider.rate-limit`
+events (see [Usage limits](#usage-limits)); it is `true` for `claude` and
+`codex`, `false` for the executor-backed drivers, and absent on an older Core.
 
 ### Deliveries
 
@@ -132,6 +135,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `output.truncated` | `scope: { turnId } \| { subagentId }, droppedEvents, droppedBytes` |
 | `notice.interruption` | `subagentIds, inputIds` (the notice was prefixed to the next input) |
 | `provider.diagnostic` | `level: 'info' \| 'warning', code, message` |
+| `provider.rate-limit` | `rateLimit: RateLimitInfo` — the account's usage-limit state as last reported (see [Usage limits](#usage-limits)) |
 
 `parentId: null` means the session's main agent. A sub-agent's phase can return
 from `idle` to `running`, because providers restart sub-agents. `subagents.settled`
@@ -177,6 +181,40 @@ interface ContextUsage {
 - Codex: `usedTokens` is the root thread's `tokenUsage.last.totalTokens` and
   `windowTokens` its `tokenUsage.modelContextWindow`, from the last
   `thread/tokenUsage/updated` of the turn.
+
+## Usage limits
+
+`provider.rate-limit` carries the provider account's usage-limit state. It is
+a snapshot that replaces the previous one, journaled only when it changes and
+kept on the session snapshot as `rateLimit` (absent until the driver reports
+one). It is account-wide: every session on the same account sees the same
+windows. A closed session still accepts it.
+
+```ts
+interface RateLimitInfo {
+  status: 'allowed' | 'allowed_warning' | 'rejected'  // rejected: requests are refused until the window resets
+  rateLimitType: string | null    // the binding window (provider id, e.g. five_hour, seven_day, codex:primary)
+  resetsAt: string | null         // ISO-8601 reset of that window
+  utilization: number | null      // 0..1 of that window
+  windows: Record<string, { utilization: number | null; resetsAt: string | null; windowMinutes?: number }>
+  overage: { status: 'allowed' | 'allowed_warning' | 'rejected' | null; inUse: boolean; disabledReason: string | null; resetsAt: string | null } | null
+}
+```
+
+- Claude: one `rate_limit_event` per request. `rate_limit_info.status`,
+  `rateLimitType`, `resetsAt` (epoch seconds), `utilization` and
+  `unifiedWindows.<id>.{utilization, resetsAt}` map one to one;
+  `overageStatus`, `isUsingOverage`, `overageDisabledReason` and
+  `overageResetsAt` fill `overage`. A `rejected` status covered by allowed or
+  in-use overage still serves requests.
+- Codex: `account/rateLimits/updated` (no thread). `primary`/`secondary`
+  become `<limitId>:primary` / `<limitId>:secondary` with
+  `usedPercent / 100` and `windowDurationMins`; `rateLimitReachedType` set
+  means `rejected` on the window it names, otherwise the fullest window is the
+  binding one. Codex reports no warning state; hosts derive thresholds from
+  `utilization`.
+- Malformed reports are dropped (Claude journals a `provider.unknown`
+  diagnostic once); values are never guessed.
 
 ## Policy
 

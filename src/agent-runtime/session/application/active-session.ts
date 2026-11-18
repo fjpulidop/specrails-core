@@ -485,6 +485,11 @@ export class ActiveSession {
       case 'diagnostic':
         this.commit([{ type: 'provider.diagnostic', level: event.level, code: event.code, message: event.message.slice(0, 2_000) }])
         return
+      case 'rate-limit':
+        // One report per provider request: only a change is news.
+        if (this.state.rateLimit && sameValue(this.state.rateLimit, event.rateLimit)) return
+        this.commit([{ type: 'provider.rate-limit', rateLimit: event.rateLimit }])
+        return
     }
   }
 

@@ -109,7 +109,7 @@ export interface RuntimeConfig {
 /** Null means unavailable, including when a CLI never reports billing. */
 export interface AgentUsage extends CacheTokenUsage { inputTokens: number | null; outputTokens: number | null; costUsd: number | null }
 export interface AgentEvent {
-  kind: 'text' | 'tool-start' | 'tool-end' | 'usage' | 'session'
+  kind: 'text' | 'tool-start' | 'tool-end' | 'usage' | 'session' | 'rate-limit'
   /** Provider-issued identifier, persisted before further work can be interrupted. */
   sessionId?: string
   text?: string
@@ -120,6 +120,10 @@ export interface AgentEvent {
   targetPaths?: string[]
   cwd?: string
   usage?: AgentUsage
+  /** `rate-limit`: the provider CLI whose account reported it (`claude`, `codex`, …). */
+  provider?: string
+  /** `rate-limit`: the provider account's usage-limit state as reported during the invocation. */
+  rateLimit?: import('./session/domain/types.js').RateLimitInfo
 }
 export interface AgentRequest {
   openspec?: import('./openspec.js').OpenSpecRoleContext

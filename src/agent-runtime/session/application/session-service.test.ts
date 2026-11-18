@@ -85,6 +85,18 @@ describe('SessionService — resident turns', () => {
     expect(ctx.service.snapshot(sessionId).turns.map((turn) => turn.context)).toEqual([context, undefined])
   })
 
+  it('journals the account usage-limit state only when it changes and keeps the latest on the snapshot', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    const report = (utilization: number, status: 'allowed' | 'rejected' = 'allowed') => ({ kind: 'rate-limit' as const, rateLimit: {
+      status, rateLimitType: 'five_hour', resetsAt: '2026-11-18T14:00:00.000Z', utilization, windows: { five_hour: { utilization, resetsAt: '2026-11-18T14:00:00.000Z' } }, overage: null,
+    } })
+    driver.emit(report(0.5), report(0.5), report(0.51), report(1, 'rejected'))
+    const reported = of(ctx.events(sessionId), 'provider.rate-limit')
+    expect(reported.map((event) => [event.rateLimit.status, event.rateLimit.utilization])).toEqual([['allowed', 0.5], ['allowed', 0.51], ['rejected', 1]])
+    expect(ctx.service.snapshot(sessionId).rateLimit).toMatchObject({ status: 'rejected', utilization: 1 })
+  })
+
   it('treats a retried input id as idempotent and rejects different content', async () => {
     const ctx = setup()
     const { sessionId, driver } = await openAndSend(ctx)

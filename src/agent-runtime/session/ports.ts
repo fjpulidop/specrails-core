@@ -7,7 +7,7 @@
  */
 import type { SessionEvent, SessionEventEnvelope, ToolActivity } from './domain/events.js'
 import type { SessionSnapshot } from './domain/snapshot.js'
-import type { Attachment, ContextUsage, DriverDescriptor, InputDelivery, OutputChannel, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
+import type { Attachment, ContextUsage, DriverDescriptor, InputDelivery, OutputChannel, RateLimitInfo, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
 import type { ReportedUsage, UsageBaseline } from './domain/usage.js'
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
@@ -74,6 +74,8 @@ export type DriverEvent =
   /** The provider's authoritative list of live sub-agent ids, when it reports one. */
   | { kind: 'roster'; liveSubagentIds: string[] }
   | { kind: 'diagnostic'; level: 'info' | 'warning'; code: string; message: string }
+  /** The provider account's usage-limit state (drivers with `reportsRateLimits`). */
+  | { kind: 'rate-limit'; rateLimit: RateLimitInfo }
 
 export type DriverEventSink = (event: DriverEvent) => void
 
