@@ -75,6 +75,8 @@ export function isProviderLimitError(code: string, message: string): boolean {
 }
 /** `… usage limit reached (five_hour window, resets 2026-11-18T03:00:00.000Z)` written by the CLI executor. */
 const TYPED_RESET = /usage limit reached \([^)]*?\bresets (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\)/
+/** The provider CLI is signed out or its credentials expired: the person must sign in again; retrying cannot help. */
+const PROVIDER_AUTH_TEXT = /Failed to authenticate|Run `?claude auth login|Please run \/login|Invalid API key|authentication_error|OAuth token (?:has )?expired|Not logged in|codex login/i
 const ENVIRONMENT_CODES = new Set(['verification_host_precondition', 'verification_nondeterministic_output', 'verification_execution_error'])
 const ENVIRONMENT_TEXT = /Verification cannot run in this environment|Verification output is not deterministic|\(verification_nondeterministic_output\)|setup command .* failed|could not undo them|outside the repository scope/i
 // A verification command stopped by its own limits is not the agent going quiet, whatever words the stop reason uses.
@@ -192,6 +194,7 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   if (IDLE_CODES.has(code) || IDLE_TEXT.test(haystack)) return done('tool_inactivity', {}, true)
   if (TIMEOUT_CODES.has(code) || TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
   if (code === 'baseline_characterization_failed' || /\(baseline_characterization_failed\)/.test(haystack)) return done('blocked')
+  if (PROVIDER_AUTH_TEXT.test(haystack)) return done('environment', {}, true)
   if (ENVIRONMENT_CODES.has(code) || ENVIRONMENT_TEXT.test(haystack)) return done('environment', {}, true)
   if (BLOCKED_CODES.has(code) || BLOCKED_TEXT.test(haystack)) return done('blocked', {}, true)
   if (TESTS_TEXT.test(haystack) || (code === 'verification_failed')) return done('tests_failed', {}, signals.status === 'blocked')

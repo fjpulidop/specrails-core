@@ -26,6 +26,14 @@ describe('classifyFailure', () => {
     expect(classifyFailure({ status: 'failed', error: { code: 'provider_limit', message: 'claude usage limit reached (five_hour window).' } })?.resetsAt).toBeUndefined()
   })
 
+  it('classifies a signed-out or expired provider login as an environment problem, not a crash', () => {
+    // Recorded from Claude Code when its login expired mid-run.
+    const expired = 'claude execution failed (exit 1). Failed to authenticate: this login reached its time limit and cannot be renewed. Run `claude auth login` to sign in again, or use `claude setup-token` and set CLAUDE_CODE_OAUTH_TOKEN for unattended jobs'
+    expect(classifyFailure({ status: 'failed', error: expired, steps: steps({ reviewer: { status: 'failed', visits: 1 } }) })).toMatchObject({ kind: 'environment', confidence: 'high', phase: 'reviewer' })
+    for (const message of ['Invalid API key · Please run /login', 'codex execution failed (exit 1). Not logged in. Run codex login'])
+      expect(classifyFailure({ status: 'failed', error: message })?.kind).toBe('environment')
+    expect(classifyFailure({ status: 'failed', error: 'claude execution failed (exit 1). The provider did not report a diagnostic.' })?.kind).toBe('crash')
+  })
   it('classifies tests that kept failing, counting correction rounds', () => {
     const result = classifyFailure({
       status: 'blocked', nextStep: 'fixer',
