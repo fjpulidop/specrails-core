@@ -142,6 +142,16 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
     async execute(params, context) {
       const deps = bindings()
       const commands = resolveVerificationPlan(deps, context, params)
+      // Nothing configured and nothing proposed: the run cannot verify any change.
+      // With host blockers that is the person's action to take (add a check),
+      // stated as such before any spend, never a bare validation failure.
+      if (commands.length === 0 && params.unverified !== true && params.hostBlockers === true) {
+        const blocker: HostBlocker = { kind: 'setup', reason: 'no verification command is configured for this project and the plan proposed none, so the run cannot check any change',
+          command: '', args: [], cwd: '.', requiredAction: 'Add a check the run can execute (for example a "test" script in package.json, or a verification command in the project settings), then retry the run.' }
+        const nothingToRun: PieceResult = { outcome: 'blocked', status: 'blocked', error: { code: 'verification_host_precondition', message: `${blocker.reason}. ${blocker.requiredAction}` },
+          output: { valid: false, candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, reason: 'No verification command to run', summary: 'No verification command is configured or proposed.', blocker: json(blocker) }, verified: null }
+        return nothingToRun
+      }
       const coversAll = deps.context.repositories.every(repository => commands.some(command => command.repositoryId === repository.id))
       const request = { kind: coversAll || params.unverified === true ? 'full' as const : 'scoped' as const, commands, ...(params.unverified === true ? { unverified: true } : {}) }
       validateVerificationRequest(deps.context, request)

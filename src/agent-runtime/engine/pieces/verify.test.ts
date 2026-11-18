@@ -379,6 +379,16 @@ describe('setup commands', () => {
     expect(f.receipts).toHaveLength(2)
   })
 
+  it('blocks with the action to take when nothing is configured or proposed, and keeps the validation failure without host blockers', async () => {
+    const f = fixture()
+    f.execution.state.$outputs.architect = { structured: { verification: [] } }
+    const result = await f.run({ commands: 'configured', additionalCommandsFrom: 'architect', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'blocked', status: 'blocked', error: { code: 'verification_host_precondition' }, verified: null,
+      output: { valid: false, summary: 'No verification command is configured or proposed.', blocker: { kind: 'setup', requiredAction: expect.stringMatching(/^Add a check the run can execute/) } } })
+    expect(f.receipts).toHaveLength(0)
+    await expect(f.run({ commands: 'configured', additionalCommandsFrom: 'architect' })).rejects.toThrow('Verification requires bounded structured commands')
+  })
+
   it('rejects a setup command that escapes the admitted workspace with the scoped-command validation error', async () => {
     const f = fixture()
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', '0'] }]
