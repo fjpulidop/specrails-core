@@ -315,6 +315,19 @@ describe('durable checkpoint and ledger boundary', () => {
     expect(ledger.events().filter(event => event.type === 'step_succeeded')).toHaveLength(2)
   })
 
+  it('does not spend the attempt budget on turns refused at the provider usage limit', async () => {
+    const { ledger } = await fixture()
+    const limited = { code: 'provider_execution_error', message: "claude execution failed (exit 1). You've hit your session limit · resets 3am (Europe/Madrid)" }
+    const enter = () => ledger.enter(admission('task', 'work', { retry: { maxAttempts: 1 } }))
+    for (let refusal = 0; refusal < 3; refusal++) {
+      ledger.fail(enter(), limited, true)
+    }
+    const frame = enter()
+    expect(frame.attempt).toBe(4)
+    ledger.fail(frame, { code: 'provider_execution_error', message: 'claude execution failed (exit 1). Invalid request' }, true)
+    expect(() => enter()).toThrow('Maximum physical attempts reached for this visit')
+  })
+
   it('keeps an uncertain write pending as __error__ and executes it only after explicit recovery', async () => {
     const { db, ledger } = await fixture(), saver = new SqliteRunSaver(db, ledger)
     const state = Annotation.Root({ value: Annotation<string>(), $commit: new EphemeralValue<TerminalCommit>(false) })

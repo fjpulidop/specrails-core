@@ -5,6 +5,7 @@ import { EngineError, type AttemptFrame, type DurableEngineEvent, type EngineUsa
   type JsonValue, type NodeAdmission, type PieceResult, type TaskIdentity, type TerminalCommit, type WorkflowBudget } from '../contracts.js'
 import { appendRunEvent, RunDatabase, type DatabaseRow } from './database.js'
 import { RunLease } from './lease.js'
+import { isProviderLimitError } from '../../failure-classification.js'
 import { ControlInbox } from '../steering/inbox.js'
 
 export interface FrozenLedgerInput {
@@ -114,7 +115,11 @@ export class RunLedger {
         this.event(JSON.parse(String(prior.frame_json)) as AttemptFrame, 'step_interrupted', { code: 'owner_lost' })
       }
       const attempt = Number(prior?.attempt ?? 0) + 1
-      if (attempt > input.retry.maxAttempts && !prior?.recovery_authorized) throw new EngineError('retry_exhausted', 'Maximum physical attempts reached for this visit')
+      // An attempt the provider refused on its usage limit did no work: the host waits for the
+      // reset and resumes, and that retry must not spend the visit's attempt budget (a second
+      // refusal used to end the run as "Maximum physical attempts reached").
+      const afterUsageLimit = !!prior && ['failed', 'interrupted'].includes(String(prior.status)) && isProviderLimitError(String(prior.error_code ?? ''), String(prior.error_message ?? ''))
+      if (attempt > input.retry.maxAttempts && !prior?.recovery_authorized && !afterUsageLimit) throw new EngineError('retry_exhausted', 'Maximum physical attempts reached for this visit')
       const frame: AttemptFrame = { runId: this.runId, nodePath: input.nodePath, scope: input.scope, task: input.task,
         visitId: String(visit.visit_id), visit: Number(visit.local_visit), transition: Number(visit.global_transition), attemptId: randomUUID(), attempt, leaseEpoch: this.token.epoch }
       this.db.put('attempts', { attempt_id: frame.attemptId, visit_id: frame.visitId, run_id: this.runId, node_path: frame.nodePath, scope_id: frame.scope.id,
