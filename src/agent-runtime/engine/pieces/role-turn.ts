@@ -86,7 +86,10 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   if (!result.ok) {
     if (result.code) throw new AgentExecutionError(result.error, result.code)
-    return { outcome: schema ? 'invalid' : 'failed', status: 'failed', output: { error: boundedText(result.error) }, error: { code: schema ? 'invalid_role_output' : 'role_failed', message: result.error } }
+    // A skipped OpenSpec workflow keeps its own code so the run is diagnosed as a
+    // workflow-protocol failure, not an unknown invalid reply.
+    const code = result.failure ?? (schema ? 'invalid_role_output' : 'role_failed')
+    return { outcome: schema ? 'invalid' : 'failed', status: 'failed', output: { error: boundedText(result.error) }, error: { code, message: result.error } }
   }
   // A writer that still hit a missing tool reports a structured blocker. When
   // the host can install it, it does so and reruns the turn once instead of

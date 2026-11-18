@@ -149,3 +149,27 @@ describe('definition end-node failures (contract 5.15)', () => {
     expect(classifyFailure({ status: 'failed', completion: { reasons: ['something new'] } })).toMatchObject({ kind: 'unknown', confidence: 'low' })
   })
 })
+
+describe('workflow protocol failures (contract 5.16)', () => {
+  // The step error engine 2 records when a role skipped its OpenSpec steps twice (benchmark S16/S17/S18).
+  const message = 'Required OpenSpec role workflow was not executed: plan must execute openspec-ff-change (missing instructions tasks); the plan model (claude/haiku) skipped the required OpenSpec steps again after one corrective reminder'
+  it('names the role, the model and the skipped steps, and resumes the role', () => {
+    const result = classifyFailure({ status: 'failed', nextStep: 'architect', completion: { reasons: ['unverified'] },
+      recentFailures: [{ nodePath: 'architect', status: 'failed', error: { code: 'openspec_workflow_omitted', message } }],
+      steps: { architect: { kind: 'role-turn', status: 'failed', visits: 1 }, failed: { kind: 'end', status: 'succeeded', visits: 1 } } })
+    expect(result).toEqual({ kind: 'workflow_protocol', phase: 'architect', role: 'plan', provider: 'claude', model: 'haiku', missingSteps: ['instructions tasks'],
+      detail: 'The plan model (claude/haiku) skipped the required OpenSpec steps (instructions tasks) even after a corrective reminder.', resumablePhase: 'architect', confidence: 'high' })
+  })
+  it('keeps a provider-qualified model id whole and reads an engine 1 run error without a model clause', () => {
+    expect(classifyFailure({ status: 'failed', error: message.replace('claude/haiku', 'router/vendor/small-model') })).toMatchObject({ provider: 'router', model: 'vendor/small-model' })
+    const legacy = classifyFailure({ status: 'failed', error: 'Required OpenSpec role workflow was not executed: architect must execute openspec-ff-change (missing load_skill, instructions tasks)', steps: steps({ architect: { status: 'failed', visits: 1 } }) })
+    expect(legacy).toMatchObject({ kind: 'workflow_protocol', role: 'architect', missingSteps: ['load_skill', 'instructions tasks'], resumablePhase: 'architect', confidence: 'high' })
+    expect(legacy?.provider).toBeUndefined()
+    expect(legacy?.detail).toBe('The architect model skipped the required OpenSpec steps (load_skill, instructions tasks) even after a corrective reminder.')
+  })
+  it('uses the typed code alone when the message is not the documented sentence', () => {
+    expect(classifyFailure({ status: 'failed', error: { code: 'openspec_workflow_omitted', message: 'something else' } }))
+      .toMatchObject({ kind: 'workflow_protocol', detail: 'The model skipped the required OpenSpec steps even after a corrective reminder.' })
+    expect(FAILURE_KINDS).toContain('workflow_protocol')
+  })
+})

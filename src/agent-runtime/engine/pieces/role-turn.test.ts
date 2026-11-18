@@ -141,3 +141,21 @@ describe('role-turn fixer stance', () => {
     expect(events).toContainEqual(expect.objectContaining({ role: 'fixer', event: { kind: 'text', text: 'working' } }))
   })
 })
+
+describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
+  it('fails the turn with code openspec_workflow_omitted after one corrective turn, never as an unknown invalid reply', async () => {
+    const f = fixture()
+    const stateDirectory = path.join(f.deps.context.artifactRoot, '.plan-state')
+    f.deps.config.roles!.plan = { provider: 'fixture', model: 'small', access: 'write', artifacts: 'all', prompt: 'Plan the change.', openspecSkill: 'openspec-ff-change' }
+    // The binding is never executed here: the fixture role makes no workflow calls at all.
+    f.deps.openspec = () => ({ plan: { root: f.deps.context.artifactRoot, change: 'skipped', stateDirectory, cli: '/unused/openspec.js', skillPath: '/unused/SKILL.md', skillHash: 'unused',
+      role: 'plan', access: 'write', artifacts: 'all', openspecSkill: 'openspec-ff-change' } }) as never
+    const schema = { type: 'object', required: ['confidence'], properties: { confidence: { type: 'string' } } }
+    const result = await f.run({ roleId: 'plan', prompt: 'Plan', structuredOutput: schema })
+    expect(result).toMatchObject({ outcome: 'invalid', error: { code: 'openspec_workflow_omitted',
+      message: expect.stringContaining('the plan model (fixture/small) skipped the required OpenSpec steps again after one corrective reminder') } })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1]!.prompt).toContain('Your turn ended without these required steps: load_skill, instructions tasks.')
+    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"new"}')
+  })
+})

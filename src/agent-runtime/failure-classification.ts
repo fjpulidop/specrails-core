@@ -6,7 +6,7 @@
  * run already produced (status, the failing step, error codes and messages); it never invents
  * a cause. Anything it cannot tie to a documented signal is `unknown` with `confidence: 'low'`.
  */
-export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'incomplete_tasks', 'spec_invalid', 'unknown'] as const
+export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'incomplete_tasks', 'spec_invalid', 'workflow_protocol', 'unknown'] as const
 export type FailureKind = (typeof FAILURE_KINDS)[number]
 export const FAILURE_CONFIDENCE = ['high', 'low'] as const
 
@@ -26,6 +26,13 @@ export interface FailureClassification {
   resumablePhase?: string
   /** `incomplete_tasks` only (contract 5.15): the approved tasks still unticked, as the run named them. */
   incompleteTasks?: string[]
+  /** `workflow_protocol` only (contract 5.16): the role whose turn skipped the required OpenSpec steps. */
+  role?: string
+  /** `workflow_protocol` only (contract 5.16): the provider and, when configured, the model that skipped them. */
+  provider?: string
+  model?: string
+  /** `workflow_protocol` only (contract 5.16): the skipped steps (`load_skill`, `instructions tasks|apply`). */
+  missingSteps?: string[]
   confidence: (typeof FAILURE_CONFIDENCE)[number]
 }
 
@@ -98,6 +105,21 @@ const SPEC_INVALID_TEXT = /still fails OpenSpec validation|fails? the plan contr
 const HOST_BLOCKER_TEXT = /\b(?:Developer|Fixer|Unblock) reported a host blocker\b|^Host blocker \(/im
 const STALLED_TEXT = /Implementation attempt limit reached|Automatic correction made no candidate changes/i
 const TASK_LIMIT = 20, TASK_TEXT_LIMIT = 300
+// A role ended its turn (and its corrective turn) without the required OpenSpec workflow
+// steps (contract 5.16). Core writes this sentence; the trailing model clause is 5.16+.
+const WORKFLOW_PROTOCOL_CODE = 'openspec_workflow_omitted'
+const WORKFLOW_PROTOCOL_TEXT = /Required OpenSpec role workflow was not executed: (\S+) must execute \S+ \(missing ([^)]*)\)(?:; the \S+ model \(([^)/\s]+)(?:\/([^)\s]+))?\))?/
+
+/** The role, skipped steps and model a workflow-protocol failure names, with a plain detail sentence. */
+function workflowProtocol(haystack: string): Partial<FailureClassification> {
+  const match = WORKFLOW_PROTOCOL_TEXT.exec(haystack)
+  if (!match) return { detail: 'The model skipped the required OpenSpec steps even after a corrective reminder.' }
+  const [, role, missing, provider, model] = match
+  const missingSteps = missing!.split(',').map(item => item.trim()).filter(Boolean).slice(0, 4)
+  const who = provider ? ` (${provider}${model ? '/' + model : ''})` : ''
+  return { role, ...(provider ? { provider } : {}), ...(model ? { model } : {}), ...(missingSteps.length ? { missingSteps } : {}),
+    detail: detailOf(`The ${role} model${who} skipped the required OpenSpec steps${missingSteps.length ? ` (${missingSteps.join(', ')})` : ''} even after a corrective reminder.`) }
+}
 
 /** The `Incomplete: [...]` list an end reason carries (a JSON array of task texts), bounded. */
 function incompleteTasksOf(message: string): string[] | undefined {
@@ -190,6 +212,7 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
     const resetAt = providerLimitReset(haystack.replace(TYPED_RESET, 'usage limit reached'))
     return done('provider_limit', { ...(resetAt ? { resetAt } : {}), ...(resetsAt && Number.isFinite(Date.parse(resetsAt)) ? { resetsAt: new Date(resetsAt).toISOString() } : {}) }, true)
   }
+  if (code === WORKFLOW_PROTOCOL_CODE || WORKFLOW_PROTOCOL_TEXT.test(haystack)) return done('workflow_protocol', workflowProtocol(haystack), true)
   if (code === 'verification_timeout' || VERIFICATION_TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
   if (IDLE_CODES.has(code) || IDLE_TEXT.test(haystack)) return done('tool_inactivity', {}, true)
   if (TIMEOUT_CODES.has(code) || TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.15",
+  "schemaVersion": "5.16",
   "providers": {
     "claude": {
       "cli": {
@@ -321,7 +321,7 @@
       "documentation": "docs/agent-runtime.md#project-rules-inventory"
     },
     "failureClassification": {
-      "version": 2,
+      "version": 3,
       "capability": "failureClassification",
       "kinds": [
         "tests_failed",
@@ -333,11 +333,12 @@
         "crash",
         "incomplete_tasks",
         "spec_invalid",
+        "workflow_protocol",
         "unknown"
       ],
-      "record": "{kind, phase?, rounds?, resetAt?, resetsAt?, detail?, resumablePhase?, incompleteTasks?, confidence: high | low}",
+      "record": "{kind, phase?, rounds?, resetAt?, resetsAt?, detail?, resumablePhase?, incompleteTasks?, role?, provider?, model?, missingSteps?, confidence: high | low}",
       "runResult": "runtime-result.failure and runtime-status.failure (both engines): the record when the run status is failed or blocked; absent otherwise. A run Core could not start (fatal argument or configuration error) carries none.",
-      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; resetsAt (since 5.14) is the ISO-8601 reset of the refusing window when the provider reported a typed usage-limit refusal (CLI executor error code provider_limit); detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification. Since 5.15 a definition run that reached a failure end node (no run error) is classified from its completion: completion.blocker or a host-blocker end reason is environment, a reason naming approved tasks still incomplete is incomplete_tasks with incompleteTasks (at most 20 task texts of at most 300 characters, from the reason's 'Incomplete: [...]' JSON list), an OpenSpec validation, plan contract or archive rejection is spec_invalid, an exhausted implementation budget or an unchanged correction is blocked; phase is then the end node id.",
+      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; resetsAt (since 5.14) is the ISO-8601 reset of the refusing window when the provider reported a typed usage-limit refusal (CLI executor error code provider_limit); detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification. Since 5.15 a definition run that reached a failure end node (no run error) is classified from its completion: completion.blocker or a host-blocker end reason is environment, a reason naming approved tasks still incomplete is incomplete_tasks with incompleteTasks (at most 20 task texts of at most 300 characters, from the reason's 'Incomplete: [...]' JSON list), an OpenSpec validation, plan contract or archive rejection is spec_invalid, an exhausted implementation budget or an unchanged correction is blocked; phase is then the end node id. Since 5.16 a role turn that skipped its required OpenSpec workflow steps (load_skill, instructions tasks or instructions apply) gets one corrective turn naming the missing steps and the exact scoped-tool calls that complete them (a planner that answers with confidence low or a blocking clarification is exempt, whatever its role id); when that turn skips them too the step fails (engine 2 error code openspec_workflow_omitted) and the run is workflow_protocol with role, provider, model (when configured) and missingSteps parsed from the error, a plain detail sentence, and resumablePhase set to rerun the role.",
       "kindMeaning": {
         "tests_failed": "verification kept failing, or the correction loop stopped on the same failing change",
         "provider_limit": "the provider reported a session, usage, rate or quota limit",
@@ -348,6 +349,7 @@
         "crash": "the provider process, endpoint, lease or storage failed under the run",
         "incomplete_tasks": "the run ended with approved tasks still unticked (a stall or an exhausted implementation budget); incompleteTasks names them",
         "spec_invalid": "OpenSpec or the plan contract rejected the change's artifacts (validation, freeze or archive) and planning could not repair them",
+        "workflow_protocol": "a role ended its turn, and its one corrective turn, without the required OpenSpec workflow steps: the model did not follow the tool protocol; continuing from that step (ideally on a stronger model for that role) can help",
         "unknown": "no documented signal matched"
       },
       "compatibility": "additive: hosts ignore an absent field and treat an unknown kind as unknown; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",

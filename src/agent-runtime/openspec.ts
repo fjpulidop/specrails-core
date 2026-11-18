@@ -249,21 +249,27 @@ export class OpenSpecTools {
     else if (action === 'write_artifact') {
       if (openSpecPolicy(this.context).artifacts === 'none') throw new Error(this.context.role === 'reviewer' ? 'Reviewer cannot write artifacts' : 'Role cannot write artifacts')
       const status = await this.status()
-      if (!input.path?.endsWith('.md') || typeof input.content !== 'string' || Buffer.byteLength(input.content) > 256 * 1024) throw new Error('Invalid artifact content')
-      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' && input.path !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
-      if (!['proposal.md', 'design.md', 'tasks.md'].includes(input.path) && !/^specs\/[a-z0-9-]+\/spec\.md$/.test(input.path)) throw new Error('Not a spec-driven artifact')
-      const artifact = input.path.startsWith('specs/') ? 'specs' : input.path.replace('.md', '')
+      // Each refusal names what to send instead: a model that reads "invalid" retries the same call.
+      if (typeof input.content !== 'string') throw new Error('Invalid artifact content: write_artifact needs content, the complete Markdown text of the artifact')
+      if (Buffer.byteLength(input.content) > 256 * 1024) throw new Error('Invalid artifact content: an artifact is at most 256 KB')
+      const relative = changeRelativeArtifact(input.path, status.changeRoot, this.context.change)
+      if (!relative) throw new Error(`Not a spec-driven artifact: write_artifact path is change-relative, one of ${ARTIFACT_PATHS} (got ${JSON.stringify(String(input.path ?? '')).slice(0, 200)})`)
+      const content = input.content
+      input = { ...input, path: relative }
+      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' && relative !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
+      const artifact = relative.startsWith('specs/') ? 'specs' : relative.replace('.md', '')
       if (!['ready', 'done'].includes(status.artifacts.find(item => item.id === artifact)?.status ?? '')) throw new Error('OpenSpec dependencies are incomplete for this artifact')
-      if (!history.some(item => item.action === 'instructions' && item.artifact === (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' ? 'apply' : artifact))) throw new Error('Read OpenSpec instructions before writing this artifact')
-      const target = artifactPath(status.changeRoot, input.path)
+      const required = openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' ? 'apply' : artifact
+      if (!history.some(item => item.action === 'instructions' && item.artifact === required)) throw new Error(`Read OpenSpec instructions before writing this artifact: call ${JSON.stringify({ action: 'instructions', artifact: required })} first`)
+      const target = artifactPath(status.changeRoot, relative)
       if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes') {
         const normalize = (text: string): string => text.replace(/^(\s*-\s+)\[[ x]\]/gm, '$1[ ]')
-        if (normalize(readFileSync(target, 'utf8')) !== normalize(input.content)) throw new Error('Developer may change only task checkboxes')
+        if (normalize(readFileSync(target, 'utf8')) !== normalize(content)) throw new Error('Developer may change only task checkboxes')
       }
       this.signal?.throwIfAborted()
       mkdirSync(path.dirname(target), { recursive: true })
-      writeFileSync(target, input.content, 'utf8')
-      result = { written: target, sha256: hash(input.content) }
+      writeFileSync(target, content, 'utf8')
+      result = { written: target, sha256: hash(content) }
     } else throw new Error('Unsupported OpenSpec operation')
     this.signal?.throwIfAborted()
     const timestamp = new Date().toISOString()
@@ -276,11 +282,45 @@ export class OpenSpecTools {
     return existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : []
   }
   participationCursor(): number { return this.participationEvents().length }
-  assertParticipation(after = 0): void {
+  /** The required workflow steps this role has not executed since `after` (`load_skill`, `instructions tasks|apply`). */
+  missingParticipation(after = 0): string[] {
     const rows = this.participationEvents().slice(after)
     const artifact = openSpecSkill(this.context) === 'openspec-ff-change' ? 'tasks' : 'apply'
-    const missing = [!rows.some(row => row.action === 'load_skill') ? 'load_skill' : '', !rows.some(row => row.action === 'instructions' && row.artifact === artifact) ? `instructions ${artifact}` : ''].filter(Boolean)
-    if (missing.length) throw new OpenSpecParticipationError(`Required OpenSpec role workflow was not executed: ${this.context.role} must execute ${openSpecSkill(this.context)} (missing ${missing.join(', ')})`)
+    return [!rows.some(row => row.action === 'load_skill') ? 'load_skill' : '', !rows.some(row => row.action === 'instructions' && row.artifact === artifact) ? `instructions ${artifact}` : ''].filter(Boolean)
+  }
+  assertParticipation(after = 0): void {
+    const missing = this.missingParticipation(after)
+    if (missing.length) throw new OpenSpecParticipationError(`Required OpenSpec role workflow was not executed: ${this.context.role} must execute ${openSpecSkill(this.context)} (missing ${missing.join(', ')})`, missing)
+  }
+  /**
+   * The exact scoped-tool calls that complete the workflow from the change's current
+   * state, in order: what a corrective turn names instead of "follow the skill".
+   * Read-only; an OpenSpec query that fails only shortens the list to its defaults.
+   */
+  async remainingSteps(missing: readonly string[]): Promise<string[]> {
+    const call = (args: Record<string, string>): string => JSON.stringify(args)
+    const steps: string[] = []
+    if (missing.includes('load_skill')) steps.push(call({ action: 'load_skill' }))
+    if (openSpecSkill(this.context) !== 'openspec-ff-change') {
+      if (missing.some(item => item.startsWith('instructions '))) steps.push(call({ action: 'instructions', artifact: 'apply' }))
+      return steps
+    }
+    let status: OpenSpecStatus | undefined
+    if (existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}/.openspec.yaml`))) {
+      try { status = await this.status() } catch { status = undefined }
+    } else steps.push(call({ action: 'new' }))
+    const pending = status ? status.artifacts.filter(item => item.status !== 'done').map(item => item.id) : ['proposal', 'design', 'specs', 'tasks']
+    for (const artifact of pending) {
+      steps.push(call({ action: 'instructions', artifact }))
+      steps.push(call({ action: 'write_artifact', path: artifact === 'specs' ? 'specs/<capability>/spec.md' : `${artifact}.md` }) + ' with content: the complete Markdown')
+    }
+    // tasks.md may exist (written outside the tool, or reused) without its instructions read.
+    if (!pending.includes('tasks') && missing.includes('instructions tasks')) {
+      steps.push(call({ action: 'instructions', artifact: 'tasks' }))
+      steps.push(call({ action: 'write_artifact', path: 'tasks.md' }) + ' with content: tasks.md reconciled with those instructions')
+    }
+    steps.push(call({ action: 'validate' }))
+    return steps
   }
   async assertReady(): Promise<OpenSpecApply> {
     const status = await this.status()
@@ -332,10 +372,46 @@ export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: str
 }
 
 /** A repairable protocol omission, distinct from invalid artifacts or failed verification. */
-export class OpenSpecParticipationError extends Error {}
-export function openSpecRepairPrompt(context: OpenSpecRoleContext): string {
-  if (!isBuiltinRole(context.role)) return `Continue the same ${context.role} turn. Load ${openSpecSkill(context)} and execute its official scoped workflow, including instructions ${openSpecSkill(context) === 'openspec-ff-change' ? 'tasks' : 'apply'}. Respect workspace access ${openSpecPolicy(context).access} and artifact permission ${openSpecPolicy(context).artifacts}. Keep already-correct work. Return the originally requested result without starting another role.\n`
+export class OpenSpecParticipationError extends Error {
+  constructor(message: string, readonly missing: readonly string[] = []) { super(message) }
+}
+/** Accepted artifact paths of the spec-driven schema, relative to the change directory. */
+const ARTIFACT_PATHS = 'proposal.md, design.md, specs/<capability>/spec.md or tasks.md'
+const CHANGE_ARTIFACT = /^(?:proposal|design|tasks)\.md$|^specs\/[a-z0-9-]+\/spec\.md$/
+/**
+ * The change-relative artifact a `write_artifact` path names. Models also send the
+ * repository-relative (`openspec/changes/<change>/proposal.md`) or absolute spelling of
+ * the same file; those resolve to the same artifact of this change and nothing else.
+ */
+export function changeRelativeArtifact(raw: unknown, changeRoot: string, change: string): string | undefined {
+  if (typeof raw !== 'string') return undefined
+  let candidate = raw.trim().replace(/\\/g, '/').replace(/^\.\//, '')
+  if (path.isAbsolute(raw.trim())) {
+    // Compare canonical spellings too: a temp or home path may reach the change through a symlink (/var vs /private/var).
+    const canonical = (value: string): string[] => { try { return [value, realpathSync.native(value)] } catch { return [value] } }
+    const absolute = raw.trim(), parent = path.dirname(absolute)
+    const spellings = [absolute, ...canonical(parent).map(directory => path.join(directory, path.basename(absolute)))]
+    const relative = canonical(changeRoot).flatMap(root => spellings.map(spelling => path.relative(root, spelling)))
+      .find(item => item && !item.startsWith('..') && !path.isAbsolute(item))
+    if (!relative) return undefined
+    candidate = relative.replace(/\\/g, '/')
+  } else {
+    const prefix = `openspec/changes/${change}/`
+    if (candidate.startsWith(prefix)) candidate = candidate.slice(prefix.length)
+  }
+  return CHANGE_ARTIFACT.test(candidate) ? candidate : undefined
+}
+/**
+ * The single corrective turn after a role ended without its required workflow steps.
+ * `reminder` names the steps that are missing and the exact scoped-tool calls that
+ * complete them from the change's current state.
+ */
+export function openSpecRepairPrompt(context: OpenSpecRoleContext, reminder?: { missing: readonly string[]; steps: readonly string[] }): string {
+  const explicit = reminder && reminder.missing.length
+    ? `\nYour turn ended without these required steps: ${reminder.missing.join(', ')}. The host checks the OpenSpec workflow log, not your report, so call the scoped OpenSpec workflow tool named in the workflow binding now, in this order, one call per line (the JSON is the tool's arguments):\n${reminder.steps.map((step, index) => `${index + 1}. ${step}`).join('\n')}\nA call that returns an error tells you what to change; correct it and call again instead of stopping.${openSpecSkill(context) === 'openspec-ff-change' ? ' If the change cannot be planned without a decision only the requester can make, return the result with confidence low and that question instead.' : ''}\n`
+    : ''
+  if (!isBuiltinRole(context.role)) return `Continue the same ${context.role} turn. Load ${openSpecSkill(context)} and execute its official scoped workflow, including instructions ${openSpecSkill(context) === 'openspec-ff-change' ? 'tasks' : 'apply'}. Respect workspace access ${openSpecPolicy(context).access} and artifact permission ${openSpecPolicy(context).artifacts}. Keep already-correct work. Return the originally requested result without starting another role.\n` + explicit
 
   return `The previous ${context.role} result cannot be accepted because you omitted the required official OpenSpec workflow. Do not merely resend the JSON. Continue this same role with the work already available. Load ${openSpecSkill(context)} using the scoped workflow tool (action=load_skill), consult status and instructions ${context.role === 'architect' ? 'tasks' : 'apply'}, and execute the complete returned skill procedure against the current artifacts and code. Reconcile your previous conclusions with that procedure; correct your report if necessary. Do not rerun the implementation or the host verification commands. ${context.role === 'reviewer' ? 'Stay read-only; do not modify code or artifacts.' : 'Keep already-correct work and respect the same frozen scope.'} Finish with the originally requested JSON report.
-`
+` + explicit
 }
