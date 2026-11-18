@@ -118,7 +118,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `turn.output` | `turnId, channel: 'text' \| 'thinking', delta` |
 | `turn.tool` | `turnId, toolUseId, name, phase: 'started' \| 'completed', input?, output?, isError?` |
 | `turn.image` | `turnId, imageId, path, mimeType, prompt?` — an image the provider generated in the turn, saved by the provider at the absolute local `path` (Codex `imageGeneration`). Image bytes never enter the journal; the host copies the file if it keeps it |
-| `turn.completed` | `turnId, status: 'completed' \| 'failed' \| 'stopped' \| 'interrupted', text, error?, usage: Usage` |
+| `turn.completed` | `turnId, status: 'completed' \| 'failed' \| 'stopped' \| 'interrupted', text, error?, usage: Usage, context?: ContextUsage` |
 | `subagent.started` | `subagentId, parentId \| null, kind: 'foreground' \| 'background', agentType?, description, prompt?` |
 | `subagent.phase` | `subagentId, phase: 'running' \| 'idle' \| 'failed' \| 'stopped' \| 'killed' \| 'interrupted', reason?` |
 | `subagent.output` | `subagentId, channel: 'text' \| 'tool', delta?, tool?: { toolUseId, name, phase, input?, output?, isError? }` |
@@ -147,6 +147,32 @@ interface Usage {
 ```
 
 A missing provider value is `null`, never `0`.
+
+`turn.completed.context` (also kept on the snapshot's `turns[].context`) is how
+full the main agent's context window was when the turn ended. It is a snapshot,
+not a delta, and is absent when the driver reports nothing (executor-backed
+drivers, or a turn without a measured request). Events journaled before the
+field existed have no `context`.
+
+```ts
+interface ContextUsage {
+  usedTokens: number | null   // size of the last main-agent request; null after a compaction
+  windowTokens: number | null // the model's context window
+  model: string | null
+  compacted?: boolean         // true when the provider compacted after the last measured request
+}
+```
+
+- Claude: `usedTokens` is `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`
+  of the newest main-agent `assistant` frame with non-zero usage (sub-agent and
+  sidechain frames ignored, output never counted, never summed across frames).
+  A later `system/compact_boundary` makes it `null` with `compacted: true`.
+  `windowTokens` is `result.modelUsage[<model>].contextWindow` for the
+  `system/init` model, else the assistant message model, else the largest window;
+  a `…[1m]` model without one is `1000000`.
+- Codex: `usedTokens` is the root thread's `tokenUsage.last.totalTokens` and
+  `windowTokens` its `tokenUsage.modelContextWindow`, from the last
+  `thread/tokenUsage/updated` of the turn.
 
 ## Policy
 

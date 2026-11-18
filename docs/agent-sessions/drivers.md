@@ -21,6 +21,7 @@ It adapts to each driver's declared capabilities.
 | Tool filtering (`policy.tools`) | yes; `read-only` is `--tools Read,Grep,Glob`, plus `Agent,Task` when native sub-agents are allowed, with `Write,Edit,MultiEdit,NotebookEdit,Bash` denied so sub-agents stay read-only | no (refused) | no (refused) |
 | Billed USD | per session, cumulative; Core records per-turn deltas | none (estimated only with a host rate card) | as reported |
 | Tokens | per turn | cumulative per thread (deltas) | per turn |
+| Context window fill (`turn.completed.context`) | last main-agent request + `modelUsage` window | `tokenUsage.last` + `modelContextWindow` | not reported |
 | MCP isolation (`inheritUserScope: false`) | `--strict-mcp-config` | user servers disabled one by one | provider default |
 
 A policy a driver cannot enforce fails `session.open` with

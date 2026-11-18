@@ -44,6 +44,20 @@ export const EMPTY_USAGE: Usage = Object.freeze({
   model: null,
 })
 
+/**
+ * How full the main agent's context window was at the end of a turn: a
+ * snapshot, not a delta. `null` means "not reported", never zero.
+ */
+export interface ContextUsage {
+  /** Tokens of the last main-agent request (prompt incl. cache, never output summed across requests). */
+  usedTokens: number | null
+  /** The model's context window size. */
+  windowTokens: number | null
+  model: string | null
+  /** The provider compacted the conversation after the last measured request, so `usedTokens` is unknown. */
+  compacted?: boolean
+}
+
 export interface McpServerSpec {
   name: string
   /** stdio server */

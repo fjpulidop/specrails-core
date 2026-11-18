@@ -4,7 +4,7 @@ import { fingerprint } from '../domain/fingerprint.js'
 import { buildInterruptionNotice } from '../domain/interruption.js'
 import { nativeSubagentsAllowed, subagentsActive } from '../domain/policy.js'
 import { applyEvent, liveSubagents, type SessionSnapshot } from '../domain/snapshot.js'
-import { EMPTY_USAGE, type DriverDescriptor, type InputDelivery, type SessionPolicy, type SubagentPhase, type Usage } from '../domain/types.js'
+import { EMPTY_USAGE, type ContextUsage, type DriverDescriptor, type InputDelivery, type SessionPolicy, type SubagentPhase, type Usage } from '../domain/types.js'
 import { FRESH_BASELINE, UNKNOWN_BASELINE, computeTurnUsage, withEstimatedCost, type RateCard, type ReportedUsage, type UsageBaseline } from '../domain/usage.js'
 import type { Clock, CloseReason, DriverEvent, DriverFactory, DriverInput, DriverSession, Ids, SessionJournal } from '../ports.js'
 import { OutputBuffer, type OutputLimits } from './output-buffer.js'
@@ -449,7 +449,7 @@ export class ActiveSession {
         return
       }
       case 'turn.completed':
-        return this.completeTurn(event.status, event.text, event.usage, event.error)
+        return this.completeTurn(event.status, event.text, event.usage, event.error, event.context)
       case 'subagent.started':
         this.finishedSinceLastTurn.delete(event.subagentId)
         this.commit([{ type: 'subagent.started', subagentId: event.subagentId, parentId: event.parentId, kind: event.agentKind, description: event.description, ...(event.agentType ? { agentType: event.agentType } : {}), ...(event.prompt ? { prompt: event.prompt.slice(0, 8_000) } : {}) }])
@@ -509,7 +509,7 @@ export class ActiveSession {
     this.armTurnInactivity()
   }
 
-  private completeTurn(reportedStatus: 'completed' | 'failed' | 'stopped', reportedText: string, reported: ReportedUsage, error?: string): void {
+  private completeTurn(reportedStatus: 'completed' | 'failed' | 'stopped', reportedText: string, reported: ReportedUsage, error?: string, context?: ContextUsage): void {
     const turn = this.requireTurn()
     this.timers.cancel('turnInactivity', 'interruptGrace')
     this.toolsInFlight.clear()
@@ -522,7 +522,7 @@ export class ActiveSession {
     this.commit(
       [
         ...this.output.drainTurn(turn.turnId),
-        { type: 'turn.completed', turnId: turn.turnId, status, text, usage, ...(error ? { error } : {}) },
+        { type: 'turn.completed', turnId: turn.turnId, status, text, usage, ...(error ? { error } : {}), ...(context ? { context: { ...context } } : {}) },
         ...this.completeTurnInputs(turn.inputIds, turn.turnId),
       ],
       baselineOption,

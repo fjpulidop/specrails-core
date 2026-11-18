@@ -10,6 +10,7 @@ import {
   isLiveSubagentPhase,
 } from './state-machines.js'
 import type {
+  ContextUsage,
   InputDelivery,
   InputState,
   SessionPhase,
@@ -47,6 +48,8 @@ export interface TurnRecord {
   startedAt: string
   endedAt: string | null
   usage: Usage | null
+  /** Context window fill at the end of the turn, when the driver reports it. */
+  context?: ContextUsage
 }
 
 export interface SubagentNode {
@@ -222,7 +225,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       const turns = state.turns.map((turn) => {
         if (turn.turnId !== event.turnId) return turn
         assertTransition('turn', TURN_TRANSITIONS, turn.status, event.status)
-        return { ...turn, status: event.status, endedAt: event.at, usage: event.usage }
+        return { ...turn, status: event.status, endedAt: event.at, usage: event.usage, ...(event.context ? { context: event.context } : {}) }
       })
       return { ...state, openTurn: null, turns }
     }
