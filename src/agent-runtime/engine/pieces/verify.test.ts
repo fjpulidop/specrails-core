@@ -234,7 +234,7 @@ describe('verification repair of version drift', () => {
   it('installs once, verifies again and records the drifted packages when lint fails on a stale package', async () => {
     const f = fixture()
     const manifest = drifted(f)
-    installs.handler = (command, args) => { expect([command, ...args]).toEqual(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error']); writeFileSync(manifest, JSON.stringify({ version: '5.24.1' })); return { status: 0, stdout: '', stderr: '' } }
+    installs.handler = (command, args) => { expect([command, ...args]).toEqual(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock']); writeFileSync(manifest, JSON.stringify({ version: '5.24.1' })); return { status: 0, stdout: '', stderr: '' } }
     const result = await f.run({ commands: 'configured', hostBlockers: true })
     expect(result).toMatchObject({ outcome: 'pass', output: { valid: true, environmentRepair: { attempted: true, reverified: true, installs: [{ command: 'npm', ok: true }],
       drift: [{ root: '.', name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] } } })

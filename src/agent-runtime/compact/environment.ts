@@ -252,11 +252,15 @@ function declaresPlaywright(root: string): boolean {
 export function plannedInstalls(root: string, failureOutput = ''): EnvironmentInstall[] {
   const plans: EnvironmentInstall[] = []
   const suggested = suggestedPackages(failureOutput)
-  if (suggested.length && existsSync(path.join(root, 'package.json'))) {
-    const runner = existsSync(path.join(root, 'pnpm-lock.yaml')) ? 'pnpm' : existsSync(path.join(root, 'yarn.lock')) ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', ...suggested] : runner === 'yarn' ? ['add', '--dev', ...suggested] : ['add', '-D', ...suggested] })
-  }
   const has = (file: string): boolean => existsSync(path.join(root, file))
+  // Preparing the environment is not authorship: a repository that keeps no
+  // npm lockfile must not get one from the host's install, or the delivery
+  // commits a package-lock.json nobody asked for.
+  const npmLock = has('package-lock.json') || has('npm-shrinkwrap.json') ? [] : ['--no-package-lock']
+  if (suggested.length && has('package.json')) {
+    const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
+    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock, ...suggested] : runner === 'yarn' ? ['add', '--dev', ...suggested] : ['add', '-D', ...suggested] })
+  }
   // A manifest edited after the first install (a later task group adds
   // jest-extended) leaves node_modules present but incomplete; verify then
   // fails on the environment, not the code. Declared-but-absent ⇒ reinstall.
@@ -265,7 +269,7 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
   const drift = has('package.json') && has('node_modules') ? driftedNodeDependencies(root) : []
   if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length || drift.length)) {
     const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error'] : ['install'], ...(drift.length ? { drift } : {}) })
+    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock] : ['install'], ...(drift.length ? { drift } : {}) })
   }
   // After the dependency plan: a fresh worktree needs node_modules before
   // `playwright install` can run at all.

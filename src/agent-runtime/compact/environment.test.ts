@@ -74,6 +74,12 @@ describe('plannedInstalls', () => {
     expect(plannedInstalls(root({ 'Cargo.toml': '' }))).toMatchObject([{ ecosystem: 'rust' }])
     expect(plannedInstalls(root())).toEqual([])
   })
+
+  it('never creates an npm lockfile in a repository that keeps none', () => {
+    expect(plannedInstalls(root({ 'package.json': '{}' }))[0]!.args).toContain('--no-package-lock')
+    expect(plannedInstalls(root({ 'package.json': '{}', 'package-lock.json': '{}' }))[0]!.args).not.toContain('--no-package-lock')
+    expect(plannedInstalls(root({ 'package.json': '{}', 'npm-shrinkwrap.json': '{}' }))[0]!.args).not.toContain('--no-package-lock')
+  })
 })
 
 describe('installEnvironment', () => {
@@ -83,7 +89,7 @@ describe('installEnvironment', () => {
     const events: unknown[] = []
     const outcomes = await installEnvironment([node, root({ 'go.mod': '' })], { spawn: spawn as never, onEvent: event => events.push(event) })
     expect(spawn).toHaveBeenCalledTimes(2)
-    expect(spawn.mock.calls[0]![1]).toEqual(['install', '--no-audit', '--no-fund', '--loglevel=error'])
+    expect(spawn.mock.calls[0]![1]).toEqual(['install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock'])
     expect((spawn.mock.calls[0]![2] as { cwd: string; timeout: number }).cwd).toBe(node)
     expect(outcomes.map(item => item.ok)).toEqual([true, false])
     expect(outcomes[1]!.detail).toContain('boom')
@@ -101,7 +107,7 @@ describe('suggested packages from failure output', () => {
     expect(suggestedPackages(output)).toEqual(['@types/jest', '@types/mocha'])
     const node = root({ 'package.json': '{}' }, ['node_modules'])
     expect(plannedInstalls(node)).toEqual([])
-    expect(plannedInstalls(node, output)).toMatchObject([{ command: 'npm', args: ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', '@types/jest', '@types/mocha'] }])
+    expect(plannedInstalls(node, output)).toMatchObject([{ command: 'npm', args: ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock', '@types/jest', '@types/mocha'] }])
     const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null })) as never
     expect((await installEnvironment([node], { spawn, failureOutput: output }))[0]).toMatchObject({ ok: true })
     expect(suggestedPackages('FAIL: expect(received).toBe(expected)')).toEqual([])
@@ -248,7 +254,7 @@ describe('Playwright browser builds', () => {
     expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { playwright: '^1.48' } }) }, ['node_modules/playwright']), 'Looks like Playwright was just installed or updated.')).toMatchObject([{ command: 'npx', args: ['playwright', 'install'], installs: 'Playwright browsers' }])
     expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { jest: '^29' } }) }, ['node_modules/jest']), missing)).toEqual([])
     // A fresh worktree installs node_modules first: `npx playwright` needs the package.
-    expect(plannedInstalls(root({ 'package.json': manifest }), missing).map(plan => [plan.command, ...plan.args])).toEqual([['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error'], ['npx', 'playwright', 'install', 'chromium']])
+    expect(plannedInstalls(root({ 'package.json': manifest }), missing).map(plan => [plan.command, ...plan.args])).toEqual([['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock'], ['npx', 'playwright', 'install', 'chromium']])
     expect(plannedInstalls(root({ 'package.json': manifest, 'pnpm-lock.yaml': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'pnpm', args: ['exec', 'playwright', 'install', 'chromium'] }])
     expect(plannedInstalls(root({ 'package.json': manifest, 'yarn.lock': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'yarn', args: ['playwright', 'install', 'chromium'] }])
   })
@@ -312,7 +318,7 @@ describe('host preparation before writer turns', () => {
       return { status: 0, stdout, stderr: '', pid: 1, output: [], signal: null }
     })
     const outcomes = await prepareEnvironment([dir], { spawn: spawn as never })
-    expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error', 'npx --no playwright install chromium'])
+    expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error --no-package-lock', 'npx --no playwright install chromium'])
     expect(outcomes.every(outcome => outcome.ok)).toBe(true)
     expect(outcomes[1]).toMatchObject({ installs: 'Playwright chromium', timeoutMs: 10 * 60_000 })
     calls.length = 0

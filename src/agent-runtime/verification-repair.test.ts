@@ -64,8 +64,8 @@ describe('repairEnvironment', () => {
     const notes: string[] = []
     const repair = await repairEnvironment(context, receipt([{ output: 'sh: jest: command not found', cwd: root }]), undefined, text => notes.push(text), spawn)
     expect(repair.refused).toBeUndefined()
-    expect(repair.installs).toMatchObject([{ command: 'npm', args: ['install', '--no-audit', '--no-fund', '--loglevel=error'], root, ok: true }])
-    expect(notes[0]).toBe(`[environment] npm install --no-audit --no-fund --loglevel=error (${path.basename(root)})`)
+    expect(repair.installs).toMatchObject([{ command: 'npm', args: ['install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock'], root, ok: true }])
+    expect(notes[0]).toBe(`[environment] npm install --no-audit --no-fund --loglevel=error --no-package-lock (${path.basename(root)})`)
     expect(notes.at(-1)).toBe(`Environment: installed node dependencies in ${path.basename(root)}`)
   })
   it('refuses with a credential blocker when the install itself hits a precondition', async () => {
