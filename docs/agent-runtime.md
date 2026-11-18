@@ -175,6 +175,7 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a s
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
+| `humanTasks: 1` | `tasks.md` accepts `- [ ] N.M [human] <check>` for a check only a person can make; `artifact-contract` never requires it ticked, reports `incompleteTasks` and `humanChecks`, and refuses to freeze an untagged manual check (see [Human checks](#human-checks), contract 5.15) |
 | `unlimitedTurns: 1` | A role or engine without `maxTurns` runs with no turn limit (Claude gets no `--max-turns`; Codex, Gemini, Kimi and OpenAI-compatible loops stop counting). Older Cores applied a default of 100. Timeouts and cost budgets still bound the run |
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
@@ -433,11 +434,33 @@ A run that ends `failed` or `blocked` reports why in one typed record, so a host
 | `timeout` | The total execution or active-duration limit elapsed, or a verification command hit its total or silence limit (`detail` names which) |
 | `tool_inactivity` | The agent produced no tool call, reply or usage within the idle limit |
 | `crash` | The provider process, endpoint, lease or storage failed under the run |
+| `incomplete_tasks` | The run ended with approved tasks still unticked (a stall or an exhausted implementation budget). `incompleteTasks` (contract 5.15) names them, at most 20 |
+| `spec_invalid` | OpenSpec or the plan contract rejected the change's artifacts (validation, freeze or archive) and planning could not repair them |
 | `unknown` | No documented signal matched; always `confidence: "low"` |
 
 The classification is derived only from signals the run already produced (status, the failing step or node, error codes and messages). It never guesses: an unmatched failure is `unknown`, and a host must present it as an unknown cause next to the raw log tail. `phase` is the failing step id (engine 1) or node path (engine 2), `rounds` counts visits of correction steps, `detail` is one bounded sentence from the run's own error, and `resumablePhase` names the step `runtime resume` continues from when resuming can help (blocked runs and the transient kinds). It is absent for a plain failed verification, which needs a change rather than a resume.
 
+A workflow definition that stops at a failure `end` node has no run error. Since contract 5.15 its completion is classified instead: `completion.blocker` or a host-blocker reason is `environment`, a reason naming approved tasks still incomplete is `incomplete_tasks` (the list comes from the reason's `Incomplete: [...]` JSON array), an OpenSpec validation, plan contract or archive rejection is `spec_invalid`, an exhausted implementation budget or an unchanged correction is `blocked`, and `phase` is the end node id. An end reason the classifier does not know stays `unknown`.
+
 A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 1` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
+
+## Human checks
+
+Every task in `tasks.md` must be completable and checkable by the run: with commands, or with the host's headless browser tool when it exports `$SPECRAILS_BROWSE`. A check only a person can make (taste, a real device, real credentials) is written with the `[human]` tag after the task number:
+
+```markdown
+- [x] 3.2 Add the TETRIS title and its fade-out
+- [ ] 4.1 [human] Judge the push-in on a real phone
+```
+
+With `humanTasks: 1` (contract 5.15) the `artifact-contract` piece:
+
+- never counts an unticked `[human]` task as incomplete, so `requireCompletedTasks` passes without it;
+- reports `incompleteTasks` (unticked untagged tasks) and `humanChecks` (every `[human]` task without its tag) in its output, at most 20 entries of 300 characters each, so a host can hand them to the reviewer and to the person;
+- ignores the tag on unticked tasks when it compares the frozen fingerprint, so a later turn can turn a task the run truly cannot check into a visible human check; any other change to the task text is still `artifacts_changed`;
+- refuses to freeze (`tasks_need_manual_check`) a plan with an untagged task that asks for a manual or visual check without saying how the run performs it ("a manual check of the running game", "visually verify in a browser"). The history entry tells the planner to rewrite the task as a check the run performs, or to tag it.
+
+An older Core treats a `[human]` task as an ordinary task, so hosts only ask for the tag when `runtime api` advertises `humanTasks: 1`.
 
 ## Finding locations
 

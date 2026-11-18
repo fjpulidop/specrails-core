@@ -596,6 +596,12 @@ delta specs (the artifact is the object of an editing verb, or the target of rec
 evidence): such a task can never be completed after the freeze. It emits `fail` with
 `reason: 'tasks_edit_frozen_artifacts'`, the offending `tasks`, and a history note the
 planning role repairs from. Citing those artifacts ("as described in design.md") is fine.
+It also refuses (`reason: 'tasks_need_manual_check'`) an untagged task that asks for a
+manual or visual check without saying how the run performs it. A task tagged
+`- [ ] N.M [human] …` (contract 5.15, capability `humanTasks`) is a person's check:
+`check` never counts it as incomplete, the frozen fingerprint ignores the tag on an
+unticked task, and the output reports `incompleteTasks` and `humanChecks` (see
+[Human checks](../agent-runtime.md#human-checks)).
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement

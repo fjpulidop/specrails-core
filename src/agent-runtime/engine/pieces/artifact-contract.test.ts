@@ -3,7 +3,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { JsonValue, PieceExecutionContext } from '../contracts.js'
-import { artifactContractPiece, tasksEditingFrozenArtifacts } from './artifact-contract.js'
+import { artifactContractPiece, humanCheckText, taskCheckboxes, tasksEditingFrozenArtifacts, tasksNeedingManualCheck } from './artifact-contract.js'
 import type { PieceDependencies } from './ports.js'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })))
@@ -81,5 +81,48 @@ describe('tasks that edit frozen artifacts', () => {
     // A check of an already frozen contract is unaffected (only freeze judges the plan).
     writeFileSync(path.join(f.directory, 'tasks.md'), '- [ ] 1. Implement requirement\n')
     expect(await f.run('freeze')).toMatchObject({ outcome: 'pass' })
+  })
+})
+
+describe('human checks ([human] tasks)', () => {
+  // The task of a real plan (tetrisex #14) the implementer could not do without a browser.
+  const incident = '4.1 README: document the cinematic moment and add a visual-review note written from a manual check of the running game (desktop and narrow viewport, nearly full board, ghost on).'
+  it('reads the tag after the task number and strips it for the human check text', () => {
+    expect(taskCheckboxes('- [ ] 4.1 [human] Check the title on a real phone\n- [x] 4.2 Add the title\n- [ ] [HUMAN] Judge the glow')).toEqual([
+      { done: false, text: '4.1 [human] Check the title on a real phone', human: true },
+      { done: true, text: '4.2 Add the title', human: false },
+      { done: false, text: '[HUMAN] Judge the glow', human: true },
+    ])
+    expect(humanCheckText('4.1 [human] Check the title on a real phone')).toBe('4.1 Check the title on a real phone')
+  })
+  it('names untagged tasks that ask for a manual or visual check', () => {
+    const manual = [incident, '2. Visually verify the layout in a browser', '3. Test the flow manually on desktop', '4. Check the colours by hand', '5. Manually test the narrow viewport']
+    expect(tasksNeedingManualCheck(manual.map(text => ({ text })))).toEqual(manual)
+  })
+  it('accepts checks the run performs itself, tagged checks and negated mentions', () => {
+    const fine = ['1. Add tests/cinematic.test.js for the curve', '2. Visually verify the title with a $SPECRAILS_BROWSE screenshot at 390x844 and read it',
+      '3. Document that no manual check is needed', '4. Update the user manual page', '5. [human] Judge the glow on a real phone']
+    expect(tasksNeedingManualCheck(fine.map(text => ({ text, human: text.includes('[human]') })))).toEqual([])
+  })
+  it('refuses to freeze an untagged manual check and tells the planner both ways out', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.directory, 'tasks.md'), `- [ ] 1. Implement requirement\n- [ ] ${incident}\n`)
+    const result = await f.run('freeze')
+    expect(result).toMatchObject({ outcome: 'fail', output: { reason: 'tasks_need_manual_check', tasks: [incident] } })
+    expect(result.history?.[0].text).toContain('$SPECRAILS_BROWSE')
+    expect(result.history?.[0].text).toContain('[human]')
+  })
+  it('never requires a [human] task, reports it, and lets the tag be added after the freeze', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [ ] 1. Implement requirement\n- [ ] 2. Write the README section\n')
+    expect(await f.run('freeze')).toMatchObject({ outcome: 'pass' })
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [x] 1. Implement requirement\n- [ ] 2. Write the README section\n')
+    expect(await f.run('check', true)).toMatchObject({ outcome: 'fail', output: { incomplete: 1, incompleteTasks: ['2. Write the README section'], humanChecks: [] } })
+    // The unblock turn turns the remaining check into a human check: same approved text, tag added.
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [x] 1. Implement requirement\n- [ ] 2. [human] Write the README section\n')
+    expect(await f.run('check', true)).toMatchObject({ outcome: 'pass', output: { incomplete: 0, incompleteTasks: [], humanChecks: ['2. Write the README section'] } })
+    // The tag never hides a rewritten description.
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [x] 1. Implement requirement\n- [ ] 2. [human] Skip the README\n')
+    expect(await f.run('check', true)).toMatchObject({ outcome: 'fail', output: { reason: 'artifacts_changed' } })
   })
 })

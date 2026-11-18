@@ -113,3 +113,31 @@ describe('result fields', () => {
     expect(failureField(null)).toEqual({})
   })
 })
+
+describe('definition end-node failures (contract 5.15)', () => {
+  // The completion a real Implement run (tetrisex #14) ended with: no error, a failure end node.
+  const stalled = 'The developer made no changes while approved tasks are still incomplete. Incomplete: ["4.1 README: the visual-review note [manual] needs a browser check"]. Developer summary: 8 of 9 tasks are done.'
+  const steps = { developer: { kind: 'role-turn', status: 'succeeded', visits: 2 }, 'implementation-stalled': { kind: 'end', status: 'succeeded', visits: 1 } }
+  it('names incomplete tasks with the list the end reason carries and the end node as phase', () => {
+    expect(definitionFailure({ status: 'failed', steps }, { ok: false, reasons: [stalled, 'unverified'] })).toEqual({ failure: {
+      kind: 'incomplete_tasks', phase: 'implementation-stalled', detail: expect.stringContaining('approved tasks are still incomplete'),
+      incompleteTasks: ['4.1 README: the visual-review note [manual] needs a browser check'], confidence: 'high' } })
+    const exhausted = 'Implementation attempt limit reached (3/3) with approved tasks still incomplete. Incomplete: not a list. Developer summary: x'
+    expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })).toMatchObject({ kind: 'incomplete_tasks', confidence: 'high' })
+    expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })?.incompleteTasks).toBeUndefined()
+  })
+  it('maps every documented end reason to a known kind', () => {
+    const cases: Array<[string, string]> = [
+      ['The plan for change x still fails OpenSpec validation or the plan contract after 2 repair(s), so it was not implemented.', 'spec_invalid'],
+      ['OpenSpec could not archive change x. The implementation was verified and reviewed.', 'spec_invalid'],
+      ['Automatic correction made no candidate changes. Host verification is valid: true.', 'blocked'],
+      ['Automatic correction limit reached (3/3). Acceptance policy: approved == true', 'blocked'],
+      ['Developer reported a host blocker (credential): log in Evidence: 401', 'environment'],
+      ['Fixer reported a host blocker (network): allow npm Evidence: ENOTFOUND', 'environment'],
+      ['Host blocker (toolchain): docker is missing Required action: install docker', 'environment'],
+    ]
+    for (const [reason, kind] of cases) expect(classifyFailure({ status: 'failed', completion: { reasons: [reason] } }), reason).toMatchObject({ kind, confidence: 'high' })
+    expect(classifyFailure({ status: 'failed', completion: { reasons: ['unverified'], blocker: { kind: 'toolchain' } } })).toMatchObject({ kind: 'environment' })
+    expect(classifyFailure({ status: 'failed', completion: { reasons: ['something new'] } })).toMatchObject({ kind: 'unknown', confidence: 'low' })
+  })
+})

@@ -97,13 +97,17 @@ describe('editable role definitions', () => {
   it('states the host blocker contract for the fixer, the toolchain and bypass rules for the developer, and the host plan for custom write roles', () => {
     const verification = [{ repositoryId: 'app', command: 'npm', args: ['run', 'test:e2e'] }]
     // Desktop keeps a parity test against these exact sentences.
-    const DEV_BYPASS = 'Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. When a required tool is missing, install it through the project\'s documented command or report it as a blocker.'
-    const TOOLCHAIN_ALLOW = 'Installing a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv) is allowed and must be reported under verification; editing package-manager, registry, credential, CI or environment configuration remains forbidden.'
+    const DEV_BYPASS = 'Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. The host browser tool `$SPECRAILS_BROWSE` is not such a bypass: use it to perform the UI or visual check a task asks for. When a required tool is missing, install it (the project\'s documented command, `npx --yes`, or a temporary directory outside the repository) rather than leaving the task undone.'
+    const TOOLCHAIN_ALLOW = 'A missing tool is yours to install: a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv), or a tool run through `npx --yes` or installed in a temporary directory outside the repository, never added to its manifests; report what you installed under verification. Editing package-manager, registry, credential, CI or environment configuration remains forbidden. Never leave a task undone because a tool is missing.'
     const FIXER_BLOCKER = 'When the diagnosed cause is a host precondition or environment blocker (missing network, credentials, environment variable, toolchain, setup command or an out-of-scope repository), make no speculative edits, state in summary that the candidate was intentionally left unchanged, and return `blocker` as {"kind":"network|credential|environment-variable|toolchain|setup|environment|scope","command":"…","cwd":"…","evidence":"exact error","requiredAction":"one imperative sentence the host can act on"}.'
     const BLOCKER_BULLET = '- `blocker`: only when the cause lies outside the change; omit otherwise. The host ends the run with your `requiredAction` instead of starting another correction round.'
     const developer = roleInstructions('developer', context, 'change', { verification })
     expect(developer).toContain(DEV_BYPASS)
     expect(developer).toContain('report it under `incomplete` with the exact error. ' + TOOLCHAIN_ALLOW)
+    // The run checks UI behaviour itself with the host browser tool, and never ticks a person's check.
+    expect(developer).toContain('use the host browser tool when `$SPECRAILS_BROWSE` is set')
+    expect(developer).toContain('A `[human]` task is the person\'s check: never tick it.')
+    expect(roleInstructions('architect', context, 'change', {})).toContain('`- [ ] N.M [human] <the check>`')
     expect(developer).toContain(BLOCKER_BULLET)
     expect(developer).toContain('"blocker":{"kind":"toolchain"')
     expect(developer).not.toContain(FIXER_BLOCKER)

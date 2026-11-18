@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.14",
+  "schemaVersion": "5.15",
   "providers": {
     "claude": {
       "cli": {
@@ -321,7 +321,7 @@
       "documentation": "docs/agent-runtime.md#project-rules-inventory"
     },
     "failureClassification": {
-      "version": 1,
+      "version": 2,
       "capability": "failureClassification",
       "kinds": [
         "tests_failed",
@@ -331,11 +331,13 @@
         "timeout",
         "tool_inactivity",
         "crash",
+        "incomplete_tasks",
+        "spec_invalid",
         "unknown"
       ],
-      "record": "{kind, phase?, rounds?, resetAt?, resetsAt?, detail?, resumablePhase?, confidence: high | low}",
+      "record": "{kind, phase?, rounds?, resetAt?, resetsAt?, detail?, resumablePhase?, incompleteTasks?, confidence: high | low}",
       "runResult": "runtime-result.failure and runtime-status.failure (both engines): the record when the run status is failed or blocked; absent otherwise. A run Core could not start (fatal argument or configuration error) carries none.",
-      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; resetsAt (since 5.14) is the ISO-8601 reset of the refusing window when the provider reported a typed usage-limit refusal (CLI executor error code provider_limit); detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification.",
+      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; resetsAt (since 5.14) is the ISO-8601 reset of the refusing window when the provider reported a typed usage-limit refusal (CLI executor error code provider_limit); detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification. Since 5.15 a definition run that reached a failure end node (no run error) is classified from its completion: completion.blocker or a host-blocker end reason is environment, a reason naming approved tasks still incomplete is incomplete_tasks with incompleteTasks (at most 20 task texts of at most 300 characters, from the reason's 'Incomplete: [...]' JSON list), an OpenSpec validation, plan contract or archive rejection is spec_invalid, an exhausted implementation budget or an unchanged correction is blocked; phase is then the end node id.",
       "kindMeaning": {
         "tests_failed": "verification kept failing, or the correction loop stopped on the same failing change",
         "provider_limit": "the provider reported a session, usage, rate or quota limit",
@@ -344,10 +346,23 @@
         "timeout": "the total execution or active-duration limit elapsed",
         "tool_inactivity": "the agent produced no tool call, reply or usage within the idle limit",
         "crash": "the provider process, endpoint, lease or storage failed under the run",
+        "incomplete_tasks": "the run ended with approved tasks still unticked (a stall or an exhausted implementation budget); incompleteTasks names them",
+        "spec_invalid": "OpenSpec or the plan contract rejected the change's artifacts (validation, freeze or archive) and planning could not repair them",
         "unknown": "no documented signal matched"
       },
-      "compatibility": "additive: hosts ignore an absent field; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
+      "compatibility": "additive: hosts ignore an absent field and treat an unknown kind as unknown; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
       "documentation": "docs/agent-runtime.md#failure-classification"
+    },
+    "humanTasks": {
+      "version": 1,
+      "capability": "humanTasks",
+      "tag": "'[human]' right after the optional task number of a tasks.md checkbox: '- [ ] 4.1 [human] <check>'; case-insensitive",
+      "meaning": "a check only a person can do (taste, a real device, real credentials); the run never has to tick it",
+      "artifactContract": "artifact-contract check never counts an unticked [human] task as incomplete (requireCompletedTasks passes without it); output adds incompleteTasks[] (unticked untagged tasks) and humanChecks[] (every [human] task without its tag), each at most 20 texts of at most 300 characters. The frozen fingerprint ignores the tag on unticked tasks, so a host or role may tag a task after the freeze; any other change to its text is still artifacts_changed",
+      "freeze": "artifact-contract freeze fails with reason tasks_need_manual_check and tasks[] when an untagged task asks for a manual or visual check without naming how the run performs it (manual check/test/review, by hand, visually verify without a screenshot or browser tool); the history entry tells the planner to rewrite it as a check the run performs (commands, the host browser tool $SPECRAILS_BROWSE) or tag it [human]",
+      "roles": "the default architect instructions require every task to be completable and checkable by the run, with person-only checks tagged [human]; the default developer instructions say to check UI behaviour with $SPECRAILS_BROWSE when the host exports it, to install a missing tool outside the repository manifests, and never to tick a [human] task",
+      "compatibility": "additive: an older Core counts a [human] task as an ordinary task, so a host enables the tag only when runtime capabilities advertise humanTasks",
+      "documentation": "docs/agent-runtime.md#human-checks"
     },
     "findingLocations": {
       "version": 1,

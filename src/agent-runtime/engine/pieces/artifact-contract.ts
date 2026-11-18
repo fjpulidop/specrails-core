@@ -5,10 +5,43 @@ import { EngineError, type JsonObject, type Piece, type PieceResult } from '../c
 import type { PieceDependencyProvider } from './ports.js'
 import { historyEntry, idSchema, paramsSchema, text } from './shared.js'
 
-/** Every checkbox task of an OpenSpec tasks.md, in order. */
-export function taskCheckboxes(tasks: string): Array<{ done: boolean; text: string }> {
-  return [...tasks.matchAll(/^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm)].map(match => ({ done: match[1] !== ' ', text: match[2].trim() }))
+/**
+ * The `[human]` tag (capability `humanTasks`, contract 5.15) after an optional task number:
+ * `- [ ] 4.1 [human] Check the title on a real phone`. Such a task is a check only a person
+ * can do; it is never required to be ticked and is reported as a human check instead.
+ */
+const HUMAN_TAG = /^((?:\d+(?:\.\d+)*\.?\s+)?)\[human\]\s*/i
+const TASK_LINE = /^\s*[-*]\s+\[([ xX])\]\s+(.+)$/gm
+/** Bounds of the task lists an artifact contract reports. */
+const TASK_LIST_LIMIT = 20, TASK_TEXT_LIMIT = 300
+
+/** Every checkbox task of an OpenSpec tasks.md, in order. `human` marks a `[human]` check. */
+export function taskCheckboxes(tasks: string): Array<{ done: boolean; text: string; human: boolean }> {
+  return [...tasks.matchAll(TASK_LINE)].map(match => {
+    const text = match[2].trim()
+    return { done: match[1] !== ' ', text, human: HUMAN_TAG.test(text) }
+  })
 }
+
+/** A `[human]` task's text without its tag ("4.1 Check the title on a real phone"). */
+export function humanCheckText(text: string): string {
+  return text.replace(HUMAN_TAG, '$1').trim()
+}
+
+/**
+ * Untagged tasks that ask for a check only a person seems able to do ("a manual check of the
+ * running game", "visually verify in a browser"). The run can check UI behaviour itself with
+ * commands or the host's browser tool, so such a task must either say how the run checks it
+ * or carry the `[human]` tag. A negated mention ("no manual check is needed") is fine.
+ */
+export function tasksNeedingManualCheck(tasks: ReadonlyArray<{ text: string; human?: boolean }>): string[] {
+  const manual = /\b(?:manual(?:ly)?[\s-]+(?:check(?:ed|s|ing)?|review(?:ed|s|ing)?|test(?:ed|s|ing)?|verif(?:y|ied|ication)|qa|inspect(?:ion|ed)?|pass|walk-?through|smoke[\s-]test)|(?:check|verify|test|review|inspect|confirm|validate)(?:s|ed|ing)?\b[^.;\n]{0,60}?\bmanually|by hand|eyeball(?:ing|ed)?|visual(?:ly)?[\s-]+(?:check(?:ed)?|review(?:ed)?|inspect(?:ion|ed)?|verif(?:y|ied|ication)|confirm(?:ed)?)(?![^.;\n]{0,80}\b(?:screenshot|SPECRAILS_BROWSE|playwright|headless)))/i
+  const negated = /(?:\b(?:not|never|no|nor|without|avoid|avoiding)|n't)\s+(?:\S+\s+){0,3}$/i
+  return tasks.filter(task => !task.human && [...task.text.matchAll(new RegExp(manual.source, 'gi'))]
+    .some(match => !negated.test(task.text.slice(Math.max(0, match.index - 40), match.index)))).map(task => task.text)
+}
+
+const bounded = (texts: string[]): string[] => texts.slice(0, TASK_LIST_LIMIT).map(text => text.slice(0, TASK_TEXT_LIMIT))
 
 /**
  * Tasks that ask the implementer to edit an artifact that freezes before implementation:
@@ -76,17 +109,27 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
           history: [historyEntry(context, [`The plan for change ${change} cannot freeze: these tasks edit proposal.md, design.md or the change's delta specs, which freeze before implementation (the implementer may only tick tasks):`,
             ...frozenEdits.slice(0, 20).map(task => '- ' + task.slice(0, 300)),
             'Rewrite each as work on repository files. Do not ask anyone to record evidence in frozen artifacts: host verification and the review keep the evidence.'].join('\n'))] }
+        const manualChecks = tasksNeedingManualCheck(tasks)
+        if (manualChecks.length) return { outcome: 'fail', output: { reason: 'tasks_need_manual_check', tasks: bounded(manualChecks) },
+          history: [historyEntry(context, [`The plan for change ${change} cannot freeze: these tasks ask for a manual or visual check without saying how the run performs it:`,
+            ...bounded(manualChecks).map(task => '- ' + task),
+            'The implementer can run commands and, when the host provides it, the browser tool ($SPECRAILS_BROWSE: screenshots, console errors and page text at chosen viewports). Rewrite each task so the run checks it itself (for example with an automated test or a browser-tool screenshot it reads), or, only when a person must judge it (taste, a real device, real credentials), mark it `- [ ] N.M [human] <the check>`: a [human] task is never required to be ticked and reaches the reviewer as a human check.'].join('\n'))] }
       }
-      // Completion may change checkboxes, never the approved task descriptions.
+      // Completion may change checkboxes, never the approved task descriptions. The [human] tag
+      // may be added later: a task the run cannot check becomes a visible human check, never a gap.
       files['tasks.md'] = files['tasks.md'].replace(/^(\s*[-*]\s+\[)[ xX](\]\s+)/gm, '$1 $2')
+        .replace(/^(\s*[-*]\s+\[ \]\s+(?:\d+(?:\.\d+)*\.?\s+)?)\[human\]\s*/gim, '$1')
       const fingerprint = contentDigest(files), key = text(params.contractId)
       if (params.action === 'freeze') store.set(key, { fingerprint })
       else {
         const frozen = store.get(key) as JsonObject | undefined
         if (!frozen || frozen.fingerprint !== fingerprint) return { outcome: 'fail', output: { reason: frozen ? 'artifacts_changed' : 'contract_missing' } }
       }
-      const incomplete = tasks.filter(task => !task.done).length
-      return { outcome: params.requireCompletedTasks && incomplete ? 'fail' : 'pass', output: { fingerprint, tasks: tasks.length, incomplete } }
+      // A [human] task is the person's check, never the run's work: it is reported, not required.
+      const open = tasks.filter(task => !task.done && !task.human), human = tasks.filter(task => task.human)
+      const incomplete = open.length
+      const lists = { incompleteTasks: bounded(open.map(task => task.text)), humanChecks: bounded(human.map(task => humanCheckText(task.text))) }
+      return { outcome: params.requireCompletedTasks && incomplete ? 'fail' : 'pass', output: { fingerprint, tasks: tasks.length, incomplete, ...lists } }
     },
   }
 }

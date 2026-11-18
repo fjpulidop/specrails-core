@@ -64,8 +64,9 @@ export function isDefinitionCommand(flags: Flags, command: string): boolean {
 const workflowIdentity = (workflow: { id: string; version: string; source: string }) => ({ ...workflow, definitionHash: workflow.version, engine: 2 as const })
 
 /** `failure` (contract 5.8): the structured classification of a failed or blocked definition run; absent otherwise. */
-export function definitionFailure(state: { status: string; steps?: unknown; recentFailures?: unknown; nextStep?: unknown; error?: unknown }) {
-  const failure = classifyFailure({ status: state.status, error: state.error, steps: state.steps as never, recentFailures: state.recentFailures as never, nextStep: state.nextStep })
+export function definitionFailure(state: { status: string; steps?: unknown; recentFailures?: unknown; nextStep?: unknown; error?: unknown }, completion?: unknown) {
+  const failure = classifyFailure({ status: state.status, error: state.error, steps: state.steps as never, recentFailures: state.recentFailures as never, nextStep: state.nextStep,
+    ...(completion && typeof completion === 'object' ? { completion: completion as { reasons?: unknown; blocker?: unknown } } : {}) })
   return failure ? { failure } : {}
 }
 
@@ -86,7 +87,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   }
   if (command === 'status') {
     const status = await statusRun(directory(flags), flags.compact === true)
-    emit({ ...status, ...definitionFailure(status.state), workflow: workflowIdentity(status.workflow) }); return 0
+    emit({ ...status, ...definitionFailure(status.state, status.completion), workflow: workflowIdentity(status.workflow) }); return 0
   }
   if (command === 'signal') {
     if (flags.stdin !== true) throw new EngineError('invalid_arguments', 'Signal requires --stdin')
@@ -166,7 +167,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       const current = result.state.usage[key], prior = previous ? previous.state.usage[key] : 0
       return current === null || prior === null ? null : Math.max(0, current - prior)
     }
-    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, ...definitionFailure({ ...result.state, ...('error' in result ? { error: result.error } : {}) }), revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
+    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, ...definitionFailure({ ...result.state, ...('error' in result ? { error: result.error } : {}) }, result.completion), revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
       ...('forkOf' in result ? { forkOf: result.forkOf } : {}), ...('error' in result ? { error: result.error } : {}),
       usage: result.state.usage, invocationUsage: { costUsd: delta('costUsd'), inputTokens: delta('inputTokens'), outputTokens: delta('outputTokens') }, metrics: result.metrics, efficiencySummary: result.efficiencySummary })
     return result.state.status === 'succeeded' ? 0 : result.state.status === 'paused' ? 2 : 1

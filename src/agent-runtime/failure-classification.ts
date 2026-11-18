@@ -6,7 +6,7 @@
  * run already produced (status, the failing step, error codes and messages); it never invents
  * a cause. Anything it cannot tie to a documented signal is `unknown` with `confidence: 'low'`.
  */
-export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'unknown'] as const
+export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'incomplete_tasks', 'spec_invalid', 'unknown'] as const
 export type FailureKind = (typeof FAILURE_KINDS)[number]
 export const FAILURE_CONFIDENCE = ['high', 'low'] as const
 
@@ -24,6 +24,8 @@ export interface FailureClassification {
   detail?: string
   /** The step a `runtime resume` continues from, when resuming can help. */
   resumablePhase?: string
+  /** `incomplete_tasks` only (contract 5.15): the approved tasks still unticked, as the run named them. */
+  incompleteTasks?: string[]
   confidence: (typeof FAILURE_CONFIDENCE)[number]
 }
 
@@ -36,6 +38,8 @@ export interface FailureSignals {
   /** Engine 2 `recentFailures`, newest first. */
   recentFailures?: Array<{ nodePath?: unknown; status?: unknown; visit?: unknown; error?: unknown } | undefined>
   nextStep?: unknown
+  /** Engine 2 completion of a run that ended at a failure `end` node (contract 5.15): its reasons and host blocker. */
+  completion?: { reasons?: unknown; blocker?: unknown } | null
 }
 
 const DETAIL_LIMIT = 280
@@ -76,6 +80,35 @@ const TESTS_TEXT = /Correction loop stopped: .*(?:verif|check|test|fail)|verific
 const BLOCKED_CODES = new Set(['baseline_characterization_failed', 'budget_exhausted', 'retry_exhausted', 'recover_required', 'recovery_ambiguous'])
 const BLOCKED_TEXT = /correction limit reached|continuation limit reached|reviewer rejected the same change|could not make progress|Run budget is exhausted|\(baseline_characterization_failed\)/i
 const CORRECTION_STEP = /(?:^|[/.:])(?:fixer|fix|correct)/i
+// End-node reasons of a definition's failure exits (contract 5.15). The sentences are the
+// documented end reasons of the implementation recipes, not guesses at free prose.
+const INCOMPLETE_TEXT = /approved tasks (?:are )?still incomplete|tasks? (?:are |is )?still (?:incomplete|unchecked)|incomplete_tasks/i
+const SPEC_INVALID_TEXT = /still fails OpenSpec validation|fails? the plan contract|OpenSpec could not archive change/i
+const HOST_BLOCKER_TEXT = /\b(?:Developer|Fixer|Unblock) reported a host blocker\b|^Host blocker \(/im
+const STALLED_TEXT = /Implementation attempt limit reached|Automatic correction made no candidate changes/i
+const TASK_LIMIT = 20, TASK_TEXT_LIMIT = 300
+
+/** The `Incomplete: [...]` list an end reason carries (a JSON array of task texts), bounded. */
+function incompleteTasksOf(message: string): string[] | undefined {
+  const start = message.indexOf('Incomplete: [')
+  if (start < 0) return undefined
+  const from = start + 'Incomplete: '.length
+  // A task text may itself contain "]": try each closing bracket until the array parses.
+  for (let end = message.indexOf(']', from); end >= 0; end = message.indexOf(']', end + 1)) {
+    let value: unknown
+    try { value = JSON.parse(message.slice(from, end + 1)) } catch { continue }
+    if (!Array.isArray(value)) return undefined
+    const tasks = value.filter((item): item is string => typeof item === 'string' && item.trim() !== '').slice(0, TASK_LIMIT).map(item => item.trim().slice(0, TASK_TEXT_LIMIT))
+    return tasks.length ? tasks : undefined
+  }
+  return undefined
+}
+
+/** The failure `end` node a definition stopped at, from the compact step map (`kind: 'end'`). */
+function endNodeOf(steps: FailureSignals['steps']): string | undefined {
+  for (const [id, step] of Object.entries(steps ?? {})) if (step && step.kind === 'end' && text(step.status) === 'succeeded') return id
+  return undefined
+}
 
 function detailOf(message: string): string | undefined {
   const flat = message.replace(/\s+/g, ' ').trim()
@@ -113,11 +146,14 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   if (signals.status !== 'failed' && signals.status !== 'blocked') return undefined
   const top = messageOf(signals.error)
   const step = failingPhase(signals)
+  // A run that reached a failure `end` node has no error: its completion reasons say why.
+  const reasons = Array.isArray(signals.completion?.reasons) ? signals.completion!.reasons.filter((item): item is string => typeof item === 'string' && item !== 'unverified') : []
+  const ended = reasons.join('\n')
   // The run-level error names the cause; the failing attempt's own error is the fallback.
   const code = top.code || step.code
-  const message = top.message || step.message
-  const haystack = `${top.message}\n${step.message}`
-  const phase = step.phase ?? (typeof signals.nextStep === 'string' && signals.nextStep ? signals.nextStep : undefined)
+  const message = top.message || step.message || ended
+  const haystack = `${top.message}\n${step.message}\n${ended}`
+  const phase = step.phase ?? endNodeOf(signals.steps) ?? (typeof signals.nextStep === 'string' && signals.nextStep ? signals.nextStep : undefined)
   const rounds = correctionRounds(signals.steps)
   const base = { ...(phase ? { phase } : {}), ...(rounds ? { rounds } : {}) }
   const detail = detailOf(message)
@@ -125,6 +161,17 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   const done = (kind: FailureKind, extra: Partial<FailureClassification> = {}, resume = false): FailureClassification =>
     ({ kind, ...base, ...(detail ? { detail } : {}), ...(resume ? resumable : {}), ...extra, confidence: kind === 'unknown' ? 'low' : 'high' })
 
+  // A failure `end` node's own reason is authoritative over words quoted inside it (a
+  // developer summary may mention "tests failed" or a "rate limit" it read in the code).
+  if (!top.message && (ended || signals.completion?.blocker)) {
+    if (signals.completion?.blocker || HOST_BLOCKER_TEXT.test(ended)) return done('environment', {}, true)
+    if (INCOMPLETE_TEXT.test(ended)) {
+      const incompleteTasks = incompleteTasksOf(ended)
+      return done('incomplete_tasks', incompleteTasks ? { incompleteTasks } : {})
+    }
+    if (SPEC_INVALID_TEXT.test(ended)) return done('spec_invalid')
+    if (STALLED_TEXT.test(ended)) return done('blocked')
+  }
   if (code === 'provider_limit' || PROVIDER_LIMIT.test(haystack)) {
     // The executor's typed refusal names the window's reset as an ISO time; the
     // provider's own wording (`resetAt`) is read from the rest of the message.
