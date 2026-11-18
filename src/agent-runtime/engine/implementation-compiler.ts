@@ -6,6 +6,7 @@ import { EngineError, type AttemptFrame, type CoreDefinitionState, type Executio
 import { boundPieceOutput } from './output.js'
 import type { ImplementationAdapter } from './pieces/implementation.js'
 import { json } from './pieces/shared.js'
+import { isProviderLimitError } from '../failure-classification.js'
 
 function implementationSchema() {
   return Annotation.Root({ ...CoreState.spec,
@@ -69,6 +70,7 @@ export function compileImplementationGraph(adapter: ImplementationAdapter, execu
         if (isGraphInterrupt(error)) { await execution.interrupted(frame, error); throw error }
         const code = error instanceof EngineError || (error && typeof error === 'object' && 'code' in error) ? String((error as { code: string }).code) : 'implementation_failed'
         if (effect === 'write' && ['aborted', 'timeout', 'idle_timeout', 'lease_lost'].includes(code)) { await execution.interrupted(frame, error); throw error }
+        if (isProviderLimitError(code, error instanceof Error ? error.message : String(error))) { await execution.interrupted(frame, error); throw error }
         await execution.failed(frame, error, { retry: false })
         result = { outcome: 'failed', status: 'failed', error: { code, message: error instanceof Error ? error.message : String(error) },
           childUpdate: { update: {}, next: null, response: { status: 'failed', error: error instanceof Error ? error.message : String(error) } }, completesRun: false }

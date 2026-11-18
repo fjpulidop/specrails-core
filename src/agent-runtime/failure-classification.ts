@@ -64,6 +64,15 @@ export function providerLimitReset(message: string): string | undefined {
 }
 
 const PROVIDER_LIMIT = /\byou(?:'|’)?ve (?:hit|reached) your (?:session|usage|weekly|daily|monthly|plan)?\s*limit\b|\berror type rate_limit\b|\bHTTP 429\b|\b429 Too Many Requests\b|\brate[ _-]?limit(?:ed|s)? (?:exceeded|reached|hit)\b|\brate_limit_error\b|\binsufficient_quota\b|\busage limit (?:reached|exceeded)\b|\bRESOURCE_EXHAUSTED\b|\bquota (?:exceeded|exhausted)\b/i
+/**
+ * A provider refused the turn on its usage limit (typed `provider_limit`, or
+ * the provider's own sentence on an execution failure). Nothing about the
+ * work is wrong: the step must be retried after the reset, never routed to
+ * the workflow's failure end.
+ */
+export function isProviderLimitError(code: string, message: string): boolean {
+  return code === 'provider_limit' || (code === 'provider_execution_error' && PROVIDER_LIMIT.test(message))
+}
 /** `… usage limit reached (five_hour window, resets 2026-11-18T03:00:00.000Z)` written by the CLI executor. */
 const TYPED_RESET = /usage limit reached \([^)]*?\bresets (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\)/
 const ENVIRONMENT_CODES = new Set(['verification_host_precondition', 'verification_nondeterministic_output', 'verification_execution_error'])

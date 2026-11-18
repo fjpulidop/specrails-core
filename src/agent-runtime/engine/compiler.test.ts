@@ -1,5 +1,6 @@
 import { Command, MemorySaver } from '@langchain/langgraph'
 import { describe, expect, it } from 'vitest'
+import { AgentExecutionError } from '../executor-types.js'
 import { contentDigest } from './canonical-json.js'
 import { compileWorkflowDefinition } from './compiler.js'
 import { EngineError, type AttemptFrame, type NodeExecutionPort, type Piece, type TerminalCommit } from './contracts.js'
@@ -83,6 +84,33 @@ describe('real LangGraph definition compilation', () => {
     expect(frames.map(frame => [frame.visit, frame.attempt, frame.transition])).toEqual([[1, 1, 1], [1, 2, 1]])
     expect(saver.commits).toHaveLength(1)
     expect(saver.commits[0].frame.attempt).toBe(2)
+  })
+  it('stops on a provider usage limit without taking the failure route, and resumes the same step', async () => {
+    let calls = 0
+    const registry = new PieceRegistry([fixture('prompt', ['next', 'failed'], async () => {
+      if (++calls === 1) throw new AgentExecutionError("claude execution failed (exit 1). You've hit your session limit · resets 3am (Europe/Madrid)", 'provider_execution_error')
+      return { outcome: 'next', output: 'done' }
+    }), fixture('condition', ['true', 'false'], async () => ({ outcome: 'true' }))])
+    const def = definition({ turn: { kind: 'prompt', params: {}, ends: { next: null, failed: 'stop' } }, stop: { kind: 'condition', params: {}, ends: { true: null, false: null } } }, registry)
+    const { port, frames } = execution()
+    const saver = new ObservedSaver()
+    const graph = compileWorkflowDefinition(def, registry, port, { checkpointer: saver })
+    const config = { configurable: { thread_id: 'limit' }, durability: 'sync' as const }
+    await expect(graph.invoke(initialDefinitionState(), config)).rejects.toMatchObject({ code: 'provider_execution_error' })
+    expect(saver.commits).toHaveLength(0)
+    const resumed = await graph.invoke(null, config)
+    expect(resumed.$outputs.turn).toBe('done')
+    expect(frames.map(frame => frame.nodePath)).toEqual(['turn', 'turn'])
+    expect(saver.commits).toHaveLength(1)
+  })
+  it('still routes an ordinary provider failure to the failure end', async () => {
+    const registry = new PieceRegistry([fixture('prompt', ['next', 'failed'], async () => { throw new AgentExecutionError('claude execution failed (exit 1). Invalid request', 'provider_execution_error') })])
+    const def = definition({ turn: { kind: 'prompt', params: {}, ends: { next: null, failed: null } } }, registry)
+    const { port } = execution()
+    const saver = new ObservedSaver()
+    const graph = compileWorkflowDefinition(def, registry, port, { checkpointer: saver })
+    await graph.invoke(initialDefinitionState(), { configurable: { thread_id: 'plain' }, durability: 'sync' })
+    expect(saver.commits[0].result).toMatchObject({ status: 'failed', error: { code: 'provider_execution_error' } })
   })
   it('resumes a human interruption without replaying its completed predecessor', async () => {
     let preparations = 0
