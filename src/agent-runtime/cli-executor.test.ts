@@ -5,7 +5,8 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildCliInvocation, CliExecutor, cliToolEvents, parseCliOutput } from './cli-executor.js'
 import { cliProcessEnvironment, runCliProcess, windowsKimiInvocation, type CliProcessRunner } from './cli-process.js'
-import type { AgentRequest, CliProvider } from './executor-types.js'
+import { AgentExecutionError, type AgentRequest, type CliProvider } from './executor-types.js'
+import { classifyFailure } from './failure-classification.js'
 import { GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
 const temporary: string[] = []
@@ -205,6 +206,14 @@ describe('four CLI execution contracts', () => {
   ])('preserves Claude termination reason %s and billed usage', async (subtype, code, message) => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype, is_error: true, total_cost_usd: 2.422, usage: { input_tokens: 100, output_tokens: 20 } }), stderr: 'secret-provider-details', exitCode: 1 }))
     await expect(new CliExecutor('claude', { runProcess }).execute(request())).rejects.toMatchObject({ code, message: expect.stringContaining(message), usage: { costUsd: 2.422 } })
+  })
+  it("keeps Claude's own error sentence from its final result frame (a session limit is then classifiable)", async () => {
+    const stdout = jsonl({ type: 'system', subtype: 'init', session_id: 's1' }, { type: 'result', subtype: 'success', is_error: true, num_turns: 1, result: "You've hit your session limit · resets 3am (Europe/Madrid)", total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } })
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout, stderr: '', exitCode: 1 }))
+    const failure = await new CliExecutor('claude', { runProcess }).execute(request()).catch(error => error as AgentExecutionError)
+    expect(failure).toMatchObject({ code: 'provider_execution_error', message: expect.stringContaining("You've hit your session limit · resets 3am (Europe/Madrid)") })
+    expect(failure.message).not.toContain('did not report a diagnostic')
+    expect(classifyFailure({ status: 'failed', error: { code: failure.code, message: failure.message } })).toMatchObject({ kind: 'provider_limit', resetAt: '3am (Europe/Madrid)' })
   })
   it('reports a resumed Claude session without a stored transcript as session_not_found, and only on resume', async () => {
     // Recorded from Claude Code 2.1.309 (`claude -p --resume <unknown id>`).
