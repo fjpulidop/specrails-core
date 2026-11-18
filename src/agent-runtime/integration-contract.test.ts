@@ -94,6 +94,7 @@ describe('Desktop integration contract', () => {
     expect(sessions.eventTypes).toEqual([...SESSION_EVENT_TYPES])
     expect(sessions.capabilities).toEqual(Object.keys(SESSION_HOST_CAPABILITIES))
     expect(sessions.deliveries).toEqual([...SESSION_DELIVERIES])
+    expect(sessions.deferredMcpTools).toMatch(/drivers\[\]\.capabilities\.deferredMcpTools/)
     const send = validatorFor('session.send')!
     for (const delivery of sessions.deliveries) expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery } })).toBe(true)
     expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery: 'later' } })).toBe(false)

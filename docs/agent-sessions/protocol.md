@@ -43,7 +43,11 @@ A scope has at most one live host. A second host for the same scope fails
 `initialize` returns `capabilities: { sessions: 1, delegation: 1, flowSessions: 1 }`.
 Each driver descriptor in `drivers` may carry `capabilities.interrupt:
 'native' | 'emulated'`; treat its absence as "interrupt delivery unsupported"
-(an older Core).
+(an older Core). `capabilities.deferredMcpTools: true` means the driver defers
+MCP tools: only their names reach the prompt and a tool's schema loads when the
+model searches for it, so attached connectors cost almost no context until
+used. It is `true` for `claude` and `false` for the others; treat its absence
+as `false` (an older Core).
 
 ### Deliveries
 

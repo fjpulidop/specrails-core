@@ -25,6 +25,7 @@ export function executorDescriptor(id: string, displayName: string): DriverDescr
       toolFiltering: false,
       // No turn-level stop that keeps a session: abort the invocation, then run the input next.
       interrupt: 'emulated' as const,
+      deferredMcpTools: false,
       usage: Object.freeze({ costUsd: 'per-turn' as const, tokens: 'per-turn' as const }),
     }),
   })

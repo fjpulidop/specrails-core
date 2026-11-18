@@ -25,6 +25,7 @@ test enforces this: no code outside `drivers/` compares ids with provider names.
 | `steer` | yes (`priority: next`) | yes (`turn/steer`) | no |
 | `interrupt` | `native` (receives `delivery: 'interrupt'`: `control_request interrupt` once per turn, input with `priority: now`) | `native` (application calls `interrupt()` = `turn/interrupt`, then releases the input as `turn/start`) | `emulated` (abort, then the input runs next) |
 | `toolFiltering` | yes (`--tools`, `--allowedTools`, `--disallowedTools`) | no | no |
+| `deferredMcpTools` | yes (`ToolSearch` kept in every `--tools` list: MCP tools load on demand) | no | no |
 | `usage` | USD session-cumulative, tokens per turn | no USD, tokens cumulative per thread | per turn |
 
 ### Process ownership

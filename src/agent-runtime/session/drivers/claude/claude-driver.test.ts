@@ -232,20 +232,22 @@ describe('Claude argv', () => {
   it('combines denied tools with the sub-agent switch and maps read-only modes', () => {
     const args = spec({ subagents: 'disabled', permissions: 'read-only', tools: { mode: 'read-only', deny: ['WebFetch', 'Agent'] }, mcp: { inheritUserScope: true } })
     expect(args[args.indexOf('--disallowedTools') + 1]).toBe('WebFetch,Agent,Task')
-    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob')
+    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,ToolSearch')
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
     expect(args).not.toContain('--strict-mcp-config')
   })
 
   it('keeps native sub-agents in a read-only tool set and denies them every write tool', () => {
     const args = spec({ subagents: 'enabled', permissions: 'read-only', tools: { mode: 'read-only', deny: ['WebFetch'] } })
-    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,Agent,Task')
+    expect(args[args.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,ToolSearch,Agent,Task')
     // Deny rules bind sub-agents too, including project agents that declare their own tools.
     expect(args[args.indexOf('--disallowedTools') + 1]).toBe('WebFetch,Write,Edit,MultiEdit,NotebookEdit,Bash')
+    // Tool search keeps MCP tools deferred; it is never denied.
+    expect(args[args.indexOf('--disallowedTools') + 1]).not.toContain('ToolSearch')
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
     // Delegated sub-agents run as Core child sessions: the native tool stays off.
     const delegated = spec({ subagents: 'enabled', subagentRuntime: { mode: 'delegated', driver: 'codex', model: 'gpt-5.6-luna' }, tools: { mode: 'read-only' } })
-    expect(delegated[delegated.indexOf('--tools') + 1]).toBe('Read,Grep,Glob')
+    expect(delegated[delegated.indexOf('--tools') + 1]).toBe('Read,Grep,Glob,ToolSearch')
     expect(delegated[delegated.indexOf('--disallowedTools') + 1]).toBe('Agent,Task')
     // A full tool set is left to the permission mode; nothing extra is denied.
     expect(spec({ subagents: 'enabled', permissions: 'read-only' })).not.toContain('--disallowedTools')

@@ -603,7 +603,8 @@
         "steer",
         "interrupt"
       ],
-      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions"
+      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions",
+      "deferredMcpTools": "initialize drivers[].capabilities.deferredMcpTools (boolean, absent on older Cores): true when the driver defers MCP tool schemas until the model searches for them (Claude: ToolSearch kept in every --tools list), so attached MCP connectors cost almost no context until used"
     }
   },
   "execution": {

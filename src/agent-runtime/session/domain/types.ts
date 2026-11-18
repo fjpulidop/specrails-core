@@ -147,6 +147,12 @@ export interface DriverCapabilities {
    * as `session.interrupt` does, then runs the input next. Absent on older Cores.
    */
   interrupt?: 'native' | 'emulated'
+  /**
+   * MCP tools are deferred: the provider sends only their names and loads a
+   * tool's schema when the model searches for it (Claude Code tool search), so
+   * connectors cost almost no context until used. Absent on older Cores.
+   */
+  deferredMcpTools?: boolean
   usage: UsageSemantics
 }
 
