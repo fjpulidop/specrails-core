@@ -264,11 +264,14 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   // developer summary may mention "tests failed" or a "rate limit" it read in the code).
   if (!top.message && (ended || signals.completion?.blocker)) {
     if (signals.completion?.blocker || HOST_BLOCKER_TEXT.test(ended)) return done('environment', {}, true)
+    // The end node's reason is the cause; an earlier failed step the run moved past (a red
+    // baseline, a refused check) is history and must not lend this its detail or phase.
+    const own = { phase: endNodeOf(signals.steps) ?? phase, ...(detailOf(ended) ? { detail: detailOf(ended) } : {}) }
     if (INCOMPLETE_TEXT.test(ended)) {
       const incompleteTasks = incompleteTasksOf(ended)
-      return done('incomplete_tasks', incompleteTasks ? { incompleteTasks } : {})
+      return done('incomplete_tasks', { ...own, ...(incompleteTasks ? { incompleteTasks } : {}) })
     }
-    if (SPEC_INVALID_TEXT.test(ended)) return done('spec_invalid')
+    if (SPEC_INVALID_TEXT.test(ended)) return done('spec_invalid', own)
     if (STALLED_TEXT.test(ended)) { const stalled = stallDetail(ended); return done('blocked', stalled ? { detail: stalled } : {}) }
     // The correction limit stays resumable (Continue grants fresh rounds); only its detail changes.
     if (/Automatic correction limit reached/i.test(ended)) { const stalled = stallDetail(ended); return done('blocked', stalled ? { detail: stalled } : {}, true) }

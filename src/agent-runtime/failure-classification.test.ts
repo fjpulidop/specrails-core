@@ -170,6 +170,15 @@ describe('definition end-node failures (contract 5.15)', () => {
     expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })).toMatchObject({ kind: 'incomplete_tasks', confidence: 'high' })
     expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })?.incompleteTasks).toBeUndefined()
   })
+  it('takes the detail and phase of an incomplete-tasks end from the end reason, not a baseline the run moved past', () => {
+    // android-kt: the baseline check could not start (gradle missing), the run went on, and the unblock
+    // turn stopped on a decision. The baseline sentence was shown as the reason.
+    const baseline = { nodePath: 'baseline', status: 'failed', error: { code: 'verification_failed', message: 'A verification command failed: Verification command could not start: `gradle` is not installed or not on PATH (spawn gradle ENOENT).' } }
+    expect(classifyFailure({ status: 'failed', steps: { baseline: { kind: 'verify', status: 'failed', visits: 1 }, ...steps }, recentFailures: [baseline], completion: { reasons: [stalled] } })).toMatchObject({
+      kind: 'incomplete_tasks', phase: 'implementation-stalled', detail: expect.stringContaining('approved tasks are still incomplete'), confidence: 'high' })
+    const declined = 'Not implemented: the person declined this ticket. Reason: wrong repository'
+    expect(classifyFailure({ status: 'failed', recentFailures: [baseline], completion: { reasons: [declined] } })).toMatchObject({ kind: 'spec_invalid', detail: expect.stringContaining('the person declined') })
+  })
   it('names the open review issues and the fixer diagnosis when a correction stalls', () => {
     // The recipe's reason quotes the policy and the whole review JSON first; cut at the detail
     // limit it never reached what the reviewer still wanted.
