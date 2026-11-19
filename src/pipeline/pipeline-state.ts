@@ -453,7 +453,7 @@ function fileFingerprint(file: string, ancestors = new Set<string>(), budget = {
   if (linkedTree && budget.bytes > 256 * 1024 * 1024) fail('Linked candidate inputs exceed fingerprint byte limit: ' + file)
   return (stat.mode & 0o111 ? 'executable:' : 'file:') + digest(readFileSync(file))
 }
-function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: boolean }> {
+function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: boolean; gitlink?: string }> {
   // A provider's temporary GIT_CONFIG_COUNT/excludesFile must not hide
   // candidate files from verification or change receipt validity at handoff.
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')))
@@ -465,7 +465,20 @@ function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: 
     return result.stdout.split('\0').filter(Boolean)
   }
   const tracked = new Set(list(['--cached']))
-  return [...new Set([...tracked, ...list(['--others', '--exclude-standard'])])].sort().map(file => ({ file, tracked: tracked.has(file) }))
+  // A submodule is a gitlink (mode 160000): its path is a directory, or empty when the
+  // checkout did not initialize it. Its identity is the commit it points at, never its files.
+  const gitlinks = new Map<string, string>()
+  for (const entry of list(['--cached', '--stage'])) {
+    const match = /^160000 ([0-9a-f]{40,64}) \d\t(.+)$/.exec(entry)
+    if (match) gitlinks.set(match[2], match[1])
+  }
+  return [...new Set([...tracked, ...list(['--others', '--exclude-standard'])])].sort().map(file => ({ file, tracked: tracked.has(file), ...(gitlinks.has(file) ? { gitlink: gitlinks.get(file)! } : {}) }))
+}
+/** A submodule's fingerprint: the commit its checkout is on (the index pointer when it is not initialized). */
+function gitlinkFingerprint(directory: string, indexCommit: string): string {
+  const head = spawnSync('git', ['-C', directory, 'rev-parse', '--verify', '-q', 'HEAD'], { encoding: 'utf8', windowsHide: true, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } })
+  const commit = head.status === 0 && existsSync(path.join(directory, '.git')) ? head.stdout.trim() : indexCommit
+  return 'gitlink:' + commit
 }
 function untrackedAgentMemory(relative: string): boolean {
   // Native project memory can be written automatically after a role finishes,
@@ -494,7 +507,7 @@ export function candidateManifest(state: CandidateScope): CandidateManifest {
     id: repo.id, path: repo.path,
     files: trackedFiles(repo)
       .filter(({ file, tracked }) => !excluded(state, repo, relativeUnix(file)) && (tracked || (!untrackedAgentMemory(relativeUnix(file)) && !untrackedGeneratedOutput(relativeUnix(file)))))
-      .map(({ file }): [string, string] => [relativeUnix(file), fileFingerprint(path.join(repo.path, file))]),
+      .map(({ file, gitlink }): [string, string] => [relativeUnix(file), gitlink ? gitlinkFingerprint(path.join(repo.path, file), gitlink) : fileFingerprint(path.join(repo.path, file))]),
   }))
   return { schemaVersion: 1, scopeHash: state.scopeHash, repositories: entries }
 }

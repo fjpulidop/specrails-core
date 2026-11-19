@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateManifest, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -89,6 +89,37 @@ describe('pipeline runtime journal and verification receipts', () => {
     expect(fingerprintCandidate(state)).toBe(original)
     write(path.join(repo, 'src', 'coverage-report.ts'), 'export const x = 1')
     expect(fingerprintCandidate(state)).not.toBe(original)
+  })
+
+  it('fingerprints a git submodule by the commit it points at, initialized or not', () => {
+    // A repository with a submodule failed every run at once: "Candidate contains a directory
+    // entry or unsupported file: vendor/sublib".
+    const repo = context.repositories[1]!.path
+    const git = (cwd: string, args: string[]): string => {
+      const result = spawnSync('git', ['-c', 'protocol.file.allow=always', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-C', cwd, ...args], { encoding: 'utf8' })
+      if (result.status !== 0) throw new Error(result.stderr)
+      return result.stdout
+    }
+    const lib = path.join(root, 'sublib')
+    mkdirSync(lib)
+    git(lib, ['init', '-q'])
+    write(path.join(lib, 'util.js'), 'module.exports = 2\n')
+    git(lib, ['add', '.'])
+    git(lib, ['commit', '-qm', 'lib'])
+    git(repo, ['submodule', 'add', '-q', lib, 'vendor/sublib'])
+    git(repo, ['commit', '-qm', 'submodule'])
+    const state = initializePipeline(context, change)
+    const original = fingerprintCandidate(state)
+    const entry = candidateManifest(state).repositories[1]!.files.find(([file]) => file === 'vendor/sublib')
+    expect(entry?.[1]).toBe('gitlink:' + git(lib, ['rev-parse', 'HEAD']).trim())
+    // Moving the submodule to another commit is a change of the candidate.
+    write(path.join(repo, 'vendor', 'sublib', 'util.js'), 'module.exports = 3\n')
+    git(path.join(repo, 'vendor', 'sublib'), ['commit', '-qam', 'bump'])
+    expect(fingerprintCandidate(state)).not.toBe(original)
+    // An uninitialized submodule (an empty directory) uses the index pointer.
+    rmSync(path.join(repo, 'vendor', 'sublib'), { recursive: true, force: true })
+    mkdirSync(path.join(repo, 'vendor', 'sublib'))
+    expect(() => fingerprintCandidate(state)).not.toThrow()
   })
 
   it('hashes untracked additions and tracked deletions while excluding only owned lifecycle artifacts', () => {
