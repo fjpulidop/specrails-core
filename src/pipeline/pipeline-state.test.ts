@@ -844,6 +844,16 @@ it.skipIf(process.platform === 'win32')('names the signal when something outside
   expect(receipt.reason).toContain('killed by SIGKILL from outside the runner')
 })
 
+it('stops a command that entered watch mode at its prompt and says how to run it once', async () => {
+  initializePipeline(context, change)
+  const started = Date.now()
+  const receipt = await verifyPipeline(context, request('console.log("PASS test/a.test.js"); console.log("Watch Usage"); console.log(" › Press w to show more."); setInterval(() => {}, 1000)'))
+  expect(Date.now() - started).toBeLessThan(20_000)
+  expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
+  expect(receipt.reason).toContain('watch mode')
+  expect(receipt.reason).toMatch(/--watchAll=false|vitest run/)
+})
+
 it('names a command that could not start', async () => {
   initializePipeline(context, change)
   const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: path.join(os.tmpdir(), 'specrails-no-such-binary'), args: [] })) })

@@ -973,6 +973,13 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
     .replace(/https?:\/\/[^\s"'<>]+/gi, value => { try { const url = new URL(value); return url.origin + url.pathname } catch { return '[url]' } })
 }
 
+/** Prompts test runners and compilers print when they wait for file changes instead of exiting. */
+const WATCH_PROMPT = /Watch Usage|Press w to show more|Waiting for file changes|press h to show help, press q to quit|Watching for file changes|\[nodemon\] (?:clean exit - )?waiting for changes/i
+export function watchModeReason(command: { command: string; args: string[] }, prompt: string): string {
+  const line = [command.command, ...command.args].join(' ')
+  return `Verification command \`${line}\` started in watch mode ("${prompt.trim()}") and waits for file changes instead of exiting, so it was stopped. Verify with a command that runs once (for example \`jest --watchAll=false\`, \`vitest run\` or the script's CI variant) or change the project's test script, then retry verification.`
+}
+
 /** Silence a verification command may keep before it counts as hung (env `SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, default 5 min). */
 function verificationIdleTimeoutMs(): number { const raw = Number(process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS); return Number.isFinite(raw) && raw >= 100 ? raw : 5 * 60_000 }
 /** Structured shell execution with the same scope, environment and tree-kill rules, without a receipt or journal. */
@@ -1050,8 +1057,13 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
         }
         output = (output + text).slice(-32_000)
         lastOutputAt = Date.now()
-        const lastLine = stripVTControlCharacters(text).trim().split('\n').pop()?.trim()
+        const plain = stripVTControlCharacters(text)
+        const lastLine = plain.trim().split('\n').pop()?.trim()
         if (lastLine) lastOutputLine = lastLine.slice(0, 200)
+        // A watcher never exits: stop it at its prompt instead of holding the machine-wide
+        // verification slot until the silence bound, and say how to run the check once.
+        const watch = WATCH_PROMPT.exec(plain)
+        if (watch && !stopping && !done) { outcome = 'failed'; stop(watchModeReason(command, watch[0])) }
         // Redact whole bounded lines, so chunk boundaries cannot split credentials.
         for (const part of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
           if (!droppingLine) liveLine += part
