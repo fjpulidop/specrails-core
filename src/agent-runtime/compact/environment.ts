@@ -177,6 +177,9 @@ export function hostPrecondition(output: string): HostPrecondition | undefined {
   // PEP 668: Homebrew/Debian Pythons refuse system-wide installs; the fix is a project venv, not a code edit.
   if (/error: externally-managed-environment\b/.test(text)) return { kind: 'toolchain', reason: 'the system Python refuses package installs (PEP 668 externally managed environment), so verification needs a project virtual environment',
     requiredAction: 'Add setup commands that create a project virtual environment with the Python version the project targets (for example `python3.11 -m venv .venv` and `.venv/bin/pip install -r requirements.txt`), run the checks with `.venv/bin/python`, then retry the run.' }
+  // A full disk fails every install, build and test the same way; no code change frees space.
+  if (/\bENOSPC\b|[Nn]o space left on device|There is not enough space on the disk/.test(text)) return { kind: 'environment', reason: 'the disk that holds the run checkout is full (no space left on device)',
+    requiredAction: 'Free disk space on the volume that holds the Specrails run checkouts (at least a few GB), then retry the run.' }
   // A toolchain component the machine lacks: installing it changes every project on the
   // machine, so it is the person's step, never a correction round's.
   const rustTarget = /the `([\w.-]+)` target may not be installed/.exec(text)

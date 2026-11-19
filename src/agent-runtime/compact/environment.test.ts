@@ -38,6 +38,9 @@ describe('hostPreconditionFailure', () => {
     expect(hostPrecondition("error: 'cargo-clippy' is not installed for the toolchain 'stable-aarch64-apple-darwin'")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('`rustup component add clippy`') })
     expect(hostPrecondition("* What went wrong:\nSDK location not found. Define a valid SDK location with an ANDROID_HOME environment variable or by setting the sdk.dir path in your project's local properties file")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('ANDROID_HOME') })
     expect(hostPrecondition('error[E0308]: mismatched types')).toBeUndefined()
+    // lowdisk: npm install hit ENOSPC and three correction rounds retried it on a full volume.
+    expect(hostPrecondition("npm error code ENOSPC\nnpm error nospc ENOSPC: no space left on device, open '/w/ticket-1/package.json'\nnpm error nospc Clear up some disk space and try again.")).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Free disk space') })
+    expect(hostPrecondition('fatal: write error: No space left on device')).toMatchObject({ kind: 'environment' })
     expect(hostPrecondition('permission denied while trying to connect to the Docker daemon socket at unix:///Users/x/.docker/run/docker.sock: connect: operation not permitted')).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Start Docker') })
     expect(hostPrecondition('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?')).toMatchObject({ kind: 'environment' })
     expect(hostPrecondition('AssertionError: expected 3 to equal 4')).toBeUndefined()
