@@ -30,6 +30,15 @@ export function verificationSummary(receipt: VerificationReceipt): string {
   return text.length > 2000 ? text.slice(0, 1999) + '…' : text
 }
 
+/** The no-progress stop names the check that keeps failing and what it last said, so the diagnosis is actionable without opening logs. */
+function noProgressMessage(receipt: VerificationReceipt): string {
+  const failing = receipt.commands.find(command => command.exitCode !== 0)
+  const base = 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections'
+  if (!failing) return base + '; inspect the failed checks.'
+  const fact = verificationFailureSummary(failing)[0]?.trim().slice(0, 200)
+  return `${base}: \`${[failing.command, ...failing.args].join(' ').slice(0, 120)}\` keeps failing${fact ? ` (${fact})` : ` with exit ${failing.exitCode}`}.`
+}
+
 function verificationDiagnostics(receipt: VerificationReceipt) {
   let remaining = 32_000
   const outputs = new Map<number, string>()
@@ -272,7 +281,7 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
         error: { code: NONDETERMINISTIC_OUTPUT_CODE, message: `${nondeterministic.reason}. ${nondeterministic.requiredAction}` }, output: { ...output, valid: false, blocker: json(nondeterministic) } }
       // Without the opt-in outcome a blocker still travels in the output, and the no-progress stop keeps bounding the loop.
       if (blocker && (params.hostBlockers === true || !stalled)) return { ...blocked(blocker, output), vars, receipt: receiptEvidence(receipt) }
-      return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections; inspect the failed checks.' } } : {}), ...(infrastructure ? executionError(receipt) : {}),
+      return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: noProgressMessage(receipt) } } : {}), ...(infrastructure ? executionError(receipt) : {}),
         output: { ...output, ...(blocker ? { blocker: json(blocker) } : {}) },
         receipt: receiptEvidence(receipt), ...(verified ? { verified: { receiptId: receipt.id, candidateHash: receipt.candidateHash, atTransition: context.frame.transition, revision: context.frame.transition } } : { verified: null }) }
     },

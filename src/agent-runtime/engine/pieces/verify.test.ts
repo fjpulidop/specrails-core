@@ -213,7 +213,7 @@ describe('engine v2 environment repair', () => {
     for (let i = 1; i <= 3; i++) {
       const result = await f.run({ commands: 'configured' })
       expect(result).toMatchObject({ outcome: i === 3 ? 'failed' : 'fail', output: { noProgressCount: i, blocker: { kind: 'credential' } } })
-      if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress' })
+      if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress', message: expect.stringMatching(/install\.cjs.*keeps failing/) })
       Object.assign(f.execution.state.$vars, result.vars)
     }
   })
