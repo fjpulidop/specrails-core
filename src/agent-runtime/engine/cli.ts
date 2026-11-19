@@ -110,7 +110,8 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     emit(fork)
     return 0
   }
-  const controller = new AbortController(), abort = () => controller.abort(new EngineError('aborted', 'Process termination requested'))
+  // The record names the signal: a host's own stop and a signal from elsewhere read differently.
+  const controller = new AbortController(), abort = (signal: NodeJS.Signals) => controller.abort(new EngineError('aborted', `Process termination requested (${signal})`))
   process.on('SIGINT', abort); process.on('SIGTERM', abort)
   try {
     let previous: Awaited<ReturnType<typeof statusRun>> | undefined

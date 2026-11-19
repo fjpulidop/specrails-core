@@ -137,6 +137,8 @@ it.each(['cancel', ...(process.platform === 'win32' ? [] : ['SIGTERM'])])('cance
   }
   const cancelled = await running.result
   expect(cancelled.last, cancelled.stderr).toMatchObject({ status: 'cancelled' })
+  // A signal names itself in the run's record, so a host can tell it from its own cancel request.
+  if (mode === 'SIGTERM') expect(JSON.stringify(cancelled.lines)).toContain('Process termination requested (SIGTERM)')
   const pid = Number(readFileSync(pidFile, 'utf8'))
   await until(() => { try { process.kill(pid, 0); return false } catch { return true } }, 5000)
   expect((await f.status()).last.state).toMatchObject({ status: 'cancelled', lease: null })
