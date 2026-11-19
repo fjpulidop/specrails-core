@@ -377,6 +377,14 @@
       "compatibility": "additive: older Cores reject the unknown decisions param, so a host sends it only when runtime capabilities advertise roleDecisions",
       "documentation": "docs/engine-v2/pieces.md#role-turn"
     },
+    "reviewTriage": {
+      "version": 1,
+      "capability": "reviewTriage",
+      "applies": "every role-turn whose role has read access and whose structured output has boolean approved and array issues (a review); no param",
+      "semantics": "Core classifies each issue: a check outside the host plan (real device, simulator or emulator, manual pass, host verification that did not run a command), a request to revert or delete a lockfile the toolchain regenerates (with no other file named), an edit to the frozen proposal.md, design.md or delta specs, or a criterion the person withdrew in an answer recorded in $answers. An issue that also asks for code, tests or another file stays actionable. Non-actionable issues leave structured.issues, are appended to structured.brief.humanChecks when the review declares it (as 'Not a run issue (<reason>): <issue>'), and are listed in output.reviewNotes [{kind: host-only-check | regenerated-lockfile | frozen-artifact | withdrawn-criterion, issue, reason}]. When approved is false and every issue was non-actionable, the role is re-run once in the same node with the notes and told to re-judge without them; its review (triaged again, never re-run twice) is committed. A rejection with any actionable issue keeps approved, score and its actionable issues unchanged.",
+      "compatibility": "additive: the committed structured output keeps the host schema shape; an older Core returns the reviewer's issues unchanged",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
     "findingLocations": {
       "version": 1,
       "capability": "findingLocations",

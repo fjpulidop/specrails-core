@@ -232,3 +232,70 @@ describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
     expect(f.requests).toHaveLength(0)
   })
 })
+
+describe('role-turn review triage (capability reviewTriage)', () => {
+  const reviewSchema = { type: 'object', additionalProperties: false, required: ['approved', 'summary', 'issues', 'score', 'brief'], properties: { approved: { type: 'boolean' }, summary: { type: 'string' }, issues: { type: 'array', items: { type: 'string' } }, score: { type: 'number' },
+    brief: { type: 'object', additionalProperties: false, required: ['humanChecks'], properties: { humanChecks: { type: 'array', items: { type: 'string' } } } } } }
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const lockfile = 'Delete src-tauri/Cargo.lock: it is out-of-scope churn.'
+  const frozen = 'Amend design.md to record the cargo manifest path.'
+
+  it('re-judges a rejection made only of issues the run cannot act on, and hands them to the person as notes (the Tauri run)', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: false, summary: 'Churn', issues: [lockfile, frozen], score: 60, brief: { humanChecks: ['Open the window on macOS'] } },
+      { approved: true, summary: 'Search works and is tested', issues: [], score: 88, brief: { humanChecks: ['Open the window on macOS'] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review the change', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('## Core review triage')
+    expect(f.requests[1].prompt).toContain(lockfile)
+    const output = result.output as { structured: { approved: boolean; issues: string[]; score: number; brief: { humanChecks: string[] } }; reviewNotes: Array<{ kind: string }> }
+    expect(output.structured).toMatchObject({ approved: true, issues: [], score: 88 })
+    expect(output.structured.brief.humanChecks[0]).toBe('Open the window on macOS')
+    expect(output.structured.brief.humanChecks.slice(1)).toEqual([expect.stringContaining(lockfile), expect.stringContaining(frozen)])
+    expect(output.reviewNotes.map(note => note.kind)).toEqual(['regenerated-lockfile', 'frozen-artifact'])
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Core review triage')
+  })
+
+  it('keeps a genuine rejection: only the non-actionable issue leaves, no second review', async () => {
+    const f = fixture()
+    const genuine = 'The search handler ignores an empty query; return every item and add a test for it.'
+    scripted(f, [{ approved: false, summary: 'Bug', issues: [genuine, lockfile], score: 55, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: false, issues: [genuine], score: 55, brief: { humanChecks: [expect.stringContaining(lockfile)] } } })
+  })
+
+  it('stays rejected when the re-judged review still rejects, without a third call', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: false, summary: 'x', issues: [frozen], score: 50, brief: { humanChecks: [] } },
+      { approved: false, summary: 'Missing test', issues: ['No test covers the empty query; add one to the vitest suite.'], score: 60, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(2)
+    expect(result.output).toMatchObject({ structured: { approved: false, issues: ['No test covers the empty query; add one to the vitest suite.'] }, reviewNotes: [{ kind: 'frozen-artifact' }] })
+  })
+
+  it('drops an issue about a criterion the person withdrew in an answer from an approving review', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [{ id: 'a', transition: 1, attempt: 1, ordinal: 0, nodePath: 'clarify', value: { answer: 'Drop O(1) and uniqueness.' } }]
+    scripted(f, [{ approved: true, summary: 'ok', issues: ['Lookup is O(n), the spec requires O(1).'], score: 80, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: true, issues: [] }, reviewNotes: [{ kind: 'withdrawn-criterion' }] })
+  })
+
+  it('leaves write roles and reviews without such issues exactly as returned', async () => {
+    const f = fixture()
+    const reply = { approved: false, summary: 'Bug', issues: ['Fix paginate() off-by-one and add a test.'], score: 40, brief: { humanChecks: [] } }
+    scripted(f, [reply, { ...reply, issues: [lockfile] }])
+    expect((await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })).output).toEqual(expect.objectContaining({ structured: reply }))
+    f.execution.frame.nodePath = 'writer-node'
+    const written = await f.run({ roleId: 'writer', prompt: 'Build', structuredOutput: reviewSchema })
+    expect(written.output).toMatchObject({ structured: { issues: [lockfile] } })
+    expect(written.output).not.toHaveProperty('reviewNotes')
+    expect(f.requests).toHaveLength(2)
+  })
+})

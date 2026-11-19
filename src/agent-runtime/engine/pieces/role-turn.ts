@@ -13,6 +13,7 @@ import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../
 import { projectRulesContext } from '../../project-rules.js'
 import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
+import { triageReviewIssues, type NonActionableIssue } from './review-triage.js'
 import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
@@ -26,8 +27,66 @@ export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
       if (!role) throw new EngineError('role_not_found', 'Role is not configured: ' + text(params.roleId))
       return role.access
     },
-    execute: (params, context) => params.decisions === 'ask' ? executeDecisionTurns(bindings(), params, context) : executeRoleTurn(bindings(), params, context),
+    execute: async (params, context) => {
+      const deps = bindings()
+      const result = params.decisions === 'ask' ? await executeDecisionTurns(deps, params, context) : await executeRoleTurn(deps, params, context)
+      return triageReview(deps, params, context, result)
+    },
   }
+}
+
+type Review = JsonObject & { approved: boolean; issues: JsonValue[] }
+function reviewOf(result: PieceResult): Review | undefined {
+  const structured = result.outcome === 'next' ? (result.output as JsonObject | undefined)?.structured : undefined
+  return structured && typeof structured === 'object' && !Array.isArray(structured) && typeof structured.approved === 'boolean' && Array.isArray(structured.issues) ? structured as Review : undefined
+}
+const noteLine = (item: NonActionableIssue): string => `Not a run issue (${item.reason}): ${boundedText(item.text, 1000)}`
+
+/**
+ * Review triage (contract 5.17, capability `reviewTriage`): a read role whose structured output has
+ * `approved` and `issues` is a review. Issues the developer cannot act on (a host-only check, a
+ * regenerated lockfile, a frozen artifact, a criterion the person withdrew) leave `issues` and reach
+ * the person as notes (`brief.humanChecks` when the review declares it, and `reviewNotes`), so they
+ * neither block delivery nor burn a correction round. A rejection that consisted only of such issues
+ * is re-judged once without them; a rejection with any actionable issue stands unchanged.
+ */
+async function triageReview(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext, result: PieceResult): Promise<PieceResult> {
+  const roleId = text(params.roleId)
+  const first = reviewOf(result)
+  if (!first || resolveRoleDescriptor(deps.config, roleId).access !== 'read') return result
+  const change = deps.openspec?.(context)?.[roleId]?.change
+  const answers = context.state.$answers.map(entry => typeof entry.value === 'string' ? entry.value
+    : entry.value && typeof entry.value === 'object' && !Array.isArray(entry.value) && typeof entry.value.answer === 'string' ? entry.value.answer : JSON.stringify(entry.value))
+  const triage = (review: Review) => triageReviewIssues(review.issues, { ...(change ? { change } : {}), answers })
+  let triaged = triage(first)
+  if (!triaged.nonActionable.length) return result
+  let settled = result, review = first, notes = [...triaged.nonActionable]
+  const histories = [...(result.history ?? []).map(entry => entry.text)]
+  if (!first.approved && !triaged.actionable.length) {
+    histories.push(`Core review triage: every issue of this rejection is one the run cannot act on; they go to the person as notes and the change is re-judged without them:\n${notes.map(item => '- ' + noteLine(item)).join('\n')}`)
+    const again = await executeRoleTurn(deps, { ...params, prompt: text(params.prompt) + [
+      '', '', '## Core review triage',
+      'Your previous review rejected this change only for issues the developer and the fixer cannot act on. Core handed them to the person as notes:',
+      ...notes.map(item => '- ' + noteLine(item)),
+      'Re-judge the change without them and do not raise them again. Approve when nothing the developer can change inside this change remains; score and aspects judge the code and the tests, never these notes. Raise an issue only for work the run can do itself (code, tests, documentation, a check the host plan already runs).',
+    ].join('\n') }, context)
+    const second = reviewOf(again)
+    if (second) {
+      settled = again; review = second; triaged = triage(second)
+      notes = [...notes, ...triaged.nonActionable.filter(item => !notes.some(note => note.text === item.text))]
+      histories.push(...(again.history ?? []).map(entry => entry.text))
+    }
+  }
+  const lines = notes.map(noteLine)
+  const structured: JsonObject = { ...review, issues: triaged.actionable as JsonValue[] }
+  const brief = review.brief
+  if (brief && typeof brief === 'object' && !Array.isArray(brief) && Array.isArray(brief.humanChecks)) {
+    const checks = brief.humanChecks
+    structured.brief = { ...brief, humanChecks: [...checks, ...lines.filter(line => !checks.includes(line))] }
+  }
+  if (histories.length === (result.history ?? []).length) histories.push(`Core review triage moved ${notes.length} issue(s) the run cannot act on to the person's notes:\n${lines.map(line => '- ' + line).join('\n')}`)
+  return { ...settled, output: { ...(settled.output as JsonObject), structured, reviewNotes: notes.map(item => ({ kind: item.kind, issue: boundedText(item.text, 1000), reason: item.reason })) },
+    history: histories.map((entry, ordinal) => historyEntry(context, entry, ordinal)) }
 }
 
 /** The structured field a role fills with the one decision only the person can make (`decisions: 'ask'`). */

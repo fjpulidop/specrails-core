@@ -57,6 +57,8 @@ describe('Desktop integration contract', () => {
     const messages: unknown[] = []
     expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.roleDecisions).toBe(1)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewTriage).toBe(1)
+    expect(contract.agentRuntime.reviewTriage).toMatchObject({ version: 1, capability: 'reviewTriage' })
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {
