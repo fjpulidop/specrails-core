@@ -149,13 +149,17 @@ function detailOf(message: string): string | undefined {
   return flat.length > DETAIL_LIMIT ? `${flat.slice(0, DETAIL_LIMIT - 1)}…` : flat
 }
 
-function failingPhase(signals: FailureSignals): { phase?: string; message: string; code: string } {
-  const recent = (signals.recentFailures ?? []).find(item => item && typeof item.nodePath === 'string' && ['failed', 'blocked', 'interrupted'].includes(text(item.status)))
+/** An attempt a restart cut off (`owner_lost`): the run resumed past it, so it is history, not a cause. */
+const OWNER_LOST = 'owner_lost'
+const isCause = (error: unknown, skipOwnerLost: boolean): boolean => !skipOwnerLost || messageOf(error).code !== OWNER_LOST
+
+function failingPhase(signals: FailureSignals, skipOwnerLost = false): { phase?: string; message: string; code: string } {
+  const recent = (signals.recentFailures ?? []).find(item => item && typeof item.nodePath === 'string' && ['failed', 'blocked', 'interrupted'].includes(text(item.status)) && isCause(item.error, skipOwnerLost))
   if (recent) {
     const { code, message } = messageOf(recent.error)
     return { phase: recent.nodePath as string, message, code }
   }
-  const entries = Object.entries(signals.steps ?? {}).filter(([, step]) => step && ['failed', 'blocked', 'interrupted'].includes(text(step.status)))
+  const entries = Object.entries(signals.steps ?? {}).filter(([, step]) => step && ['failed', 'blocked', 'interrupted'].includes(text(step.status)) && isCause(step.error, skipOwnerLost))
   const [id, step] = entries[0] ?? []
   if (id && step) return { phase: id, ...(() => { const { code, message } = messageOf(step.error); return { code, message } })() }
   return { message: '', code: '' }
@@ -178,10 +182,12 @@ function correctionRounds(steps: FailureSignals['steps']): number | undefined {
 export function classifyFailure(signals: FailureSignals): FailureClassification | undefined {
   if (signals.status !== 'failed' && signals.status !== 'blocked') return undefined
   const top = messageOf(signals.error)
-  const step = failingPhase(signals)
   // A run that reached a failure `end` node has no error: its completion reasons say why.
   const reasons = Array.isArray(signals.completion?.reasons) ? signals.completion!.reasons.filter((item): item is string => typeof item === 'string' && item !== 'unverified') : []
   const ended = reasons.join('\n')
+  // An attempt a restart interrupted is never the cause when the run itself errored
+  // or ended later for its own reason; only with no other signal does it explain the failure.
+  const step = failingPhase(signals, top.message !== '' || ended !== '' || failingPhase(signals, true).message !== '')
   // The run-level error names the cause; the failing attempt's own error is the fallback.
   const code = top.code || step.code
   const message = top.message || step.message || ended

@@ -158,6 +158,23 @@ describe('definition end-node failures (contract 5.15)', () => {
   })
 })
 
+describe('restart-interrupted attempts (owner_lost)', () => {
+  const ownerLost = { nodePath: 'reviewer', status: 'interrupted', error: { code: 'owner_lost', message: 'Previous executor did not settle this attempt' } }
+  const steps = { reviewer: { kind: 'role-turn', status: 'succeeded', visits: 3 }, 'correction-stalled': { kind: 'end', status: 'succeeded', visits: 1 } }
+  it('explains a run that later ended at a failure end node by that end, not the attempt a restart cut off', () => {
+    const result = classifyFailure({ status: 'failed', steps, recentFailures: [ownerLost], completion: { reasons: ['Automatic correction made no candidate changes. Host verification is valid: true.', 'unverified'] } })
+    expect(result).toMatchObject({ kind: 'blocked', phase: 'correction-stalled', detail: expect.stringContaining('Automatic correction made no candidate changes') })
+    expect(result?.detail).not.toMatch(/did not settle/)
+  })
+  it('prefers a real failed attempt over an older restart interruption', () => {
+    const tests = { nodePath: 'fixer', status: 'failed', error: { code: 'tests_failed', message: 'Tests still fail after 3 rounds' } }
+    expect(classifyFailure({ status: 'failed', recentFailures: [ownerLost, tests] })).toMatchObject({ phase: 'fixer', detail: expect.stringContaining('Tests still fail') })
+  })
+  it('still reports the interruption when it is the only signal', () => {
+    expect(classifyFailure({ status: 'failed', recentFailures: [ownerLost] })).toMatchObject({ phase: 'reviewer', detail: expect.stringContaining('did not settle') })
+  })
+})
+
 describe('workflow protocol failures (contract 5.16)', () => {
   // The step error engine 2 records when a role skipped its OpenSpec steps twice (benchmark S16/S17/S18).
   const message = 'Required OpenSpec role workflow was not executed: plan must execute openspec-ff-change (missing instructions tasks); the plan model (claude/haiku) skipped the required OpenSpec steps again after one corrective reminder'
