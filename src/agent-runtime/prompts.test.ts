@@ -44,6 +44,11 @@ describe('editable role definitions', () => {
     expect(reviewer).toContain('only governs documentation')
     expect(reviewer).toContain('never demand a test or a tag for it')
   })
+  it('tells the developer to serve and test on the leased $PORT, never a hard-coded port', () => {
+    const developer = roleInstructions('developer', context, 'change')
+    expect(developer).toContain('this run owns `$PORT`')
+    expect(developer).toContain('never hard-code a port number')
+  })
   it('the fixer stance is a fourth editable definition on the developer role: own task text, developer contract and verification tail', () => {
     const defaults = rolePromptDefaults()
     expect(defaults.fixer).toMatch(/^## Your task: correction/)
