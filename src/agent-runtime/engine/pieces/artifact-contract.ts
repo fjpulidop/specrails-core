@@ -120,10 +120,20 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
       files['tasks.md'] = files['tasks.md'].replace(/^(\s*[-*]\s+\[)[ xX](\]\s+)/gm, '$1 $2')
         .replace(/^(\s*[-*]\s+\[ \]\s+(?:\d+(?:\.\d+)*\.?\s+)?)\[human\]\s*/gim, '$1')
       const fingerprint = contentDigest(files), key = text(params.contractId)
-      if (params.action === 'freeze') store.set(key, { fingerprint })
+      const perFile: Record<string, string> = Object.fromEntries(Object.keys(files).sort().map(name => [name, contentDigest({ [name]: files[name]! })]))
+      if (params.action === 'freeze') store.set(key, { fingerprint, files: perFile })
       else {
         const frozen = store.get(key) as JsonObject | undefined
-        if (!frozen || frozen.fingerprint !== fingerprint) return { outcome: 'fail', output: { reason: frozen ? 'artifacts_changed' : 'contract_missing' } }
+        if (!frozen) return { outcome: 'fail', output: { reason: 'contract_missing' } }
+        if (frozen.fingerprint !== fingerprint) {
+          // Say which approved artifact changed: without it the implementer cannot tell why the
+          // check keeps failing and the run ends as "tasks still incomplete" after wasted turns.
+          const before = frozen.files && typeof frozen.files === 'object' && !Array.isArray(frozen.files) ? frozen.files as Record<string, unknown> : null
+          const changed = before ? [...new Set([...Object.keys(before), ...Object.keys(perFile)])].filter(name => before[name] !== perFile[name]).sort() : []
+          return { outcome: 'fail', output: { reason: 'artifacts_changed', ...(changed.length ? { changed: bounded(changed) } : {}) },
+            history: [historyEntry(context, [`The approved plan of change ${change} was edited after it was frozen${changed.length ? ` (${bounded(changed).join(', ')})` : ''}.`,
+              'Only task checkboxes may change. Restore the approved wording exactly (a [human] task keeps its text and stays unticked), then continue the remaining work.'].join('\n'))] }
+        }
       }
       // A [human] task is the person's check, never the run's work: it is reported, not required.
       const open = tasks.filter(task => !task.done && !task.human), human = tasks.filter(task => task.human)
