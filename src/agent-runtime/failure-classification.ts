@@ -97,6 +97,7 @@ const CRASH_TEXT = /execution failed \(exit \d+\)|exited without a successful fi
 const TESTS_TEXT = /Correction loop stopped: .*(?:verif|check|test|fail)|verification (?:failed|did not pass)|failing (?:tests|checks)|(?:tests?|checks?) (?:are |is )?failing|(?:tests?|checks?) failed/i
 const BLOCKED_CODES = new Set(['baseline_characterization_failed', 'budget_exhausted', 'retry_exhausted', 'recover_required', 'recovery_ambiguous'])
 const BLOCKED_TEXT = /correction limit reached|continuation limit reached|reviewer rejected the same change|could not make progress|Run budget is exhausted|\(baseline_characterization_failed\)/i
+const BOOKKEEPING_STEP_KINDS = new Set(['condition', 'assign', 'end', 'join', 'verify', 'question'])
 const CORRECTION_STEP = /(?:^|[/.:])(?:fixer|fix|correct)/i
 // End-node reasons of a definition's failure exits (contract 5.15). The sentences are the
 // documented end reasons of the implementation recipes, not guesses at free prose.
@@ -168,7 +169,9 @@ function failingPhase(signals: FailureSignals, skipOwnerLost = false): { phase?:
 function correctionRounds(steps: FailureSignals['steps']): number | undefined {
   let visits = 0
   for (const [id, step] of Object.entries(steps ?? {})) {
-    if (!step || !CORRECTION_STEP.test(id)) continue
+    // Only a turn of an agent is a round: the recipe's correction-* conditions,
+    // assignments and ends share the name but are bookkeeping around one round.
+    if (!step || !CORRECTION_STEP.test(id) || (typeof step.kind === 'string' && BOOKKEEPING_STEP_KINDS.has(step.kind))) continue
     const count = typeof step.visits === 'number' && Number.isFinite(step.visits) ? step.visits : 0
     visits += count
   }

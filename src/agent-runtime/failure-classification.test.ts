@@ -87,6 +87,14 @@ describe('classifyFailure', () => {
     expect(classifyFailure({ status: 'failed' })).toEqual({ kind: 'unknown', confidence: 'low' })
   })
 
+  it('counts fixer turns as correction rounds, not the recipe bookkeeping nodes around them', () => {
+    const result = classifyFailure({ status: 'failed', completion: { reasons: ['Fixer reported a host blocker (environment-variable): export API_TOKEN Evidence: missing'] }, steps: {
+      'correction-context': { kind: 'condition', status: 'succeeded', visits: 1 }, 'correction-budget': { kind: 'condition', status: 'succeeded', visits: 1 },
+      'begin-correction': { kind: 'assign', status: 'succeeded', visits: 1 }, fixer: { kind: 'role-turn', status: 'succeeded', visits: 1 },
+      'correction-blocker': { kind: 'condition', status: 'succeeded', visits: 1 }, 'fixer-blocker-kind': { kind: 'condition', status: 'succeeded', visits: 1 },
+      'fixer-blocked': { kind: 'end', status: 'succeeded', visits: 1 } } })
+    expect(result).toMatchObject({ kind: 'environment', rounds: 1 })
+  })
   it('reads the failing node of an engine 2 run from recentFailures', () => {
     const result = classifyFailure({
       status: 'failed',
