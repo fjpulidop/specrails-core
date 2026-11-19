@@ -283,6 +283,12 @@ describe('skipped OpenSpec workflow steps (contract 5.16)', () => {
     expect(prompts).toHaveLength(1)
   })
 
+  it('lets a planner decline the ticket without creating artifacts', async () => {
+    const { prompts, run } = planner([async () => json({ confidence: 'declined', question: 'The person said this ticket belongs to another repository.', verification: [] })])
+    expect(await run()).toMatchObject({ ok: true, value: { confidence: 'declined' } })
+    expect(prompts).toHaveLength(1)
+  })
+
   it('gives one corrective turn that names each missing step and the exact calls from the current state', async () => {
     const { prompts, run } = planner([async tools => { await startOnly(tools); return json(plan) }, async tools => { await finish(tools); return json(plan) }])
     expect(await run()).toMatchObject({ ok: true })

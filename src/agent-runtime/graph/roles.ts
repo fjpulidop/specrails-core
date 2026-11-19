@@ -168,7 +168,8 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       // the same fast-forward skill as the built-in architect).
       // Completed role results must prove this invocation used the workflow, not an old visit.
       const planner = role === 'architect' || (workflow !== undefined && openSpecSkill(workflow.context) === 'openspec-ff-change')
-      if (!(planner && (output?.confidence === 'low' || asksBeforePlanning(output?.clarifications)))) workflow?.assertParticipation(cursor)
+      // A planner that declines the ticket (the person said "not in this repository") plans nothing either.
+      if (!(planner && (output?.confidence === 'low' || output?.confidence === 'declined' || asksBeforePlanning(output?.clarifications)))) workflow?.assertParticipation(cursor)
       if (structured && !output && !options.lenient) throw new Error('Invalid structured role response: ' + (parseError instanceof Error ? parseError.message : 'missing object'))
       return { ok: true, value: accept(output, result.text, result), text: result.text, result }
     }
