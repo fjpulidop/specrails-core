@@ -38,6 +38,14 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('Never reject the change for a criterion the person withdrew')
     expect(prompt).toContain('acceptedBy: "user"')
   })
+  it('plans and checks canvas output by screenshots and exposed state, never page text', () => {
+    // A canvas game's plan required "page text contains Score", which can never pass: the score is drawn.
+    for (const role of ['architect', 'developer'] as const) {
+      const prompt = roleInstructions(role, context, 'change')
+      expect(prompt).toContain('page text never contains what it draws')
+      expect(prompt).toContain('`--eval` of state the code exposes for tests')
+    }
+  })
   it('never lets the reviewer reject for a host check the developer cannot add', () => {
     // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
     // listed "no host verification covers X" as an issue, the fixer had nothing to change.
