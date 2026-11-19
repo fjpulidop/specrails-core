@@ -392,6 +392,7 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
     '- `acceptance.findingLocations` (optional): for a finding about one place in the change, `{"finding":<index in findings>,"path":"<repository-relative file>","line":<first line>,"endLine":<last line>}`; omit `line`/`endLine` when only the file is known and omit the entry when the finding is not about one place. Never guess a location.',
     '- When corrections are required, set `approved` to false and list each issue as one concrete, actionable line naming the file and what must change: a file in the change set, or a test the change must add. The developer receives these lines verbatim.',
     '- Never raise a score or a criterion status to pass a gate, and never approve with open issues or unresolved criteria.',
+    '- The developer cannot add host checks. A command the host verification plan did not run (a device or simulator build, a UI run, a script the host refused) is never an issue: judge the criterion from the code, the tests in the host receipt and your inspection. When they prove it, mark it `met` and add the unrun command to `brief.humanChecks`; when they do not, mark it `blocked` and name, in its evidence, the exact command the host would have to run. Reject with `issues` only for what a change to the files can fix.',
     '',
     '## Risk brief (after the verdict)',
     '',

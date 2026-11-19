@@ -25,6 +25,14 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('failed-check')
     expect(prompt.length).toBeLessThan(30_000)
   })
+  it('never lets the reviewer reject for a host check the developer cannot add', () => {
+    // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
+    // listed "no host verification covers X" as an issue, the fixer had nothing to change.
+    const prompt = roleInstructions('reviewer', context, 'change')
+    expect(prompt).toContain('The developer cannot add host checks')
+    expect(prompt).toContain('Reject with `issues` only for what a change to the files can fix')
+    expect(prompt).toContain('mark it `blocked` and name, in its evidence, the exact command the host would have to run')
+  })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
     expect(roleInstructions(role, context, 'change')).toContain(defaults[role])
