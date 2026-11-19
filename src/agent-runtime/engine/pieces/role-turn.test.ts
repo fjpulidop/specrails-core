@@ -159,3 +159,76 @@ describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
     expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"new"}')
   })
 })
+
+describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
+  const implementation = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  /** Replies in order; each reply is the structured JSON the role returns. */
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const contradiction = 'Task 2.1 requires touch controls, but design.md lists touch controls as a non-goal. Implement them (option A) or drop task 2.1 (option B)?'
+
+  it('asks the person the contradiction, memoizes the turn before pausing, and reruns once with the answer', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'Did the keyboard part', incomplete: ['2.1 touch controls'], decisionNeeded: contradiction },
+      { summary: 'Implemented touch controls as the person decided', incomplete: [], decisionNeeded: '' }])
+    const params = { roleId: 'writer', prompt: 'Implement every task', structuredOutput: implementation, decisions: 'ask' } as Record<string, JsonValue>
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    // The role sees the rule and the extra field; the host's own schema stays untouched.
+    expect(f.requests[0].prompt).toContain('## A decision only the person can make')
+    expect(JSON.stringify(f.requests[0].outputSchema)).toContain('decisionNeeded')
+    expect(JSON.stringify(implementation)).not.toContain('decisionNeeded')
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'Option A: implement them.' } }
+    const result = await f.run(params)
+    // The resume replays the memoized first round instead of calling the provider again.
+    expect(f.requests).toHaveLength(2)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: contradiction, nodePath: 'node' })])
+    expect(f.requests[1].prompt).toContain("## The person's decision 1")
+    expect(f.requests[1].prompt).toContain('Option A: implement them.')
+    expect(result).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'Option A: implement them.' } }],
+      output: { structured: { summary: 'Implemented touch controls as the person decided', incomplete: [] }, decisions: [{ question: contradiction, answer: 'Option A: implement them.' }] } })
+    expect((result.output as { structured: Record<string, unknown> }).structured).not.toHaveProperty('decisionNeeded')
+    // Later turns read the question and the answer through {{history.text}}.
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Human decision requested: ' + contradiction)
+    expect(new Set(result.history?.map(entry => entry.id)).size).toBe(result.history?.length)
+  })
+
+  it('stays autonomous when the role needs no decision: one call, the host schema shape, no answers', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'All done', incomplete: [], decisionNeeded: '' }])
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask' })
+    expect(f.requests).toHaveLength(1)
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'All done', incomplete: [] } } })
+    expect(result.answers).toBeUndefined()
+    expect(result.output).not.toHaveProperty('decisions')
+    expect((result.output as { structured: Record<string, unknown> }).structured).not.toHaveProperty('decisionNeeded')
+  })
+
+  it('bounds the questions: after the last allowed answer the role must finish without asking', async () => {
+    const f = fixture()
+    scripted(f, [...Array.from({ length: 3 }, (_, index) => ({ summary: 'stuck', incomplete: ['x'], decisionNeeded: 'Question ' + index })), { summary: 'finished', incomplete: [] }])
+    let asked = 0
+    f.execution.interrupt = () => 'answer ' + asked++
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask' })
+    expect(asked).toBe(3)
+    expect(f.requests).toHaveLength(4)
+    expect(f.requests[3].prompt).not.toContain('## A decision only the person can make')
+    expect(JSON.stringify(f.requests[3].outputSchema)).not.toContain('decisionNeeded')
+    expect(f.requests[3].prompt).toContain('answer 2')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'finished' } } })
+    expect((result.output as { decisions: unknown[] }).decisions).toHaveLength(3)
+  })
+
+  it('validates the opt-in: only an object schema with properties, never one already declaring the field', async () => {
+    const f = fixture()
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'x', decisions: 'always' }, '/test')).not.toEqual([])
+    await expect(f.run({ roleId: 'writer', prompt: 'x', decisions: 'ask' })).rejects.toMatchObject({ code: 'invalid_arguments' })
+    await expect(f.run({ roleId: 'writer', prompt: 'x', decisions: 'ask', structuredOutput: { type: 'object', properties: { decisionNeeded: { type: 'string' } } } })).rejects.toMatchObject({ code: 'invalid_arguments' })
+    expect(f.requests).toHaveLength(0)
+  })
+})

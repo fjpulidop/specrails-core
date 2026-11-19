@@ -368,6 +368,15 @@
       "compatibility": "additive: an older Core counts a [human] task as an ordinary task, so a host enables the tag only when runtime capabilities advertise humanTasks",
       "documentation": "docs/agent-runtime.md#human-checks"
     },
+    "roleDecisions": {
+      "version": 1,
+      "capability": "roleDecisions",
+      "param": "role-turn decisions: 'ask' (requires an object structuredOutput with properties that does not declare decisionNeeded)",
+      "semantics": "Core adds an optional string decisionNeeded to the role's schema and a rule: use it only when the approved artifacts or requirements contradict each other (for example a task requires a declared non-goal) and the choice is the person's. A non-empty decisionNeeded memoizes the settled turn and pauses the node on an ordinary question interrupt (kind question, nodePath of the role turn, prompt = the question); runtime resume --answer reruns the role in the same node visit with the question and answer appended to its task, without repeating the settled turn. At most 3 questions per node visit; the fourth round runs on the host schema without the rule. The committed output keeps the host schema shape (decisionNeeded removed) and adds decisions [{question, answer}]; answers and history carry each question and answer so later turns read them in {{history.text}}. A turn that needs no decision is unchanged: one call, no interrupt.",
+      "freeze": "artifact-contract freeze (every Core with this capability) fails once per contract with reason tasks_contradict_non_goals, tasks[] and nonGoals[] when a task seems to require a bullet of a Non-Goals or Out of scope section of design.md or proposal.md; the history entry tells the planner to drop the non-goal, drop or rewrite the task, or ask the person with confidence low. A plan frozen again after that review passes, so a false match costs one plan repair, never the run.",
+      "compatibility": "additive: older Cores reject the unknown decisions param, so a host sends it only when runtime capabilities advertise roleDecisions",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
     "findingLocations": {
       "version": 1,
       "capability": "findingLocations",

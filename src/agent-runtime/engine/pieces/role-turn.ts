@@ -11,23 +11,84 @@ import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
 import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../../prompts.js'
 import { projectRulesContext } from '../../project-rules.js'
-import { EngineError, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
+import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
+import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
       if (!role) throw new EngineError('role_not_found', 'Role is not configured: ' + text(params.roleId))
       return role.access
     },
-    execute: (params, context) => executeRoleTurn(bindings(), params, context),
+    execute: (params, context) => params.decisions === 'ask' ? executeDecisionTurns(bindings(), params, context) : executeRoleTurn(bindings(), params, context),
   }
+}
+
+/** The structured field a role fills with the one decision only the person can make (`decisions: 'ask'`). */
+export const DECISION_FIELD = 'decisionNeeded'
+/** Questions one role-turn visit may ask before its last round must finish without asking. */
+export const DECISION_ROUNDS = 3
+const DECISION_RULE = [
+  '',
+  '',
+  '## A decision only the person can make',
+  `Use \`${DECISION_FIELD}\` only when you cannot finish because the approved artifacts contradict each other or the ticket (for example a task requires what design.md lists as a non-goal, or two requirements exclude each other) and any choice would be a product decision the person must own. Then do all the work the decision does not affect, leave the affected tasks unticked, and put one concrete question in \`${DECISION_FIELD}\`: what conflicts (quote both sides), the options and what each one means for the change. The run pauses, asks the person and gives you their answer in this same step.`,
+  `Never use it for anything you can decide, investigate, install or check yourself, for a technical choice the design leaves open (choose and say why in your summary), for a failing test, or for a host blocker (a missing credential, network or variable is the structured blocker). Leave \`${DECISION_FIELD}\` empty in every other case.`,
+].join('\n')
+
+/**
+ * `decisions: 'ask'` (contract 5.17, capability `roleDecisions`): a role whose work hits a genuine
+ * decision (a plan that contradicts itself, conflicting requirements) asks the person through the
+ * ordinary `question` interrupt instead of ending the run with unfinished tasks, then reruns in the
+ * same node visit with the answer. Each settled round is memoized before its interrupt, so a resume
+ * never repeats a provider call; the last round may not ask again. Everything else stays autonomous.
+ */
+async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> {
+  const schema = params.structuredOutput as JsonObject | undefined
+  const properties = schema?.properties
+  if (!schema || schema.type !== 'object' || !properties || typeof properties !== 'object' || Array.isArray(properties))
+    throw new EngineError('invalid_arguments', "decisions: 'ask' requires an object structuredOutput schema with properties")
+  if (DECISION_FIELD in properties) throw new EngineError('invalid_arguments', `structuredOutput already declares ${DECISION_FIELD}; decisions: 'ask' adds it`)
+  const asking: JsonObject = { ...params, structuredOutput: { ...schema, properties: { ...properties, [DECISION_FIELD]: { type: 'string' } } } }
+  const memo = deps.memo(context)
+  const answers: EngineAnswer[] = [], history: string[] = [], decisions: JsonObject[] = []
+  let answered = ''
+  for (let round = 0; ; round += 1) {
+    const last = round >= DECISION_ROUNDS
+    const key = 'role-decision:' + round
+    const saved = memo.get(key) as unknown as PieceResult | undefined
+    const result = saved ?? await executeRoleTurn(deps, last ? { ...params, prompt: text(params.prompt) + answered }
+      : { ...asking, prompt: text(params.prompt) + DECISION_RULE + answered }, context)
+    const structured = result.outcome === 'next' ? (result.output as JsonObject | undefined)?.structured : undefined
+    const record = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured : undefined
+    const question = !last && typeof record?.[DECISION_FIELD] === 'string' ? record[DECISION_FIELD].trim() : ''
+    if (!question) return settleDecisions(context, result, record, answers, history, decisions)
+    if (!saved) memo.set(key, json(result))
+    for (const entry of result.history ?? []) history.push(entry.text)
+    const response = context.interrupt({ kind: 'question', prompt: boundedText(question, 4000), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId })
+    const answer = boundedText(typeof response === 'string' ? response : typeof (response as JsonObject | null)?.answer === 'string' ? (response as JsonObject).answer as string : JSON.stringify(response), 4000)
+    answers.push(answerEntry(context, response, round))
+    decisions.push({ question: boundedText(question, 4000), answer })
+    history.push(`Human decision requested: ${question}\nHuman answer:\n${answer}`)
+    answered += `\n\n## The person's decision ${round + 1}\nYou asked: ${JSON.stringify(boundedText(question, 4000))}\nThe person answered: ${JSON.stringify(answer)}\nThis answer is authoritative for this change and settles that conflict, even where a frozen artifact says otherwise: continue the remaining work accordingly (the artifacts stay as they are; only tick tasks) and say in your summary how you applied it.`
+  }
+}
+
+function settleDecisions(context: PieceExecutionContext, result: PieceResult, structured: JsonObject | undefined, answers: EngineAnswer[], history: string[], decisions: JsonObject[]): PieceResult {
+  if (structured && DECISION_FIELD in structured) {
+    // The host's schema never declared the field: the committed output keeps exactly its shape.
+    const { [DECISION_FIELD]: _unused, ...rest } = structured
+    result = { ...result, output: { ...(result.output as JsonObject), structured: rest } }
+  }
+  if (!decisions.length) return result
+  const entries: HistoryEntry[] = [...history, ...(result.history ?? []).map(entry => entry.text)].map((entry, ordinal) => historyEntry(context, entry, ordinal))
+  return { ...result, ...(result.output && typeof result.output === 'object' && !Array.isArray(result.output) ? { output: { ...result.output, decisions } } : {}), answers: [...answers, ...(result.answers ?? [])], history: entries }
 }
 
 /** One invocation path for configured roles, including routing and exactly one repair. */

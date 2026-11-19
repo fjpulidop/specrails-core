@@ -45,6 +45,8 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 - Fixer stance (`stance: 'fixer'`, optional): the turn is a correction round. The role must have `access: 'write'`; publication rejects a configured read role with `invalid_role_access` at `/params/stance` (portable `--structural` validation defers unresolved roles) and execution throws `invalid_arguments` before any provider call. The built-in `developer` takes the FIXER instructions (`fixerSection` in `prompts.ts`) with the host-editable `rolePrompts.fixer` definition instead of the developer's, runs on the configured `fixer` engine when the runtime config defines one (the `Fixer route` note; sessions never carry across engines, so that turn starts fresh and records no `$sessions` entry) and sends `stance: 'fixer'` to the provider. A custom write role keeps its own instructions and engine; only its request and `agent-event`s carry the `fixer` label. Without `stance` the turn is unchanged.
 - Host environment (write roles, `guardrails['environment-repair'] !== false`): agents run sandboxed and cannot install what the repository needs (Codex cannot write the Playwright browser cache), so before the turn the host runs `prepareEnvironment` for every repository in scope: the Node dependencies a manifest declares but `node_modules` lacks or holds at a version outside the declared range, then the browser builds the installed Playwright pins when `playwright install --dry-run <browsers>` names an install location that does not exist (browsers read from `playwright.config.*`, chromium by default; never downloads a Playwright package). Other ecosystems keep their failure-driven repair in `verify`. A browser download that times out on the network is retried once with an IPv4-first DNS preload (hosts that resolve AAAA records without an IPv6 route make Node's family auto-selection abort Playwright's download). What was installed or refused is appended to the task under `## Host environment` and narrated on `verification-output`. If the turn still returns a structured `blocker` of kind `toolchain`, `setup` or `environment`, the host plans installs from its text plus the preparation above and, when any install succeeds, reruns the turn exactly once with a note naming what it installed; otherwise the blocker stands for the graph to route.
 
+- Decisions (`decisions: 'ask'`, optional, capability `roleDecisions`): for a decision only the person can make (the approved artifacts contradict each other, for example a task requires a declared non-goal, or two requirements exclude each other). Requires an object `structuredOutput` with `properties` (`invalid_arguments` otherwise, and when it already declares `decisionNeeded`). Core adds an optional string `decisionNeeded` to the schema and a rule to the task. A non-empty `decisionNeeded` memoizes the settled turn, then pauses the node on a `question` interrupt whose prompt is the question; the resume reruns the role in the same visit with the question and the person's answer appended, never repeating the settled turn. At most 3 questions per visit; the next round runs on the host schema without the rule. The committed output keeps the host schema (`decisionNeeded` removed) and adds `decisions: [{ question, answer }]`; `$answers` and `$history` carry every question and answer. A turn that returns no decision is a single ordinary call.
+
 ### `decider`
 
 Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop' | 'blocked', reason }` as structured output with no session continuity.
@@ -253,6 +255,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `sessionContinuity` | no | `"run"` / `"none"` |
 | `stance` | no | `"fixer"` |
 | `verificationProposalsFrom` | no | string (1–128 chars) |
+| `decisions` | no | `"ask"` |
 
 ### Descriptor: `decider`
 
@@ -597,7 +600,13 @@ evidence): such a task can never be completed after the freeze. It emits `fail` 
 `reason: 'tasks_edit_frozen_artifacts'`, the offending `tasks`, and a history note the
 planning role repairs from. Citing those artifacts ("as described in design.md") is fine.
 It also refuses (`reason: 'tasks_need_manual_check'`) an untagged task that asks for a
-manual or visual check without saying how the run performs it. A task tagged
+manual or visual check without saying how the run performs it. Once per contract it refuses
+(`reason: 'tasks_contradict_non_goals'`, `tasks`, `nonGoals`) a plan whose task seems to
+require a bullet of a `Non-Goals` or `Out of scope` section of design.md or proposal.md
+(capability `roleDecisions`): a self-contradicting plan would stop the developer at a
+decision only the person can make. The history note asks the planner to drop the non-goal,
+drop or rewrite the task, or ask the person with low confidence; a plan frozen again after
+that review passes, so an apparent overlap costs one repair and never the run. A task tagged
 `- [ ] N.M [human] …` (contract 5.15, capability `humanTasks`) is a person's check:
 `check` never counts it as incomplete, the frozen fingerprint ignores the tag on an
 unticked task, and the output reports `incompleteTasks` and `humanChecks` (see

@@ -50,6 +50,15 @@ describe('Desktop integration contract', () => {
     expect(contract.agentRuntime.cliOperations).toContain('pause')
   })
 
+  it('documents role decisions as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.agentRuntime.roleDecisions).toMatchObject({ version: 1, capability: 'roleDecisions' })
+    expect(contract.agentRuntime.roleDecisions.param).toContain("decisions: 'ask'")
+    expect(contract.agentRuntime.roleDecisions.freeze).toContain('tasks_contradict_non_goals')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.roleDecisions).toBe(1)
+  })
+
   it('covers every machine operation exactly once and classifies presentation separately', () => {
     expect(contract.agentRuntime.cliPresentationOperations).toEqual(['help'])
     expect(contract.agentRuntime.cliOperations).toEqual(RUNTIME_CLI_OPERATIONS.filter(operation => operation !== 'help'))

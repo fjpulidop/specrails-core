@@ -490,3 +490,27 @@ it('upgrades a version 1 run database before recording a pause and keeps version
     expect(database.sqlite.prepare("SELECT kind FROM control_inbox ORDER BY created_at").all().map(row => row.kind)).toEqual(['steer', 'pause'])
   } finally { database.close() }
 })
+
+it("routes a write role's decision to the person and resumes the same node with the answer, without repeating the settled turn", async () => {
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'complete', invalid: null, failed: null } },
+    complete: { kind: 'condition', params: { expr: '$outputs.build.structured.incomplete.length == 0' }, ends: { true: 'done', false: 'stalled' } },
+    stalled: { kind: 'end', params: { outcome: 'failure' }, ends: {} }, done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Keyboard done', incomplete: ['2.1 touch controls'], decisionNeeded: 'Task 2.1 needs touch controls, a declared non-goal: implement or drop?' },
+    { summary: 'Touch controls implemented', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun({ ...f, registry: registry() })
+  expect(paused.state.status).toBe('paused')
+  expect(paused.state.pendingInterrupts).toEqual([expect.objectContaining({ kind: 'question', nodePath: 'build' })])
+  expect(JSON.stringify(paused.state.pendingInterrupts[0])).toContain('a declared non-goal')
+  const resumed = await resumeRun(f.directory, { registry: registry(), answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Implement them' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  expect(f.requests[1].prompt).toContain('Implement them')
+  expect(resumed.efficiencySummary.invocations.total).toBe(2)
+})
