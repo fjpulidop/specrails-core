@@ -372,6 +372,7 @@ function reviewerSection(policy: ReviewPolicy, criteria: FrozenCriterion[] | und
       '## Acceptance criteria to certify',
       '',
       'Certify each frozen criterion once, by its coordinates, with concrete evidence (file paths, test names, observed behavior). Use `met` only when the code and tests prove it; `blocked` or `pending` when it is unresolved. Use `exception` only for a deliberate, non-material deviation you accept as reviewer, with reason, impact and `acceptedBy: "reviewer"`; a material scope change is never yours to accept, so mark it `blocked` and explain.',
+      'When the person\'s own answers to this run\'s questions (in the prior execution and human answers you are given) withdraw or change a criterion, that criterion is a material `exception` the person accepted: `acceptedBy: "user"`, `material: true`, and `approvalEvidence` quoting their answer. Never reject the change for a criterion the person withdrew.',
       '',
       ...criteria.map(item => `- spec \`${item.specId}\`, criterion ${item.criterionIndex}: ${item.requirement}`),
       '',

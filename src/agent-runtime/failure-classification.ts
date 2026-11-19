@@ -204,7 +204,7 @@ function stallDetail(ended: string): string | undefined {
   const fixer = /Fixer diagnosis:\s*([\s\S]*)$/.exec(ended)?.[1]?.replace(/\s+/g, ' ').trim()
   if (!issues.length && !fixer) return undefined
   const asked = issues.length ? `The reviewer still asks for: ${issues.slice(0, 2).map(issue => issue.replace(/\s+/g, ' ').trim()).join(' | ')}${issues.length > 2 ? ` (+${issues.length - 2} more)` : ''}.` : ''
-  return detailOf(`Automatic correction changed nothing. ${asked}${fixer && fixer !== 'undefined' ? ` Fixer: ${fixer}` : ''}`, STALL_DETAIL_LIMIT)
+  return detailOf(`${/Automatic correction limit reached/i.test(ended) ? 'Automatic corrections ran out.' : 'Automatic correction changed nothing.'} ${asked}${fixer && fixer !== 'undefined' ? ` Fixer: ${fixer}` : ''}`, STALL_DETAIL_LIMIT)
 }
 
 /** An attempt a restart cut off (`owner_lost`): the run resumed past it, so it is history, not a cause. */
@@ -270,6 +270,8 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
     }
     if (SPEC_INVALID_TEXT.test(ended)) return done('spec_invalid')
     if (STALLED_TEXT.test(ended)) { const stalled = stallDetail(ended); return done('blocked', stalled ? { detail: stalled } : {}) }
+    // The correction limit stays resumable (Continue grants fresh rounds); only its detail changes.
+    if (/Automatic correction limit reached/i.test(ended)) { const stalled = stallDetail(ended); return done('blocked', stalled ? { detail: stalled } : {}, true) }
   }
   if (code === 'provider_limit' || PROVIDER_LIMIT.test(haystack)) {
     // The executor's typed refusal names the window's reset as an ISO time; the

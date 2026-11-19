@@ -181,6 +181,12 @@ describe('definition end-node failures (contract 5.15)', () => {
     expect(result?.detail).toContain('Fixer: the review rejected only for host evidence')
     expect(result?.detail).not.toContain('Acceptance policy')
   })
+  it('names the open review issues when the correction limit is reached', () => {
+    const reason = `Automatic correction limit reached (3/3). Acceptance policy: approved == true; issues must be empty. Latest review findings: ${JSON.stringify({ approved: false, issues: ['Delete src-tauri/Cargo.lock'] })}. Fixer diagnosis: kept the lockfile cargo regenerates.`
+    const result = classifyFailure({ status: 'failed', completion: { reasons: [reason] } })
+    expect(result).toMatchObject({ kind: 'blocked' })
+    expect(result?.detail).toBe('Automatic corrections ran out. The reviewer still asks for: Delete src-tauri/Cargo.lock. Fixer: kept the lockfile cargo regenerates.')
+  })
   it('maps every documented end reason to a known kind', () => {
     const cases: Array<[string, string]> = [
       ['The plan for change x still fails OpenSpec validation or the plan contract after 2 repair(s), so it was not implemented.', 'spec_invalid'],

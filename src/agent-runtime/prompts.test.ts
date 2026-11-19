@@ -31,6 +31,13 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('[spec:<capability>/<requirement-slug>]')
     expect(prompt).toContain('// spec: <capability>/<requirement-slug>')
   })
+  it('treats a criterion the person withdrew in an answer as their accepted exception', () => {
+    // An impossible spec: the person answered "drop O(1) and uniqueness", yet the frozen criterion
+    // kept the reviewer rejecting until the correction limit.
+    const prompt = roleInstructions('reviewer', { ...context, specs: [{ ...context.specs[0]!, acceptanceCriteria: ['O(1)'] }] } as PipelineContext, 'change', { criteria: [{ specId: '1', criterionIndex: 0, requirement: 'O(1)' }] } as never)
+    expect(prompt).toContain('Never reject the change for a criterion the person withdrew')
+    expect(prompt).toContain('acceptedBy: "user"')
+  })
   it('never lets the reviewer reject for a host check the developer cannot add', () => {
     // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
     // listed "no host verification covers X" as an issue, the fixer had nothing to change.
