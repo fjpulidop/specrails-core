@@ -33,6 +33,8 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('Reject with `issues` only for what a change to the files can fix')
     expect(prompt).toContain('mark it `blocked` and name, in its evidence, the exact command the host would have to run')
     expect(prompt).toContain('.specrails/browser-evidence/<capture>/')
+    // A Tauri run hit the correction limit: the reviewer kept asking to delete the Cargo.lock that `cargo test` regenerates.
+    expect(prompt).toContain('never ask for it to be reverted or deleted')
   })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
