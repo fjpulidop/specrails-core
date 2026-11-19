@@ -160,6 +160,9 @@ describe('editable role definitions', () => {
     const developer = roleInstructions('developer', context, 'change', { verification })
     expect(developer).toContain(DEV_BYPASS)
     expect(developer).toContain('report it under `incomplete` with the exact error. ' + TOOLCHAIN_ALLOW)
+    // A machine-wide install (rustup target add ran during a wasm run) is the person's: a toolchain blocker instead.
+    expect(developer).toContain('never install or change anything outside the workspace and temporary directories')
+    expect(developer).toContain('`rustup target|toolchain|component add`')
     // The run checks UI behaviour itself with the host browser tool, and never ticks a person's check.
     expect(developer).toContain('use the host browser tool when `$SPECRAILS_BROWSE` is set')
     expect(developer).toContain('A `[human]` task is the person\'s check: never tick it.')
