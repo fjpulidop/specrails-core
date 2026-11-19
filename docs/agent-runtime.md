@@ -429,6 +429,7 @@ A run that ends `failed` or `blocked` reports why in one typed record, so a host
 | --- | --- |
 | `tests_failed` | Verification kept failing, or the correction loop stopped on the same failing change |
 | `provider_limit` | The provider reported a session, usage, rate or quota limit. `resetAt` is the provider's own wording of when it resets, never reformatted. `resetsAt` (contract 5.14) is the ISO-8601 reset of the refusing window when the provider refused the invocation with a typed usage-limit report (the CLI executor then fails with error code `provider_limit` and the message `<provider> usage limit reached (<window> window, resets <ISO>)`) |
+| `provider_unavailable` | The provider's service, or the network to it, failed for a moment and kept failing through the CLI executor's retries (contract 5.17): Codex's `workspace routing discovery failed` or `timed out`, `stream disconnected before completion`, `exceeded retry limit, last status: 5xx`, an overloaded API, a reset connection. Nothing about the work is wrong. `detail` names the provider's words; `resumablePhase` reruns the same step. A host continues the run after a short wait |
 | `environment` | The host environment cannot run verification: credentials, toolchain, a failing setup command, non-deterministic generated output, edits outside the scope |
 | `blocked` | A configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change |
 | `timeout` | The total execution or active-duration limit elapsed, or a verification command hit its total or silence limit (`detail` names which) |
@@ -447,7 +448,9 @@ A role turn that ends without its required OpenSpec steps is never failed at onc
 
 `write_artifact` takes the change-relative path (`proposal.md`, `design.md`, `specs/<capability>/spec.md`, `tasks.md`). It also accepts the repository-relative (`openspec/changes/<change>/proposal.md`) or absolute spelling of the same file of this change. A refused call says what to send instead: missing content, an artifact over 256 KB, or the accepted paths.
 
-A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 3` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8; version 2 in 5.15, version 3 with `workflow_protocol` in 5.16). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
+A provider CLI that fails on a transient outage of its own service before its turn did any work (no tool call or reply was streamed) is re-run by the CLI executor after 15 s and again after 45 s, and the role's live output says so (`codex service unavailable (…); retrying in 15 s`). A turn that already did work is never re-run by the executor. When the outage outlasts the waits, the executor fails with error code `provider_unavailable` and the run is classified `provider_unavailable`, not `crash`. A usage limit (`provider_limit`) or a signed-out CLI (`environment`, including Codex's `workspace routing discovery unauthorized`) is never treated as an outage.
+
+A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 4` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8; version 2 in 5.15, version 3 with `workflow_protocol` in 5.16, version 4 with `provider_unavailable` in 5.17). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
 
 ## Human checks
 

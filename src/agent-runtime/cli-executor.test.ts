@@ -40,6 +40,43 @@ describe('four CLI execution contracts', () => {
     await expect(new CliExecutor('codex', { runProcess }).execute(request())).rejects.toThrow("Invalid schema: Missing 'cwd'.")
   })
 
+  it('re-runs a Codex turn its service refused before any work, then succeeds', async () => {
+    const outage = { stdout: jsonl({ type: 'error', message: 'workspace routing discovery failed' }, { type: 'turn.failed', error: { message: 'workspace routing discovery failed' } }), stderr: '', exitCode: 1 }
+    const runProcess = vi.fn<CliProcessRunner>().mockResolvedValueOnce(outage).mockResolvedValueOnce({ stdout: fixtures.codex, stderr: '', exitCode: 0 })
+    const events: unknown[] = []
+    const result = await new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [1, 1] }).execute(request({ onEvent: event => events.push(event) }))
+    expect(result.text).toBe('done')
+    expect(runProcess).toHaveBeenCalledTimes(2)
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'text', text: expect.stringContaining('codex service unavailable (workspace routing discovery failed); retrying') }))
+  })
+  it('types a provider outage that outlasts the retries as provider_unavailable, never a crash', async () => {
+    const outage = { stdout: jsonl({ type: 'turn.failed', error: { message: 'workspace routing discovery failed' } }), stderr: '', exitCode: 1 }
+    const runProcess = vi.fn<CliProcessRunner>(async () => outage)
+    const error = await new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [1, 1] }).execute(request()).catch((caught: unknown) => caught)
+    expect(runProcess).toHaveBeenCalledTimes(3)
+    expect(error).toBeInstanceOf(AgentExecutionError)
+    expect(error).toMatchObject({ code: 'provider_unavailable', message: 'codex execution failed (exit 1). workspace routing discovery failed' })
+    expect(classifyFailure({ status: 'failed', recentFailures: [{ nodePath: 'architect', status: 'failed', error: { code: 'provider_execution_error', message: (error as Error).message } }] }))
+      .toMatchObject({ kind: 'provider_unavailable', phase: 'architect', resumablePhase: 'architect', confidence: 'high', detail: expect.stringContaining('codex: workspace routing discovery failed') })
+  })
+  it('never re-runs a turn that already did work, nor an ordinary failure', async () => {
+    const worked = vi.fn<CliProcessRunner>(async (_invocation, options) => {
+      options.onLine?.(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'npm test' } }))
+      return { stdout: jsonl({ type: 'turn.failed', error: { message: 'stream disconnected before completion: error sending request for url' } }), stderr: '', exitCode: 1 }
+    })
+    await expect(new CliExecutor('codex', { runProcess: worked, transientRetryDelaysMs: [1, 1] }).execute(request())).rejects.toMatchObject({ code: 'provider_unavailable' })
+    expect(worked).toHaveBeenCalledTimes(1)
+    const ordinary = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'turn.failed', error: { message: "Invalid schema: Missing 'cwd'." } }), stderr: '', exitCode: 1 }))
+    await expect(new CliExecutor('codex', { runProcess: ordinary, transientRetryDelaysMs: [1, 1] }).execute(request())).rejects.toMatchObject({ code: 'provider_execution_error' })
+    expect(ordinary).toHaveBeenCalledTimes(1)
+  })
+  it('stops waiting for a provider outage when the run is cancelled', async () => {
+    const controller = new AbortController()
+    const runProcess = vi.fn<CliProcessRunner>(async () => { setTimeout(() => controller.abort(), 5); return { stdout: jsonl({ type: 'turn.failed', error: { message: 'workspace routing discovery timed out' } }), stderr: '', exitCode: 1 } })
+    await expect(new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [60_000] }).execute(request({ signal: controller.signal }))).rejects.toMatchObject({ code: 'aborted' })
+    expect(runProcess).toHaveBeenCalledTimes(1)
+  })
+
   it.each(['claude', 'codex', 'gemini', 'kimi'] as const)('retains %s prompt identity without using platform skills', provider => {
     const input = request(), invocation = buildCliInvocation(provider, input)
     expect(invocation.command).toBe(provider)

@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.16')
+    expect(contract.schemaVersion).toBe('5.17')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -160,7 +160,7 @@ describe('Desktop integration contract', () => {
 
   it('announces the failure classification with exactly the kinds the classifier emits', async () => {
     const failure = contract.agentRuntime.failureClassification
-    expect(failure).toMatchObject({ version: 3, capability: 'failureClassification' })
+    expect(failure).toMatchObject({ version: 4, capability: 'failureClassification' })
     expect(failure.kinds).toEqual([...FAILURE_KINDS])
     expect(Object.keys(failure.kindMeaning)).toEqual([...FAILURE_KINDS])
     const messages: unknown[] = []

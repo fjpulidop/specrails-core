@@ -34,6 +34,26 @@ describe('classifyFailure', () => {
       expect(classifyFailure({ status: 'failed', error: message })?.kind).toBe('environment')
     expect(classifyFailure({ status: 'failed', error: 'claude execution failed (exit 1). The provider did not report a diagnostic.' })?.kind).toBe('crash')
   })
+  it('classifies a provider outage as provider_unavailable (contract 5.17), never a crash', () => {
+    // The night of 2026-11-19: four codex architect/reviewer turns, all refused within one minute.
+    const recorded = classifyFailure({ status: 'failed', recentFailures: [{ nodePath: 'architect', status: 'failed', visit: 3, error: { code: 'provider_execution_error', message: 'codex execution failed (exit 1). workspace routing discovery failed' } }],
+      steps: { architect: { status: 'failed', visits: 3 }, failed: { status: 'succeeded', kind: 'end' } }, completion: { reasons: ['unverified'] } })
+    expect(recorded).toMatchObject({ kind: 'provider_unavailable', phase: 'architect', resumablePhase: 'architect', confidence: 'high' })
+    expect(recorded!.detail).toBe("The provider's service was unavailable for a moment (codex: workspace routing discovery failed); nothing about the work is wrong, and continuing re-runs the same step.")
+    for (const message of ['codex execution failed (exit 1). stream disconnected before completion: error sending request for url (https://chatgpt.com/backend-api/codex/responses)',
+      'codex execution failed (exit 1). exceeded retry limit, last status: 503 Service Unavailable',
+      'claude execution failed (exit 1). API Error: 529 {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}']) {
+      expect(classifyFailure({ status: 'failed', error: { code: 'provider_execution_error', message } })?.kind).toBe('provider_unavailable')
+    }
+    expect(classifyFailure({ status: 'failed', error: { code: 'provider_unavailable', message: 'codex execution failed (exit 1). workspace routing discovery timed out' } })?.kind).toBe('provider_unavailable')
+  })
+
+  it('keeps a limit, a sign-out and a failing test that mentions a network error out of provider_unavailable', () => {
+    expect(classifyFailure({ status: 'failed', error: { code: 'provider_execution_error', message: 'codex execution failed (exit 1). exceeded retry limit, last status: 429 Too Many Requests' } })?.kind).toBe('provider_limit')
+    expect(classifyFailure({ status: 'failed', error: { code: 'provider_execution_error', message: 'codex execution failed (exit 1). workspace routing discovery unauthorized (401)' } })?.kind).toBe('environment')
+    expect(classifyFailure({ status: 'failed', error: { code: 'verification_failed', message: 'Verification failed: npm test exited 1 — Error: connect ECONNRESET 127.0.0.1:5432' } })?.kind).toBe('tests_failed')
+  })
+
   it('classifies tests that kept failing, counting correction rounds', () => {
     const result = classifyFailure({
       status: 'blocked', nextStep: 'fixer',

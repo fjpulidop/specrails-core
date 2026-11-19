@@ -1,6 +1,7 @@
 import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
 import { assertEffortSupported, cliCapabilities } from './capabilities.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
+import { isProviderUnavailableError } from './failure-classification.js'
 import { claudeRateLimit, describeRateLimit, isRejected } from './provider-rate-limits.js'
 import type { RateLimitInfo } from './session/domain/types.js'
 import { toolEvent } from './tool-event.js'
@@ -23,7 +24,27 @@ const CLAUDE_SESSION_MISSING = /No conversation found with session ID/i
 
 /** An invocation without `timeoutMs` has no total time limit; the idle timeout still stops one that goes silent. */
 const NO_TOTAL_TIME_LIMIT = 0
-export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
+export interface CliExecutorOptions {
+  runProcess?: CliProcessRunner
+  env?: NodeJS.ProcessEnv
+  /** Waits before re-running an invocation the provider's service refused before any work (tests shorten them). */
+  transientRetryDelaysMs?: readonly number[]
+}
+/**
+ * A provider outage that refuses a turn before it does anything (Codex's account routing
+ * discovery, a dropped connection, a 5xx) usually clears within a minute. The same
+ * invocation is re-run after these waits; a turn that already did work is never re-run here.
+ */
+export const TRANSIENT_RETRY_DELAYS_MS: readonly number[] = [15_000, 45_000]
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new AgentExecutionError('Execution cancelled', 'aborted')); return }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve() }, ms)
+    const onAbort = (): void => { clearTimeout(timer); reject(new AgentExecutionError('Execution cancelled', 'aborted')) }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
 interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
 const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
@@ -294,7 +315,11 @@ export class CliExecutor implements AgentExecutor {
         codexSchemaFile = path.join(scratch(), 'output-schema.json')
         writeFileSync(codexSchemaFile, JSON.stringify(codexOutputSchema(request.outputSchema)), { mode: 0o600 })
       }
-      const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
+      const delays = this.options.transientRetryDelaysMs ?? TRANSIENT_RETRY_DELAYS_MS
+      let result: Awaited<ReturnType<typeof runner>>
+      for (let retry = 0; ; retry++) {
+      stream = ''; turns = 0; rateLimit = undefined
+      result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
         cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? NO_TOTAL_TIME_LIMIT, idleTimeoutMs: request.idleTimeoutMs ?? 15 * 60_000, env: executionEnv,
         onLine: line => {
           stream += line + '\n'
@@ -329,6 +354,17 @@ export class CliExecutor implements AgentExecutor {
           if (delta) request.onEvent?.({ kind: 'text', text: delta })
         },
       })
+      // The provider's service refused the turn before it did any work: wait and run it again.
+      if (result.exitCode !== 0 && turns === 0 && retry < delays.length && !(rateLimit && isRejected(rateLimit))) {
+        const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
+        if (isProviderUnavailableError('provider_execution_error', `${this.provider} execution failed. ${diagnostic}`)) {
+          request.onEvent?.({ kind: 'text', text: `\n${this.provider} service unavailable (${diagnostic.slice(0, 200)}); retrying in ${Math.round(delays[retry]! / 1000)} s.\n` })
+          await abortableDelay(delays[retry]!, request.signal)
+          continue
+        }
+      }
+      break
+      }
       const parsed = parseCliOutput(this.provider, result.stdout)
       request.onEvent?.({ kind: 'usage', usage: parsed.usage })
       if (parsed.failureKind) {
@@ -348,7 +384,9 @@ export class CliExecutor implements AgentExecutor {
         if (rateLimit && isRejected(rateLimit)) {
           throw new AgentExecutionError(`${this.provider} usage limit reached (${describeRateLimit(rateLimit)}).${diagnostic ? ' ' + diagnostic : ''}`, 'provider_limit', parsed.usage)
         }
-        throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`, 'provider_execution_error', parsed.usage)
+        const failure = `${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`
+        // A transient outage is typed so the run is classified provider_unavailable, not a crash.
+        throw new AgentExecutionError(failure, isProviderUnavailableError('provider_execution_error', failure) ? 'provider_unavailable' : 'provider_execution_error', parsed.usage)
       }
       if (!parsed.terminal || !parsed.text.trim()) throw new AgentExecutionError(`${this.provider} exited without a successful final result`, 'incomplete_response', parsed.usage)
       if (request.maxTokens !== undefined) {

@@ -6,7 +6,7 @@
  * run already produced (status, the failing step, error codes and messages); it never invents
  * a cause. Anything it cannot tie to a documented signal is `unknown` with `confidence: 'low'`.
  */
-export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'incomplete_tasks', 'spec_invalid', 'workflow_protocol', 'unknown'] as const
+export const FAILURE_KINDS = ['tests_failed', 'provider_limit', 'provider_unavailable', 'environment', 'blocked', 'timeout', 'tool_inactivity', 'crash', 'incomplete_tasks', 'spec_invalid', 'workflow_protocol', 'unknown'] as const
 export type FailureKind = (typeof FAILURE_KINDS)[number]
 export const FAILURE_CONFIDENCE = ['high', 'low'] as const
 
@@ -80,10 +80,23 @@ const PROVIDER_LIMIT = /\byou(?:'|’)?ve (?:hit|reached) your (?:session|usage|
 export function isProviderLimitError(code: string, message: string): boolean {
   return code === 'provider_limit' || (code === 'provider_execution_error' && PROVIDER_LIMIT.test(message))
 }
+/**
+ * The provider's service, or the network to it, failed for a moment (contract 5.17):
+ * Codex's account routing discovery, a dropped stream, a 5xx or an overloaded API.
+ * Only the provider CLI's own failure sentence is read, never verification output.
+ * Nothing about the work is wrong; the same step can run again after a short wait.
+ */
+export const PROVIDER_UNAVAILABLE_TEXT = /\bworkspace routing discovery (?:failed|timed out|cancelled)\b|\bstream disconnected before completion\b|\berror sending request for url\b|\bexceeded retry limit, last status: 5\d\d\b|\b(?:500 Internal Server Error|502 Bad Gateway|503 Service Unavailable|504 Gateway Time-?out)\b|\boverloaded_error\b|\bAPI Error: 5\d\d\b|\bConnection (?:reset|closed) by (?:peer|remote)\b|\b(?:ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/i
+/** A provider CLI's failure the classifier and executor treat as a transient outage. */
+export function isProviderUnavailableError(code: string, message: string): boolean {
+  if (code === 'provider_unavailable') return true
+  if (isProviderLimitError(code, message) || PROVIDER_AUTH_TEXT.test(message)) return false
+  return (code === 'provider_execution_error' || /\bexecution failed\b/.test(message)) && PROVIDER_UNAVAILABLE_TEXT.test(message)
+}
 /** `… usage limit reached (five_hour window, resets 2026-11-18T03:00:00.000Z)` written by the CLI executor. */
 const TYPED_RESET = /usage limit reached \([^)]*?\bresets (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)\)/
 /** The provider CLI is signed out or its credentials expired: the person must sign in again; retrying cannot help. */
-const PROVIDER_AUTH_TEXT = /Failed to authenticate|Run `?claude auth login|Please run \/login|Invalid API key|authentication_error|OAuth token (?:has )?expired|Not logged in|codex login/i
+const PROVIDER_AUTH_TEXT = /Failed to authenticate|workspace routing discovery unauthorized|workspace routing requires a ChatGPT account|Run `?claude auth login|Please run \/login|Invalid API key|authentication_error|OAuth token (?:has )?expired|Not logged in|codex login/i
 const ENVIRONMENT_CODES = new Set(['verification_host_precondition', 'verification_nondeterministic_output', 'verification_execution_error'])
 const ENVIRONMENT_TEXT = /Verification cannot run in this environment|Verification output is not deterministic|\(verification_nondeterministic_output\)|setup command .* failed|could not undo them|outside the repository scope/i
 // A verification command stopped by its own limits is not the agent going quiet, whatever words the stop reason uses.
@@ -136,6 +149,14 @@ function incompleteTasksOf(message: string): string[] | undefined {
     return tasks.length ? tasks : undefined
   }
   return undefined
+}
+
+/** The provider's own words for the outage, bounded ("workspace routing discovery failed"). */
+function providerUnavailableCause(haystack: string): string {
+  const match = PROVIDER_UNAVAILABLE_TEXT.exec(haystack)
+  const provider = /\b(claude|codex|gemini|kimi) execution failed\b/i.exec(haystack)?.[1]?.toLowerCase()
+  const words = match ? match[0] : 'a transient service error'
+  return provider ? `${provider}: ${words}` : words
 }
 
 /** The failure `end` node a definition stopped at, from the compact step map (`kind: 'end'`). */
@@ -220,6 +241,9 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
     const resetsAt = TYPED_RESET.exec(haystack)?.[1]
     const resetAt = providerLimitReset(haystack.replace(TYPED_RESET, 'usage limit reached'))
     return done('provider_limit', { ...(resetAt ? { resetAt } : {}), ...(resetsAt && Number.isFinite(Date.parse(resetsAt)) ? { resetsAt: new Date(resetsAt).toISOString() } : {}) }, true)
+  }
+  if (isProviderUnavailableError(code, message) || isProviderUnavailableError(step.code, step.message)) {
+    return done('provider_unavailable', { detail: detailOf(`The provider's service was unavailable for a moment (${providerUnavailableCause(haystack)}); nothing about the work is wrong, and continuing re-runs the same step.`) }, true)
   }
   if (code === WORKFLOW_PROTOCOL_CODE || WORKFLOW_PROTOCOL_TEXT.test(haystack)) return done('workflow_protocol', workflowProtocol(haystack), true)
   if (code === 'verification_timeout' || VERIFICATION_TIMEOUT_TEXT.test(haystack)) return done('timeout', {}, true)
