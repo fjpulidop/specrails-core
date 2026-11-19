@@ -38,6 +38,12 @@ describe('editable role definitions', () => {
     if (role === 'reviewer') expect(prompt).toContain('spec `ticket`, criterion 0: Works')
     else expect(prompt).toContain('npm test')
   })
+  it('waives test tags for documentation-only requirements so a docs-only change cannot deadlock in review', () => {
+    const reviewer = roleInstructions('reviewer', context, 'change')
+    expect(reviewer).toContain('claimed by at least one test tag')
+    expect(reviewer).toContain('only governs documentation')
+    expect(reviewer).toContain('never demand a test or a tag for it')
+  })
   it('the fixer stance is a fourth editable definition on the developer role: own task text, developer contract and verification tail', () => {
     const defaults = rolePromptDefaults()
     expect(defaults.fixer).toMatch(/^## Your task: correction/)
