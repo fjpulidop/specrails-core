@@ -88,7 +88,12 @@ export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail
 export interface DriftedDependency { name: string; declared: string; installed: string }
 
 export type HostPreconditionKind = 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment'
-export interface HostPrecondition { kind: HostPreconditionKind; reason: string; requiredAction: string }
+export interface HostPrecondition {
+  kind: HostPreconditionKind; reason: string; requiredAction: string
+  /** The exact machine-wide install the person may approve (`rustup target add …`); never run by Core. */
+  install?: string
+  tool?: string
+}
 
 // A Playwright test run on a host whose browser cache was never populated (a
 // fresh machine, a new Playwright version): the package is installed, the
@@ -184,10 +189,11 @@ export function hostPrecondition(output: string): HostPrecondition | undefined {
   // machine, so it is the person's step, never a correction round's.
   const rustTarget = /the `([\w.-]+)` target may not be installed/.exec(text)
   if (rustTarget) return { kind: 'toolchain', reason: `the Rust target ${rustTarget[1]} is not installed on this machine`,
-    requiredAction: `Install the target once with \`rustup target add ${rustTarget[1]}\` (it is shared by every project on this machine), then retry the run.` }
+    requiredAction: `Install the target once with \`rustup target add ${rustTarget[1]}\` (it is shared by every project on this machine), then retry the run.`,
+    install: `rustup target add ${rustTarget[1]}`, tool: `the Rust target ${rustTarget[1]}` }
   const rustComponent = /'([\w-]+)' is not installed for the toolchain '([^']+)'|error: component '([\w-]+)' (?:for target '[^']+' )?is unavailable/.exec(text)
   if (rustComponent) { const component = (rustComponent[1] ?? rustComponent[3])!.replace(/^cargo-/, ''); return { kind: 'toolchain', reason: `the Rust component ${component} is not installed for the active toolchain`,
-    requiredAction: `Install it once with \`rustup component add ${component}\`, then retry the run.` } }
+    requiredAction: `Install it once with \`rustup component add ${component}\`, then retry the run.`, install: `rustup component add ${component}`, tool: `the Rust component ${component}` } }
   if (/SDK location not found\. Define (?:a valid SDK location|location) with an ANDROID_HOME/.test(text)) return { kind: 'toolchain', reason: 'the Android SDK is not installed or not configured (no ANDROID_HOME or sdk.dir) for verification commands',
     requiredAction: 'Install the Android SDK (for example with Android Studio) and make ANDROID_HOME available to Specrails in the login shell profile it loads, then retry the run.' }
   if (/(?:permission denied|operation not permitted)[^\n]{0,240}docker\.sock|Cannot connect to the Docker daemon at\b/i.test(text)) return { kind: 'environment', reason: 'the Docker daemon is not reachable from the verification process',

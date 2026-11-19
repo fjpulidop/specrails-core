@@ -418,3 +418,51 @@ describe('definition admission', () => {
   })
 })
 
+
+describe("verify machineInstalls: 'ask' (capability machineInstalls)", () => {
+  /** A cargo build that fails on a missing wasm32 target until the host-side marker exists. */
+  function rustRepository(f: ReturnType<typeof fixture>) {
+    const marker = path.join(f.root, '..', path.basename(f.root) + '-wasm32-installed')
+    roots.push(marker)
+    writeFileSync(path.join(f.root, 'build.cjs'), `if(!require('fs').existsSync(${JSON.stringify(marker)})){process.stderr.write("error[E0463]: can't find crate for \`core\`\\n  = note: the \`wasm32-unknown-unknown\` target may not be installed");process.exitCode=1}else console.log('Finished')`)
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['build.cjs'] }]
+    return { marker }
+  }
+
+  it('asks the person once with the exact install, never runs it itself, and verifies again after the host installed it', async () => {
+    const f = fixture()
+    const { marker } = rustRepository(f)
+    const params = { commands: 'configured', hostBlockers: true, machineInstalls: 'ask' } as Record<string, JsonValue>
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.receipts).toHaveLength(1)
+    expect(installs.calls.some(call => call[0] === 'rustup')).toBe(false)
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); writeFileSync(marker, 'installed'); return { answer: 'installed' } }
+    const result = await f.run(params)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: 'This run needs the Rust target wasm32-unknown-unknown. Install it with `rustup target add wasm32-unknown-unknown`?',
+      options: [expect.objectContaining({ id: 'install' }), expect.objectContaining({ id: 'self' })], data: { kind: 'machine-install', command: 'rustup target add wasm32-unknown-unknown', tool: 'the Rust target wasm32-unknown-unknown' } })])
+    // The resume replays the memoized blocked receipt, then verifies once more on a fresh receipt.
+    expect(f.receipts.map(receipt => receipt.valid)).toEqual([false, true])
+    expect(result).toMatchObject({ outcome: 'pass', answers: [{ value: { answer: 'installed' } }] })
+    expect(f.progressText()).toContain('[environment] The person approved `rustup target add wasm32-unknown-unknown` and the host installed it; verifying again.')
+  })
+
+  it("keeps the blocker with the person's step when they install it themselves", async () => {
+    const f = fixture()
+    rustRepository(f)
+    f.execution.interrupt = () => ({ answer: 'declined' })
+    const result = await f.run({ commands: 'configured', hostBlockers: true, machineInstalls: 'ask' })
+    expect(result).toMatchObject({ outcome: 'blocked', status: 'blocked', output: { blocker: { kind: 'toolchain', install: 'rustup target add wasm32-unknown-unknown',
+      requiredAction: 'Run `rustup target add wasm32-unknown-unknown` yourself (it is shared by every project on this machine), then continue the run.' } } })
+    expect(result.error!.message).toContain('Run `rustup target add wasm32-unknown-unknown` yourself')
+    expect(f.receipts).toHaveLength(1)
+  })
+
+  it('never asks without the opt-in: the blocker carries the install for the host', async () => {
+    const f = fixture()
+    rustRepository(f)
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'blocked', output: { blocker: { kind: 'toolchain', install: 'rustup target add wasm32-unknown-unknown' } } })
+  })
+})

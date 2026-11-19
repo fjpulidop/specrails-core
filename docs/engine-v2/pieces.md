@@ -48,6 +48,7 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 - Decisions (`decisions: 'ask'`, optional, capability `roleDecisions`): for a decision only the person can make (the approved artifacts contradict each other, for example a task requires a declared non-goal, or two requirements exclude each other). Requires an object `structuredOutput` with `properties` (`invalid_arguments` otherwise, and when it already declares `decisionNeeded`). Core adds an optional string `decisionNeeded` to the schema and a rule to the task. A non-empty `decisionNeeded` memoizes the settled turn, then pauses the node on a `question` interrupt whose prompt is the question; the resume reruns the role in the same visit with the question and the person's answer appended, never repeating the settled turn. At most 3 questions per visit; the next round runs on the host schema without the rule. The committed output keeps the host schema (`decisionNeeded` removed) and adds `decisions: [{ question, answer }]`; `$answers` and `$history` carry every question and answer. A turn that returns no decision is a single ordinary call.
 
 - Review triage (capability `reviewTriage`, no param): a read role whose structured output has boolean `approved` and array `issues` is a review. Issues no correction round can act on (a check outside the host plan such as a real device, simulator or manual pass; a request to revert or delete a toolchain-regenerated lockfile; an edit to the frozen proposal, design or delta specs; a criterion the person withdrew in an answer) leave `issues`, are appended to `brief.humanChecks` when the review declares it, and are listed in `output.reviewNotes`. An issue that also asks for code, tests or another file stays actionable. A rejection made only of such issues is re-judged once in the same node with the notes; a rejection with any actionable issue keeps its verdict, score and actionable issues.
+- Machine-wide installs (capability `machineInstalls`, param `machineInstalls: 'ask'` on a write role-turn or on `verify`): a blocker whose `install` names a machine-wide install (`brew install terraform`, `rustup target add wasm32-unknown-unknown`) memoizes the settled result and pauses on a `question` interrupt with `options` (`install`, `self`) and `data: { kind: 'machine-install', command, tool }`. Core never installs anything machine-wide. The host runs an approved install itself and answers `installed`; the node runs again in the same visit (at most three installs). Any other answer keeps the blocker, its `requiredAction` naming the person's step.
 
 ### `decider`
 
@@ -258,6 +259,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `stance` | no | `"fixer"` |
 | `verificationProposalsFrom` | no | string (1–128 chars) |
 | `decisions` | no | `"ask"` |
+| `machineInstalls` | no | `"ask"` |
 
 ### Descriptor: `decider`
 
@@ -296,6 +298,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `maxConcurrency` | no | integer (1–4) |
 | `setup` | no | `"configured"` / array of object { `repositoryId`: string (1–128 chars), `command`: string (1–4096 chars), `args`: array of string (≤ 32000 chars) (≤ 1024 items), `cwd`: string (≤ 4096 chars), `env`: object of string (≤ 32000 chars), `timeoutMs`: integer (1–7200000), `key`: string (≤ 128 chars), `label`: string (1–256 chars), `policy`: object } (required: `repositoryId`, `command`, `args`) (≤ 100 items) |
 | `hostBlockers` | no | boolean |
+| `machineInstalls` | no | `"ask"` |
 
 ### Descriptor: `shell`
 

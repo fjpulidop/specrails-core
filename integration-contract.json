@@ -377,6 +377,14 @@
       "compatibility": "additive: older Cores reject the unknown decisions param, so a host sends it only when runtime capabilities advertise roleDecisions",
       "documentation": "docs/engine-v2/pieces.md#role-turn"
     },
+    "machineInstalls": {
+      "version": 1,
+      "capability": "machineInstalls",
+      "param": "role-turn and verify machineInstalls: 'ask'",
+      "semantics": "A HostBlocker may carry install (the exact machine-wide install that provides a missing tool, one line, at most 300 characters) and tool (what it provides). Core never runs it. verify sets it for a missing Rust target or component (rustup target add <target>, rustup component add <component>). With machineInstalls: 'ask', a write role-turn whose structured blocker (kind toolchain, setup or environment) names install, or a verify whose blocker does, memoizes its settled result and pauses on an ordinary question interrupt: prompt 'This run needs <tool>. Install it with `<install>`?', options [{id: install, label, meaning}, {id: self, label, meaning}] and data {kind: 'machine-install', command, tool}. The host performs an approved install itself, outside the run, and answers exactly 'installed'; the node then runs again in the same visit (the role with a Host install note, verify on a fresh receipt), at most 3 installs per node visit. Any other answer ('declined', 'failed: <detail>', 'refused: <detail>' or free text) commits the memoized result with the blocker's requiredAction rewritten as the person's step. Answers use ordinals 100+ and history records 'Machine-wide install requested: <install>'.",
+      "compatibility": "additive: older Cores reject the unknown machineInstalls param and drop install from blockers, so a host sends it only when runtime capabilities advertise machineInstalls",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
     "reviewTriage": {
       "version": 1,
       "capability": "reviewTriage",

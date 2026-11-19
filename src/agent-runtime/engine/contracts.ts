@@ -119,6 +119,15 @@ export interface HostBlocker {
   cwd: string
   requiredAction: string
   evidenceId?: string
+  /**
+   * The exact machine-wide install that would provide the missing tool (for example
+   * `brew install terraform`, `rustup target add wasm32-unknown-unknown`), when one is
+   * known (capability `machineInstalls`). Core never runs it; a host may ask the person
+   * once and run it outside the run.
+   */
+  install?: string
+  /** The tool `install` provides, for the person's question. */
+  tool?: string
 }
 
 export interface EngineCompletion {
@@ -231,6 +240,18 @@ export interface HumanInterrupt {
   nodePath: string
   scopeId: string
   attemptId: string
+  /** Structured choices a host may render as buttons; the answer is the chosen `id` (capability `machineInstalls`). */
+  options?: InterruptOption[]
+  /** Typed facts behind the question (`kind` names its vocabulary, e.g. `machine-install`). */
+  data?: JsonObject
+}
+
+/** One structured answer to a question interrupt. */
+export interface InterruptOption {
+  id: string
+  label: string
+  /** What choosing it does, in one sentence. */
+  meaning: string
 }
 
 /**

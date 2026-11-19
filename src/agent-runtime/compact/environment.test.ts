@@ -34,8 +34,9 @@ describe('hostPreconditionFailure', () => {
     expect(hostPrecondition('error: externally-managed-environment\n\n× This environment is externally managed')).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('venv') })
     // wasm-rs: `cargo build --target wasm32-unknown-unknown` without the target ran three corrections and ended tests_failed.
     expect(hostPrecondition("error[E0463]: can't find crate for `std`\n  |\n  = note: the `wasm32-unknown-unknown` target may not be installed\n  = help: consider downloading the target with `rustup target add wasm32-unknown-unknown`"))
-      .toEqual({ kind: 'toolchain', reason: 'the Rust target wasm32-unknown-unknown is not installed on this machine', requiredAction: expect.stringContaining('`rustup target add wasm32-unknown-unknown`') })
-    expect(hostPrecondition("error: 'cargo-clippy' is not installed for the toolchain 'stable-aarch64-apple-darwin'")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('`rustup component add clippy`') })
+      .toEqual({ kind: 'toolchain', reason: 'the Rust target wasm32-unknown-unknown is not installed on this machine', requiredAction: expect.stringContaining('`rustup target add wasm32-unknown-unknown`'),
+        install: 'rustup target add wasm32-unknown-unknown', tool: 'the Rust target wasm32-unknown-unknown' })
+    expect(hostPrecondition("error: 'cargo-clippy' is not installed for the toolchain 'stable-aarch64-apple-darwin'")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('`rustup component add clippy`'), install: 'rustup component add clippy' })
     expect(hostPrecondition("* What went wrong:\nSDK location not found. Define a valid SDK location with an ANDROID_HOME environment variable or by setting the sdk.dir path in your project's local properties file")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('ANDROID_HOME') })
     expect(hostPrecondition('error[E0308]: mismatched types')).toBeUndefined()
     // lowdisk: npm install hit ENOSPC and three correction rounds retried it on a full volume.
