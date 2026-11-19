@@ -50,6 +50,8 @@ export interface FailureSignals {
 }
 
 const DETAIL_LIMIT = 280
+/** A stall names the reviewer's open issues: room for two of them. */
+const STALL_DETAIL_LIMIT = 900
 const text = (value: unknown): string => typeof value === 'string' ? value : ''
 
 function messageOf(error: unknown): { code: string; message: string } {
@@ -165,10 +167,44 @@ function endNodeOf(steps: FailureSignals['steps']): string | undefined {
   return undefined
 }
 
-function detailOf(message: string): string | undefined {
+function detailOf(message: string, limit = DETAIL_LIMIT): string | undefined {
   const flat = message.replace(/\s+/g, ' ').trim()
   if (!flat) return undefined
-  return flat.length > DETAIL_LIMIT ? `${flat.slice(0, DETAIL_LIMIT - 1)}…` : flat
+  return flat.length > limit ? `${flat.slice(0, limit - 1)}…` : flat
+}
+
+/** The first JSON object in `text` starting at `from` (balanced braces, strings respected). */
+function jsonObjectAt(text: string, from: number): Record<string, unknown> | undefined {
+  const start = text.indexOf('{', from)
+  if (start < 0) return undefined
+  let depth = 0, inString = false
+  for (let index = start; index < text.length; index++) {
+    const char = text[index]
+    if (inString) { if (char === '\\') index++; else if (char === '"') inString = false; continue }
+    if (char === '"') inString = true
+    else if (char === '{') depth++
+    else if (char === '}' && --depth === 0) {
+      try { const value = JSON.parse(text.slice(start, index + 1)) as unknown; return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined } catch { return undefined }
+    }
+  }
+  return undefined
+}
+
+/**
+ * A stalled correction's reason carries the policy, the whole review JSON and the fixer's
+ * diagnosis; cut at the detail limit it read "…Acceptance policy: approved == true; issues must
+ * be empty; … Latest r…" and never said what was still wanted. The person needs the reviewer's
+ * open issues and why the fixer changed nothing.
+ */
+function stallDetail(ended: string): string | undefined {
+  const marker = ended.indexOf('Latest review findings:')
+  if (marker < 0) return undefined
+  const review = jsonObjectAt(ended, marker)
+  const issues = Array.isArray(review?.issues) ? review!.issues.filter((item): item is string => typeof item === 'string' && item.trim() !== '') : []
+  const fixer = /Fixer diagnosis:\s*([\s\S]*)$/.exec(ended)?.[1]?.replace(/\s+/g, ' ').trim()
+  if (!issues.length && !fixer) return undefined
+  const asked = issues.length ? `The reviewer still asks for: ${issues.slice(0, 2).map(issue => issue.replace(/\s+/g, ' ').trim()).join(' | ')}${issues.length > 2 ? ` (+${issues.length - 2} more)` : ''}.` : ''
+  return detailOf(`Automatic correction changed nothing. ${asked}${fixer && fixer !== 'undefined' ? ` Fixer: ${fixer}` : ''}`, STALL_DETAIL_LIMIT)
 }
 
 /** An attempt a restart cut off (`owner_lost`): the run resumed past it, so it is history, not a cause. */
@@ -233,7 +269,7 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
       return done('incomplete_tasks', incompleteTasks ? { incompleteTasks } : {})
     }
     if (SPEC_INVALID_TEXT.test(ended)) return done('spec_invalid')
-    if (STALLED_TEXT.test(ended)) return done('blocked')
+    if (STALLED_TEXT.test(ended)) { const stalled = stallDetail(ended); return done('blocked', stalled ? { detail: stalled } : {}) }
   }
   if (code === 'provider_limit' || PROVIDER_LIMIT.test(haystack)) {
     // The executor's typed refusal names the window's reset as an ISO time; the

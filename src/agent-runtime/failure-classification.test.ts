@@ -170,6 +170,17 @@ describe('definition end-node failures (contract 5.15)', () => {
     expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })).toMatchObject({ kind: 'incomplete_tasks', confidence: 'high' })
     expect(classifyFailure({ status: 'failed', completion: { reasons: [exhausted] } })?.incompleteTasks).toBeUndefined()
   })
+  it('names the open review issues and the fixer diagnosis when a correction stalls', () => {
+    // The recipe's reason quotes the policy and the whole review JSON first; cut at the detail
+    // limit it never reached what the reviewer still wanted.
+    const review = { approved: false, summary: 'Code is fine but a {brace} and "quotes" inside', issues: ['No host verification covers the iOS Simulator build. Missing command: xcodebuild -scheme Habits build'], score: 82 }
+    const reason = `Automatic correction made no candidate changes. Host verification is valid: true. Acceptance policy: approved == true; issues must be empty; score >= 70; type_correctness >= 60; pattern_adherence >= 60; test_coverage >= 60; security >= 75; architectural_alignment >= 60. Latest review findings: ${JSON.stringify(review)}. Fixer diagnosis: the review rejected only for host evidence; no file change can add it.`
+    const result = classifyFailure({ status: 'failed', completion: { reasons: [reason] } })
+    expect(result).toMatchObject({ kind: 'blocked', confidence: 'high' })
+    expect(result?.detail).toContain('The reviewer still asks for: No host verification covers the iOS Simulator build. Missing command: xcodebuild -scheme Habits build.')
+    expect(result?.detail).toContain('Fixer: the review rejected only for host evidence')
+    expect(result?.detail).not.toContain('Acceptance policy')
+  })
   it('maps every documented end reason to a known kind', () => {
     const cases: Array<[string, string]> = [
       ['The plan for change x still fails OpenSpec validation or the plan contract after 2 repair(s), so it was not implemented.', 'spec_invalid'],
