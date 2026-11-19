@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -881,6 +881,19 @@ it('runs a watch-mode test script once with the runner\'s own switch', () => {
 it('tells a tool that never started from a test that went silent', async () => {
   expect(producedOwnOutput('\n> e2e\n> playwright test\n\n')).toBe(false)
   expect(producedOwnOutput('\n> test\n> node --test\n✔ smoke\n')).toBe(true)
+})
+
+it('runs a yarn, pnpm or bun the host lacks through npx at the pinned version', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'pm-'))
+  writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ packageManager: 'yarn@1.22.22' }))
+  const bin = path.join(cwd, 'bin'); mkdirSync(bin)
+  expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'yarn@1.22.22'])
+  expect(packageManagerFallback('pnpm', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'pnpm@latest'])
+  writeFileSync(path.join(bin, 'yarn'), '')
+  expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toBeNull()
+  expect(packageManagerFallback('npm', cwd, { PATH: bin }, 'darwin')).toBeNull()
+  expect(packageManagerFallback('/opt/yarn', cwd, { PATH: '' }, 'darwin')).toBeNull()
+  rmSync(cwd, { recursive: true, force: true })
 })
 
 it('runs project commands with the project .venv activated', () => {

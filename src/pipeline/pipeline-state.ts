@@ -1010,6 +1010,25 @@ export function runOnceArguments(command: string, args: readonly string[], cwd: 
   return []
 }
 
+/**
+ * A yarn, pnpm or bun command whose executable is not on the command's PATH (no
+ * global install, no corepack on Node 25) runs through `npx --yes <manager>@<version>`
+ * at the version the repository's `packageManager` pins. Nothing is installed globally.
+ * Returns the npx prefix, or null when the command runs as written.
+ */
+export function packageManagerFallback(command: string, cwd: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): string[] | null {
+  const manager = path.basename(command).replace(/\.(cmd|exe)$/i, '')
+  if (!['yarn', 'pnpm', 'bun'].includes(manager) || command !== manager) return null
+  const pathKey = platform === 'win32' ? Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
+  const names = platform === 'win32' ? [`${manager}.cmd`, `${manager}.exe`] : [manager]
+  for (const dir of (env[pathKey] ?? '').split(path.delimiter)) if (dir && names.some(name => existsSync(path.join(dir, name)))) return null
+  let pinned: string | undefined
+  try { pinned = (JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as { packageManager?: unknown }).packageManager as string | undefined } catch { /* no manifest */ }
+  const match = typeof pinned === 'string' ? /^(yarn|pnpm|bun)@([0-9][^+\s]*)/.exec(pinned.trim()) : null
+  const version = match && match[1] === manager ? match[2] : manager === 'yarn' ? '1' : 'latest'
+  return ['--yes', `${manager}@${version}`]
+}
+
 /** Whether a command printed anything beyond a package manager's `> script` banner. */
 export function producedOwnOutput(output: string): boolean {
   return stripVTControlCharacters(output).split(/\r?\n/).some(line => line.trim() !== '' && !/^\s*>\s/.test(line))
@@ -1085,7 +1104,11 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     try {
       const once = runOnceArguments(command.command, command.args, command.cwd)
       if (once.length) { try { log(`[specrails] the test script starts a watcher; running it once with ${once.filter(arg => arg !== '--').join(' ')}\n`) } catch { /* observer */ } }
-      const invocation = verificationInvocation(command.command, [...command.args, ...once], command.cwd, process.platform, env)
+      const manager = packageManagerFallback(command.command, command.cwd, env)
+      if (manager) { try { log(`[specrails] ${command.command} is not installed; running it through npx as ${manager.join(' ')}\n`) } catch { /* observer */ } }
+      const invocation = manager
+        ? verificationInvocation('npx', [...manager, ...command.args, ...once], command.cwd, process.platform, env)
+        : verificationInvocation(command.command, [...command.args, ...once], command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     } catch (error) { terminate(`Verification command could not start: ${String(error)}`); finish(-1); return }
     for (const stream of ['stdout', 'stderr'] as const) {

@@ -68,7 +68,7 @@ describe('plannedInstalls', () => {
     const node = root({ 'package.json': '{}' })
     expect(plannedInstalls(node)).toMatchObject([{ ecosystem: 'node', command: 'npm' }])
     expect(plannedInstalls(root({ 'package.json': '{}' }, ['node_modules']))).toEqual([])
-    expect(plannedInstalls(root({ 'package.json': '{}', 'pnpm-lock.yaml': '' }))).toMatchObject([{ command: 'pnpm', args: ['install'] }])
+    expect(plannedInstalls(root({ 'package.json': '{}', 'pnpm-lock.yaml': '' }))).toMatchObject([{ command: expect.stringMatching(/^(pnpm|npx)$/), args: expect.arrayContaining(['install']) }])
     // Never the system Python: a project .venv, then an install into it.
     expect(plannedInstalls(root({ 'requirements.txt': 'pytest\n' }))).toMatchObject([{ ecosystem: 'python', args: ['-m', 'venv', '.venv'] }, { ecosystem: 'python', command: expect.stringMatching(/\.venv[\\/](bin|Scripts)[\\/]python/), args: ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] }])
     expect(plannedInstalls(root({ 'go.mod': 'module x\n' }))).toMatchObject([{ ecosystem: 'go' }])
@@ -401,7 +401,14 @@ describe('drift-driven installs', () => {
   it('plans the runner install on drift and names the packages in the outcome detail', () => {
     const dir = stale()
     writeFileSync(path.join(dir, 'yarn.lock'), '')
-    expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
+    const bin = mkdtempSync(path.join(tmpdir(), 'yarn-bin-')); writeFileSync(path.join(bin, 'yarn'), '')
+    vi.stubEnv('PATH', bin)
+    try {
+      expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
+      // A host without yarn installs through npx at the pinned version instead of failing to spawn.
+      vi.stubEnv('PATH', path.join(bin, 'none'))
+      expect(plannedInstalls(dir)[0]).toMatchObject({ command: 'npx', args: ['--yes', 'yarn@1', 'install'] })
+    } finally { vi.unstubAllEnvs(); rmSync(bin, { recursive: true, force: true }) }
     expect(describeDrift([...Array(6)].map((_, index) => ({ name: `p${index}`, declared: '^2', installed: '1.0.0' })))).toBe('p0 1.0.0 does not satisfy ^2, p1 1.0.0 does not satisfy ^2, p2 1.0.0 does not satisfy ^2, p3 1.0.0 does not satisfy ^2, p4 1.0.0 does not satisfy ^2 and 1 more')
   })
   it('repairs a drifted tree once before the first role turn and plans nothing for a healthy one', async () => {

@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import semver from 'semver'
-import { projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
+import { packageManagerFallback, projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
@@ -290,7 +290,9 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
   const drift = has('package.json') && has('node_modules') ? driftedNodeDependencies(root) : []
   if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length || drift.length)) {
     const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock] : ['install'], ...(drift.length ? { drift } : {}) })
+    // A yarn/pnpm the host lacks installs through npx at the pinned version, like verification does.
+    const viaNpx = runner === 'npm' ? null : packageManagerFallback(runner, root, projectCommandEnvironment(process.env))
+    plans.push({ ecosystem: 'node', root, command: viaNpx ? 'npx' : runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock] : [...(viaNpx ?? []), 'install'], ...(drift.length ? { drift } : {}) })
   }
   // After the dependency plan: a fresh worktree needs node_modules before
   // `playwright install` can run at all.
