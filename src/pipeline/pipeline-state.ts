@@ -990,6 +990,26 @@ export function activateProjectVirtualEnv(env: NodeJS.ProcessEnv, cwd: string, p
   return { ...env, VIRTUAL_ENV: venv, [key]: current ? `${bin}${path.delimiter}${current}` : bin }
 }
 
+/**
+ * Arguments that make a package script which starts a test watcher (`jest --watchAll`,
+ * `jest --watch`, `vitest --watch`) run once, as verification needs. Only the
+ * runners' own documented switches are added (`--watchAll=false --watch=false`,
+ * `--run`); anything else is left alone and the watch-prompt and silence bounds apply.
+ */
+export function runOnceArguments(command: string, args: readonly string[], cwd: string): string[] {
+  const manager = path.basename(command).replace(/\.(cmd|exe)$/i, '')
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return []
+  const script = args[0] === 'run' || args[0] === 'run-script' ? args[1] : args[0]
+  if (!script || args.includes('--')) return []
+  let body: unknown
+  try { body = (JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }).scripts?.[script] } catch { return [] }
+  if (typeof body !== 'string') return []
+  const separator = manager === 'npm' || manager === 'pnpm' ? ['--'] : []
+  if (/\bjest\b/.test(body) && /(^|\s)--watch(All)?(?=\s|$)/.test(body)) return [...separator, '--watchAll=false', '--watch=false']
+  if (/\bvitest\b/.test(body) && (/(^|\s)(--watch|-w)(?=\s|$)/.test(body) || /\bvitest\s+watch\b/.test(body))) return [...separator, '--run']
+  return []
+}
+
 /** Prompts test runners and compilers print when they wait for file changes instead of exiting. */
 const WATCH_PROMPT = /Watch Usage|Press w to show more|Waiting for file changes|press h to show help, press q to quit|Watching for file changes|\[nodemon\] (?:clean exit - )?waiting for changes/i
 export function watchModeReason(command: { command: string; args: string[] }, prompt: string): string {
@@ -1058,7 +1078,9 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     if (signal?.aborted) { abort(); return }
     if (appliedTimeoutMs <= 0) { outcome = 'timed-out'; stop('Workflow verification deadline exhausted'); return }
     try {
-      const invocation = verificationInvocation(command.command, command.args, command.cwd, process.platform, env)
+      const once = runOnceArguments(command.command, command.args, command.cwd)
+      if (once.length) { try { log(`[specrails] the test script starts a watcher; running it once with ${once.filter(arg => arg !== '--').join(' ')}\n`) } catch { /* observer */ } }
+      const invocation = verificationInvocation(command.command, [...command.args, ...once], command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     } catch (error) { terminate(`Verification command could not start: ${String(error)}`); finish(-1); return }
     for (const stream of ['stdout', 'stderr'] as const) {

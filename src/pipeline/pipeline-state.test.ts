@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -852,6 +852,19 @@ it('stops a command that entered watch mode at its prompt and says how to run it
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
   expect(receipt.reason).toContain('watch mode')
   expect(receipt.reason).toMatch(/--watchAll=false|vitest run/)
+})
+
+it('runs a watch-mode test script once with the runner\'s own switch', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'watch-'))
+  const scripts = (value: Record<string, string>) => writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: value }))
+  scripts({ test: 'jest --watchAll', 'test:w': 'vitest --watch', plain: 'node --test' })
+  expect(runOnceArguments('npm', ['test'], cwd)).toEqual(['--', '--watchAll=false', '--watch=false'])
+  expect(runOnceArguments('yarn', ['test'], cwd)).toEqual(['--watchAll=false', '--watch=false'])
+  expect(runOnceArguments('npm', ['run', 'test:w'], cwd)).toEqual(['--', '--run'])
+  expect(runOnceArguments('npm', ['run', 'plain'], cwd)).toEqual([])
+  expect(runOnceArguments('npm', ['test', '--', '--ci'], cwd)).toEqual([])
+  expect(runOnceArguments('node', ['test.js'], cwd)).toEqual([])
+  rmSync(cwd, { recursive: true, force: true })
 })
 
 it('runs project commands with the project .venv activated', () => {
