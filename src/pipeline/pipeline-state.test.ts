@@ -917,12 +917,15 @@ it('tells a tool that never started from a test that went silent', async () => {
 it('runs a yarn, pnpm or bun the host lacks through npx at the pinned version', () => {
   const cwd = mkdtempSync(path.join(os.tmpdir(), 'pm-'))
   writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ packageManager: 'yarn@1.22.22' }))
-  const bin = path.join(cwd, 'bin'); mkdirSync(bin)
-  expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'yarn@1.22.22'])
-  expect(packageManagerFallback('pnpm', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'pnpm@latest'])
-  writeFileSync(path.join(bin, 'yarn'), '')
-  expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toBeNull()
-  expect(packageManagerFallback('npm', cwd, { PATH: bin }, 'darwin')).toBeNull()
+  // POSIX: `PATH` is ':'-separated; a Windows host's temp dir (C:\\...) cannot be a POSIX PATH entry.
+  if (process.platform !== 'win32') {
+    const bin = path.join(cwd, 'bin'); mkdirSync(bin)
+    expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'yarn@1.22.22'])
+    expect(packageManagerFallback('pnpm', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'pnpm@latest'])
+    writeFileSync(path.join(bin, 'yarn'), '')
+    expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toBeNull()
+  }
+  expect(packageManagerFallback('npm', cwd, { PATH: '' }, 'darwin')).toBeNull()
   expect(packageManagerFallback('/opt/yarn', cwd, { PATH: '' }, 'darwin')).toBeNull()
   // Windows: `Path` is ';'-separated and only the .cmd/.exe shim runs.
   const winBin = path.join(cwd, 'win-bin'); mkdirSync(winBin); writeFileSync(path.join(winBin, 'yarn'), '')
