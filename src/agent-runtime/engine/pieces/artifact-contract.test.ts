@@ -163,6 +163,14 @@ describe('tasks that contradict a declared non-goal', () => {
       { task: tasks[6].text, nonGoal: 'Sound' },
     ])
   })
+  it('does not flag a task that keeps what a "does not change X" non-goal protects', () => {
+    // wasm-rs: "done when … `mix` and its test are unchanged" was refused against "Does not change `mix`, its signature, or its tests."
+    const nonGoals = ['Does not change `mix`, its signature, or its tests.']
+    const keeps = '1.1 In `src/lib.rs`, add directly after `mix` a `#[no_mangle] pub extern "C" fn lighten(c: u8, amount: u8) -> u8`; done when the file contains this exported signature and `mix` and its test are unchanged.'
+    expect(tasksContradictingNonGoals([{ text: keeps }], nonGoals)).toEqual([])
+    const changes = '1.2 Rewrite the mix signature and its test to take u16 channels'
+    expect(tasksContradictingNonGoals([{ text: changes }], nonGoals)).toEqual([{ task: changes, nonGoal: nonGoals[0] }])
+  })
   it('ignores short single-word non-goals and long explanatory ones', () => {
     expect(tasksContradictingNonGoals([{ text: 'Add an API route' }], ['API'])).toEqual([])
     expect(tasksContradictingNonGoals([{ text: 'Refactor the renderer cache store layer module' }], ['Refactor renderer cache store layer module internals beyond'])).toEqual([])

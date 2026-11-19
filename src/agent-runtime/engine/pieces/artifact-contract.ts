@@ -97,6 +97,7 @@ const nonGoalSubject = (goal: string): string[] => [...new Set(words(goal.split(
  */
 export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; human?: boolean }>, nonGoals: readonly string[]): Array<{ task: string; nonGoal: string }> {
   const negated = /(?:\b(?:no|not|never|nor|without|avoid|avoiding|exclud(?:e|es|ing)|except|instead of)|n't)\s+(?:\S+\s+){0,4}$/i
+  const preserved = /\b(?:unchanged|untouched|intact|unmodified|preserv(?:e|es|ed|ing)|(?:is|are|stays?|remains?) (?:kept|the same|as (?:it is|they are|is))|as-is)\b/i
   const found: Array<{ task: string; nonGoal: string }> = []
   for (const goal of nonGoals) {
     const subject = nonGoalSubject(goal)
@@ -109,6 +110,9 @@ export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; 
         const matched = subject.filter(word => tokens.includes(word))
         const enough = subject.length <= 2 ? matched.length === subject.length : matched.length >= Math.max(2, subject.length - 1)
         if (!enough) return false
+        // A clause that keeps the subject as it is agrees with a "does not change X" non-goal
+        // ("done when `mix` and its test are unchanged"); it never requires X.
+        if (preserved.test(clause)) return false
         const first = Math.min(...matched.map(word => tokens.indexOf(word)))
         return !negated.test(raw.slice(0, first).join(' ') + ' ')
       })
