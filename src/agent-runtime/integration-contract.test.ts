@@ -59,6 +59,8 @@ describe('Desktop integration contract', () => {
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.roleDecisions).toBe(1)
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewTriage).toBe(1)
     expect(contract.agentRuntime.reviewTriage).toMatchObject({ version: 1, capability: 'reviewTriage' })
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.machineInstalls).toBe(1)
+    expect(contract.agentRuntime.machineInstalls).toMatchObject({ version: 1, capability: 'machineInstalls' })
   })
 
   it('documents structured question options as an additive capability the runtime advertises (contract 5.17)', async () => {

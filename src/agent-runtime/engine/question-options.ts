@@ -14,7 +14,9 @@ import type { JsonObject, JsonValue } from './contracts.js'
  * choices; `answer` is the person's words (the choice's label when they only
  * clicked it). An approval may be rejected with `{ approved: false, reason }`.
  */
-export interface QuestionOption { id: string; label: string; meaning?: string; detail?: string }
+import type { InterruptOption } from './contracts.js'
+/** The same option shape install questions use (`InterruptOption`); `meaning` may be empty. */
+export type QuestionOption = InterruptOption
 export interface StructuredQuestion {
   text?: string
   asker?: string
@@ -49,7 +51,7 @@ export function boundedOptions(value: unknown): QuestionOption[] {
     if (!OPTION_ID.test(id)) id = 'option-' + (index + 1)
     if (options.some(option => option.id === id)) id = (id.slice(0, 36) + '-' + (index + 1))
     const meaning = clip(record?.meaning, 300), detail = typeof record?.detail === 'string' && record.detail.trim() ? record.detail.trim().slice(0, 2000) : undefined
-    options.push({ id, label, ...(meaning ? { meaning } : {}), ...(detail ? { detail } : {}) })
+    options.push({ id, label, meaning: meaning ?? '', ...(detail ? { detail } : {}) })
   }
   return options.length >= 2 ? options : []
 }

@@ -166,6 +166,8 @@ describe('editable role definitions', () => {
     // A machine-wide install (rustup target add ran during a wasm run) is the person's: a toolchain blocker instead.
     expect(developer).toContain('never install or change anything outside the workspace and temporary directories')
     expect(developer).toContain('`rustup target|toolchain|component add`')
+    // The host asks the person once and installs it: the developer names the exact command in `install`.
+    expect(developer).toContain('never install it yourself: keep the work done, leave that task unticked and return the structured blocker (kind `toolchain`, the failing command, the exact install command as `install`')
     // triage-rs: cargo rewrote Cargo.lock and the developer left "only src/lib.rs changes" unticked: a stall and a second attempt.
     expect(developer).toContain('never revert them to satisfy a "only these files change" task, and never leave such a task unticked because of them')
     // The run checks UI behaviour itself with the host browser tool, and never ticks a person's check.

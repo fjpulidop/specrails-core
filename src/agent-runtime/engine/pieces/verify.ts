@@ -9,6 +9,7 @@ import { verificationDiagnosticPriority, verificationFailureSummary } from '../.
 import type { HostBlocker, JsonObject, Piece, PieceExecutionContext, PieceResult, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
+import { askMachineInstalls } from './machine-install.js'
 import { describeDrift } from '../../compact/environment.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { NONDETERMINISTIC_OUTPUT_CODE, adoptedOutputNote, checkoutRelative, environmentFailure, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../../verification-repair.js'
@@ -142,13 +143,23 @@ function setupBlocker(deps: PieceDependencies, command: CommandReceipt): HostBlo
 }
 
 export function verifyPiece(bindings: PieceDependencyProvider): Piece {
-  return {
+  const piece: Piece = {
     descriptor: { kind: 'verify', paramsSchema: paramsSchema({ commands: { oneOf: [{ const: 'configured' }, verificationCommandList] },
       additionalCommandsFrom: { type: 'string', minLength: 1, maxLength: 128 }, unverified: { type: 'boolean' }, maxConcurrency: { type: 'integer', minimum: 1, maximum: 4 },
-      setup: { oneOf: [{ const: 'configured' }, verificationCommandList] }, hostBlockers: { type: 'boolean' } }, ['commands']), outcomes: [...VERIFY_OUTCOMES, 'blocked'], effect: 'write', requiresAI: false, storeAccess: 'write' },
+      setup: { oneOf: [{ const: 'configured' }, verificationCommandList] }, hostBlockers: { type: 'boolean' }, machineInstalls: { enum: ['ask'] } }, ['commands']), outcomes: [...VERIFY_OUTCOMES, 'blocked'], effect: 'write', requiresAI: false, storeAccess: 'write' },
     // `blocked` is opt-in so definitions published before host blockers keep their exact `ends`.
     getOutcomes: params => params.hostBlockers === true ? [...VERIFY_OUTCOMES, 'blocked'] : VERIFY_OUTCOMES,
     async execute(params, context) {
+      if (params.machineInstalls !== 'ask') return verifyOnce(params, context)
+      // A precondition that names a machine-wide install (a missing Rust target) asks the
+      // person once; after the host installed it the plan runs again on a fresh receipt.
+      const progress = (line: string): void => context.progress({ type: 'verification-output', payload: { text: line } })
+      return askMachineInstalls(context, { key: 'verify-install', memo: bindings().memo(context), run: () => verifyOnce(params, context),
+        blocker: output => output.blocker && typeof output.blocker === 'object' && !Array.isArray(output.blocker) ? output.blocker : undefined,
+        onInstalled: request => progress(`[environment] The person approved \`${request.command}\` and the host installed it; verifying again.`) })
+    },
+  }
+  async function verifyOnce(params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> {
       const deps = bindings()
       const commands = resolveVerificationPlan(deps, context, params)
       // Nothing configured and nothing proposed: the run cannot verify any change.
@@ -284,6 +295,6 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: noProgressMessage(receipt) } } : {}), ...(infrastructure ? executionError(receipt) : {}),
         output: { ...output, ...(blocker ? { blocker: json(blocker) } : {}) },
         receipt: receiptEvidence(receipt), ...(verified ? { verified: { receiptId: receipt.id, candidateHash: receipt.candidateHash, atTransition: context.frame.transition, revision: context.frame.transition } } : { verified: null }) }
-    },
   }
+  return piece
 }

@@ -83,7 +83,8 @@ export function preconditionBlock(context: PipelineContext, receipt: Verificatio
     if (command.exitCode === 0) continue
     const precondition = hostPrecondition(command.output)
     if (precondition) return boundedBlocker({ kind: precondition.kind, reason: precondition.reason, command: command.command, args: command.args, cwd: checkoutRelative(context, command.cwd),
-      requiredAction: precondition.requiredAction, ...(command.evidenceId ? { evidenceId: command.evidenceId } : {}) })
+      requiredAction: precondition.requiredAction, ...(command.evidenceId ? { evidenceId: command.evidenceId } : {}),
+      ...(precondition.install ? { install: precondition.install, ...(precondition.tool ? { tool: precondition.tool } : {}) } : {}) })
   }
   return undefined
 }
@@ -145,5 +146,13 @@ export function boundedBlocker(value: unknown): HostBlocker | undefined {
   // A correction role reports free-text `evidence` instead of a host reason.
   const reason = bounded(raw.reason) || bounded(raw.evidence)
   return { kind: raw.kind as HostBlocker['kind'], reason, command: bounded(raw.command, 512), args, cwd: bounded(raw.cwd, 512), requiredAction: bounded(raw.requiredAction),
-    ...(typeof raw.evidenceId === 'string' && raw.evidenceId ? { evidenceId: bounded(raw.evidenceId, 128) } : {}) }
+    ...(typeof raw.evidenceId === 'string' && raw.evidenceId ? { evidenceId: bounded(raw.evidenceId, 128) } : {}),
+    ...machineInstallFields(raw) }
+}
+
+/** A blocker's machine-wide install: one line, bounded; anything else is dropped. */
+function machineInstallFields(raw: Record<string, unknown>): Pick<HostBlocker, 'install' | 'tool'> {
+  const line = (value: unknown, limit: number): string => typeof value === 'string' && !/[\r\n]/.test(value) ? value.trim().slice(0, limit) : ''
+  const install = line(raw.install, 300), tool = line(raw.tool, 120)
+  return install ? { install, ...(tool ? { tool } : {}) } : {}
 }

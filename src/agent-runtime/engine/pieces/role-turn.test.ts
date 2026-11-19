@@ -314,3 +314,66 @@ describe('role-turn review triage (capability reviewTriage)', () => {
     expect(f.requests).toHaveLength(2)
   })
 })
+
+describe("role-turn machineInstalls: 'ask' (capability machineInstalls)", () => {
+  const blocker = { type: 'object', properties: { kind: { type: 'string' }, command: { type: 'string' }, evidence: { type: 'string' }, requiredAction: { type: 'string' }, install: { type: 'string' } }, required: ['kind', 'requiredAction'] }
+  const implementation = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } }, blocker } }
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const needsTerraform = { summary: 'Module written; terraform validate could not run', incomplete: ['3.1 validate the module'],
+    blocker: { kind: 'toolchain', command: 'terraform validate', evidence: 'terraform: command not found', requiredAction: 'Install terraform with `brew install terraform`.', install: 'brew install terraform' } }
+  const params = { roleId: 'writer', prompt: 'Implement every task', structuredOutput: implementation, machineInstalls: 'ask' } as Record<string, JsonValue>
+
+  it('asks once with the exact command and options, memoizes the turn, and reruns it after the host installed the tool', async () => {
+    const f = fixture()
+    scripted(f, [needsTerraform, { summary: 'Validated the module', incomplete: [] }])
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'installed' } }
+    const result = await f.run(params)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: 'This run needs terraform. Install it with `brew install terraform`?', nodePath: 'node',
+      options: [{ id: 'install', label: 'Install', meaning: expect.any(String) }, { id: 'self', label: "I'll do it myself", meaning: expect.any(String) }],
+      data: { kind: 'machine-install', command: 'brew install terraform', tool: 'terraform' } })])
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('## Host install')
+    expect(f.requests[1].prompt).toContain('The person approved `brew install terraform` and the host ran it outside the run')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Validated the module', incomplete: [] } }, answers: [{ value: { answer: 'installed' } }] })
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Machine-wide install requested: brew install terraform')
+  })
+
+  it("commits the blocker with the person's step on 'I'll do it myself' or a failed install, without another provider call", async () => {
+    for (const [answer, action] of [['declined', 'Run `brew install terraform` yourself'], ['failed: Error: No available formula', 'The approved install `brew install terraform` failed (Error: No available formula)'], ['refused: it needs an administrator password', 'Specrails cannot run `brew install terraform` for you (it needs an administrator password)']]) {
+      const f = fixture()
+      scripted(f, [needsTerraform])
+      f.execution.interrupt = () => ({ answer })
+      const result = await f.run(params)
+      expect(f.requests).toHaveLength(1)
+      expect((result.output as { structured: { blocker: { requiredAction: string; install: string } } }).structured.blocker).toMatchObject({ install: 'brew install terraform', requiredAction: expect.stringContaining(action) })
+    }
+  })
+
+  it('stays autonomous without an install, without the opt-in and for a read role', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'done', incomplete: [] }, needsTerraform])
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    await f.run(params)
+    const plain = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation })
+    expect((plain.output as { structured: { blocker: unknown } }).structured.blocker).toMatchObject({ install: 'brew install terraform' })
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'x', machineInstalls: 'always' }, '/test')).not.toEqual([])
+  })
+
+  it('composes with decisions: an install asked inside a decision round keeps its own memo', async () => {
+    const f = fixture()
+    scripted(f, [needsTerraform, { summary: 'Validated', incomplete: [], decisionNeeded: '' }])
+    const asked: Array<{ data?: unknown }> = []
+    f.execution.interrupt = request => { asked.push(request as { data?: unknown }); return { answer: 'installed' } }
+    const result = await f.run({ ...params, decisions: 'ask' })
+    expect(asked).toHaveLength(1)
+    expect(asked[0].data).toMatchObject({ kind: 'machine-install' })
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Validated' } } })
+  })
+})

@@ -15,13 +15,14 @@ import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, typ
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { triageReviewIssues, type NonActionableIssue } from './review-triage.js'
 import { answerText, structuredQuestion } from '../question-options.js'
+import { askMachineInstalls, installedNote } from './machine-install.js'
 import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] }, machineInstalls: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
@@ -30,10 +31,24 @@ export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
     },
     execute: async (params, context) => {
       const deps = bindings()
-      const result = params.decisions === 'ask' ? await executeDecisionTurns(deps, params, context) : await executeRoleTurn(deps, params, context)
+      // A write role whose blocker names a machine-wide install asks the person once (capability machineInstalls).
+      const asksInstalls = params.machineInstalls === 'ask' && resolveRoleDescriptor(deps.config, text(params.roleId)).access === 'write'
+      const turn: RoleTurn = (turnParams, key) => asksInstalls
+        ? askMachineInstalls(context, { key: 'machine-install:' + key, memo: deps.memo(context), blocker: structuredBlocker,
+          run: installed => executeRoleTurn(deps, installed.length ? { ...turnParams, prompt: text(turnParams.prompt) + installedNote(installed) } : turnParams, context) })
+        : executeRoleTurn(deps, turnParams, context)
+      const result = params.decisions === 'ask' ? await executeDecisionTurns(deps, params, context, turn) : await turn(params, 'turn')
       return triageReview(deps, params, context, result)
     },
   }
+}
+
+/** One role-turn invocation; `key` keeps the memo rounds of nested askers apart. */
+type RoleTurn = (params: JsonObject, key: string) => Promise<PieceResult>
+function structuredBlocker(output: JsonObject): JsonObject | undefined {
+  const structured = output.structured
+  const blocker = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured.blocker : undefined
+  return blocker && typeof blocker === 'object' && !Array.isArray(blocker) ? blocker : undefined
 }
 
 type Review = JsonObject & { approved: boolean; issues: JsonValue[] }
@@ -114,7 +129,7 @@ const DECISION_RULE = [
  * same node visit with the answer. Each settled round is memoized before its interrupt, so a resume
  * never repeats a provider call; the last round may not ask again. Everything else stays autonomous.
  */
-async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> {
+async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext, turn: RoleTurn): Promise<PieceResult> {
   const schema = params.structuredOutput as JsonObject | undefined
   const properties = schema?.properties
   if (!schema || schema.type !== 'object' || !properties || typeof properties !== 'object' || Array.isArray(properties))
@@ -129,8 +144,8 @@ async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject,
     const last = round >= DECISION_ROUNDS
     const key = 'role-decision:' + round
     const saved = memo.get(key) as unknown as PieceResult | undefined
-    const result = saved ?? await executeRoleTurn(deps, last ? { ...params, prompt: text(params.prompt) + answered }
-      : { ...asking, prompt: text(params.prompt) + DECISION_RULE + answered }, context)
+    const result = saved ?? await turn(last ? { ...params, prompt: text(params.prompt) + answered }
+      : { ...asking, prompt: text(params.prompt) + DECISION_RULE + answered }, 'decision-' + round)
     const structured = result.outcome === 'next' ? (result.output as JsonObject | undefined)?.structured : undefined
     const record = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured : undefined
     const question = !last && typeof record?.[DECISION_FIELD] === 'string' ? record[DECISION_FIELD].trim() : ''
