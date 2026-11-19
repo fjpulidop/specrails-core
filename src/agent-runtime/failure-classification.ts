@@ -107,6 +107,8 @@ const IDLE_CODES = new Set(['idle_timeout'])
 const IDLE_TEXT = /\bidle timeout\b|no tool call, reply or usage for|no output for \d/i
 const TIMEOUT_CODES = new Set(['timeout', 'verification_timeout'])
 const TIMEOUT_TEXT = /total execution limit|active-duration budget exhausted|execution timed out|reached its time budget/i
+const STRUCTURED_OUTPUT_CODE = 'structured_output_retries'
+const STRUCTURED_OUTPUT_TEXT = /exhausted structured output retries/i
 const CRASH_CODES = new Set(['lease_lost', 'storage_corrupt', 'provider_request_error', 'incomplete_response', 'terminal_conflict'])
 const CRASH_TEXT = /execution failed \(exit \d+\)|exited without a successful final result|lost its endpoint|process exited|\bcrashed\b|\bSIGKILL\b|\bSIGSEGV\b/i
 const TESTS_TEXT = /Correction loop stopped: .*(?:verif|check|test|fail)|verification (?:failed|did not pass)|failing (?:tests|checks)|(?:tests?|checks?) (?:are |is )?failing|(?:tests?|checks?) failed/i
@@ -295,6 +297,12 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
   if (ENVIRONMENT_CODES.has(code) || ENVIRONMENT_TEXT.test(haystack)) return done('environment', {}, true)
   if (BLOCKED_CODES.has(code) || BLOCKED_TEXT.test(haystack)) return done('blocked', {}, true)
   if (TESTS_TEXT.test(haystack) || (code === 'verification_failed')) return done('tests_failed', {}, signals.status === 'blocked')
+  // The model kept returning a result that does not match the role's schema until the CLI gave
+  // up. Nothing about the change is wrong: the same step runs again from its saved state.
+  if (code === STRUCTURED_OUTPUT_CODE || STRUCTURED_OUTPUT_TEXT.test(haystack)) {
+    const provider = /^(\w+) exhausted structured output retries/i.exec(message)?.[1]
+    return done('crash', { detail: `The ${provider ? provider + ' ' : ''}model returned no valid result for this step after its retries (a malformed answer, not a problem with the change); continuing re-runs the same step.` }, true)
+  }
   if (CRASH_CODES.has(code) || CRASH_TEXT.test(haystack)) return done('crash', {}, true)
   return done('unknown', {}, false)
 }

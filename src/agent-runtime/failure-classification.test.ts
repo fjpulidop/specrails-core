@@ -158,6 +158,17 @@ describe('result fields', () => {
   })
 })
 
+describe('structured output exhaustion', () => {
+  it('is a resumable crash of the step, not an unknown cause', () => {
+    // jupyter-nb: haiku's fixer called StructuredOutput five times with an invalid object.
+    const failure = { nodePath: 'fixer', status: 'failed', error: { code: 'structured_output_retries', message: 'claude exhausted structured output retries.' } }
+    const result = classifyFailure({ status: 'failed', steps: { fixer: { kind: 'role-turn', status: 'failed', visits: 1 } }, recentFailures: [failure], nextStep: 'fixer' })
+    expect(result).toMatchObject({ kind: 'crash', confidence: 'high', phase: 'fixer', resumablePhase: 'fixer' })
+    expect(result?.detail).toContain('claude model returned no valid result')
+    expect(classifyFailure({ status: 'failed', error: 'codex exhausted structured output retries.' })).toMatchObject({ kind: 'crash', confidence: 'high' })
+  })
+})
+
 describe('definition end-node failures (contract 5.15)', () => {
   // The completion a real Implement run (tetrisex #14) ended with: no error, a failure end node.
   const stalled = 'The developer made no changes while approved tasks are still incomplete. Incomplete: ["4.1 README: the visual-review note [manual] needs a browser check"]. Developer summary: 8 of 9 tasks are done.'
