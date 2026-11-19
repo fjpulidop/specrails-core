@@ -94,6 +94,17 @@ describe('reviewed piece catalog and control', () => {
     expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'only app' }, nodePath: 'node' }],
       history: [{ nodePath: 'node', text: 'Human question: Choose a scope\nHuman answer:\n{"answer":"only app"}' }] })
   })
+  it('questionOptions: a question offers the choices an earlier node proposed and records the chosen one', async () => {
+    const f = fixture()
+    f.execution.state.$outputs.architect = { structured: { question: 'Which store?', questionOptions: [{ id: 'sqlite', label: 'SQLite', meaning: 'One local file.' }, { id: 'none', label: 'Not here', meaning: 'Stop: wrong repository.' }], recommendedOption: 'sqlite', questionWhy: 'The ticket names no store.' } }
+    let asked: unknown
+    f.execution.interrupt = request => { asked = request; return { answer: 'SQLite', optionId: 'sqlite' } }
+    const result = await f.run('question', { text: 'Which store?', asker: 'architect', optionsFrom: 'architect', endsRun: ['none'] })
+    expect(asked).toMatchObject({ kind: 'question', text: 'Which store?', asker: 'architect', why: 'The ticket names no store.', recommended: 'sqlite', endsRun: ['none'],
+      options: [{ id: 'sqlite', label: 'SQLite', meaning: 'One local file.' }, { id: 'none', label: 'Not here' }] })
+    expect(result.history?.[0].text).toBe('Human question: Which store?\nHuman answer:\nThe person chose "SQLite" (One local file.).')
+    expect(f.pieces.validateParams('question', { text: 'x', options: 'nope' }, '')).not.toEqual([])
+  })
   it('binds approval to the pre-interrupt candidate across a changed workspace', async () => {
     const f = fixture(), before = f.deps.executionSnapshot(f.execution).candidate!.hash
     await expect(f.run('approval', { reason: 'Archive?', bindCandidate: true })).rejects.toThrow('PAUSED')

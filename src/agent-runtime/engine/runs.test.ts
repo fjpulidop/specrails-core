@@ -514,3 +514,42 @@ it("routes a write role's decision to the person and resumes the same node with 
   expect(f.requests[1].prompt).toContain('Implement them')
   expect(resumed.efficiencySummary.invocations.total).toBe(2)
 })
+
+it('questionOptions: a decision carries its choices on the interrupt, an answer by option id reaches the rerun, an unknown id is refused', async () => {
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'done', invalid: null, failed: null } },
+    done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Keyboard done', incomplete: ['2.1'], decisionNeeded: 'Task 2.1 needs touch controls, a declared non-goal.',
+    decisionOptions: [{ id: 'implement', label: 'Implement touch', meaning: 'Adds touch controls despite the non-goal.' }, { id: 'drop', label: 'Drop task 2.1', meaning: 'Keeps the non-goal; 2.1 stays undone.' }], decisionRecommended: 'drop' },
+    { summary: 'Dropped 2.1', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun({ ...f, registry: registry() })
+  const pending = paused.state.pendingInterrupts[0]
+  expect(pending.value).toMatchObject({ kind: 'question', asker: 'builder', text: 'Task 2.1 needs touch controls, a declared non-goal.', recommended: 'drop',
+    options: [{ id: 'implement', label: 'Implement touch' }, { id: 'drop', label: 'Drop task 2.1' }] })
+  expect((pending.value as { prompt: string }).prompt).toContain('- Drop task 2.1: Keeps the non-goal; 2.1 stays undone. (recommended)')
+  await expect(resumeRun(f.directory, { registry: registry(), answers: { [pending.id]: { answer: 'x', optionId: 'nope' } } })).rejects.toMatchObject({ code: 'invalid_resume' })
+  const resumed = await resumeRun(f.directory, { registry: registry(), answers: { [pending.id]: { answer: 'Drop task 2.1', optionId: 'drop' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests[1].prompt).toContain('The person chose \\"Drop task 2.1\\" (Keeps the non-goal; 2.1 stays undone.).')
+  expect(JSON.stringify(resumed.state)).not.toContain('decisionOptions')
+})
+
+it('questionOptions: an approval can be rejected with a reason and the definition takes its negative edge; a reason is required', async () => {
+  const f = fixture({
+    approve: { kind: 'approval', params: { reason: 'Approve archiving?' }, ends: { next: 'policy' } },
+    policy: { kind: 'condition', params: { expr: '$outputs.approve.response.approved == true' }, ends: { true: 'done', false: 'rejected' } },
+    rejected: { kind: 'end', params: { outcome: 'failure', reason: 'Rejected: {{outputs.approve.response.reason}}' }, ends: {} }, done,
+  }, { delivery: { requiresVerified: false } })
+  const paused = await createRun(f)
+  const id = paused.state.pendingInterrupts[0].id
+  await expect(resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false } } })).rejects.toMatchObject({ code: 'invalid_resume' })
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false, reason: 'Wrong colours' } } })
+  expect(resumed.state.status).toBe('failed')
+  expect(JSON.stringify(resumed.completion)).toContain('Rejected: Wrong colours')
+})

@@ -21,6 +21,7 @@ import { composeDefinitionRuntime } from './composition.js'
 import { createEngineTelemetry } from './otel.js'
 import { describeDefinition } from './graph-description.js'
 import { validateHostTaskResult } from './pieces/host-task.js'
+import { offeredOptions } from './question-options.js'
 
 export const definitionRunDirectory = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-workflow')
 /** Frozen request shared with the legacy runtime (contracts.md section 9); `workflow.engine` selects the resume engine. */
@@ -215,7 +216,15 @@ function validateAnswers(ledger: RunLedger, answers: Record<string, JsonValue>):
       continue
     }
     const object = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-    if (request.kind === 'question' ? typeof object.answer !== 'string' || !object.answer.trim() : object.approved !== true) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
+    if (request.kind === 'question') {
+      if (typeof object.answer !== 'string' || !object.answer.trim()) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
+      // questionOptions: an answer may name one offered choice by id.
+      if (object.optionId !== undefined && (typeof object.optionId !== 'string' || !offeredOptions(request.value).some(option => option.id === object.optionId))) throw new EngineError('invalid_resume', 'The chosen option is not one the question offered')
+      continue
+    }
+    // questionOptions: an approval (never a gate) may be rejected with the person's reason.
+    const rejected = request.kind === 'approval' && object.approved === false && typeof object.reason === 'string' && !!object.reason.trim()
+    if (object.approved !== true && !rejected) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
   }
 }
 

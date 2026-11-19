@@ -61,6 +61,16 @@ describe('Desktop integration contract', () => {
     expect(contract.agentRuntime.reviewTriage).toMatchObject({ version: 1, capability: 'reviewTriage' })
   })
 
+  it('documents structured question options as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.schemaVersion).toBe('5.17')
+    expect(contract.agentRuntime.questionOptions).toMatchObject({ version: 1, capability: 'questionOptions' })
+    expect(contract.agentRuntime.questionOptions.answer).toContain('--option')
+    expect(contract.agentRuntime.questionOptions.reject).toContain('--reject')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.questionOptions).toBe(1)
+  })
+
   it('covers every machine operation exactly once and classifies presentation separately', () => {
     expect(contract.agentRuntime.cliPresentationOperations).toEqual(['help'])
     expect(contract.agentRuntime.cliOperations).toEqual(RUNTIME_CLI_OPERATIONS.filter(operation => operation !== 'help'))

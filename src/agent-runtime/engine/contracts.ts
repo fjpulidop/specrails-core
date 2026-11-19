@@ -227,10 +227,19 @@ export interface TransientEngineEvent {
 
 export interface HumanInterrupt {
   kind: 'approval' | 'question' | 'gate'
+  /** Self-contained text: the question, why and the choices in plain words (what an older host shows). */
   prompt: string
   nodePath: string
   scopeId: string
   attemptId: string
+  /** Structured question (capability `questionOptions`): see question-options.ts. Every field is optional. */
+  text?: string
+  asker?: string
+  why?: string
+  options?: Array<{ id: string; label: string; meaning?: string; detail?: string }>
+  recommended?: string
+  endsRun?: string[]
+  detail?: string
 }
 
 /**

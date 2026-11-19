@@ -198,6 +198,20 @@ describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
     expect(new Set(result.history?.map(entry => entry.id)).size).toBe(result.history?.length)
   })
 
+  it('questionOptions: offers the role\'s choices with its question and removes them from the committed output', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'Keyboard part', incomplete: ['2.1'], decisionNeeded: contradiction, decisionOptions: [{ id: 'a', label: 'Implement touch', meaning: 'Adds it.' }, { id: 'b', label: 'Drop 2.1', meaning: 'Keeps the non-goal.' }], decisionRecommended: 'b' },
+      { summary: 'Dropped', incomplete: [], decisionNeeded: '', decisionOptions: [], decisionRecommended: '' }])
+    const params = { roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask', stance: 'fixer' } as Record<string, JsonValue>
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'Drop 2.1', optionId: 'b' } }
+    const result = await f.run(params).catch(() => f.run(params))
+    expect(f.requests[0].prompt).toContain('decisionOptions')
+    expect(asked[0]).toMatchObject({ kind: 'question', text: contradiction, asker: 'fixer', recommended: 'b', options: [{ id: 'a' }, { id: 'b', label: 'Drop 2.1' }] })
+    expect(f.requests[1].prompt).toContain('The person chose \\"Drop 2.1\\" (Keeps the non-goal.).')
+    expect((result.output as { structured: Record<string, unknown> }).structured).toEqual({ summary: 'Dropped', incomplete: [] })
+  })
+
   it('stays autonomous when the role needs no decision: one call, the host schema shape, no answers', async () => {
     const f = fixture()
     scripted(f, [{ summary: 'All done', incomplete: [], decisionNeeded: '' }])

@@ -14,6 +14,7 @@ import { projectRulesContext } from '../../project-rules.js'
 import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { triageReviewIssues, type NonActionableIssue } from './review-triage.js'
+import { answerText, structuredQuestion } from '../question-options.js'
 import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
@@ -91,13 +92,18 @@ async function triageReview(deps: PieceDependencies, params: JsonObject, context
 
 /** The structured field a role fills with the one decision only the person can make (`decisions: 'ask'`). */
 export const DECISION_FIELD = 'decisionNeeded'
+/** questionOptions: the choices the role offers with its decision, and the one it recommends. */
+export const DECISION_OPTIONS_FIELD = 'decisionOptions'
+export const DECISION_RECOMMENDED_FIELD = 'decisionRecommended'
+const DECISION_FIELDS = [DECISION_FIELD, DECISION_OPTIONS_FIELD, DECISION_RECOMMENDED_FIELD]
+const decisionOptionSchema = { type: 'object', additionalProperties: false, required: ['id', 'label', 'meaning'], properties: { id: { type: 'string' }, label: { type: 'string' }, meaning: { type: 'string' } } }
 /** Questions one role-turn visit may ask before its last round must finish without asking. */
 export const DECISION_ROUNDS = 3
 const DECISION_RULE = [
   '',
   '',
   '## A decision only the person can make',
-  `Use \`${DECISION_FIELD}\` only when you cannot finish because the approved artifacts contradict each other or the ticket (for example a task requires what design.md lists as a non-goal, or two requirements exclude each other) and any choice would be a product decision the person must own. Then do all the work the decision does not affect, leave the affected tasks unticked, and put one concrete question in \`${DECISION_FIELD}\`: what conflicts (quote both sides), the options and what each one means for the change. The run pauses, asks the person and gives you their answer in this same step. Never write such a decision into \`incomplete\`, a blocker or your summary instead (for example "the person must choose" or "conflicts with the non-goal"): those end the run without asking anyone.`,
+  `Use \`${DECISION_FIELD}\` only when you cannot finish because the approved artifacts contradict each other or the ticket (for example a task requires what design.md lists as a non-goal, or two requirements exclude each other) and any choice would be a product decision the person must own. Then do all the work the decision does not affect, leave the affected tasks unticked, and put one concrete question in \`${DECISION_FIELD}\`: what conflicts (quote both sides) in one or two plain sentences. Put the choices in \`${DECISION_OPTIONS_FIELD}\` (two to four, each {id, label, meaning}: a short kebab-case id, a label of at most six words the person clicks, and one sentence on what it means for the change) and the id of the one you recommend in \`${DECISION_RECOMMENDED_FIELD}\`. The run pauses, asks the person and gives you their answer in this same step. Never write such a decision into \`incomplete\`, a blocker or your summary instead (for example "the person must choose" or "conflicts with the non-goal"): those end the run without asking anyone.`,
   `Never use it for anything you can decide, investigate, install or check yourself, for a technical choice the design leaves open (choose and say why in your summary), for a failing test, or for a host blocker (a missing credential, network or variable is the structured blocker). Leave \`${DECISION_FIELD}\` empty in every other case.`,
 ].join('\n')
 
@@ -113,8 +119,9 @@ async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject,
   const properties = schema?.properties
   if (!schema || schema.type !== 'object' || !properties || typeof properties !== 'object' || Array.isArray(properties))
     throw new EngineError('invalid_arguments', "decisions: 'ask' requires an object structuredOutput schema with properties")
-  if (DECISION_FIELD in properties) throw new EngineError('invalid_arguments', `structuredOutput already declares ${DECISION_FIELD}; decisions: 'ask' adds it`)
-  const asking: JsonObject = { ...params, structuredOutput: { ...schema, properties: { ...properties, [DECISION_FIELD]: { type: 'string' } } } }
+  for (const field of DECISION_FIELDS) if (field in properties) throw new EngineError('invalid_arguments', `structuredOutput already declares ${field}; decisions: 'ask' adds it`)
+  const asking: JsonObject = { ...params, structuredOutput: { ...schema, properties: { ...properties, [DECISION_FIELD]: { type: 'string' },
+    [DECISION_OPTIONS_FIELD]: { type: 'array', maxItems: 6, items: decisionOptionSchema }, [DECISION_RECOMMENDED_FIELD]: { type: 'string' } } } }
   const memo = deps.memo(context)
   const answers: EngineAnswer[] = [], history: string[] = [], decisions: JsonObject[] = []
   let answered = ''
@@ -130,8 +137,11 @@ async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject,
     if (!question) return settleDecisions(context, result, record, answers, history, decisions)
     if (!saved) memo.set(key, json(result))
     for (const entry of result.history ?? []) history.push(entry.text)
-    const response = context.interrupt({ kind: 'question', prompt: boundedText(question, 4000), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId })
-    const answer = boundedText(typeof response === 'string' ? response : typeof (response as JsonObject | null)?.answer === 'string' ? (response as JsonObject).answer as string : JSON.stringify(response), 4000)
+    // questionOptions: the choices travel with the question; `prompt` still reads on its own.
+    const asked = structuredQuestion({ text: boundedText(question, 4000), asker: params.stance === 'fixer' ? 'fixer' : text(params.roleId), options: record?.[DECISION_OPTIONS_FIELD], recommended: record?.[DECISION_RECOMMENDED_FIELD] })
+    const request = { kind: 'question' as const, ...asked, prompt: boundedText(asked.prompt, 6000), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId }
+    const response = context.interrupt(request)
+    const answer = boundedText(answerText(response, json(request)), 4000)
     answers.push(answerEntry(context, response, round))
     decisions.push({ question: boundedText(question, 4000), answer })
     history.push(`Human decision requested: ${question}\nHuman answer:\n${answer}`)
@@ -140,9 +150,9 @@ async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject,
 }
 
 function settleDecisions(context: PieceExecutionContext, result: PieceResult, structured: JsonObject | undefined, answers: EngineAnswer[], history: string[], decisions: JsonObject[]): PieceResult {
-  if (structured && DECISION_FIELD in structured) {
-    // The host's schema never declared the field: the committed output keeps exactly its shape.
-    const { [DECISION_FIELD]: _unused, ...rest } = structured
+  if (structured && DECISION_FIELDS.some(field => field in structured)) {
+    // The host's schema never declared the fields: the committed output keeps exactly its shape.
+    const rest = Object.fromEntries(Object.entries(structured).filter(([key]) => !DECISION_FIELDS.includes(key)))
     result = { ...result, output: { ...(result.output as JsonObject), structured: rest } }
   }
   if (!decisions.length) return result

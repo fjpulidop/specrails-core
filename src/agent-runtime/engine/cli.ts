@@ -153,7 +153,14 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       if (flags.answer !== undefined) {
         const matches = pending.filter(item => item.kind === 'question' && (flags['interrupt-id'] === undefined || item.id === required(flags, 'interrupt-id')))
         if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Select one pending question with --interrupt-id')
-        answers[matches[0].id] = { answer: required(flags, 'answer') }
+        answers[matches[0].id] = { answer: required(flags, 'answer'), ...(flags.option !== undefined ? { optionId: required(flags, 'option') } : {}) }
+      } else if (flags.option !== undefined) throw new EngineError('invalid_arguments', '--option requires --answer (the choice label or the person\'s words)')
+      if (flags.reject !== undefined) {
+        const node = required(flags, 'reject'), reason = flags.reason === undefined ? '' : required(flags, 'reason').trim()
+        if (!reason) throw new EngineError('invalid_arguments', '--reject requires a nonempty --reason')
+        const matches = pending.filter(item => item.kind === 'approval' && (item.nodePath === node || item.id === node))
+        if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Rejection must identify exactly one pending approval')
+        answers[matches[0].id] = { approved: false, reason }
       }
       if (flags.approve !== undefined) for (const node of required(flags, 'approve').split(',')) {
         const matches = pending.filter(item => ['approval', 'gate'].includes(item.kind) && (item.nodePath === node || item.id === node))

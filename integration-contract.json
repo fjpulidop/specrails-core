@@ -377,6 +377,16 @@
       "compatibility": "additive: older Cores reject the unknown decisions param, so a host sends it only when runtime capabilities advertise roleDecisions",
       "documentation": "docs/engine-v2/pieces.md#role-turn"
     },
+    "questionOptions": {
+      "version": 1,
+      "capability": "questionOptions",
+      "interrupt": "a question interrupt keeps its self-contained prompt (the question, why and the choices as plain lines) and may add text (the bare question), asker (role id: architect, developer, fixer or a custom role), why, options [{id, label, meaning?, detail?}] (2 to 6; id matches ^[a-z0-9][a-z0-9-]{0,39}$, label at most 80 characters, meaning at most 300, detail at most 2000, e.g. an exact command), recommended (an option id), endsRun (option ids that end the run) and detail (at most 2000 characters). Absent fields mean a plain question.",
+      "sources": "role-turn decisions: 'ask' adds decisionOptions [{id, label, meaning}] and decisionRecommended to the role's schema and carries them on its question (asker = the role id, or fixer for the fixer stance), removing both from the committed output; the question piece accepts asker, why, options, recommended, endsRun and optionsFrom (a node id whose structured output's questionOptions, recommendedOption and questionWhy fill the choices).",
+      "answer": "runtime resume --answer <text> [--option <id>]: {answer, optionId?}; an optionId must be one of the pending question's options (invalid_resume otherwise). The asker reads 'The person chose \"<label>\" (<meaning>).' plus the person's words when they differ from the label. --option without --answer is invalid_arguments.",
+      "reject": "runtime resume --reject <node|interrupt-id> --reason <text>: answers one pending approval (never a gate) with {approved: false, reason}; the approval piece outputs that response, so the definition's own negative edge runs (for example a condition on response.approved). --reject without a nonempty --reason is invalid_arguments.",
+      "compatibility": "additive: an older Core never emits the fields (hosts render prompt as plain text), rejects --option and --reject as unknown flags and refuses approved false, so a host offers choices and rejection only when runtime capabilities advertise questionOptions",
+      "documentation": "docs/engine-v2/pieces.md#question"
+    },
     "reviewTriage": {
       "version": 1,
       "capability": "reviewTriage",
