@@ -9,7 +9,7 @@ import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.j
 import type { ExecutorRegistry } from '../executors.js'
 import { appendRunEvent, RunDatabase } from './checkpoint/database.js'
 import { RunLedger } from './checkpoint/ledger.js'
-import { RunLease } from './checkpoint/lease.js'
+import { leaseLive, leaseOwner, RunLease } from './checkpoint/lease.js'
 import { EngineError, type JsonObject, type JsonValue } from './contracts.js'
 import { EngineEventStream } from './events.js'
 import { initialDefinitionState } from './state.js'
@@ -106,7 +106,7 @@ export async function resumeRun(directory: string, options: ResumeDefinitionOpti
 
 /** Every effect runs under one lease and cancellation domain; the saver owns settlement. */
 async function execute(database: RunDatabase, admitted: Admitted, options: ResumeDefinitionOptions, resume: boolean) {
-  const runId = admitted.request.context.runId, lease = new RunLease(database, runId), token = lease.acquire(randomUUID())
+  const runId = admitted.request.context.runId, lease = new RunLease(database, runId), token = lease.acquire(leaseOwner())
   const ledger = new RunLedger(database, token, { maxTransitions: admitted.definition.maxTransitions, failFast: admitted.definition.policies?.failFast })
   const controller = new AbortController(), abort = () => controller.abort(options.signal?.reason ?? new EngineError('aborted', 'Execution cancelled'))
   if (options.signal?.aborted) abort()
@@ -229,8 +229,8 @@ export async function cancelRun(directory: string, requestId?: string) {
   try {
     const runId = observeLedger(database).runId, inbox = new ControlInbox(database, runId), accepted = inbox.cancel(requestId)
     const lease = new RunLease(database, runId)
-    if ((lease.current()?.expiresAt ?? 0) > Date.now()) return accepted
-    const token = lease.acquire(randomUUID())
+    if (leaseLive(lease.current())) return accepted
+    const token = lease.acquire(leaseOwner())
     try {
       const ledger = new RunLedger(database, token, { maxTransitions: 1 })
       database.transaction('workflow-cancelled', () => {
@@ -273,14 +273,14 @@ export async function pauseRun(directory: string, options: { requestId?: string;
     // Only this exact package can resume the run, so only it may pause it.
     if (!sameRuntimeIdentity(JSON.parse(String(view.run().runtime_identity_json)) as RuntimeIdentity, coreRuntimeIdentity())) throw new EngineError('resume_incompatible', 'Pause requires the retained original Core package')
     const lease = new RunLease(database, runId)
-    if ((lease.current()?.expiresAt ?? 0) > Date.now()) {
+    if (leaseLive(lease.current())) {
       database.upgradeSchema()
       const accepted = new ControlInbox(database, runId).pause(reason, requestId)
       return result('requested', accepted.createdAt)
     }
     if (view.run().status === 'paused') return result('already-paused')
     if (view.run().status !== 'running') return result('not-running')
-    const token = lease.acquire(randomUUID())
+    const token = lease.acquire(leaseOwner())
     let outcome: PauseOutcome = 'paused'
     try {
       const ledger = new RunLedger(database, token, { maxTransitions: 1 })

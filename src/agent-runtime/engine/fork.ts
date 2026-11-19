@@ -11,7 +11,7 @@ import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.j
 import { canonicalJson, contentDigest } from './canonical-json.js'
 import { RunDatabase, type DatabaseRow } from './checkpoint/database.js'
 import { RunLedger } from './checkpoint/ledger.js'
-import { RunLease } from './checkpoint/lease.js'
+import { leaseOwner, RunLease } from './checkpoint/lease.js'
 import { EngineError, type ExecutionScope, type JsonObject, type JsonValue, type PieceResult } from './contracts.js'
 import { composeDefinitionRuntime } from './composition.js'
 import { EngineEventStream } from './events.js'
@@ -141,7 +141,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       }
       restored.push({ source: binding, target, row })
     }
-    const lease = new RunLease(destination, context.runId), token = lease.acquire(randomUUID())
+    const lease = new RunLease(destination, context.runId), token = lease.acquire(leaseOwner())
     ledger = new RunLedger(destination, token, { maxTransitions: definition.maxTransitions, failFast: definition.policies?.failFast })
     destination.transaction('fork-rebound', () => {
       lease.assert(token)

@@ -1,4 +1,5 @@
 import { RunDatabase } from './checkpoint/database.js'
+import { leaseLive } from './checkpoint/lease.js'
 import { RunLedger } from './checkpoint/ledger.js'
 import { EngineError } from './contracts.js'
 import type { WorkflowDefinition } from './definition-types.js'
@@ -46,7 +47,7 @@ export function projectRunStatus(ledger: RunLedger, compact = true) {
         attemptId: step.last_attempt_id === null ? null : String(step.last_attempt_id),
         ...(result && Object.hasOwn(result, 'output') ? { output: result.output } : {}) }
     }),
-    lease: lease ? { owner: lease.owner, epoch: lease.epoch, expiresAt: lease.expiresAt, active: lease.expiresAt > Date.now() } : null,
+    lease: lease ? { owner: lease.owner, epoch: lease.epoch, expiresAt: lease.expiresAt, active: leaseLive(lease) } : null,
     recoverableSteps: recoverable.map(value => ({ nodePath: String(value.node_path), scopeId: String(value.scope_id), attemptId: String(value.attempt_id), status: String(value.status), effect: 'write' as const })),
     steering: new ControlInbox(ledger.db, ledger.runId).status(),
     reservations: ledger.reservationStatus(), pendingInterrupts: pending, recentFailures: failures.map(failure => ({ nodePath: failure.node_path, scopeId: failure.scope_id, branch: failure.branch,

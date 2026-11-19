@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import path from 'node:path'
 import { Annotation, Command, END, interrupt, Send, START, StateGraph, type LangGraphRunnableConfig } from '@langchain/langgraph'
 import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
 import { RunDatabase } from './database.js'
-import { RunLease } from './lease.js'
+import { leaseLive, leaseOwner, leaseOwnerAlive, RunLease } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
 
@@ -450,5 +450,31 @@ describe('durable checkpoint and ledger boundary', () => {
     expect(fork.sqlite.prepare("SELECT DISTINCT checkpoint_ns FROM checkpoints WHERE checkpoint_ns!=''").all()).toHaveLength(2)
     expect(db.sqlite.prepare('SELECT * FROM row_versions ORDER BY revision,table_name,row_key').all()).toEqual(source)
     fork.checkIntegrity()
+  })
+})
+
+describe('a lease whose owner process died on this machine', () => {
+  // A Desktop restart SIGKILLs its Core children; their unexpired leases made every Resume wait up to a minute.
+  const dead = (pid: number) => { const error = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' }); if (pid > 0) throw error }
+  it('names its process and is not live once that process is gone', () => {
+    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[0-9a-f-]{36}$`))
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, dead)).toBe(false)
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => {})).toBe(true)
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }) })).toBe(true)
+    expect(leaseOwnerAlive('pid:999999@another-machine:x', dead)).toBe(true)
+    expect(leaseOwnerAlive('first-owner', dead)).toBe(true)
+    expect(leaseLive({ owner: `pid:${process.pid}@${hostname()}:x`, expiresAt: Date.now() + 60_000 })).toBe(true)
+    expect(leaseLive({ owner: 'first-owner', expiresAt: Date.now() - 1 })).toBe(false)
+  })
+  it('is taken over at once instead of waiting for the expiry', async () => {
+    const { db, lease, token } = await fixture()
+    lease.release(token)
+    const gone = 2 ** 22 + 12345 // above the default pid range, so no live process holds it
+    const held = lease.acquire(`pid:${gone}@${hostname()}:killed`)
+    expect(held.expiresAt).toBeGreaterThan(Date.now())
+    const next = lease.acquire(leaseOwner())
+    expect(next.epoch).toBe(held.epoch + 1)
+    expect(() => lease.acquire('third-owner')).toThrow(/Another executor holds this run lease/)
+    db.close()
   })
 })
