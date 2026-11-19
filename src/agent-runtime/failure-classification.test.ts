@@ -103,8 +103,16 @@ describe('classifyFailure', () => {
   })
 
   it('extracts reset hints only when the message carries a time', () => {
-    expect(providerLimitReset('resets in 2 hours.')).toBe('2 hours')
+    expect(providerLimitReset('resets in 2 hours.')).toBe('in 2 hours')
     expect(providerLimitReset('no hint here')).toBeUndefined()
+  })
+})
+
+describe('providerLimitReset', () => {
+  it('reads the codex "try again at" wording and keeps the relative "in"', () => {
+    expect(providerLimitReset('codex execution failed (exit 1). You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), visit https://chatgpt.com/settings/usage to purchase more credits or try again at 3:32 AM.')).toBe('3:32 AM')
+    expect(providerLimitReset("You've reached your usage limit. Try again in 2 hours.")).toBe('in 2 hours')
+    expect(providerLimitReset("You've hit your session limit · resets 3am (Europe/Madrid)")).toBe('3am (Europe/Madrid)')
   })
 })
 

@@ -62,7 +62,7 @@ function messageOf(error: unknown): { code: string; message: string } {
 }
 
 /** The provider's own "resets 3am (Europe/Madrid)" hint, when the message carries one. */
-const RESETS = /\bresets?\s+(?:at\s+|in\s+)?([^\n·(]*?\d[^\n·(]*?)(\s*\([^)]*\))?(?=\s*(?:\(error|[.,;]\s|\n|$))/i
+const RESETS = /\b(?:resets?|try again)\s+(?:at\s+)?((?:in\s+)?[^\n·(]*?\d[^\n·(]*?)(\s*\([^)]*\))?(?=\s*(?:\(error|[.,;]\s|\n|$))/i
 export function providerLimitReset(message: string): string | undefined {
   const match = RESETS.exec(message)
   if (!match) return undefined
