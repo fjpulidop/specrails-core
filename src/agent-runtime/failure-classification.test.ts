@@ -146,6 +146,7 @@ describe('definition end-node failures (contract 5.15)', () => {
     const cases: Array<[string, string]> = [
       ['The plan for change x still fails OpenSpec validation or the plan contract after 2 repair(s), so it was not implemented.', 'spec_invalid'],
       ['OpenSpec could not archive change x. The implementation was verified and reviewed.', 'spec_invalid'],
+      ['Not implemented: the person declined this ticket for this repository. Reason: wrong repository', 'spec_invalid'],
       ['Automatic correction made no candidate changes. Host verification is valid: true.', 'blocked'],
       ['Automatic correction limit reached (3/3). Acceptance policy: approved == true', 'blocked'],
       ['Developer reported a host blocker (credential): log in Evidence: 401', 'environment'],

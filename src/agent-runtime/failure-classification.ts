@@ -101,7 +101,7 @@ const CORRECTION_STEP = /(?:^|[/.:])(?:fixer|fix|correct)/i
 // End-node reasons of a definition's failure exits (contract 5.15). The sentences are the
 // documented end reasons of the implementation recipes, not guesses at free prose.
 const INCOMPLETE_TEXT = /approved tasks (?:are )?still incomplete|tasks? (?:are |is )?still (?:incomplete|unchecked)|incomplete_tasks/i
-const SPEC_INVALID_TEXT = /still fails OpenSpec validation|fails? the plan contract|OpenSpec could not archive change/i
+const SPEC_INVALID_TEXT = /Not implemented: the person declined this ticket|still fails OpenSpec validation|fails? the plan contract|OpenSpec could not archive change/i
 const HOST_BLOCKER_TEXT = /\b(?:Developer|Fixer|Unblock) reported a host blocker\b|^Host blocker \(/im
 const STALLED_TEXT = /Implementation attempt limit reached|Automatic correction made no candidate changes/i
 const TASK_LIMIT = 20, TASK_TEXT_LIMIT = 300
