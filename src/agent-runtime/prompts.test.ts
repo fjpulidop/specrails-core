@@ -25,6 +25,12 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('failed-check')
     expect(prompt.length).toBeLessThan(30_000)
   })
+  it('tells the developer to tag requirement tests, so the first review does not reject only for missing tags', () => {
+    // Delivered library and Java runs each spent a fixer round (~20% of the cost, ~40 s) adding `[spec:…]` tags.
+    const prompt = roleInstructions('developer', context, 'change')
+    expect(prompt).toContain('[spec:<capability>/<requirement-slug>]')
+    expect(prompt).toContain('// spec: <capability>/<requirement-slug>')
+  })
   it('never lets the reviewer reject for a host check the developer cannot add', () => {
     // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
     // listed "no host verification covers X" as an issue, the fixer had nothing to change.
