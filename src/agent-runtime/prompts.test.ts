@@ -44,6 +44,11 @@ describe('editable role definitions', () => {
     expect(reviewer).toContain('only governs documentation')
     expect(reviewer).toContain('never demand a test or a tag for it')
   })
+  it('tells the developer that a check starts and stops the services it needs, inside the change', () => {
+    const developer = roleInstructions('developer', context, 'change')
+    expect(developer).toContain('starts it itself on this run\'s ports and stops it when it ends')
+    expect(developer).toContain('never make a failing check pass by starting a service outside the change')
+  })
   it('tells the developer to serve and test on the leased $PORT, never a hard-coded port', () => {
     const developer = roleInstructions('developer', context, 'change')
     expect(developer).toContain('this run owns `$PORT`')
