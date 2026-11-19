@@ -16,11 +16,13 @@ const occupy = (index: number, owner: Omit<SlotOwner, 'since'>) => {
 
 describe('verificationSlotCount', () => {
   it('defaults to one turn, accepts a count, and turns off with 0 or off', () => {
-    expect(verificationSlotCount({})).toBe(1)
+    expect(verificationSlotCount({}, 2)).toBe(1)
+    expect(verificationSlotCount({}, 10)).toBe(2)
+    expect(verificationSlotCount({}, 64)).toBe(4)
     expect(verificationSlotCount({ SPECRAILS_VERIFY_SLOTS: '3' })).toBe(3)
     expect(verificationSlotCount({ SPECRAILS_VERIFY_SLOTS: '0' })).toBe(0)
     expect(verificationSlotCount({ SPECRAILS_VERIFY_SLOTS: 'off' })).toBe(0)
-    expect(verificationSlotCount({ SPECRAILS_VERIFY_SLOTS: 'many' })).toBe(1)
+    expect(verificationSlotCount({ SPECRAILS_VERIFY_SLOTS: 'many' }, 4)).toBe(1)
   })
 })
 
