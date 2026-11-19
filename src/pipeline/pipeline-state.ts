@@ -980,14 +980,18 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
  * `python3 -m pytest` resolves the project's own packages. An explicit
  * VIRTUAL_ENV from the command's overrides wins.
  */
+/** PATH list separator of the platform a command runs on (a `platform` argument may name another host's). */
+const pathDelimiter = (platform: NodeJS.Platform): string => platform === 'win32' ? ';' : ':'
+
 export function activateProjectVirtualEnv(env: NodeJS.ProcessEnv, cwd: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
   const venv = path.join(cwd, '.venv'), bin = path.join(venv, platform === 'win32' ? 'Scripts' : 'bin')
   if (env.VIRTUAL_ENV && env.VIRTUAL_ENV !== venv) return env
   if (!existsSync(path.join(bin, platform === 'win32' ? 'python.exe' : 'python'))) return env
   const key = platform === 'win32' ? Object.keys(env).find(name => name.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
   const current = env[key] ?? ''
-  if (current.split(path.delimiter)[0] === bin) return env
-  return { ...env, VIRTUAL_ENV: venv, [key]: current ? `${bin}${path.delimiter}${current}` : bin }
+  const delimiter = pathDelimiter(platform)
+  if (current.split(delimiter)[0] === bin) return env
+  return { ...env, VIRTUAL_ENV: venv, [key]: current ? `${bin}${delimiter}${current}` : bin }
 }
 
 /**
@@ -1021,7 +1025,7 @@ export function packageManagerFallback(command: string, cwd: string, env: NodeJS
   if (!['yarn', 'pnpm', 'bun'].includes(manager) || command !== manager) return null
   const pathKey = platform === 'win32' ? Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
   const names = platform === 'win32' ? [`${manager}.cmd`, `${manager}.exe`] : [manager]
-  for (const dir of (env[pathKey] ?? '').split(path.delimiter)) if (dir && names.some(name => existsSync(path.join(dir, name)))) return null
+  for (const dir of (env[pathKey] ?? '').split(pathDelimiter(platform))) if (dir && names.some(name => existsSync(path.join(dir, name)))) return null
   let pinned: string | undefined
   try { pinned = (JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as { packageManager?: unknown }).packageManager as string | undefined } catch { /* no manifest */ }
   const match = typeof pinned === 'string' ? /^(yarn|pnpm|bun)@([0-9][^+\s]*)/.exec(pinned.trim()) : null

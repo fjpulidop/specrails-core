@@ -893,6 +893,11 @@ it('runs a yarn, pnpm or bun the host lacks through npx at the pinned version', 
   expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toBeNull()
   expect(packageManagerFallback('npm', cwd, { PATH: bin }, 'darwin')).toBeNull()
   expect(packageManagerFallback('/opt/yarn', cwd, { PATH: '' }, 'darwin')).toBeNull()
+  // Windows: `Path` is ';'-separated and only the .cmd/.exe shim runs.
+  const winBin = path.join(cwd, 'win-bin'); mkdirSync(winBin); writeFileSync(path.join(winBin, 'yarn'), '')
+  expect(packageManagerFallback('yarn', cwd, { Path: `C:\\Windows;${winBin}` }, 'win32')).toEqual(['--yes', 'yarn@1.22.22'])
+  writeFileSync(path.join(winBin, 'yarn.cmd'), '')
+  expect(packageManagerFallback('yarn', cwd, { Path: `C:\\Windows;${winBin}` }, 'win32')).toBeNull()
   rmSync(cwd, { recursive: true, force: true })
 })
 
@@ -902,6 +907,10 @@ it('runs project commands with the project .venv activated', () => {
   mkdirSync(path.join(cwd, '.venv', 'bin'), { recursive: true }); writeFileSync(path.join(cwd, '.venv', 'bin', 'python'), '')
   expect(activateProjectVirtualEnv({ PATH: '/usr/bin' }, cwd, 'darwin')).toEqual({ PATH: `${path.join(cwd, '.venv', 'bin')}:/usr/bin`, VIRTUAL_ENV: path.join(cwd, '.venv') })
   expect(activateProjectVirtualEnv({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' }, cwd, 'darwin')).toEqual({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' })
+  // Windows: the venv's executables live in .venv\Scripts, PATH (spelled Path) is ';'-separated.
+  expect(activateProjectVirtualEnv({ Path: 'C:\\Windows' }, cwd, 'win32')).toEqual({ Path: 'C:\\Windows' })
+  mkdirSync(path.join(cwd, '.venv', 'Scripts'), { recursive: true }); writeFileSync(path.join(cwd, '.venv', 'Scripts', 'python.exe'), '')
+  expect(activateProjectVirtualEnv({ Path: 'C:\\Windows' }, cwd, 'win32')).toEqual({ Path: `${path.join(cwd, '.venv', 'Scripts')};C:\\Windows`, VIRTUAL_ENV: path.join(cwd, '.venv') })
   rmSync(cwd, { recursive: true, force: true })
 })
 

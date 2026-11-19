@@ -401,7 +401,7 @@ describe('drift-driven installs', () => {
   it('plans the runner install on drift and names the packages in the outcome detail', () => {
     const dir = stale()
     writeFileSync(path.join(dir, 'yarn.lock'), '')
-    const bin = mkdtempSync(path.join(tmpdir(), 'yarn-bin-')); writeFileSync(path.join(bin, 'yarn'), '')
+    const bin = mkdtempSync(path.join(tmpdir(), 'yarn-bin-')); writeFileSync(path.join(bin, process.platform === 'win32' ? 'yarn.cmd' : 'yarn'), '') // Windows runs the .cmd shim
     vi.stubEnv('PATH', bin)
     try {
       expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
