@@ -32,6 +32,7 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('The developer cannot add host checks')
     expect(prompt).toContain('Reject with `issues` only for what a change to the files can fix')
     expect(prompt).toContain('mark it `blocked` and name, in its evidence, the exact command the host would have to run')
+    expect(prompt).toContain('.specrails/browser-evidence/<capture>/')
   })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
