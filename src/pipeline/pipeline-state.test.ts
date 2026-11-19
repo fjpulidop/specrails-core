@@ -849,6 +849,8 @@ it('names a command that could not start', async () => {
   const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: path.join(os.tmpdir(), 'specrails-no-such-binary'), args: [] })) })
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
   expect(receipt.reason).toContain('could not start')
+  expect(receipt.reason).toContain('`specrails-no-such-binary` is not installed or not on PATH')
+  expect(receipt.reason).toMatch(/retry verification/)
 })
 
 it('keeps the generic reason for a command that failed on its own', async () => {

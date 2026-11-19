@@ -926,6 +926,18 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
  * than importing a helper absent from installed projects. Like runCommand, it
  * handles Windows shims; unlike a shell string it refuses ambiguous arguments.
  */
+/**
+ * The reason a verification command never started. A missing executable is the
+ * common case (a toolchain the repository needs is not installed), so it is
+ * named as such with what to do next instead of a bare `spawn x ENOENT`.
+ */
+export function describeStartFailure(command: string, error: Error & { code?: string }): string {
+  const name = path.basename(command)
+  if (error.code === 'ENOENT') return `Verification command could not start: \`${name}\` is not installed or not on PATH (${error.message}). Install it or change the project's verification command, then retry verification.`
+  if (error.code === 'EACCES') return `Verification command could not start: \`${name}\` is not executable (${error.message}). Fix its permissions, then retry verification.`
+  return `Verification command could not start: ${error.message}`
+}
+
 export function verificationInvocation(command: string, args: string[], cwd: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
   if (platform !== 'win32') return { command, args }
   // An explicit shell line (`cmd /d /s /c <line>`) is already cmd syntax. Node's
@@ -1053,7 +1065,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       child[stream]?.on('data', (chunk: Buffer) => receive(decoder.write(chunk)))
       child[stream]?.on('end', () => { receive(decoder.end()); if (liveLine) { try { log(redact(liveLine)) } catch { /* observer */ } } })
     }
-    child.on('error', (error) => { if (child.pid) output = (output + error.message).slice(-32_000); else { terminate(`Verification command could not start: ${error.message}`); finish(-1) } })
+    child.on('error', (error) => { if (child.pid) output = (output + error.message).slice(-32_000); else { terminate(describeStartFailure(command.command, error)); finish(-1) } })
     child.on('close', (code, killedBy) => {
       if (code === null && killedBy && !stopping && !done) terminate(`Verification command was killed by ${killedBy} from outside the runner (for example out of memory).`)
       finish(code ?? -1)
