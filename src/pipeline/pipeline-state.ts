@@ -1010,6 +1010,11 @@ export function runOnceArguments(command: string, args: readonly string[], cwd: 
   return []
 }
 
+/** Whether a command printed anything beyond a package manager's `> script` banner. */
+export function producedOwnOutput(output: string): boolean {
+  return stripVTControlCharacters(output).split(/\r?\n/).some(line => line.trim() !== '' && !/^\s*>\s/.test(line))
+}
+
 /** Prompts test runners and compilers print when they wait for file changes instead of exiting. */
 const WATCH_PROMPT = /Watch Usage|Press w to show more|Waiting for file changes|press h to show help, press q to quit|Watching for file changes|\[nodemon\] (?:clean exit - )?waiting for changes/i
 export function watchModeReason(command: { command: string; args: string[] }, prompt: string): string {
@@ -1126,7 +1131,12 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
       if (Date.now() - lastOutputAt < idleTimeoutMs) return
       outcome = 'timed-out'
-      stop(`Verification command produced no output for ${idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`} and was stopped: a test is probably hanging (infinite loop or an open handle).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`)
+      const silence = idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`
+      // Only a package manager's script banner ("> name", "> playwright test") means the tool
+      // itself never started working: that is a stuck tool or runtime, not a hanging test.
+      stop(producedOwnOutput(output)
+        ? `Verification command produced no output for ${silence} and was stopped: a test is probably hanging (infinite loop or an open handle).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`
+        : `Verification command \`${[command.command, ...command.args].join(' ')}\` printed nothing of its own for ${silence} and was stopped: the tool hung before running any test (for example a test runner version incompatible with Node ${process.versions.node}, or a prompt waiting for input).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`)
     }, Math.max(50, Math.min(5_000, Math.floor(idleTimeoutMs / 4))))
     if (signal?.aborted) abort()
   })

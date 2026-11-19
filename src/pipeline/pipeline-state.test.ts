@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -817,6 +817,17 @@ it('stops a verification command that goes silent (a hanging test) and names the
   } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
 })
 
+it('says the tool hung before running any test when it printed only the script banner', async () => {
+  initializePipeline(context, change)
+  process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
+  try {
+    const receipt = await verifyPipeline(context, request('process.stdout.write("\\n> e2e\\n> playwright test\\n\\n"); setInterval(() => {}, 1000)'), () => {})
+    expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
+    expect(receipt.reason).toContain('hung before running any test')
+    expect(receipt.reason).toContain(`Node ${process.versions.node}`)
+  } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
+})
+
 it('reports why a silent command was stopped in the live log and the receipt reason, without terminal escapes', async () => {
   initializePipeline(context, change)
   process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
@@ -865,6 +876,11 @@ it('runs a watch-mode test script once with the runner\'s own switch', () => {
   expect(runOnceArguments('npm', ['test', '--', '--ci'], cwd)).toEqual([])
   expect(runOnceArguments('node', ['test.js'], cwd)).toEqual([])
   rmSync(cwd, { recursive: true, force: true })
+})
+
+it('tells a tool that never started from a test that went silent', async () => {
+  expect(producedOwnOutput('\n> e2e\n> playwright test\n\n')).toBe(false)
+  expect(producedOwnOutput('\n> test\n> node --test\n✔ smoke\n')).toBe(true)
 })
 
 it('runs project commands with the project .venv activated', () => {
