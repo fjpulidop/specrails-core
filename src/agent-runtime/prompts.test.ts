@@ -64,6 +64,9 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('never ask for it to be reverted or deleted')
     // Packets quoted "Bash is disabled in this session, so I could not run git diff" to the person.
     expect(prompt).toContain('never mention missing shell access')
+    // Packets asked the person to run `git status` on a submodule and to confirm the untracked openspec/ directory.
+    expect(prompt).toContain('Never ask the person to run git because your tools are read-only.')
+    expect(prompt).toContain('the untracked `openspec/` change artifacts')
   })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
@@ -163,6 +166,8 @@ describe('editable role definitions', () => {
     // A machine-wide install (rustup target add ran during a wasm run) is the person's: a toolchain blocker instead.
     expect(developer).toContain('never install or change anything outside the workspace and temporary directories')
     expect(developer).toContain('`rustup target|toolchain|component add`')
+    // triage-rs: cargo rewrote Cargo.lock and the developer left "only src/lib.rs changes" unticked: a stall and a second attempt.
+    expect(developer).toContain('never revert them to satisfy a "only these files change" task, and never leave such a task unticked because of them')
     // The run checks UI behaviour itself with the host browser tool, and never ticks a person's check.
     expect(developer).toContain('use the host browser tool when `$SPECRAILS_BROWSE` is set')
     expect(developer).toContain('A `[human]` task is the person\'s check: never tick it.')
