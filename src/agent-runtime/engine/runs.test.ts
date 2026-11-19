@@ -548,6 +548,7 @@ it('questionOptions: an approval can be rejected with a reason and the definitio
   }, { delivery: { requiresVerified: false } })
   const paused = await createRun(f)
   const id = paused.state.pendingInterrupts[0].id
+  expect(paused.state.pendingInterrupts[0].value).toMatchObject({ kind: 'approval', rejectable: true })
   await expect(resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false } } })).rejects.toMatchObject({ code: 'invalid_resume' })
   const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false, reason: 'Wrong colours' } } })
   expect(resumed.state.status).toBe('failed')

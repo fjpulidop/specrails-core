@@ -240,6 +240,8 @@ export interface HumanInterrupt {
   recommended?: string
   endsRun?: string[]
   detail?: string
+  /** An approval this Core lets the person reject with a reason (`runtime resume --reject`). */
+  rejectable?: boolean
 }
 
 /**

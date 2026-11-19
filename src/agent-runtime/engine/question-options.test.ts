@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { JsonValue } from './contracts.js'
 import { answerText, boundedOptions, structuredQuestion } from './question-options.js'
 
 describe('structured questions (capability questionOptions)', () => {
@@ -17,7 +18,7 @@ describe('structured questions (capability questionOptions)', () => {
   })
 
   it('spells out the chosen option for the asker and keeps extra words', () => {
-    const request = { options: [{ id: 'red', label: 'Red', meaning: 'As the mock.' }, { id: 'blue', label: 'Blue' }] }
+    const request: JsonValue = { options: [{ id: 'red', label: 'Red', meaning: 'As the mock.' }, { id: 'blue', label: 'Blue' }] }
     expect(answerText({ answer: 'Red', optionId: 'red' }, request)).toBe('The person chose "Red" (As the mock.).')
     expect(answerText({ answer: 'but darker', optionId: 'red' }, request)).toBe('The person chose "Red" (As the mock.).\nTheir words: but darker')
     expect(answerText({ answer: 'Purple' }, request)).toBe('Purple')

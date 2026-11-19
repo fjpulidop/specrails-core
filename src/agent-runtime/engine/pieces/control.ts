@@ -42,7 +42,8 @@ export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
         const memo = bindings().memo(context)
         const bound = params.bindCandidate ? memo.get('approval-candidate') ?? bindings().executionSnapshot(context).candidate?.hash ?? null : undefined
         if (params.bindCandidate && memo.get('approval-candidate') === undefined) memo.set('approval-candidate', bound!)
-        const asked = kind === 'question' ? questionFields(params, context) : { prompt: text(params[field]) }
+        // questionOptions: an approval says it can be rejected with a reason (`--reject`); a gate cannot.
+        const asked = kind === 'question' ? questionFields(params, context) : { prompt: text(params[field]), ...(kind === 'approval' ? { rejectable: true } : {}) }
         const request = { kind, ...asked, nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId }
         const response = kind === 'approval' && params.enabled === false ? { approved: true } : context.interrupt(request)
         // A question's answer also enters the history, so a later turn's {{history.text}} sees it.

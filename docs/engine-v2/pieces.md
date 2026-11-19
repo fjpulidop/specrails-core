@@ -136,7 +136,7 @@ Writes the OpenSpec change for code that already exists (Intent mode, formerly F
 
 ### `approval`
 
-Pauses the run with a human interrupt `{ kind: 'approval', prompt: reason, nodePath, scopeId, attemptId }`. The process exits with code 2 and `runtime-result.status = 'paused'`; the attempt stays `paused` and is reused on resume. Resume with `runtime resume --approve <nodePath|interruptId>`. With capability `questionOptions` the person may reject instead: `runtime resume --reject <nodePath|interruptId> --reason <text>` answers `{ approved: false, reason }`, so the definition's negative edge (a condition on `$outputs.<id>.response.approved`) runs. A gate is never rejected.
+Pauses the run with a human interrupt `{ kind: 'approval', prompt: reason, nodePath, scopeId, attemptId }`. The process exits with code 2 and `runtime-result.status = 'paused'`; the attempt stays `paused` and is reused on resume. Resume with `runtime resume --approve <nodePath|interruptId>`. With capability `questionOptions` the person may reject instead: `runtime resume --reject <nodePath|interruptId> --reason <text>` answers `{ approved: false, reason }`, so the definition's negative edge (a condition on `$outputs.<id>.response.approved`) runs; such a Core marks every approval interrupt `rejectable: true`. A gate is never rejected.
 
 - Outcomes: `next`. Effect: read. Writes `$outputs[nodeId] = { response }`.
 
@@ -438,6 +438,12 @@ Exactly one of: `argv`, `commandLine`.
 | `text` | yes | string (1–32000 chars) |
 | `bindCandidate` | no | boolean |
 | `enabled` | no | boolean |
+| `asker` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
+| `why` | no | string (≤ 600 chars) |
+| `options` | no | array of object (≤ 6 items) |
+| `recommended` | no | string (≤ 40 chars) |
+| `endsRun` | no | array of string (≤ 40 chars) (≤ 6 items) |
+| `optionsFrom` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
 
 ### Descriptor: `gate`
 
