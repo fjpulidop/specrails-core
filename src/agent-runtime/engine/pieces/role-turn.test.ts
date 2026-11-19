@@ -179,6 +179,7 @@ describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
     expect(f.requests).toHaveLength(1)
     // The role sees the rule and the extra field; the host's own schema stays untouched.
     expect(f.requests[0].prompt).toContain('## A decision only the person can make')
+    expect(f.requests[0].prompt).toContain('Never write such a decision into `incomplete`')
     expect(JSON.stringify(f.requests[0].outputSchema)).toContain('decisionNeeded')
     expect(JSON.stringify(implementation)).not.toContain('decisionNeeded')
     const asked: unknown[] = []
