@@ -35,6 +35,8 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('.specrails/browser-evidence/<capture>/')
     // A Tauri run hit the correction limit: the reviewer kept asking to delete the Cargo.lock that `cargo test` regenerates.
     expect(prompt).toContain('never ask for it to be reverted or deleted')
+    // Packets quoted "Bash is disabled in this session, so I could not run git diff" to the person.
+    expect(prompt).toContain('never mention missing shell access')
   })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
