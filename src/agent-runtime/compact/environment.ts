@@ -9,7 +9,7 @@
 // installs once per ecosystem, and only then hands a real failure to the model.
 import type { SpawnSyncOptionsWithStringEncoding, SpawnSyncReturns } from 'node:child_process'
 import crossSpawn from 'cross-spawn'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import semver from 'semver'
@@ -248,6 +248,27 @@ function declaresPlaywright(root: string): boolean {
     return !!block && typeof block === 'object' && ['@playwright/test', 'playwright'].some(name => Object.hasOwn(block as object, name))
   })
 }
+/** Adds a pattern to the checkout's own `.git/info/exclude` (never committed); best effort. */
+function excludeLocally(root: string, pattern: string): void {
+  try {
+    const git = path.join(root, '.git')
+    let gitDir = git
+    if (existsSync(git) && !statSync(git).isDirectory()) {
+      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(git, 'utf8'))?.[1]?.trim()
+      if (!pointer) return
+      gitDir = path.resolve(root, pointer)
+      const common = path.join(gitDir, 'commondir')
+      if (existsSync(common)) gitDir = path.resolve(gitDir, readFileSync(common, 'utf8').trim())
+    }
+    if (!existsSync(gitDir)) return
+    const file = path.join(gitDir, 'info', 'exclude')
+    const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    if (current.split(/\r?\n/).includes(pattern)) return
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${pattern}\n`)
+  } catch { /* the delivery's own hygiene still refuses untracked environment output */ }
+}
+
 /** The installs a repository root needs, judged from its manifests and the absence of their install output. */
 export function plannedInstalls(root: string, failureOutput = ''): EnvironmentInstall[] {
   const plans: EnvironmentInstall[] = []
@@ -280,8 +301,16 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
       timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${browser ?? 'browsers'}` })
   }
   if ((has('requirements.txt') || has('pyproject.toml')) && !has('.venv') && !has('venv')) {
-    const python = process.platform === 'win32' ? 'python' : 'python3'
-    plans.push({ ecosystem: 'python', root, command: python, args: has('requirements.txt') ? ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] : ['-m', 'pip', 'install', '-q', '-e', '.'] })
+    // Never install into the system Python (PEP 668 refuses it on Homebrew/Debian, and it
+    // would leak packages across projects): create the project's own .venv, kept out of
+    // the delivery by the worktree's local exclude, and install into it. Verification
+    // commands run with that .venv activated (see activateProjectVirtualEnv).
+    const windows = process.platform === 'win32'
+    const python = windows ? 'python' : 'python3'
+    const venvPython = path.join(root, '.venv', windows ? 'Scripts' : 'bin', windows ? 'python.exe' : 'python')
+    excludeLocally(root, '/.venv/')
+    plans.push({ ecosystem: 'python', root, command: python, args: ['-m', 'venv', '.venv'], installs: 'a project virtual environment (.venv)' })
+    plans.push({ ecosystem: 'python', root, command: venvPython, args: has('requirements.txt') ? ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] : ['-m', 'pip', 'install', '-q', '-e', '.'] })
   }
   if (has('go.mod')) plans.push({ ecosystem: 'go', root, command: 'go', args: ['mod', 'download'] })
   if (has('Cargo.toml') && !has('target')) plans.push({ ecosystem: 'rust', root, command: 'cargo', args: ['fetch'] })

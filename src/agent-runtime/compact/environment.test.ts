@@ -69,7 +69,8 @@ describe('plannedInstalls', () => {
     expect(plannedInstalls(node)).toMatchObject([{ ecosystem: 'node', command: 'npm' }])
     expect(plannedInstalls(root({ 'package.json': '{}' }, ['node_modules']))).toEqual([])
     expect(plannedInstalls(root({ 'package.json': '{}', 'pnpm-lock.yaml': '' }))).toMatchObject([{ command: 'pnpm', args: ['install'] }])
-    expect(plannedInstalls(root({ 'requirements.txt': 'pytest\n' }))).toMatchObject([{ ecosystem: 'python', args: ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] }])
+    // Never the system Python: a project .venv, then an install into it.
+    expect(plannedInstalls(root({ 'requirements.txt': 'pytest\n' }))).toMatchObject([{ ecosystem: 'python', args: ['-m', 'venv', '.venv'] }, { ecosystem: 'python', command: expect.stringMatching(/\.venv[\\/](bin|Scripts)[\\/]python/), args: ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] }])
     expect(plannedInstalls(root({ 'go.mod': 'module x\n' }))).toMatchObject([{ ecosystem: 'go' }])
     expect(plannedInstalls(root({ 'Cargo.toml': '' }))).toMatchObject([{ ecosystem: 'rust' }])
     expect(plannedInstalls(root())).toEqual([])
@@ -512,5 +513,24 @@ describe('hostSpawn', () => {
       rmSync(dir, { recursive: true, force: true })
     }
     expect(ticks).toBeGreaterThanOrEqual(8)
+  })
+})
+
+describe('python environment preparation', () => {
+  it('keeps the project .venv out of the delivery through the checkout exclude, also in a linked worktree', () => {
+    const main = root({ 'requirements.txt': 'pytest\n' })
+    execFileSync('git', ['init', '-q'], { cwd: main })
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: main })
+    const linked = path.join(main, '..', path.basename(main) + '-wt')
+    execFileSync('git', ['worktree', 'add', '-q', linked], { cwd: main })
+    writeFileSync(path.join(linked, 'requirements.txt'), 'pytest\n')
+    plannedInstalls(linked)
+    plannedInstalls(linked)
+    const exclude = readFileSync(path.join(main, '.git', 'info', 'exclude'), 'utf8')
+    expect(exclude.split('\n').filter(line => line === '/.venv/')).toHaveLength(1)
+    mkdirSync(path.join(linked, '.venv'))
+    writeFileSync(path.join(linked, '.venv', 'pyvenv.cfg'), 'home = /usr/bin\n')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: linked, encoding: 'utf8' })).not.toContain('.venv')
+    rmSync(linked, { recursive: true, force: true })
   })
 })

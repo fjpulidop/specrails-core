@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -852,6 +852,15 @@ it('stops a command that entered watch mode at its prompt and says how to run it
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
   expect(receipt.reason).toContain('watch mode')
   expect(receipt.reason).toMatch(/--watchAll=false|vitest run/)
+})
+
+it('runs project commands with the project .venv activated', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'venv-'))
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin' }, cwd, 'darwin')).toEqual({ PATH: '/usr/bin' })
+  mkdirSync(path.join(cwd, '.venv', 'bin'), { recursive: true }); writeFileSync(path.join(cwd, '.venv', 'bin', 'python'), '')
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin' }, cwd, 'darwin')).toEqual({ PATH: `${path.join(cwd, '.venv', 'bin')}:/usr/bin`, VIRTUAL_ENV: path.join(cwd, '.venv') })
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' }, cwd, 'darwin')).toEqual({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' })
+  rmSync(cwd, { recursive: true, force: true })
 })
 
 it('names a command that could not start', async () => {

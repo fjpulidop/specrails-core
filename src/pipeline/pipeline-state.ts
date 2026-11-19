@@ -973,6 +973,23 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
     .replace(/https?:\/\/[^\s"'<>]+/gi, value => { try { const url = new URL(value); return url.origin + url.pathname } catch { return '[url]' } })
 }
 
+/**
+ * A project virtual environment at `<cwd>/.venv` (the one environment preparation
+ * creates instead of installing into the system Python) is active for the
+ * project's commands, exactly as `source .venv/bin/activate` would make it, so
+ * `python3 -m pytest` resolves the project's own packages. An explicit
+ * VIRTUAL_ENV from the command's overrides wins.
+ */
+export function activateProjectVirtualEnv(env: NodeJS.ProcessEnv, cwd: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  const venv = path.join(cwd, '.venv'), bin = path.join(venv, platform === 'win32' ? 'Scripts' : 'bin')
+  if (env.VIRTUAL_ENV && env.VIRTUAL_ENV !== venv) return env
+  if (!existsSync(path.join(bin, platform === 'win32' ? 'python.exe' : 'python'))) return env
+  const key = platform === 'win32' ? Object.keys(env).find(name => name.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
+  const current = env[key] ?? ''
+  if (current.split(path.delimiter)[0] === bin) return env
+  return { ...env, VIRTUAL_ENV: venv, [key]: current ? `${bin}${path.delimiter}${current}` : bin }
+}
+
 /** Prompts test runners and compilers print when they wait for file changes instead of exiting. */
 const WATCH_PROMPT = /Watch Usage|Press w to show more|Waiting for file changes|press h to show help, press q to quit|Watching for file changes|\[nodemon\] (?:clean exit - )?waiting for changes/i
 export function watchModeReason(command: { command: string; args: string[] }, prompt: string): string {
@@ -993,7 +1010,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const keys = verificationEnvironmentKeys(process.env, overrideKeys)
   const hash = environmentHash(keys)
   const overridesHash = digest(canonical(overrides))
-  const env = verificationEnvironment(projectCommandEnvironment(process.env), overrides)
+  const env = activateProjectVirtualEnv(verificationEnvironment(projectCommandEnvironment(process.env), overrides), command.cwd)
   const configuredTimeoutMs = command.timeoutMs ?? DEFAULT_VERIFICATION_TIMEOUT_MS
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
   // A test that never returns (a `while` that cannot exit) keeps a runner at
