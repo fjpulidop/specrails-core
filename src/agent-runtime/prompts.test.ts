@@ -46,6 +46,12 @@ describe('editable role definitions', () => {
       expect(prompt).toContain('`--eval` of state the code exposes for tests')
     }
   })
+  it('makes the architect check every task against the non-goals before returning', () => {
+    // A WebGL plan required touch controls in a task while design.md listed them as a non-goal: the developer stopped.
+    const prompt = roleInstructions('architect', context, 'change')
+    expect(prompt).toContain('compare every task with the Non-Goals: no task may require what a non-goal excludes')
+    expect(prompt).toContain('that conflict is a question for the person with confidence `low`')
+  })
   it('never lets the reviewer reject for a host check the developer cannot add', () => {
     // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
     // listed "no host verification covers X" as an issue, the fixer had nothing to change.

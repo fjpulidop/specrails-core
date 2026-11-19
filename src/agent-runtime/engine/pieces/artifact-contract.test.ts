@@ -3,7 +3,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { JsonValue, PieceExecutionContext } from '../contracts.js'
-import { artifactContractPiece, humanCheckText, taskCheckboxes, tasksEditingFrozenArtifacts, tasksNeedingManualCheck } from './artifact-contract.js'
+import { artifactContractPiece, declaredNonGoals, humanCheckText, taskCheckboxes, tasksContradictingNonGoals, tasksEditingFrozenArtifacts, tasksNeedingManualCheck } from './artifact-contract.js'
 import type { PieceDependencies } from './ports.js'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })))
@@ -137,4 +137,50 @@ it('names the approved artifact that changed and tells the implementer to restor
   expect(note).toContain('Only task checkboxes may change')
   writeFileSync(path.join(f.directory, 'tasks.md'), '- [x] 1. Implement requirement\n')
   expect(await f.run('check', true)).toMatchObject({ outcome: 'pass' })
+})
+
+describe('tasks that contradict a declared non-goal', () => {
+  const design = ['# Design', '', '## Goals', '- Keyboard controls for the orbit camera', '', '## Non-Goals', '', '- Mobile touch controls: keyboard and mouse only.', '- Multiplayer', '- WebGL2-only shaders (keep WebGL1)', '- Sound', '', '## Blast radius', '- src/game.js'].join('\n')
+  it('reads the bullets of Non-Goals and Out of scope sections only', () => {
+    expect(declaredNonGoals(design)).toEqual(['Mobile touch controls: keyboard and mouse only.', 'Multiplayer', 'WebGL2-only shaders (keep WebGL1)', 'Sound'])
+    expect(declaredNonGoals('## Out of scope\n1. Payments\n### Detail\n- Still out of scope\n## Next\n- not a goal')).toEqual(['Payments', 'Still out of scope'])
+    expect(declaredNonGoals('## Goals\n- Everything')).toEqual([])
+  })
+  it('names a task that requires a non-goal (the WebGL plan), and not one that excludes or merely cites it', () => {
+    const tasks = [
+      { text: '3.2 Add touch handlers in src/input.js so mobile players can orbit the camera with touch controls' },
+      { text: '4.1 Add multiplayer lobby sync over WebSocket' },
+      { text: '1.1 Add keyboard controls in src/input.js' },
+      { text: '2.1 Keep input keyboard-only, without touch controls on mobile' },
+      { text: "2.2 Don't add multiplayer hooks" },
+      { text: '2.3 Document in README that mobile touch controls are a non-goal' },
+      { text: '5.1 Play a sound when the score changes' },
+      { text: '5.2 [human] Check touch controls on a real phone', human: true },
+    ]
+    expect(tasksContradictingNonGoals(tasks, declaredNonGoals(design))).toEqual([
+      { task: tasks[0].text, nonGoal: 'Mobile touch controls: keyboard and mouse only.' },
+      { task: tasks[1].text, nonGoal: 'Multiplayer' },
+      { task: tasks[6].text, nonGoal: 'Sound' },
+    ])
+  })
+  it('ignores short single-word non-goals and long explanatory ones', () => {
+    expect(tasksContradictingNonGoals([{ text: 'Add an API route' }], ['API'])).toEqual([])
+    expect(tasksContradictingNonGoals([{ text: 'Refactor the renderer cache store layer module' }], ['Refactor renderer cache store layer module internals beyond'])).toEqual([])
+  })
+  it('refuses to freeze such a plan once, telling the architect how to resolve it, then freezes a plan it keeps', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.directory, 'design.md'), design)
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [ ] 1.1 Add keyboard controls\n- [ ] 3.2 Add mobile touch controls to the orbit camera\n')
+    const first = await f.run('freeze')
+    expect(first).toMatchObject({ outcome: 'fail', output: { reason: 'tasks_contradict_non_goals', tasks: ['3.2 Add mobile touch controls to the orbit camera'], nonGoals: ['Mobile touch controls: keyboard and mouse only.'] } })
+    expect(first.history?.[0].text).toContain('return confidence low with one question for the person')
+    // The architect reviewed it and kept the plan: the overlap was only apparent, so the plan freezes.
+    expect(await f.run('freeze')).toMatchObject({ outcome: 'pass' })
+  })
+  it('freezes a consistent plan on the first attempt', async () => {
+    const f = fixture()
+    writeFileSync(path.join(f.directory, 'design.md'), design)
+    writeFileSync(path.join(f.directory, 'tasks.md'), '- [ ] 1.1 Add keyboard controls in src/input.js\n')
+    expect(await f.run('freeze')).toMatchObject({ outcome: 'pass' })
+  })
 })

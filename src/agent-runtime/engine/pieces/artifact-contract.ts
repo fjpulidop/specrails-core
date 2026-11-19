@@ -64,6 +64,60 @@ export function tasksEditingFrozenArtifacts(tasks: ReadonlyArray<{ text: string 
   return tasks.filter(task => asks(edit, task.text) || asks(record, task.text)).map(task => task.text)
 }
 
+/** The bullet lines of every `Non-Goals` / `Out of scope` section of a Markdown artifact, in order. */
+export function declaredNonGoals(markdown: string): string[] {
+  const goals: string[] = []
+  let level = 0
+  for (const line of markdown.split(/\r?\n/)) {
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (heading) {
+      if (/^(?:non[\s-]?goals?|out[\s-]of[\s-]scope)\b/i.test(heading[2].replace(/[*_`]/g, '').trim())) level = heading[1].length
+      else if (level && heading[1].length <= level) level = 0
+      continue
+    }
+    const bullet = level ? /^\s*(?:[-*+]|\d+[.)])\s+(.+)$/.exec(line) : null
+    if (bullet) goals.push(bullet[1].trim())
+  }
+  return goals
+}
+
+const FILLER = new Set(['the', 'and', 'for', 'with', 'any', 'all', 'this', 'that', 'these', 'those', 'its', 'our', 'into', 'from', 'than', 'via', 'per', 'other', 'more', 'new', 'change', 'changes', 'feature', 'features', 'support', 'supports', 'supporting', 'add', 'adds', 'adding', 'implement', 'implementing', 'implementation', 'provide', 'providing', 'handle', 'handling', 'will', 'won', 'not', 'never', 'yet', 'now', 'only', 'also', 'here', 'there', 'scope', 'goal', 'goals', 'ticket', 'task', 'tasks', 'work', 'make', 'making', 'use', 'using', 'out', 'beyond', 'part', 'does', 'doesn', 'don', 'should', 'must', 'can', 'are', 'was', 'were', 'has', 'have', 'been', 'being', 'such', 'like', 'etc', 'e.g'])
+const stem = (word: string): string => word.length > 5 && word.endsWith('ing') ? word.slice(0, -3) : word.length > 4 && word.endsWith('ed') ? word.slice(0, -2)
+  : word.length > 4 && word.endsWith('es') && !word.endsWith('ses') ? word.slice(0, -2) : word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word
+const words = (text: string): string[] => (text.toLowerCase().replace(/[`*_]/g, '').replace(/’/g, "'").match(/[a-z0-9][a-z0-9+#.'-]*[a-z0-9+#]|[a-z0-9]/g) ?? []).map(word => word.replace(/\.+$/, ''))
+/** The subject of a non-goal bullet ("Touch controls on mobile: keyboard only" → touch, control, mobile): the words before its explanation. */
+const nonGoalSubject = (goal: string): string[] => [...new Set(words(goal.split(/:|\s[—–-]\s|\(|;|\.\s/)[0] ?? '').filter(word => word.length >= 3 && !FILLER.has(word)).map(stem))]
+
+/**
+ * Tasks that seem to require what the design declares a non-goal (a self-contradicting plan): the
+ * developer could only stop and ask. A match needs every word of a short non-goal subject (two of
+ * three, or all but one of four or five) in the task, outside a negated clause ("without touch
+ * controls") and in a task that does not itself cite the non-goals. Deliberately conservative:
+ * the freeze raises it once per plan, and an architect who keeps the plan after reviewing it passes.
+ */
+export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; human?: boolean }>, nonGoals: readonly string[]): Array<{ task: string; nonGoal: string }> {
+  const negated = /(?:\b(?:no|not|never|nor|without|avoid|avoiding|exclud(?:e|es|ing)|except|instead of)|n't)\s+(?:\S+\s+){0,4}$/i
+  const found: Array<{ task: string; nonGoal: string }> = []
+  for (const goal of nonGoals) {
+    const subject = nonGoalSubject(goal)
+    if (!subject.length || subject.length > 5 || (subject.length === 1 && subject[0].length < 5)) continue
+    for (const task of tasks) {
+      if (task.human || /non[\s-]?goal|out[\s-]of[\s-]scope/i.test(task.text) || found.some(item => item.task === task.text)) continue
+      const clauses = task.text.split(/[.;!?]\s/)
+      const hit = clauses.some(clause => {
+        const raw = words(clause), tokens = raw.map(stem)
+        const matched = subject.filter(word => tokens.includes(word))
+        const enough = subject.length <= 2 ? matched.length === subject.length : matched.length >= Math.max(2, subject.length - 1)
+        if (!enough) return false
+        const first = Math.min(...matched.map(word => tokens.indexOf(word)))
+        return !negated.test(raw.slice(0, first).join(' ') + ' ')
+      })
+      if (hit) found.push({ task: task.text, nonGoal: goal })
+    }
+  }
+  return found
+}
+
 /** A reusable artifact invariant, with no agent roles, phase order or successor policy. */
 export function artifactContractPiece(bindings: PieceDependencyProvider): Piece {
   return {
@@ -109,6 +163,17 @@ export function artifactContractPiece(bindings: PieceDependencyProvider): Piece 
           history: [historyEntry(context, [`The plan for change ${change} cannot freeze: these tasks edit proposal.md, design.md or the change's delta specs, which freeze before implementation (the implementer may only tick tasks):`,
             ...frozenEdits.slice(0, 20).map(task => '- ' + task.slice(0, 300)),
             'Rewrite each as work on repository files. Do not ask anyone to record evidence in frozen artifacts: host verification and the review keep the evidence.'].join('\n'))] }
+        // A plan whose task requires a declared non-goal stops the developer at a decision only the
+        // person could make. Raised once per contract: a plan the architect keeps after review freezes.
+        const reviewedKey = text(params.contractId) + ':non-goals-reviewed'
+        const contradictions = store.get(reviewedKey) === true ? [] : tasksContradictingNonGoals(tasks, [...declaredNonGoals(files['design.md']), ...declaredNonGoals(files['proposal.md'])]).slice(0, TASK_LIST_LIMIT)
+        if (contradictions.length) {
+          store.set(reviewedKey, true)
+          return { outcome: 'fail', output: { reason: 'tasks_contradict_non_goals', tasks: bounded(contradictions.map(item => item.task)), nonGoals: bounded([...new Set(contradictions.map(item => item.nonGoal))]) },
+            history: [historyEntry(context, [`The plan for change ${change} contradicts itself: these tasks seem to require what proposal.md or design.md declares a non-goal, so the developer could only stop and ask:`,
+              ...contradictions.map(item => `- task ${JSON.stringify(item.task.slice(0, TASK_TEXT_LIMIT))} vs non-goal ${JSON.stringify(item.nonGoal.slice(0, TASK_TEXT_LIMIT))}`),
+              'Resolve each before the plan freezes: when the ticket needs it, take it out of the non-goals; when it is out of scope, drop or rewrite the task; when the ticket itself asks for both, return confidence low with one question for the person. Core raises this once: if the overlap is only apparent, keep the plan as it is and it freezes.'].join('\n'))] }
+        }
         const manualChecks = tasksNeedingManualCheck(tasks)
         if (manualChecks.length) return { outcome: 'fail', output: { reason: 'tasks_need_manual_check', tasks: bounded(manualChecks) },
           history: [historyEntry(context, [`The plan for change ${change} cannot freeze: these tasks ask for a manual or visual check without saying how the run performs it:`,
