@@ -177,6 +177,16 @@ export function hostPrecondition(output: string): HostPrecondition | undefined {
   // PEP 668: Homebrew/Debian Pythons refuse system-wide installs; the fix is a project venv, not a code edit.
   if (/error: externally-managed-environment\b/.test(text)) return { kind: 'toolchain', reason: 'the system Python refuses package installs (PEP 668 externally managed environment), so verification needs a project virtual environment',
     requiredAction: 'Add setup commands that create a project virtual environment with the Python version the project targets (for example `python3.11 -m venv .venv` and `.venv/bin/pip install -r requirements.txt`), run the checks with `.venv/bin/python`, then retry the run.' }
+  // A toolchain component the machine lacks: installing it changes every project on the
+  // machine, so it is the person's step, never a correction round's.
+  const rustTarget = /the `([\w.-]+)` target may not be installed/.exec(text)
+  if (rustTarget) return { kind: 'toolchain', reason: `the Rust target ${rustTarget[1]} is not installed on this machine`,
+    requiredAction: `Install the target once with \`rustup target add ${rustTarget[1]}\` (it is shared by every project on this machine), then retry the run.` }
+  const rustComponent = /'([\w-]+)' is not installed for the toolchain '([^']+)'|error: component '([\w-]+)' (?:for target '[^']+' )?is unavailable/.exec(text)
+  if (rustComponent) { const component = (rustComponent[1] ?? rustComponent[3])!.replace(/^cargo-/, ''); return { kind: 'toolchain', reason: `the Rust component ${component} is not installed for the active toolchain`,
+    requiredAction: `Install it once with \`rustup component add ${component}\`, then retry the run.` } }
+  if (/SDK location not found\. Define (?:a valid SDK location|location) with an ANDROID_HOME/.test(text)) return { kind: 'toolchain', reason: 'the Android SDK is not installed or not configured (no ANDROID_HOME or sdk.dir) for verification commands',
+    requiredAction: 'Install the Android SDK (for example with Android Studio) and make ANDROID_HOME available to Specrails in the login shell profile it loads, then retry the run.' }
   if (/(?:permission denied|operation not permitted)[^\n]{0,240}docker\.sock|Cannot connect to the Docker daemon at\b/i.test(text)) return { kind: 'environment', reason: 'the Docker daemon is not reachable from the verification process',
     requiredAction: 'Start Docker (Docker Desktop or the daemon) and make its socket available to the user Specrails runs as, then retry the run.' }
   if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return { kind: 'credential', reason: 'git credentials needed to fetch a dependency are not available to verification commands',

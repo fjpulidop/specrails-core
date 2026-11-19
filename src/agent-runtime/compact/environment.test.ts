@@ -32,6 +32,12 @@ describe('hostPreconditionFailure', () => {
   it('names a system Python that refuses installs (PEP 668) and an unreachable Docker daemon', async () => {
     const { hostPrecondition } = await import('./environment.js')
     expect(hostPrecondition('error: externally-managed-environment\n\n× This environment is externally managed')).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('venv') })
+    // wasm-rs: `cargo build --target wasm32-unknown-unknown` without the target ran three corrections and ended tests_failed.
+    expect(hostPrecondition("error[E0463]: can't find crate for `std`\n  |\n  = note: the `wasm32-unknown-unknown` target may not be installed\n  = help: consider downloading the target with `rustup target add wasm32-unknown-unknown`"))
+      .toEqual({ kind: 'toolchain', reason: 'the Rust target wasm32-unknown-unknown is not installed on this machine', requiredAction: expect.stringContaining('`rustup target add wasm32-unknown-unknown`') })
+    expect(hostPrecondition("error: 'cargo-clippy' is not installed for the toolchain 'stable-aarch64-apple-darwin'")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('`rustup component add clippy`') })
+    expect(hostPrecondition("* What went wrong:\nSDK location not found. Define a valid SDK location with an ANDROID_HOME environment variable or by setting the sdk.dir path in your project's local properties file")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('ANDROID_HOME') })
+    expect(hostPrecondition('error[E0308]: mismatched types')).toBeUndefined()
     expect(hostPrecondition('permission denied while trying to connect to the Docker daemon socket at unix:///Users/x/.docker/run/docker.sock: connect: operation not permitted')).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Start Docker') })
     expect(hostPrecondition('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?')).toMatchObject({ kind: 'environment' })
     expect(hostPrecondition('AssertionError: expected 3 to equal 4')).toBeUndefined()
