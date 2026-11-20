@@ -11,6 +11,7 @@ import { appendRunEvent, RunDatabase } from './database.js'
 import { leaseLive, leaseOwner, leaseOwnerAlive, RunLease } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
+import { recordedRouteOverrides, ROUTE_OVERRIDE_EVENT } from '../route-overrides.js'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close() })
@@ -521,6 +522,27 @@ describe('row history of a long run', () => {
     expect(early.run_id).toBe('fork')
     expect(JSON.parse(String(early.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
     fork.checkIntegrity()
+  })
+
+  it('forks a deduplicated history with its route overrides: the fork admits the same routes', async () => {
+    const { db, dir } = await bigFixture()
+    // A large override (over the dedupe threshold) is still an event row of its own, never a reference.
+    const override = { schemaVersion: 1 as const, requestId: 'desktop-switch:run:1', reason: 'provider-limit', fromProvider: 'codex',
+      routes: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`role-${i}`, { provider: 'claude', model: 'sonnet', effort: 'medium' }])) }
+    events(db, 10)
+    db.transaction('event', () => { appendRunEvent(db, 'run', ROUTE_OVERRIDE_EVENT, override) })
+    events(db, 10)
+    expect(String(db.sqlite.prepare('SELECT payload_json FROM events WHERE type=?').get(ROUTE_OVERRIDE_EVENT)!.payload_json).length).toBeGreaterThan(1024)
+    const fork = await RunDatabase.open(path.join(dir, 'fork-routes', 'run.sqlite'), { create: true }); cleanup.push(async () => fork.close())
+    db.forkAt(fork, { revision: db.revision - 3, runId: 'fork' })
+    expect(recordedRouteOverrides(fork)).toEqual([override])
+    expect(JSON.parse(String(fork.sqlite.prepare('SELECT request_json FROM runs').get()!.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    // A cut before the override neither carries it nor misreads the deduplicated run row.
+    const early = await RunDatabase.open(path.join(dir, 'fork-early', 'run.sqlite'), { create: true }); cleanup.push(async () => early.close())
+    db.forkAt(early, { revision: 5, runId: 'early' })
+    expect(recordedRouteOverrides(early)).toEqual([])
+    expect(JSON.parse(String(early.sqlite.prepare('SELECT definition_json FROM runs').get()!.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    fork.checkIntegrity(); early.checkIntegrity()
   })
 
   it('keeps writing full rows into a schema 2 database (an older Core may still open it) until it is upgraded', async () => {
