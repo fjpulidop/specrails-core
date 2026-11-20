@@ -62,7 +62,11 @@ export function structuredQuestion(input: { text: string; asker?: unknown; why?:
   const ids = new Set(options.map(option => option.id))
   const recommended = typeof input.recommended === 'string' ? resolveOptionId(options, input.recommended) : undefined
   const endsRun = Array.isArray(input.endsRun) ? [...new Set(input.endsRun.map(value => typeof value === 'string' ? resolveOptionId(options, value) : undefined).filter((id): id is string => !!id && ids.has(id)))] : []
-  const why = clip(input.why, 600), asker = clip(input.asker, 64), detail = typeof input.detail === 'string' && input.detail.trim() ? input.detail.trim().slice(0, 2000) : undefined
+  let why = clip(input.why, 600)
+  const asker = clip(input.asker, 64), detail = typeof input.detail === 'string' && input.detail.trim() ? input.detail.trim().slice(0, 2000) : undefined
+  // A planner that blocks with only its reason (an empty `question`, bench5 codex) still asks
+  // something readable: the reason becomes the question instead of an empty card.
+  if (!input.text.trim() && why) { input = { ...input, text: why }; why = undefined }
   const lines = options.map(option => `- ${option.label}${option.meaning ? `: ${option.meaning}` : ''}${option.id === recommended ? ' (recommended)' : ''}`)
   const prompt = [input.text, ...(why ? ['', why] : []), ...(lines.length ? ['', 'Options:', ...lines] : [])].join('\n')
   return { prompt, ...(options.length || why || asker || detail ? { text: input.text } : {}), ...(asker ? { asker } : {}), ...(why ? { why } : {}),

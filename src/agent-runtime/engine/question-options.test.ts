@@ -17,6 +17,14 @@ describe('structured questions (capability questionOptions)', () => {
       options: [{ id: 'red', label: 'Red', meaning: 'As the mock.' }, { id: 'blue', label: 'Blue', meaning: '' }], recommended: 'red', endsRun: ['blue'], detail: 'npm i -g x' })
   })
 
+  it('asks the reason when the planner left the question empty (bench5 codex), never an empty card', () => {
+    const asked = structuredQuestion({ text: '  ', asker: 'architect', why: 'The export checkout is not in this run; include it or stop here?' })
+    expect(asked).toMatchObject({ text: 'The export checkout is not in this run; include it or stop here?', asker: 'architect' })
+    expect(asked).not.toHaveProperty('why')
+    expect(asked.prompt).toBe('The export checkout is not in this run; include it or stop here?')
+    expect(structuredQuestion({ text: 'Q?', why: 'Because.' })).toMatchObject({ text: 'Q?', why: 'Because.' })
+  })
+
   it('spells out the chosen option for the asker and keeps extra words', () => {
     const request: JsonValue = { options: [{ id: 'red', label: 'Red', meaning: 'As the mock.' }, { id: 'blue', label: 'Blue' }] }
     expect(answerText({ answer: 'Red', optionId: 'red' }, request)).toBe('The person chose "Red" (As the mock.).')
