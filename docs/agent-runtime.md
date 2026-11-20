@@ -172,6 +172,7 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a s
 | `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
 | `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
 | `forkIdempotency: 1` | `runtime fork --request-id` retries an interrupted fork safely (see [recovery](engine-v2/recovery.md)) |
+| `forkRouteOverrides: 1` | `runtime fork --route-overrides <file>` starts the next attempt of a settled run with roles moved to another provider (see [route overrides](#route-overrides)) |
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
@@ -476,6 +477,18 @@ specrails-core runtime resume --context <json> --route-overrides moves.json
 - Invocations keep the provider and model they ran on, so spend stays attributed per provider.
 - The same `requestId` with the same body applies once (a repeated resume is idempotent); a different body under that id is `control_conflict`. The flag cannot be combined with `--answer`, `--approve`, `--reject`, `--option`, `--host-result`, `--invalidate` or `--interrupt-id`; `--recover` is allowed. A finished run refuses it; an engine 1 run answers `engine_unsupported`.
 - A fork inherits the overrides recorded before its cut.
+
+A run that already settled (it failed on the limit, or stopped) is never resumed: its next attempt is a fork. With `forkRouteOverrides: 1` (`agentRuntime.forkRouteOverrides`, schema 5.17, additive) the fork itself carries the move:
+
+```sh
+specrails-core runtime fork --context <json> --from fixer --run-id <newRunId> --request-id <id> --route-overrides moves.json
+```
+
+- The request is the same file as on resume. Core applies the overrides inherited before the cut and then this one to the frozen configuration and admits the result as a new run would (known role, configured provider, confirmed effort) before it publishes anything; a refused request leaves no fork behind.
+- The accepted request is the new run's own `routes_overridden` event, so every later resume of the fork (the host's, a restart's, the one after a later limit) replays it, and a fork of the fork inherits it. The source run, its ledger and its frozen request are untouched.
+- The `runtime-forked` result echoes the accepted request as `routesOverridden`, so the host can record it without resuming first.
+- The override is part of the fork's request identity: a retry with the same `--request-id` and the same file returns the published child; other routes under that id are `run_exists`.
+- The flag cannot be combined with `--answer`, `--approve`, `--reject`, `--option`, `--host-result`, `--invalidate`, `--interrupt-id` or `--recover`, which belong to `runtime resume`.
 
 ## Human checks
 

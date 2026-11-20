@@ -104,8 +104,13 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   const cutOptions = () => ({ ...(flags['scope-id'] === undefined ? {} : { scopeId: required(flags, 'scope-id') }),
     ...(flags.visit === undefined ? {} : { visit: Number(required(flags, 'visit')) }) })
   if (command === 'fork') {
+    // forkRouteOverrides: the new run starts with roles moved to another provider (a continuation after a usage limit).
+    const routeOverride = flags['route-overrides'] === undefined ? undefined : readRouteOverrideFile(required(flags, 'route-overrides'))
+    if (routeOverride && ['answer', 'approve', 'reject', 'option', 'host-result', 'invalidate', 'interrupt-id', 'recover'].some(key => flags[key] !== undefined)) {
+      throw new EngineError('invalid_arguments', '--route-overrides on a fork only moves roles; answers, approvals, host results, recovery and invalidation belong to runtime resume')
+    }
     const fork = await forkRun(directory(flags), { fromNodePath: required(flags, 'from'), runId: required(flags, 'run-id'), ...cutOptions(),
-      ...(flags['request-id'] === undefined ? {} : { requestId: required(flags, 'request-id') }),
+      ...(flags['request-id'] === undefined ? {} : { requestId: required(flags, 'request-id') }), ...(routeOverride ? { routeOverride } : {}),
       ...(flags.state === undefined ? {} : { state: read(required(flags, 'state')) as ForkRunOptions['state'] }) })
     await freezeRunRequest(fork.directory)
     emit(fork)

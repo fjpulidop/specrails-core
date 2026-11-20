@@ -403,6 +403,21 @@
       "compatibility": "additive: an older Core never advertises the capability and rejects nothing it did not accept before; hosts gate on capabilities.routeOverrides === 1",
       "documentation": "docs/agent-runtime.md#route-overrides"
     },
+    "forkRouteOverrides": {
+      "version": 1,
+      "capability": "forkRouteOverrides",
+      "cli": "specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--request-id <id>] [--scope-id <scope>] [--visit <number>] [--state <json>] --route-overrides <file>; not combinable with --answer, --approve, --reject, --option, --host-result, --invalidate, --interrupt-id or --recover",
+      "request": "the routeOverrides request file (schemaVersion 1)",
+      "semantics": "The next attempt of a settled (failed or stopped) run starts with the named roles moved. Core applies the overrides inherited before the cut and then this request to the frozen configuration and admits the result like a new run (known role, configured provider, confirmed effort) before publishing; a refused request publishes no fork. The accepted request is the fork's own routes_overridden ledger event, replayed by every later admission of the fork and inherited by its forks. The source run and its frozen request are untouched.",
+      "result": "runtime-forked carries routesOverridden (the accepted request) when the fork moved roles",
+      "idempotency": "the override is part of the fork request digest: the same --request-id with the same file returns the published child; other routes under that id are run_exists",
+      "errors": [
+        "invalid_route_override (malformed request, unknown role)",
+        "invalid_arguments (combined with a resume-only control)"
+      ],
+      "compatibility": "additive: hosts gate on capabilities.forkRouteOverrides === 1; without it a host can still resume the published fork with --route-overrides (routeOverrides: 1)",
+      "documentation": "docs/agent-runtime.md#route-overrides"
+    },
     "machineInstalls": {
       "version": 1,
       "capability": "machineInstalls",

@@ -73,6 +73,18 @@ describe('Desktop integration contract', () => {
     expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.questionOptions).toBe(1)
   })
 
+  it('documents fork route overrides as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.schemaVersion).toBe('5.17')
+    expect(contract.agentRuntime.forkRouteOverrides).toMatchObject({ version: 1, capability: 'forkRouteOverrides' })
+    expect(contract.agentRuntime.forkRouteOverrides.cli).toContain('runtime fork')
+    expect(contract.agentRuntime.forkRouteOverrides.cli).toContain('--route-overrides')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    const capabilities = (messages[0] as { capabilities: Record<string, unknown> }).capabilities
+    expect(capabilities.forkRouteOverrides).toBe(1)
+    expect(capabilities.routeOverrides).toBe(1)
+  })
+
   it('covers every machine operation exactly once and classifies presentation separately', () => {
     expect(contract.agentRuntime.cliPresentationOperations).toEqual(['help'])
     expect(contract.agentRuntime.cliOperations).toEqual(RUNTIME_CLI_OPERATIONS.filter(operation => operation !== 'help'))

@@ -11,6 +11,8 @@ import { configuredRoles } from './preflight.js'
 import { validateWorkflowDefinition } from './definition-validator.js'
 import { validationPieceRegistry } from './pieces/index.js'
 import { createRun, definitionRunDirectory, resumeRun } from './runs.js'
+import { forkRun } from './fork.js'
+import { existsSync } from 'node:fs'
 import { definitionFailure, runDefinitionCommand } from './cli.js'
 import { applyRouteOverrides, parseRouteOverrideRequest, type RouteOverrideRequest } from './route-overrides.js'
 
@@ -135,4 +137,62 @@ it('the CLI reads --route-overrides and refuses combining it with an answer', as
   await expect(runDefinitionCommand({ context: contextFile, 'route-overrides': file, answer: 'yes' }, ['resume'], () => {})).rejects.toMatchObject({ code: 'invalid_arguments' })
   writeFileSync(file, '{"schemaVersion":1}')
   await expect(runDefinitionCommand({ context: contextFile, 'route-overrides': file }, ['resume'], () => {})).rejects.toMatchObject({ code: 'invalid_route_override' })
+})
+
+it('a fork carries route overrides: the new run starts on the moved routes and records them as its own event', async () => {
+  const f = fixture()
+  // The source stopped at the limit and is never re-opened: the next attempt forks from the refused step.
+  await createRun({ ...f, registry: f.registry() })
+  const sourceRequest = readFileSync(path.join(path.dirname(f.directory), 'agent-runtime-request.json'), 'utf8')
+  const fork = await forkRun(f.directory, { fromNodePath: 'build', runId: 'switching-next', requestId: 'continue-1', routeOverride: move(), registry: f.registry() })
+  expect(fork.routesOverridden).toMatchObject({ requestId: 'switch-1', routes: { builder: { provider: 'beta' } } })
+  // A lost acknowledgement retried with the same request returns the same child.
+  expect(await forkRun(f.directory, { fromNodePath: 'build', runId: 'switching-next', requestId: 'continue-1', routeOverride: move(), registry: f.registry() })).toEqual(fork)
+  // The same request id with other routes is another request: refused, not adopted.
+  await expect(forkRun(f.directory, { fromNodePath: 'build', runId: 'switching-next', requestId: 'continue-1', routeOverride: move({ routes: { builder: { provider: 'gamma' } } }), registry: f.registry() })).rejects.toMatchObject({ code: 'run_exists' })
+  f.calls.length = 0
+  // A plain resume of the fork (no override on it) runs the moved roles on beta.
+  expect((await resumeRun(fork.directory, { registry: f.registry() })).state.status).toBe('succeeded')
+  expect(f.calls.map(call => [call.request.role, call.provider, call.request.model ?? null, call.request.maxTurns ?? null])).toEqual([
+    ['builder', 'beta', 'b-small', 7], ['observer', 'beta', 'b-small', null], ['auditor', 'gamma', null, null]])
+  const database = await RunDatabase.open(path.join(fork.directory, 'run.sqlite'), { readOnly: true })
+  try {
+    const events = database.sqlite.prepare("SELECT payload_json, inherited FROM events WHERE type='routes_overridden'").all()
+    expect(events).toHaveLength(1)
+    expect(Number(events[0].inherited)).toBe(0)
+  } finally { database.close() }
+  // The source run and its frozen request are untouched.
+  expect(readFileSync(path.join(path.dirname(f.directory), 'agent-runtime-request.json'), 'utf8')).toBe(sourceRequest)
+  const source = await RunDatabase.open(path.join(f.directory, 'run.sqlite'), { readOnly: true })
+  try { expect(source.sqlite.prepare("SELECT COUNT(*) count FROM events WHERE type='routes_overridden'").get()!.count).toBe(0) } finally { source.close() }
+})
+
+it('a fork refuses an override a resume would refuse, and publishes nothing', async () => {
+  const f = fixture()
+  await createRun({ ...f, registry: f.registry() })
+  const child = (runId: string) => path.join(path.dirname(path.dirname(f.directory)), runId)
+  await expect(forkRun(f.directory, { fromNodePath: 'build', runId: 'next-ghost', routeOverride: move({ routes: { ghost: { provider: 'beta' } } }), registry: f.registry() })).rejects.toMatchObject({ code: 'invalid_route_override' })
+  await expect(forkRun(f.directory, { fromNodePath: 'build', runId: 'next-effort', routeOverride: move({ routes: { builder: { provider: 'beta', effort: 'high' } } }), registry: f.registry() })).rejects.toThrow(/effort 'high' is not confirmed/)
+  await expect(forkRun(f.directory, { fromNodePath: 'build', runId: 'next-nowhere', routeOverride: move({ routes: { builder: { provider: 'nowhere' } } }), registry: f.registry() })).rejects.toThrow(/nowhere/)
+  for (const runId of ['next-ghost', 'next-effort', 'next-nowhere']) expect(existsSync(path.join(child(runId), 'agent-workflow', 'run.sqlite'))).toBe(false)
+  // The CLI reads the file and refuses combining it with resume-only controls.
+  const file = path.join(path.dirname(f.directory), 'moves.json'), contextFile = path.join(path.dirname(f.directory), 'context.json')
+  writeFileSync(file, JSON.stringify(move())); writeFileSync(contextFile, JSON.stringify(f.context))
+  await expect(runDefinitionCommand({ context: contextFile, from: 'build', 'run-id': 'next-cli', 'route-overrides': file, answer: 'yes' }, ['fork'], () => {})).rejects.toMatchObject({ code: 'invalid_arguments' })
+  writeFileSync(file, '{"schemaVersion":1}')
+  await expect(runDefinitionCommand({ context: contextFile, from: 'build', 'run-id': 'next-cli', 'route-overrides': file }, ['fork'], () => {})).rejects.toMatchObject({ code: 'invalid_route_override' })
+})
+
+it('a fork of a moved run inherits its routes and adds its own on top', async () => {
+  const f = fixture()
+  await createRun({ ...f, registry: f.registry() })
+  const first = await forkRun(f.directory, { fromNodePath: 'build', runId: 'first-move', routeOverride: move(), registry: f.registry() })
+  // The moved builder refuses again (beta is limited too): the next attempt moves it to gamma, the observer stays on beta.
+  const limitedBeta = () => f.registry().register('beta', { capabilities: async () => ({ transport: 'beta', continuation: 'unsupported' as const, effortSupport: 'supported' as const, supportedEfforts: ['low'], observedModel: false, observedEffort: false }),
+    async execute(request) { f.calls.push({ provider: 'beta', request }); if (request.role === 'builder') throw new AgentExecutionError('beta usage limit reached.', 'provider_limit'); return { text: 'ok', usage } } })
+  expect((await resumeRun(first.directory, { registry: limitedBeta() })).state.status).toBe('interrupted')
+  const second = await forkRun(first.directory, { fromNodePath: 'build', runId: 'second-move', routeOverride: move({ requestId: 'switch-2', fromProvider: 'beta', routes: { builder: { provider: 'gamma' } } }), registry: f.registry() })
+  f.calls.length = 0
+  expect((await resumeRun(second.directory, { registry: f.registry() })).state.status).toBe('succeeded')
+  expect(f.calls.map(call => [call.request.role, call.provider])).toEqual([['builder', 'gamma'], ['observer', 'beta'], ['auditor', 'gamma']])
 })

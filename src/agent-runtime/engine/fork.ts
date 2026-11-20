@@ -9,7 +9,7 @@ import { artifactPath } from '../openspec.js'
 import { coreRuntimeIdentity } from '../core-host.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.js'
 import { canonicalJson, contentDigest } from './canonical-json.js'
-import { RunDatabase, type DatabaseRow } from './checkpoint/database.js'
+import { appendRunEvent, RunDatabase, type DatabaseRow } from './checkpoint/database.js'
 import { RunLedger } from './checkpoint/ledger.js'
 import { leaseOwner, RunLease } from './checkpoint/lease.js'
 import { EngineError, type ExecutionScope, type JsonObject, type JsonValue, type PieceResult } from './contracts.js'
@@ -21,6 +21,8 @@ import { forkImplementationJournal, projectImplementationFork, type Implementati
 import type { ImplementationBinding } from './pieces/implementation-binding.js'
 import { ensurePrivateDirectory } from './storage/private-path.js'
 import { ForkAllocation } from './storage/fork-allocation.js'
+import { preflightDefinition } from './preflight.js'
+import { applyRouteOverrides, recordedRouteOverrides, routeOverrideRecorded, ROUTE_OVERRIDE_EVENT, type RouteOverrideRequest } from './route-overrides.js'
 
 export interface ForkRunOptions {
   fromNodePath: string
@@ -30,6 +32,13 @@ export interface ForkRunOptions {
   /** Retry a published child after a lost host acknowledgement. */
   requestId?: string
   state?: { $vars?: Record<string, JsonValue>; $outputs?: Record<string, JsonValue> }
+  /**
+   * Capability `forkRouteOverrides`: the new run starts with these roles moved to another
+   * provider/model/effort (for example after the source run failed on a usage limit). Validated
+   * like a resume's override and recorded as the new run's own `routes_overridden` event, so
+   * every later admission of the fork replays it.
+   */
+  routeOverride?: RouteOverrideRequest
   registry?: ExecutorRegistry
 }
 
@@ -88,7 +97,10 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     const context = validatePipelineContext({ ...request.context, runId: options.runId })
     if (context.runId === request.context.runId) throw new EngineError('invalid_arguments', 'Fork requires a different run ID')
     targetRoot = pipelineStateDirectory(context)
-    const requestDigest = contentDigest({ sourceRunId: request.context.runId, runId: options.runId, fromNodePath: options.fromNodePath, scopeId: options.scopeId ?? null, visit: options.visit ?? null, state })
+    // A route override is part of the request identity (a retry with other routes is another request);
+    // a plain fork keeps the digest it always had.
+    const requestDigest = contentDigest({ sourceRunId: request.context.runId, runId: options.runId, fromNodePath: options.fromNodePath, scopeId: options.scopeId ?? null, visit: options.visit ?? null, state,
+      ...(options.routeOverride ? { routeOverride: options.routeOverride } : {}) })
     allocation = await ForkAllocation.open(targetRoot, context.artifactRoot, options.requestId, requestDigest)
     if (existsSync(path.join(targetRoot, 'agent-workflow/run.sqlite'))) {
       if (!options.requestId) throw new EngineError('run_exists', 'Fork refuses to replace an existing run directory')
@@ -97,7 +109,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
         const row = publishedChild.get('piece_state', { run_id: context.runId, scope_id: 'root', node_path: '', key: 'control:fork-receipt' })
         const receipt = row ? JSON.parse(String(row.value_json)) : null
         if (!receipt || receipt.requestId !== options.requestId || receipt.requestDigest !== requestDigest || receipt.result?.runId !== context.runId || receipt.result?.forkOf !== request.context.runId) throw new EngineError('run_exists', 'Fork request does not match the published child')
-        return receipt.result as { type: 'runtime-forked'; runId: string; forkOf: string; fromNodePath: string; scopeId: string; visit: number; directory: string; context: PipelineContext; revision: number }
+        return receipt.result as { type: 'runtime-forked'; runId: string; forkOf: string; fromNodePath: string; scopeId: string; visit: number; directory: string; context: PipelineContext; revision: number; routesOverridden?: RouteOverrideRequest }
       } finally { publishedChild.close() }
     }
     allocation.recover(); ownsAllocation = true
@@ -116,6 +128,12 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     source.forkAt(destination, { revision: cut, runId: context.runId })
     const change = request.change ? request.change.slice(0, 42).replace(/-+$/, '') + '-fork-' + contentDigest(context.runId).slice(0, 12) : undefined
     const forkRequest = { ...request, context, ...(change ? { change } : {}) }
+    // forkRouteOverrides: the overrides inherited before the cut, then this request's, validated
+    // like an admission of the new run (configured provider, confirmed effort) before anything is published.
+    const inherited = recordedRouteOverrides(destination)
+    const routeOverride = options.routeOverride && !routeOverrideRecorded(inherited, options.routeOverride) ? options.routeOverride : undefined
+    const effectiveConfig = routeOverride ? applyRouteOverrides(request.config, [...inherited, routeOverride]) : request.config
+    if (routeOverride) await preflightDefinition({ ...forkRequest, config: effectiveConfig, definition, registry: options.registry })
     const sourceBindings = destination.sqlite.prepare("SELECT * FROM piece_state WHERE key='binding:implementation'").all()
     const genericChange = !!change && sourceBindings.length === 0 && definition.journal === 'ledger-only'
     if (genericChange) copyActiveChange(context, request.change!, change!, allocation)
@@ -148,6 +166,8 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       destination!.put('runs', { ...ledger!.run(), request_json: canonicalJson(forkRequest), status: 'running', completion_json: null,
         ...(Object.keys(state).length || restored.length || genericChange ? { verified_json: null } : {}) })
       for (const binding of restored) destination!.put('piece_state', { ...binding.row, value_json: canonicalJson(binding.target) })
+      // The new run's own record of the moved routes: replayed by its every later admission (and inherited by its forks).
+      if (routeOverride) appendRunEvent(destination!, context.runId, ROUTE_OVERRIDE_EVENT, JSON.parse(JSON.stringify(routeOverride)) as JsonValue)
       destination!.put('piece_state', { run_id: context.runId, scope_id: 'root', node_path: '', key: 'lineage:fork', value_json: canonicalJson({
         sourceRunId: request.context.runId, sourceContext: request.context, sourceBindings: sourceBindings.map(row => JSON.parse(String(row.value_json))) }), updated_at: new Date().toISOString() })
       // Fork explicitly requests a new execution of the uncommitted cut. Reads and
@@ -155,7 +175,7 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
       // was one. Repository-writing child tasks still require explicit recovery.
       for (const attempt of destination!.sqlite.prepare("SELECT a.* FROM attempts a JOIN visits v ON a.visit_id=v.visit_id WHERE a.status IN ('running','interrupted') AND (v.effect='read' OR v.kind IN ('component','map','implementation'))").all()) destination!.put('attempts', { ...attempt, recovery_authorized: 1 })
     })
-    const admitted = { request: forkRequest, definition, roles: configuredRoles(request.config), budget: ledgerBudgetFromRow(ledger), registry: options.registry ?? createExecutorRegistry(request.config) }
+    const admitted = { request: forkRequest, definition, roles: configuredRoles(effectiveConfig), budget: ledgerBudgetFromRow(ledger), registry: options.registry ?? createExecutorRegistry(effectiveConfig) }
     runtime = await composeDefinitionRuntime(destination, ledger, admitted, new EngineEventStream(cursor => ledger!.events(cursor), () => {}), new AbortController().signal)
     const heads = new Map<string, CheckpointTuple>()
     for await (const tuple of runtime.saver.list({ configurable: { thread_id: sourceRun.checkpoint_thread_id } })) {
@@ -187,7 +207,8 @@ export async function forkRun(directory: string, options: ForkRunOptions) {
     }
     destination.checkIntegrity()
     const result = { type: 'runtime-forked' as const, runId: context.runId, forkOf: request.context.runId, fromNodePath: options.fromNodePath,
-      scopeId: String(from.scope_id), visit: Number(from.local_visit), directory: finalDirectory, context, revision: 0 }
+      scopeId: String(from.scope_id), visit: Number(from.local_visit), directory: finalDirectory, context, revision: 0,
+      ...(options.routeOverride ? { routesOverridden: options.routeOverride } : {}) }
     destination.transaction('fork-control-receipt', () => {
       lease.assert(token)
       result.revision = destination!.transactionRevision
