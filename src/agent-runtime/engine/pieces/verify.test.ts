@@ -167,7 +167,7 @@ describe('engine v2 environment repair', () => {
     // only the wall-clock limit.
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 }]
     const result = await f.run({ commands: 'configured', hostBlockers: true })
-    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: 'A verification command failed: Verification command timed out' } })
+    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: expect.stringMatching(/^A verification command failed: Verification command timed out: `.+` was still running when it reached its 1 s limit/) } })
   })
 
   it('keeps the execution-error code for a command stopped by anything other than a limit', async () => {

@@ -1060,6 +1060,20 @@ export function watchModeReason(command: { command: string; args: string[] }, pr
 
 /** Silence a verification command may keep before it counts as hung (env `SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, default 5 min). */
 function verificationIdleTimeoutMs(): number { const raw = Number(process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS); return Number.isFinite(raw) && raw >= 100 ? raw : 5 * 60_000 }
+const minutes = (ms: number): string => ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.max(1, Math.round(ms / 1000))} s`
+/**
+ * Why a verification command was stopped at its wall-clock limit. It names the command, the
+ * limit and where the limit came from, because a suite slower than its limit fails the same way
+ * every time it runs again: the person raises the command's `timeoutMs` or speeds the suite up.
+ * Starts with "Verification command timed out" (the failure classifier's key). Pure.
+ */
+export function timeLimitReason(command: { command: string; args: string[] }, appliedMs: number, configuredMs: number, lastOutputLine = ''): string {
+  const shown = `\`${[command.command, ...command.args].join(' ')}\``
+  const last = lastOutputLine.trim() ? ` Last output: ${lastOutputLine.trim().slice(0, 300)}` : ''
+  if (appliedMs < configuredMs) return `Verification command timed out: ${shown} was still running when the run's remaining time budget (${minutes(appliedMs)}) ran out; its own limit is ${minutes(configuredMs)}.${last}`
+  return `Verification command timed out: ${shown} was still running when it reached its ${minutes(configuredMs)} limit and was stopped. Running it again will stop the same way: if the suite is just slow, give this verification command a longer timeout (timeoutMs) in the project's verification settings, or make the suite faster.${last}`
+}
+
 /** Structured shell execution with the same scope, environment and tree-kill rules, without a receipt or journal. */
 export async function executeVerificationCommand(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; idleTimeoutMs?: number } = {}): Promise<CommandReceipt> {
   return executeCheck(validateCommand(validatePipelineContext(contextInput), raw), log, signal, options.deadline, undefined, options.idleTimeoutMs)
@@ -1167,7 +1181,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       finish(code ?? -1)
     })
     signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(() => { outcome = 'timed-out'; stop('Verification command timed out') }, appliedTimeoutMs)
+    timer = setTimeout(() => { outcome = 'timed-out'; stop(timeLimitReason(command, appliedTimeoutMs, configuredTimeoutMs, lastOutputLine)) }, appliedTimeoutMs)
     if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
       if (Date.now() - lastOutputAt < idleTimeoutMs) return
       outcome = 'timed-out'
