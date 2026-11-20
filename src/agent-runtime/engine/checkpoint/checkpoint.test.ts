@@ -454,6 +454,34 @@ describe('durable checkpoint and ledger boundary', () => {
   })
 })
 
+describe('a lease that expired while its process was frozen', () => {
+  // Soak 2: a Core child stopped 3 minutes (SIGSTOP; a laptop sleep freezes it the same way) failed
+  // its 160-task run with lease_lost at the first heartbeat after SIGCONT, although no one took over.
+  it('is renewed and keeps fencing when nobody replaced it', async () => {
+    let now = Date.now()
+    const { db, lease, ledger, token } = await fixture({ now: () => now })
+    now += 180_000
+    const renewed = lease.renew(token)
+    expect(renewed).toMatchObject({ owner: token.owner, epoch: token.epoch })
+    expect(renewed.expiresAt).toBe(now + 60_000)
+    expect(() => lease.assert(token)).not.toThrow()
+    expect(() => ledger.enter(admission('after-wake'))).not.toThrow()
+    // Renewed: another executor cannot take it over.
+    expect(() => lease.acquire('second-owner')).toThrow(/Another executor holds this run lease/)
+    db.close()
+  })
+  it('is lost when another executor took the run over during the freeze', async () => {
+    let now = Date.now()
+    const { db, lease, token } = await fixture({ now: () => now })
+    now += 180_000
+    const takeover = lease.acquire('second-owner')
+    expect(takeover.epoch).toBe(token.epoch + 1)
+    expect(() => lease.renew(token)).toThrow('expired or was replaced')
+    expect(() => lease.assert(token)).toThrow('expired or was replaced')
+    db.close()
+  })
+})
+
 describe('a lease whose owner process died on this machine', () => {
   // A Desktop restart SIGKILLs its Core children; their unexpired leases made every Resume wait up to a minute.
   const dead = (pid: number) => { const error = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' }); if (pid > 0) throw error }

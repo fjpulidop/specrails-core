@@ -59,9 +59,17 @@ export class RunLease {
     })
   }
 
+  /**
+   * The token still fences the run while the lease row names it (same owner and epoch). An
+   * expiry alone does not end it: the expiry only lets ANOTHER executor take the run over, and
+   * a takeover writes a new owner and epoch in the same transaction that would otherwise renew
+   * this one. A process frozen past the expiry (a laptop that slept, SIGSTOP, a debugger) that
+   * nobody replaced resumes its run: it used to fail `lease_lost` at its first heartbeat after
+   * waking, although nothing else had run (a 3-minute SIGSTOP failed a 160-task run after an hour).
+   */
   assert(token: ExecutionLease): void {
     const current = this.current()
-    if (token.runId !== this.runId || !current || current.owner !== token.owner || current.epoch !== token.epoch || current.expiresAt <= this.now()) {
+    if (token.runId !== this.runId || !current || current.owner !== token.owner || current.epoch !== token.epoch) {
       throw new EngineError('lease_lost', 'Execution lease expired or was replaced; late effects cannot commit')
     }
   }
