@@ -142,6 +142,36 @@ describe('role-turn fixer stance', () => {
   })
 })
 
+describe("role-turn: the person's earlier answers (bench5)", () => {
+  const asked = (question: string, answer: string, ordinal: number) => ({ id: 'a:' + ordinal, transition: ordinal, attempt: 1, ordinal, nodePath: 'architect', value: { answer }, asked: { question, answer } })
+
+  it('gives a later reviewer the answers as authoritative, so it never rejects a change that followed them', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [asked('Should total() stay numeric?', 'The person chose "Keep total() numeric, add formatter".', 1)]
+    await f.run({ roleId: 'analyst', prompt: 'Review the change' })
+    const prompt = f.requests[0].prompt
+    expect(prompt).toContain("## The person's answers in this run")
+    expect(prompt).toContain('Asked: "Should total() stay numeric?"')
+    expect(prompt).toContain('The person answered: "The person chose \\"Keep total() numeric, add formatter\\"."')
+    expect(prompt).toContain('acceptedBy: "user"')
+  })
+
+  it('tells a later writer (the fixer) never to ask the same question again', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [asked('Q?', 'A', 1)]
+    await f.run({ roleId: 'writer', prompt: 'Fix', stance: 'fixer' })
+    expect(f.requests[0].prompt).toContain('never ask it again')
+    expect(f.requests[0].prompt).toContain('the answer wins')
+  })
+
+  it('adds nothing without answered questions (an install answer carries no question)', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [{ id: 'i', transition: 1, attempt: 1, ordinal: 100, nodePath: 'developer', value: 'installed' }]
+    await f.run({ roleId: 'analyst', prompt: 'Review' })
+    expect(f.requests[0].prompt).not.toContain("The person's answers")
+  })
+})
+
 describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
   it('fails the turn with code openspec_workflow_omitted after one corrective turn, never as an unknown invalid reply', async () => {
     const f = fixture()

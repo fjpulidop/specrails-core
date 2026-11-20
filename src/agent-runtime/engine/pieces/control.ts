@@ -3,7 +3,7 @@ import { parseExpression } from '../expressions.js'
 import type { PieceDependencyProvider } from './ports.js'
 import { boundedBlocker } from '../../verification-repair.js'
 import { answerText, structuredQuestion } from '../question-options.js'
-import { answerEntry, historyEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
+import { answerEntry, boundedText, historyEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
 
 /** A host blocker committed by `verify` (`output.blocker`) or by a correction role's structured JSON (`output.structured.blocker`). */
 function committedBlocker(output: JsonValue | undefined): HostBlocker | undefined {
@@ -48,11 +48,17 @@ export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
         const response = kind === 'approval' && params.enabled === false ? { approved: true } : context.interrupt(request)
         // A question's answer also enters the history, so a later turn's {{history.text}} sees it.
         return { outcome: 'next', output: { response, ...(params.bindCandidate ? { candidateHash: bound! } : {}) },
-          ...(kind === 'question' ? { answers: [answerEntry(context, response)], history: [historyEntry(context, `Human question: ${text(params.text)}\nHuman answer:\n${chosenAnswer(response, request as unknown as JsonValue)}`)] } : {}) }
+          ...(kind === 'question' ? questionRecord(context, text(params.text), chosenAnswer(response, request as unknown as JsonValue), response) : {}) }
       },
     })
   }
   return pieces
+}
+
+/** A question's answer for `$answers` (with what was asked, for later role turns) and for the history. */
+function questionRecord(context: PieceExecutionContext, question: string, answer: string, response: JsonValue) {
+  return { answers: [answerEntry(context, response, 0, { question: boundedText(question, 4000), answer: boundedText(answer, 4000) })],
+    history: [historyEntry(context, `Human question: ${question}\nHuman answer:\n${answer}`)] }
 }
 
 /** The recorded answer: unchanged JSON for a free answer, the chosen option spelled out (questionOptions) otherwise. */

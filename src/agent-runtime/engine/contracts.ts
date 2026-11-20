@@ -145,6 +145,8 @@ export interface EngineAnswer {
   ordinal: number
   nodePath: string
   value: JsonValue
+  /** A question the person answered (a question node or a role decision): what was asked and the answer as the asker reads it. Later role turns are given these. */
+  asked?: { question: string; answer: string }
 }
 
 export interface BranchResult {

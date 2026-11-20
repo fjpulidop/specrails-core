@@ -43,6 +43,30 @@ export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   }
 }
 
+/** Answers one prompt carries (newest win) and their bounded size. */
+const PERSON_ANSWERS_MAX = 6
+const PERSON_ANSWER_CHARS = 1500
+
+/**
+ * The person's answers to this run's earlier questions, for every later role turn. Without them a
+ * reviewer judged the change against the frozen ticket text, rejected a developer that followed the
+ * person's answer ("I cannot verify that answer outside design.md"), and the fixer asked the person
+ * the same question again (bench5 decision-dev). Empty when nobody has answered anything.
+ */
+export function personAnswersNote(answers: readonly EngineAnswer[], access: 'read' | 'write'): string {
+  // `$answers`, not `$history`: the history is bounded to a few KB and an early planner answer is gone by review time.
+  const answered = answers.flatMap(entry => entry.asked ? [entry.asked] : []).slice(-PERSON_ANSWERS_MAX)
+  if (!answered.length) return ''
+  return [
+    '', '', "## The person's answers in this run",
+    'The person already answered these questions. Each answer is authoritative for this change, even where the ticket or a frozen artifact says otherwise, and settles that question: never ask it again.',
+    access === 'read'
+      ? 'A criterion an answer changes or withdraws is judged by the answer: it is a material `exception` the person accepted (`acceptedBy: "user"`, `approvalEvidence` quoting the answer), never a reason to reject the change.'
+      : 'Follow these answers; where one contradicts a task, the answer wins and your summary says how you applied it.',
+    ...answered.map((entry, index) => `${index + 1}. Asked: ${JSON.stringify(boundedText(entry.question, PERSON_ANSWER_CHARS))}\n   The person answered: ${JSON.stringify(boundedText(entry.answer, PERSON_ANSWER_CHARS))}`),
+  ].join('\n')
+}
+
 /** One role-turn invocation; `key` keeps the memo rounds of nested askers apart. */
 type RoleTurn = (params: JsonObject, key: string) => Promise<PieceResult>
 function structuredBlocker(output: JsonObject): JsonObject | undefined {
@@ -157,7 +181,7 @@ async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject,
     const request = { kind: 'question' as const, ...asked, prompt: boundedText(asked.prompt, 6000), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId }
     const response = context.interrupt(request)
     const answer = boundedText(answerText(response, json(request)), 4000)
-    answers.push(answerEntry(context, response, round))
+    answers.push(answerEntry(context, response, round, { question: boundedText(question, 4000), answer }))
     decisions.push({ question: boundedText(question, 4000), answer })
     history.push(`Human decision requested: ${question}\nHuman answer:\n${answer}`)
     answered += `\n\n## The person's decision ${round + 1}\nYou asked: ${JSON.stringify(boundedText(question, 4000))}\nThe person answered: ${JSON.stringify(answer)}\nThis answer is authoritative for this change and settles that conflict, even where a frozen artifact says otherwise: continue the remaining work accordingly (the artifacts stay as they are; only tick tasks) and say in your summary how you applied it.`
@@ -216,7 +240,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   const priorNote = !previous && descriptor.access === 'read' && saved?.session && typeof saved.notes?.value.text === 'string'
     ? saved.notes.value.text.slice(0, 4000) : ''
-  const task = text(params.prompt) + environment + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
+  const task = text(params.prompt) + personAnswersNote(context.state.$answers, descriptor.access) + environment + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
   const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
   const adopted = adoptedVerificationOutputs(context.state.$outputs)
   const derivation = roleId === 'reviewer' ? committedDerivation(context.state.$outputs) : undefined

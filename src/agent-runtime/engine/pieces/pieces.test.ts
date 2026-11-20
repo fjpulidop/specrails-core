@@ -94,6 +94,11 @@ describe('reviewed piece catalog and control', () => {
     expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'only app' }, nodePath: 'node' }],
       history: [{ nodePath: 'node', text: 'Human question: Choose a scope\nHuman answer:\n{"answer":"only app"}' }] })
   })
+  it('records what was asked with the answer, so later role turns are given it (bench5)', async () => {
+    const f = fixture()
+    f.execution.interrupt = () => ({ answer: 'only app' })
+    expect(await f.run('question', { text: 'Choose a scope' })).toMatchObject({ answers: [{ asked: { question: 'Choose a scope', answer: '{"answer":"only app"}' } }] })
+  })
   it('questionOptions: a question offers the choices an earlier node proposed and records the chosen one', async () => {
     const f = fixture()
     f.execution.state.$outputs.architect = { structured: { question: 'Which store?', questionOptions: [{ id: 'sqlite', label: 'SQLite', meaning: 'One local file.' }, { id: 'none', label: 'Not here', meaning: 'Stop: wrong repository.' }], recommendedOption: 'sqlite', questionWhy: 'The ticket names no store.' } }
