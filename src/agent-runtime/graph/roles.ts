@@ -1,4 +1,5 @@
 import { resolveRoleDescriptor } from '../config.js'
+import { isProviderLimitError } from '../failure-classification.js'
 import { isBuiltinRole } from '../executor-types.js'
 import { repositoryContextSnapshot, renderRepositoryContext } from '../repository-context.js'
 import { readRoleState, writeRoleState, type RoleStatePort } from '../role-state.js'
@@ -231,6 +232,9 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
 
     } catch (error) {
       if (deps.propagateInterruptions && error instanceof AgentExecutionError && ['aborted', 'timeout', 'idle_timeout', 'lease_lost'].includes(error.code)) throw error
+      // A usage-limit refusal stops an independent step without a completion, so the host can
+      // wait for the reset (or move the role to another provider) and resume this same step.
+      if (deps.propagateInterruptions && error instanceof AgentExecutionError && isProviderLimitError(error.code, error.message)) throw error
       return { ok: false, error: error instanceof Error ? error.message : String(error), ...(error instanceof AgentExecutionError ? { code: error.code } : {}) }
     }
   }

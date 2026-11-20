@@ -109,7 +109,10 @@ export class RunLedger {
       }
       this.checkAdmission({ pause: true })
       if (prior?.status === 'running' && prior.lease_epoch === this.token.epoch && !prior.inherited) throw new EngineError('attempt_running', 'The task is already executing')
-      if (prior && (prior.status === 'running' || prior.status === 'interrupted') && input.effect === 'write' && !prior.recovery_authorized) throw new EngineError('recover_required', 'An interrupted write requires explicit recovery')
+      // A write the provider refused on its usage limit stopped on the provider's word, not on an
+      // unknown crash: the host's resume after the limit pause (same or another provider) re-runs it.
+      const refusedAtLimit = prior?.status === 'interrupted' && isProviderLimitError(String(prior.error_code ?? ''), String(prior.error_message ?? ''))
+      if (prior && (prior.status === 'running' || prior.status === 'interrupted') && input.effect === 'write' && !prior.recovery_authorized && !refusedAtLimit) throw new EngineError('recover_required', 'An interrupted write requires explicit recovery')
       if (prior?.status === 'running') {
         this.db.put('attempts', { ...prior, status: 'interrupted', ended_at: at, error_code: 'owner_lost', error_message: 'Previous executor did not settle this attempt' })
         this.event(JSON.parse(String(prior.frame_json)) as AttemptFrame, 'step_interrupted', { code: 'owner_lost' })

@@ -283,7 +283,9 @@ export function classifyFailure(signals: FailureSignals): FailureClassification 
     // provider's own wording (`resetAt`) is read from the rest of the message.
     const resetsAt = TYPED_RESET.exec(haystack)?.[1]
     const resetAt = providerLimitReset(haystack.replace(TYPED_RESET, 'usage limit reached'))
-    return done('provider_limit', { ...(resetAt ? { resetAt } : {}), ...(resetsAt && Number.isFinite(Date.parse(resetsAt)) ? { resetsAt: new Date(resetsAt).toISOString() } : {}) }, true)
+    // Core's own typed refusal starts with the CLI that refused ("codex usage limit reached ...").
+    const refusing = /\b(claude|codex|gemini|kimi) usage limit reached/i.exec(haystack)?.[1]?.toLowerCase()
+    return done('provider_limit', { ...(refusing ? { provider: refusing } : {}), ...(resetAt ? { resetAt } : {}), ...(resetsAt && Number.isFinite(Date.parse(resetsAt)) ? { resetsAt: new Date(resetsAt).toISOString() } : {}) }, true)
   }
   if (isProviderUnavailableError(code, message) || isProviderUnavailableError(step.code, step.message)) {
     return done('provider_unavailable', { detail: detailOf(`The provider's service was unavailable for a moment (${providerUnavailableCause(haystack)}); nothing about the work is wrong, and continuing re-runs the same step.`) }, true)

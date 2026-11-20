@@ -17,6 +17,7 @@ import { statusRun } from './run-status.js'
 import { classifyFailure } from '../failure-classification.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
 import { HOST_TASK_OUTPUT_LIMIT_BYTES } from './pieces/host-task.js'
+import { readRouteOverrideFile } from './route-overrides.js'
 
 export { NODE_KINDS_VERSION }
 type Flags = Record<string, string | boolean>
@@ -123,6 +124,11 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     } else if (command === 'resume') {
       if (flags.definition !== undefined || flags.config !== undefined) throw new EngineError('invalid_arguments', 'Resume uses the frozen definition and config')
       if ((flags.answer !== undefined || flags.approve !== undefined) && (flags.recover !== undefined || flags.invalidate !== undefined)) throw new EngineError('invalid_arguments', 'Human answers and recovery cannot be combined')
+      // routeOverrides: roles move to another provider for the rest of THIS run; a plain resume otherwise.
+      const routeOverride = flags['route-overrides'] === undefined ? undefined : readRouteOverrideFile(required(flags, 'route-overrides'))
+      if (routeOverride && ['answer', 'approve', 'reject', 'option', 'host-result', 'invalidate', 'interrupt-id'].some(key => flags[key] !== undefined)) {
+        throw new EngineError('invalid_arguments', '--route-overrides resumes a stopped run as is; it cannot be combined with an answer, approval, host result or invalidation')
+      }
       let target = directory(flags)
       previous = await statusRun(target)
       if (flags.invalidate !== undefined) {
@@ -167,7 +173,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
         if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Approval must identify exactly one pending node or interrupt')
         answers[matches[0].id] = { approved: true }
       }
-      result = await resumeRun(target, { signal: controller.signal, onEvent: emit, answers,
+      result = await resumeRun(target, { signal: controller.signal, onEvent: emit, answers, ...(routeOverride ? { routeOverride } : {}),
         recover: optional(flags, 'recover')?.split(','),
         ...(flags.context && flags.invalidate === undefined ? { context: validatePipelineContext(read(required(flags, 'context'))) } : {}) })
     } else throw new EngineError('invalid_arguments', `Unsupported definition command ${command}`)

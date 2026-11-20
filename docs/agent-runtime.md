@@ -432,7 +432,7 @@ A run that ends `failed` or `blocked` reports why in one typed record, so a host
 | `kind` | Meaning |
 | --- | --- |
 | `tests_failed` | Verification kept failing, or the correction loop stopped on the same failing change |
-| `provider_limit` | The provider reported a session, usage, rate or quota limit. `resetAt` is the provider's own wording of when it resets, never reformatted. `resetsAt` (contract 5.14) is the ISO-8601 reset of the refusing window when the provider refused the invocation with a typed usage-limit report (the CLI executor then fails with error code `provider_limit` and the message `<provider> usage limit reached (<window> window, resets <ISO>)`) |
+| `provider_limit` | The provider reported a session, usage, rate or quota limit. `provider` names the refusing CLI when the typed refusal names it. `resetAt` is the provider's own wording of when it resets, never reformatted. `resetsAt` (contract 5.14) is the ISO-8601 reset of the refusing window when the provider refused the invocation with a typed usage-limit report (the CLI executor then fails with error code `provider_limit` and the message `<provider> usage limit reached (<window> window, resets <ISO>)`) |
 | `provider_unavailable` | The provider's service, or the network to it, failed for a moment and kept failing through the CLI executor's retries (contract 5.17): Codex's `workspace routing discovery failed` or `timed out`, `stream disconnected before completion`, `exceeded retry limit, last status: 5xx`, an overloaded API, a reset connection. Nothing about the work is wrong. `detail` names the provider's words; `resumablePhase` reruns the same step. A host continues the run after a short wait |
 | `environment` | The host environment cannot run verification: credentials, toolchain, a failing setup command, non-deterministic generated output, edits outside the scope |
 | `blocked` | A configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change |
@@ -455,6 +455,27 @@ A role turn that ends without its required OpenSpec steps is never failed at onc
 A provider CLI that fails on a transient outage of its own service before its turn did any work (no tool call or reply was streamed) is re-run by the CLI executor after 15 s and again after 45 s, and the role's live output says so (`codex service unavailable (…); retrying in 15 s`). A turn that already did work is never re-run by the executor. When the outage outlasts the waits, the executor fails with error code `provider_unavailable` and the run is classified `provider_unavailable`, not `crash`. A usage limit (`provider_limit`) or a signed-out CLI (`environment`, including Codex's `workspace routing discovery unauthorized`) is never treated as an outage.
 
 A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 4` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8; version 2 in 5.15, version 3 with `workflow_protocol` in 5.16, version 4 with `provider_unavailable` in 5.17). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
+
+## Route overrides
+
+A definition (engine 2) run can move some of its roles to another provider for the rest of that run, for example after its provider refused on a usage limit. `runtime api` advertises `routeOverrides: 1` (and `agentRuntime.routeOverrides` in `integration-contract.json`, schema 5.17, additive).
+
+```sh
+specrails-core runtime resume --context <json> --route-overrides moves.json
+```
+
+```json
+{ "schemaVersion": 1, "requestId": "desktop-switch:run-1:1", "reason": "provider-limit", "fromProvider": "codex",
+  "routes": { "developer": { "provider": "claude", "model": "haiku", "effort": "low" }, "fixer": { "provider": "claude", "model": "haiku" } } }
+```
+
+- `routes` names roles (`architect`, `developer`, `reviewer`, `fixer` or a configured custom role) and their new `provider`, optional `model` and `effort`. The moved selection keeps only the role's `maxTurns`; `escalation` and `thinking` belong to the old engine. An unknown role is `invalid_route_override`.
+- `providers` may add CLI connections (`{ id, kind: "cli", cli }`) the frozen configuration lacks. API connections cannot be added.
+- The frozen request (`agent-runtime-request.json`, the ledger's `request_json`) is never rewritten. The accepted request is a durable `routes_overridden` ledger event, also streamed as a `workflow-event`; every later admission of the run applies the recorded overrides in order on top of the frozen configuration and validates the result as a new run would (configured provider, confirmed effort).
+- The resumed run re-runs the stopped step on the new route; later steps of those roles use it too. Worktree, candidate and evidence are kept. A role session never carries across providers: the session identity includes the selection, so the moved role starts a fresh session with its full context.
+- Invocations keep the provider and model they ran on, so spend stays attributed per provider.
+- The same `requestId` with the same body applies once (a repeated resume is idempotent); a different body under that id is `control_conflict`. The flag cannot be combined with `--answer`, `--approve`, `--reject`, `--option`, `--host-result`, `--invalidate` or `--interrupt-id`; `--recover` is allowed. A finished run refuses it; an engine 1 run answers `engine_unsupported`.
+- A fork inherits the overrides recorded before its cut.
 
 ## Human checks
 

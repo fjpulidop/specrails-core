@@ -22,6 +22,7 @@ import { createEngineTelemetry } from './otel.js'
 import { describeDefinition } from './graph-description.js'
 import { validateHostTaskResult } from './pieces/host-task.js'
 import { offeredOptions } from './question-options.js'
+import { applyRouteOverrides, recordedRouteOverrides, routeOverrideRecorded, ROUTE_OVERRIDE_EVENT, type RouteOverrideRequest } from './route-overrides.js'
 
 export const definitionRunDirectory = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-workflow')
 /** Frozen request shared with the legacy runtime (contracts.md section 9); `workflow.engine` selects the resume engine. */
@@ -65,6 +66,8 @@ export interface ResumeDefinitionOptions extends RunObservers {
   recover?: string[]
   /** Optional frozen host context assertion prevents attaching another project's run. */
   context?: PipelineContext
+  /** Capability `routeOverrides`: move roles to another provider/model/effort for the rest of the run. */
+  routeOverride?: RouteOverrideRequest
 }
 type Admitted = Awaited<ReturnType<typeof preflightDefinition>>
 
@@ -95,12 +98,18 @@ export async function resumeRun(directory: string, options: ResumeDefinitionOpti
       const { contentDigest } = await import('./canonical-json.js')
       if (contentDigest(options.context) !== contentDigest(request.context)) throw new EngineError('scope_mismatch', 'Host context differs from the frozen run')
     }
+    if ((row.completion_json || row.status === 'cancelled') && options.routeOverride) throw new EngineError('invalid_route_override', 'A finished run cannot change its routes')
     if (row.completion_json || row.status === 'cancelled') {
       new EngineEventStream(cursor => view.events(cursor), options.onEvent ?? (() => {})).send(describeDefinition(view.runId, JSON.parse(String(row.definition_json))))
       return projectRunStatus(view)
     }
-    const admitted = await preflightDefinition({ ...request, definition: JSON.parse(String(row.definition_json)), registry: options.registry })
-    const result = await execute(database, admitted, options, true)
+    // Route overrides: the frozen request stays as written; accepted overrides apply on top, in order.
+    const recorded = recordedRouteOverrides(database)
+    const routeOverride = options.routeOverride && !routeOverrideRecorded(recorded, options.routeOverride) ? options.routeOverride : undefined
+    const overrides = routeOverride ? [...recorded, routeOverride] : recorded
+    const config = overrides.length ? applyRouteOverrides(request.config, overrides) : request.config
+    const admitted = await preflightDefinition({ ...request, config, definition: JSON.parse(String(row.definition_json)), registry: options.registry })
+    const result = await execute(database, admitted, { ...options, routeOverride }, true)
     return { ...projectRunStatus(observeLedger(database)), ...('error' in result ? { error: result.error } : {}) }
   } finally { database.close() }
 }
@@ -145,6 +154,7 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
       lease.assert(token)
       // An explicit resume supersedes pause requests that arrived before it.
       inbox.consumePauses()
+      if (options.routeOverride) appendRunEvent(database, runId, ROUTE_OVERRIDE_EVENT, JSON.parse(JSON.stringify(options.routeOverride)) as JsonValue)
       appendRunEvent(database, runId, 'workflow_resumed', {})
     })
     stream.flush()

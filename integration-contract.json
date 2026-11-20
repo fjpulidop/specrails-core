@@ -387,6 +387,22 @@
       "compatibility": "additive: an older Core never emits the fields (hosts render prompt as plain text), rejects --option and --reject as unknown flags and refuses approved false, so a host offers choices and rejection only when runtime capabilities advertise questionOptions",
       "documentation": "docs/engine-v2/pieces.md#question"
     },
+    "routeOverrides": {
+      "version": 1,
+      "capability": "routeOverrides",
+      "cli": "specrails-core runtime resume --context <json> --route-overrides <file> [--recover <attemptId>]; engine 2 runs only; not combinable with --answer, --approve, --reject, --option, --host-result, --invalidate or --interrupt-id",
+      "request": "{schemaVersion: 1, requestId (^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$), reason? (lowercase token, e.g. provider-limit), fromProvider?, routes: {<roleId | fixer>: {provider, model?, effort?}} (at least one), providers?: [{id, kind: cli, cli}] (at most 8; CLI connections the frozen configuration lacks)}; at most 64 KiB",
+      "semantics": "The roles named move to the new provider/model/effort for the rest of the run: the refused step and every later step of those roles. A moved selection keeps only the role's maxTurns (escalation and thinking belong to the old engine). The frozen request (agent-runtime-request.json, ledger request_json) is never rewritten: the accepted request is a durable routes_overridden ledger event (also streamed as a workflow-event) and every later admission applies the recorded overrides in order on top of the frozen configuration, then validates the result like a new run (configured provider, confirmed effort). A role session never carries across: its session identity includes the selection, so the moved role's next turn starts fresh with full context. Worktree, candidate and evidence are kept. Completed invocations keep the provider they ran on.",
+      "idempotency": "the same requestId with the same body is applied once; a different body with that id is control_conflict",
+      "errors": [
+        "invalid_route_override (malformed request, unknown role, finished run)",
+        "engine_unsupported (engine 1 run)"
+      ],
+      "failure": "failureClassification provider_limit records carry provider when the typed refusal names the CLI (additive)",
+      "fork": "a fork inherits the overrides recorded before its cut",
+      "compatibility": "additive: an older Core never advertises the capability and rejects nothing it did not accept before; hosts gate on capabilities.routeOverrides === 1",
+      "documentation": "docs/agent-runtime.md#route-overrides"
+    },
     "machineInstalls": {
       "version": 1,
       "capability": "machineInstalls",
