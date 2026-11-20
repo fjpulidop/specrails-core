@@ -486,7 +486,8 @@ it('upgrades a version 1 run database before recording a pause and keeps version
     const lease = new RunLease(database, f.context.runId), token = lease.acquire('owner')
     expect((await pauseRun(f.directory, { requestId: 'after-upgrade' })).outcome).toBe('requested')
     lease.release(token)
-    expect(database.schemaVersion).toBe(2)
+    // 1 → 2 (pause kind) → 3 (deduplicated row history): the same tables, upgraded in one step.
+    expect(database.schemaVersion).toBe(3)
     expect(database.sqlite.prepare("SELECT kind FROM control_inbox ORDER BY created_at").all().map(row => row.kind)).toEqual(['steer', 'pause'])
   } finally { database.close() }
 })

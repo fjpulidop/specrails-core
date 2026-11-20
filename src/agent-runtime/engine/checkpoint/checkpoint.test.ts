@@ -7,7 +7,7 @@ import { Annotation, Command, END, interrupt, Send, START, StateGraph, type Lang
 import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
-import { RunDatabase } from './database.js'
+import { appendRunEvent, RunDatabase } from './database.js'
 import { leaseLive, leaseOwner, leaseOwnerAlive, RunLease } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
@@ -476,5 +476,73 @@ describe('a lease whose owner process died on this machine', () => {
     expect(next.epoch).toBe(held.epoch + 1)
     expect(() => lease.acquire('third-owner')).toThrow(/Another executor holds this run lease/)
     db.close()
+  })
+})
+
+describe('row history of a long run', () => {
+  async function bigFixture(schema?: 2) {
+    const dir = await mkdtemp(path.join(tmpdir(), 'engine row history '))
+    cleanup.push(() => rm(dir, { recursive: true, force: true }))
+    const file = path.join(dir, 'run.sqlite')
+    const db = await RunDatabase.open(file, { create: true })
+    cleanup.push(async () => db.close())
+    if (schema === 2) db.sqlite.exec('PRAGMA user_version=2')
+    // A real Implement run freezes ~70 KB of request and ~47 KB of definition in its run row.
+    const request = { prompt: 'r'.repeat(70_000) }, definition = { nodes: 'd'.repeat(47_000) }
+    RunLedger.initialize(db, { runId: 'run', workflowId: 'w', definitionHash: 'h', definition, request, runtimeIdentity: {}, source: 'definition', budget: {} })
+    return { db, dir, file }
+  }
+  const events = (db: RunDatabase, n: number) => { for (let i = 0; i < n; i++) db.transaction('event', () => { appendRunEvent(db, 'run', 'tick', { i }) }) }
+  const historyBytes = (db: RunDatabase) => Number(db.sqlite.prepare("SELECT SUM(LENGTH(row_json)) AS n FROM row_versions WHERE table_name='runs'").get()!.n)
+
+  it('writes the frozen request and definition once, not once per event', async () => {
+    const { db } = await bigFixture()
+    events(db, 200)
+    // 201 versions of a ~117 KB row were ~23.5 MB; the text is now stored once.
+    expect(historyBytes(db)).toBeLessThan(300_000)
+    const cut = db.revision - 50
+    const rows = db.transaction(undefined, () => db.rowsAt(cut))
+    const run = rows.find(row => row.table === 'runs')!.row
+    expect(JSON.parse(String(run.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    expect(JSON.parse(String(run.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    expect(Number(run.next_event_sequence)).toBeGreaterThan(100)
+  })
+
+  it('forks a deduplicated history into a complete, deduplicated copy', async () => {
+    const { db, dir } = await bigFixture()
+    events(db, 30)
+    const fork = await RunDatabase.open(path.join(dir, 'fork', 'run.sqlite'), { create: true }); cleanup.push(async () => fork.close())
+    db.forkAt(fork, { revision: db.revision - 5, runId: 'fork' })
+    const forked = fork.sqlite.prepare('SELECT request_json, fork_of FROM runs').get()!
+    expect(JSON.parse(String(forked.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    expect(forked.fork_of).toBe('run')
+    expect(historyBytes(fork)).toBeLessThan(200_000)
+    const early = fork.transaction(undefined, () => fork.rowsAt(3)).find(row => row.table === 'runs')!.row
+    expect(early.run_id).toBe('fork')
+    expect(JSON.parse(String(early.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    fork.checkIntegrity()
+  })
+
+  it('keeps writing full rows into a schema 2 database (an older Core may still open it) until it is upgraded', async () => {
+    const { db } = await bigFixture(2)
+    events(db, 5)
+    expect(historyBytes(db)).toBeGreaterThan(5 * 117_000)
+    db.upgradeSchema()
+    expect(db.schemaVersion).toBe(3)
+    const before = historyBytes(db)
+    events(db, 20)
+    expect(historyBytes(db) - before).toBeLessThan(50_000)
+    const rows = db.transaction(undefined, () => db.rowsAt(db.revision))
+    expect(JSON.parse(String(rows.find(row => row.table === 'runs')!.row.request_json)).prompt).toHaveLength(70_000)
+  })
+
+  it('refuses a version whose referenced text is missing or changed', async () => {
+    const { db } = await bigFixture()
+    events(db, 3)
+    const first = Number(db.sqlite.prepare("SELECT MIN(revision) AS r FROM row_versions WHERE table_name='runs'").get()!.r)
+    const row = JSON.parse(String(db.sqlite.prepare("SELECT row_json FROM row_versions WHERE table_name='runs' AND revision=?").get(first)!.row_json))
+    row.request_json = 'tampered'
+    db.sqlite.prepare("UPDATE row_versions SET row_json=? WHERE table_name='runs' AND revision=?").run(JSON.stringify(row), first)
+    expect(() => db.transaction(undefined, () => db.rowsAt(db.revision))).toThrow(/references a missing request_json/)
   })
 })

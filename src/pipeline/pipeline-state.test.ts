@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { candidateManifest, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateManifest, timeLimitReason, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -876,7 +876,16 @@ it('reports the total timeout as the reason a command was stopped', async () => 
   initializePipeline(context, change)
   const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 })) })
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
-  expect(receipt.reason).toBe('A verification command failed: Verification command timed out')
+  // A suite slower than its limit stops the same way on every run: the reason names the command,
+  // the limit and the setting to change (an overnight run spent a continuation re-running it).
+  expect(receipt.reason).toMatch(/^A verification command failed: Verification command timed out: `.+ -e setInterval.+` was still running when it reached its 1 s limit and was stopped\. Running it again will stop the same way: .*longer timeout \(timeoutMs\)/)
+  expect(receipt.commands[0]!.terminationReason).toContain('reached its 1 s limit')
+})
+
+it('names the run budget when the remaining run time, not the command limit, stopped a check', () => {
+  expect(timeLimitReason({ command: 'npm', args: ['test'] }, 90_000, 15 * 60_000, '  ok 12 - scenario 12'))
+    .toBe("Verification command timed out: `npm test` was still running when the run's remaining time budget (2 min) ran out; its own limit is 15 min. Last output: ok 12 - scenario 12")
+  expect(timeLimitReason({ command: 'npm', args: ['test'] }, 15 * 60_000, 15 * 60_000)).toMatch(/reached its 15 min limit and was stopped\. Running it again/)
 })
 
 it.skipIf(process.platform === 'win32')('names the signal when something outside the runner killed the command', async () => {
