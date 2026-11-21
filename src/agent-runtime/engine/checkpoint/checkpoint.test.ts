@@ -511,7 +511,13 @@ describe('a lease whose owner process died on this machine', () => {
     expect(leaseOwnerAlive(owner, () => {}, () => at + 30_000)).toBe(false)
     // The owner itself (the OS start precedes the recorded one, or is within the clock tolerance).
     expect(leaseOwnerAlive(owner, () => {}, () => at - 200)).toBe(true)
-    expect(leaseOwnerAlive(owner, () => {}, () => at + 900)).toBe(true)
+    expect(leaseOwnerAlive(owner, () => {}, () => at + 200)).toBe(true)
+    // Started shortly after the owner (a short-lived executor whose pid was reused at once).
+    expect(leaseOwnerAlive(owner, () => {}, () => at + 900)).toBe(false)
+    // A process this user cannot signal holds the pid (a Windows system process): checked the same way.
+    const eperm = () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }) }
+    expect(leaseOwnerAlive(owner, eperm, () => at + 30_000)).toBe(false)
+    expect(leaseOwnerAlive(owner, eperm, () => null)).toBe(true)
     // A start time that cannot be read, or an owner that recorded none, keeps the lease until it expires.
     expect(leaseOwnerAlive(owner, () => {}, () => null)).toBe(true)
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:proc-000000000000:killed`, () => {}, () => at + 30_000)).toBe(true)
@@ -521,7 +527,7 @@ describe('a lease whose owner process died on this machine', () => {
     const actual = processStartedAt(process.pid)
     if (process.platform === 'linux' || process.platform === 'darwin' || process.platform === 'win32') expect(actual).not.toBeNull()
     if (actual !== null) {
-      expect(actual).toBeLessThanOrEqual(recorded + 1_500)
+      expect(actual).toBeLessThanOrEqual(recorded + 250)
       expect(actual).toBeGreaterThan(recorded - 10 * 60_000)
     }
     expect(leaseOwnerAlive(`pid:${process.ppid}@${hostname()}:proc-000000000000.${Date.now() + 60_000}:parent`)).toBe(true)
