@@ -486,7 +486,7 @@ describe('a lease whose owner process died on this machine', () => {
   // A Desktop restart SIGKILLs its Core children; their unexpired leases made every Resume wait up to a minute.
   const dead = (pid: number) => { const error = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' }); if (pid > 0) throw error }
   it('names its process and is not live once that process is gone', () => {
-    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[0-9a-f-]{36}$`))
+    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:proc-[0-9a-f]{12}:[0-9a-f-]{36}$`))
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, dead)).toBe(false)
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => {})).toBe(true)
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }) })).toBe(true)
@@ -494,6 +494,25 @@ describe('a lease whose owner process died on this machine', () => {
     expect(leaseOwnerAlive('first-owner', dead)).toBe(true)
     expect(leaseLive({ owner: `pid:${process.pid}@${hostname()}:x`, expiresAt: Date.now() + 60_000 })).toBe(true)
     expect(leaseLive({ owner: 'first-owner', expiresAt: Date.now() - 1 })).toBe(false)
+  })
+  it('is not live when an earlier process with this process\'s pid left it (Windows reuses pids at once)', () => {
+    const mine = leaseOwner()
+    const token = /:proc-([0-9a-f]{12}):/.exec(mine)![1]
+    const other = token === '000000000000' ? '111111111111' : '000000000000'
+    expect(leaseOwnerAlive(mine, dead)).toBe(true)
+    expect(leaseOwnerAlive(`pid:${process.pid}@${hostname()}:proc-${other}:killed`, () => {})).toBe(false)
+    expect(leaseLive({ owner: `pid:${process.pid}@${hostname()}:proc-${other}:killed`, expiresAt: Date.now() + 60_000 })).toBe(false)
+    // An owner from an older Core names no process token: still live until it expires.
+    expect(leaseOwnerAlive(`pid:${process.pid}@${hostname()}:x`, dead)).toBe(true)
+  })
+  it('lets a process that inherited a killed executor\'s pid take its lease at once', async () => {
+    const { db, lease, token } = await fixture()
+    lease.release(token)
+    const held = lease.acquire(`pid:${process.pid}@${hostname()}:proc-000000000000:killed`)
+    const next = lease.acquire(leaseOwner())
+    expect(next.epoch).toBe(held.epoch + 1)
+    expect(() => lease.acquire(leaseOwner())).toThrow(/Another executor holds this run lease/)
+    db.close()
   })
   it('is taken over at once instead of waiting for the expiry', async () => {
     const { db, lease, token } = await fixture()

@@ -6,15 +6,22 @@ import { appendRunEvent, RunDatabase } from './database.js'
 const LEASE_MS = 60_000
 export const LEASE_HEARTBEAT_MS = 15_000
 
-const OWNER_PROCESS = /^pid:(\d+)@([^:]+):/
+const OWNER_PROCESS = /^pid:(\d+)@([^:]+):(?:proc-([0-9a-f]{12}):)?/
+/**
+ * Tells this process apart from an earlier one that had the same pid. Windows reuses a freed pid
+ * at once, so the next Core process can be given the very pid a killed executor recorded: without
+ * this it would take that dead owner's lease for its own and refuse with `lease_held` until expiry.
+ */
+const PROCESS_TOKEN = randomUUID().replace(/-/g, '').slice(0, 12)
 
 /** A lease owner that names its process, so a lease left by a process that died on this machine is not live. */
 export function leaseOwner(): string {
-  return `pid:${process.pid}@${hostname()}:${randomUUID()}`
+  return `pid:${process.pid}@${hostname()}:proc-${PROCESS_TOKEN}:${randomUUID()}`
 }
 
 /**
- * False only when the owner names a process on this machine that no longer exists: it can neither
+ * False only when the owner names a process on this machine that no longer exists (or an earlier
+ * process that had this process's pid): it can neither
  * renew nor release its lease, so waiting for the expiry (up to a minute after a host restart killed
  * it) protects nothing. Any other owner (another machine, an older owner without a process, a
  * process this user cannot signal) is assumed alive until its lease expires.
@@ -23,7 +30,11 @@ export function leaseOwnerAlive(owner: string, kill: (pid: number, signal: 0) =>
   const match = OWNER_PROCESS.exec(owner)
   if (!match || match[2] !== hostname()) return true
   const pid = Number(match[1])
-  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return true
+  if (!Number.isSafeInteger(pid) || pid <= 0) return true
+  // Our own pid: this process's owner is live; one from an earlier process that had this pid
+  // (another process token) is dead, since this process holds the pid now. An owner without a
+  // token (an older Core) cannot be told apart and stays live until its lease expires.
+  if (pid === process.pid) return match[3] === undefined || match[3] === PROCESS_TOKEN
   try { kill(pid, 0); return true }
   catch (error) { return (error as NodeJS.ErrnoException)?.code !== 'ESRCH' }
 }
