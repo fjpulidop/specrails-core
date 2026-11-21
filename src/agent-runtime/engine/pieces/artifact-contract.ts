@@ -95,6 +95,21 @@ const nonGoalSubject = (goal: string): string[] => [...new Set(words(goal.split(
  * controls") and in a task that does not itself cite the non-goals. Deliberately conservative:
  * the freeze raises it once per plan, and an architect who keeps the plan after reviewing it passes.
  */
+/**
+ * A non-goal that protects existing code instead of excluding a feature ("No change to `total(items)`",
+ * "`total` … Not changed here", "Changing the public API"): only a task that alters its subject
+ * contradicts it. A task that merely names it (as an anchor, a style or an untouched neighbour) agrees.
+ */
+export function protectsExistingCode(goal: string): boolean {
+  const plain = goal.replace(/[`*_]/g, '').trim()
+  const alteration = '(?:chang|modif|edit|renam|alter|rewrit|refactor|remov|delet|replac|break|rework)'
+  return new RegExp(`^(?:no|not|never|nothing|without|(?:does|do|will|must|should)\\s*(?:not|n't)|don't|doesn't|won't)\\b[^.;]{0,40}?\\b${alteration}`, 'i').test(plain)
+    || new RegExp(`^${alteration}\\w*ing\\b`, 'i').test(plain)
+    || /\b(?:not|never)\s+(?:be(?:ing)?\s+)?(?:changed|modified|edited|touched|renamed|altered|rewritten|refactored|removed|deleted|replaced)\b|\b(?:unchanged|untouched|unmodified)\b|\b(?:stays?|remains?|kept)\s+(?:as[- ]is|the same|unchanged|intact)\b/i.test(plain)
+}
+/** A clause that alters (not merely names) what it mentions. */
+const ALTERS = /\b(?:chang|modif|edit|rewrit|renam|alter|refactor|remov|delet|replac|updat|rework|restructur|extend|break|convert|migrat|drop|deprecat|overrid)\w*/i
+
 export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; human?: boolean }>, nonGoals: readonly string[]): Array<{ task: string; nonGoal: string }> {
   const negated = /(?:\b(?:no|not|never|nor|without|avoid|avoiding|exclud(?:e|es|ing)|except|instead of)|n't)\s+(?:\S+\s+){0,4}$/i
   const preserved = /\b(?:unchanged|untouched|intact|unmodified|preserv(?:e|es|ed|ing)|(?:is|are|stays?|remains?) (?:kept|the same|as (?:it is|they are|is))|as-is)\b/i
@@ -102,6 +117,7 @@ export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; 
   for (const goal of nonGoals) {
     const subject = nonGoalSubject(goal)
     if (!subject.length || subject.length > 5 || (subject.length === 1 && subject[0].length < 5)) continue
+    const protects = protectsExistingCode(goal)
     for (const task of tasks) {
       if (task.human || /non[\s-]?goal|out[\s-]of[\s-]scope/i.test(task.text) || found.some(item => item.task === task.text)) continue
       const clauses = task.text.split(/[.;!?]\s/)
@@ -113,6 +129,7 @@ export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; 
         // A clause that keeps the subject as it is agrees with a "does not change X" non-goal
         // ("done when `mix` and its test are unchanged"); it never requires X.
         if (preserved.test(clause)) return false
+        if (protects && !ALTERS.test(clause)) return false
         const first = Math.min(...matched.map(word => tokens.indexOf(word)))
         return !negated.test(raw.slice(0, first).join(' ') + ' ')
       })
