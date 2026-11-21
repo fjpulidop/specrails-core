@@ -176,18 +176,19 @@ describe('tasks that contradict a declared non-goal', () => {
     // although its tasks only named `total` as an anchor or a style to follow.
     const protects = ['No change to `total(items)`, `formatPrice`, `createOrder`, or any other export.',
       '`src/cart.js` `total(items)` has placeholder JSDoc (`@param {*} items`, `@returns {*}`) and no input validation. Not changed here.',
-      'Changing `total(items)` or its tests']
+      'Changing `total(items)` or its tests', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.']
     const names = [
       '1.1 In `src/cart.js`, add `export function applyDiscount(totalCents, percent)` with a JSDoc block directly above it, in the same style as `total`. The body runs the guards first.',
       '1.3 In `README.md`, add `- `applyDiscount(totalCents, percent)` (src/cart.js)` to the `## API` list, after the `total(items)` entry, in the same format as the other entries.',
       '1.1 Export `applyDiscount(totalCents, percent)` from `src/cart.js` with a JSDoc block. Validate `totalCents` first, then compute from the total.',
+      '1.4 In `test/cart.test.js`, assert the `TypeError` cases with `assert.throws(() => applyDiscount(t, 10), TypeError)`. Verify: `npm test` passes these assertions.',
     ]
     expect(tasksContradictingNonGoals(names.map(text => ({ text })), protects)).toEqual([])
     const alters = ['2.1 Update `total(items)` in `src/cart.js` to apply the discount', '2.2 Refactor `total` in `src/cart.js` to validate its items']
     expect(tasksContradictingNonGoals(alters.map(text => ({ text })), protects).map(item => item.task)).toEqual(alters)
   })
   it('tells a non-goal that protects existing code from one that excludes a feature', () => {
-    for (const goal of ['No change to `total(items)`', 'Does not change `mix`, its signature, or its tests.', 'Changing the public API', '`total` stays the same', 'Existing exports remain unchanged', 'Not modified: `src/format.js`'])
+    for (const goal of ['No change to `total(items)`', 'Does not change `mix`, its signature, or its tests.', 'Changing the public API', '`total` stays the same', 'Existing exports remain unchanged', 'Not modified: `src/format.js`', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.'])
       expect(protectsExistingCode(goal), goal).toBe(true)
     for (const goal of ['Mobile touch controls: keyboard and mouse only.', 'Multiplayer', 'No touch controls', 'No sound', 'Payments', 'WebGL2-only shaders (keep WebGL1)'])
       expect(protectsExistingCode(goal), goal).toBe(false)

@@ -105,7 +105,7 @@ export function protectsExistingCode(goal: string): boolean {
   const alteration = '(?:chang|modif|edit|renam|alter|rewrit|refactor|remov|delet|replac|break|rework)'
   return new RegExp(`^(?:no|not|never|nothing|without|(?:does|do|will|must|should)\\s*(?:not|n't)|don't|doesn't|won't)\\b[^.;]{0,40}?\\b${alteration}`, 'i').test(plain)
     || new RegExp(`^${alteration}\\w*ing\\b`, 'i').test(plain)
-    || /\b(?:not|never)\s+(?:be(?:ing)?\s+)?(?:changed|modified|edited|touched|renamed|altered|rewritten|refactored|removed|deleted|replaced)\b|\b(?:unchanged|untouched|unmodified)\b|\b(?:stays?|remains?|kept)\s+(?:as[- ]is|the same|unchanged|intact)\b/i.test(plain)
+    || /\b(?:not|never)\s+(?:be(?:ing)?\s+)?(?:changed|modified|edited|touched|renamed|altered|rewritten|refactored|removed|deleted|replaced)\b|\b(?:unchanged|untouched|unmodified)\b|\b(?:stays?|remains?|kept|left)\s+(?:as[- ]is|as it is|alone|the same|unchanged|untouched|intact)\b/i.test(plain)
 }
 /** A clause that alters (not merely names) what it mentions. */
 const ALTERS = /\b(?:chang|modif|edit|rewrit|renam|alter|refactor|remov|delet|replac|updat|rework|restructur|extend|break|convert|migrat|drop|deprecat|overrid)\w*/i
