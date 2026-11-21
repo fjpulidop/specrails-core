@@ -39,4 +39,27 @@ describe('review triage: issues the run cannot act on', () => {
       actionable: ['Insert does not persist the value.'], kinds: ['withdrawn-criterion', 'withdrawn-criterion'] })
     expect(kinds(['Lookup is O(n), the spec requires O(1).'])).toEqual({ actionable: ['Lookup is O(n), the spec requires O(1).'], kinds: [] })
   })
+
+  it('honours findings the reviewer marked itself (reviewTriage 2), whatever their words', () => {
+    const { actionable, nonActionable } = triageReviewIssues([
+      '[advice] Consider adding a test for the empty list.',
+      '[out-of-scope] Add pagination to the export endpoint in a follow-up.',
+      '- [Nit]: rename `tmp` to `total`.',
+      '[follow-up] Extract the parser into its own module.',
+      { title: 'Cache the lookup', actionable: false },
+      { title: 'Move the config', actionable: false, kind: 'out-of-scope' },
+      'The handler drops the last item; fix the loop and add a test.',
+      'Advice: this is not tagged, so it stays an ordinary issue.',
+    ])
+    expect(actionable).toEqual(['The handler drops the last item; fix the loop and add a test.', 'Advice: this is not tagged, so it stays an ordinary issue.'])
+    expect(nonActionable.map(item => [item.kind, item.text])).toEqual([
+      ['advice', 'Consider adding a test for the empty list.'],
+      ['out-of-scope', 'Add pagination to the export endpoint in a follow-up.'],
+      ['advice', 'rename `tmp` to `total`.'],
+      ['out-of-scope', 'Extract the parser into its own module.'],
+      ['advice', 'Cache the lookup'],
+      ['out-of-scope', 'Move the config'],
+    ])
+    expect(triageReviewIssues(['[advice]']).actionable).toEqual(['[advice]'])
+  })
 })

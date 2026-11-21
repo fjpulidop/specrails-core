@@ -13,7 +13,7 @@ import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../
 import { projectRulesContext } from '../../project-rules.js'
 import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { triageReviewIssues, type NonActionableIssue } from './review-triage.js'
+import { REVIEWER_MARKED_KINDS, triageReviewIssues, type NonActionableIssue } from './review-triage.js'
 import { answerText, structuredQuestion } from '../question-options.js'
 import { askMachineInstalls, installedNote } from './machine-install.js'
 import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
@@ -120,9 +120,11 @@ async function triageReview(deps: PieceDependencies, params: JsonObject, context
   const lines = notes.map(noteLine)
   const structured: JsonObject = { ...review, issues: triaged.actionable as JsonValue[] }
   const brief = review.brief
-  if (brief && typeof brief === 'object' && !Array.isArray(brief) && Array.isArray(brief.humanChecks)) {
+  // Advice and out-of-scope findings are notes, not checks the person must make: only the other kinds join humanChecks.
+  const checkLines = notes.filter(item => !REVIEWER_MARKED_KINDS.has(item.kind)).map(noteLine)
+  if (checkLines.length && brief && typeof brief === 'object' && !Array.isArray(brief) && Array.isArray(brief.humanChecks)) {
     const checks = brief.humanChecks
-    structured.brief = { ...brief, humanChecks: [...checks, ...lines.filter(line => !checks.includes(line))] }
+    structured.brief = { ...brief, humanChecks: [...checks, ...checkLines.filter(line => !checks.includes(line))] }
   }
   if (histories.length === (result.history ?? []).length) histories.push(`Core review triage moved ${notes.length} issue(s) the run cannot act on to the person's notes:\n${lines.map(line => '- ' + line).join('\n')}`)
   return { ...settled, output: { ...(settled.output as JsonObject), structured, reviewNotes: notes.map(item => ({ kind: item.kind, issue: boundedText(item.text, 1000), reason: item.reason })) },

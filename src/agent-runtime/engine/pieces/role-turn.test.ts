@@ -347,6 +347,30 @@ describe('role-turn review triage (capability reviewTriage)', () => {
     expect(result.output).toMatchObject({ structured: { approved: true, issues: [] }, reviewNotes: [{ kind: 'withdrawn-criterion' }] })
   })
 
+  it('delivers an approving review whose only findings the reviewer marked as advice or out of scope, recording them as notes, not checks', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: true, summary: 'ok', issues: ['[advice] Consider a test for the empty list.', '[out-of-scope] Paginate the export later.'], score: 86, brief: { humanChecks: ['Open the page'] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: true, issues: [], brief: { humanChecks: ['Open the page'] } },
+      reviewNotes: [{ kind: 'advice', issue: 'Consider a test for the empty list.' }, { kind: 'out-of-scope', issue: 'Paginate the export later.' }] })
+  })
+
+  it('keeps only the actionable findings of a mixed review, and re-judges a rejection made only of marked findings', async () => {
+    const f = fixture()
+    const genuine = 'The export drops the last row; fix the loop and add a test.'
+    scripted(f, [{ approved: false, summary: 'Bug', issues: [genuine, '[advice] Rename the helper.'], score: 60, brief: { humanChecks: [] } },
+      { approved: false, summary: 'Only style', issues: ['[nit] Shorten the comment.'], score: 82, brief: { humanChecks: [] } },
+      { approved: true, summary: 'Fine', issues: [], score: 85, brief: { humanChecks: [] } }])
+    const mixed = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(mixed.output).toMatchObject({ structured: { approved: false, issues: [genuine], brief: { humanChecks: [] } }, reviewNotes: [{ kind: 'advice', issue: 'Rename the helper.' }] })
+    expect(f.requests).toHaveLength(1)
+    const rejudged = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(3)
+    expect(f.requests[2].prompt).toContain('Shorten the comment.')
+    expect(rejudged.output).toMatchObject({ structured: { approved: true, issues: [] }, reviewNotes: [{ kind: 'advice', issue: 'Shorten the comment.' }] })
+  })
+
   it('leaves write roles and reviews without such issues exactly as returned', async () => {
     const f = fixture()
     const reply = { approved: false, summary: 'Bug', issues: ['Fix paginate() off-by-one and add a test.'], score: 40, brief: { humanChecks: [] } }

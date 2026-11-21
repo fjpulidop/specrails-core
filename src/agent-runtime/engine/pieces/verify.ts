@@ -284,8 +284,13 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
       const count = receipt.valid ? 0 : previous?.fingerprint === fingerprint ? (previous.count ?? 0) + 1 : 1
       const stalled = !infrastructure && !receipt.valid && count >= 3
       const verified = receipt.valid && receipt.commands.length > 0 && !receipt.unverifiedRepositories?.length
+      // The failure that survives the host's own repair still looks environmental (a missing
+      // tool, a broken install, drifted dependencies): a correction role that repairs the
+      // environment changes no candidate file, so the host verifies again instead of calling
+      // the unchanged candidate a stalled correction (capability environmentRepairSignal).
+      const environmentStill = !infrastructure && !receipt.valid && !blocker && !nondeterministic && !!environmentFailure(deps.context, receipt)
       const output = { receiptId: receipt.id, valid: receipt.valid, candidateHash: adopted ? receipt.candidateHash : identity.candidateHash, noProgressCount: count, ...(receipt.reason ? { reason: receipt.reason } : {}), ...(stalled ? { reason: 'Verification failed three times without candidate changes' } : {}),
-        ...(setup ? { setup } : {}), ...(environmentRepair ? { environmentRepair } : {}), ...(receipt.selfMutation ? { selfMutation: json(receipt.selfMutation) } : {}),
+        ...(setup ? { setup } : {}), ...(environmentRepair ? { environmentRepair } : {}), ...(environmentStill ? { environmentFailure: true } : {}), ...(receipt.selfMutation ? { selfMutation: json(receipt.selfMutation) } : {}),
         ...(adoptedOutputs.length ? { adoptedOutputs: json(adoptedOutputs) } : {}), summary: verificationSummary(receipt), ...verificationDiagnostics(receipt) }
       const vars = { [progressKey]: { fingerprint, count, ...(adoptedOutputs.length ? { adopted: json(adoptedOutputs) } : {}) } }
       if (nondeterministic) return { outcome: params.hostBlockers === true ? 'blocked' : 'failed', status: params.hostBlockers === true ? 'blocked' : 'failed', vars, receipt: receiptEvidence(receipt), verified: null,
