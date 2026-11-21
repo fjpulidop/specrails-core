@@ -19,6 +19,11 @@ describe('headlessEnvironment', () => {
     const once = headlessEnvironment({}, '/g.cjs', present)
     expect(headlessEnvironment(once, '/g.cjs', present)).toEqual(once)
     expect(once.NODE_OPTIONS).toBe('--require "/g.cjs"')
+    // The quoted option doubles Windows backslashes; the guard is still recognised.
+    const windows = 'C:\\core\\dist\\pipeline\\electron-headless-guard.cjs'
+    const quoted = headlessEnvironment({}, windows, present)
+    expect(quoted.NODE_OPTIONS).toBe(`--require ${JSON.stringify(windows)}`)
+    expect(headlessEnvironment(quoted, windows, present)).toEqual(quoted)
   })
   it('honours an explicit opt-out and a missing guard file', () => {
     const optOut = { SPECRAILS_HEADLESS: '0', BROWSER: 'firefox' }

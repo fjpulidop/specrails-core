@@ -191,7 +191,9 @@ export function headlessEnvironment(env: NodeJS.ProcessEnv, guard: string = ELEC
   if (env.SPECRAILS_HEADLESS === '0') return env
   const result: NodeJS.ProcessEnv = { ...env, SPECRAILS_HEADLESS: '1', BROWSER: 'none' }
   const current = env.NODE_OPTIONS ?? ''
-  if (!current.includes(guard) && exists(guard)) result.NODE_OPTIONS = `${current} --require ${JSON.stringify(guard)}`.trim()
+  // The option quotes the path (JSON), which doubles Windows backslashes: match either spelling.
+  const quoted = JSON.stringify(guard)
+  if (!current.includes(quoted) && !current.includes(guard) && exists(guard)) result.NODE_OPTIONS = `${current} --require ${quoted}`.trim()
   return result
 }
 /**

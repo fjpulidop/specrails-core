@@ -37,7 +37,8 @@
           if (!pairs || !pairs.includes('SPECRAILS_HEADLESS=1')) return
           const at = pairs.findIndex((pair) => typeof pair === 'string' && pair.startsWith('NODE_OPTIONS='))
           const current = at < 0 ? '' : (pairs[at] as string).slice('NODE_OPTIONS='.length)
-          if (current.includes(__filename) || !existsSync(__filename)) return
+          // The option quotes the path (JSON), which doubles Windows backslashes: match either spelling.
+          if (current.includes(JSON.stringify(__filename)) || current.includes(__filename) || !existsSync(__filename)) return
           const next = pairs.slice()
           const value = 'NODE_OPTIONS=' + (current ? current + ' ' : '') + option
           if (at < 0) next.push(value); else next[at] = value
