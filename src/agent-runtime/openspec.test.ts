@@ -131,6 +131,10 @@ describe('official OpenSpec CLI and confined role tools', () => {
     expect(Object.keys(texts).sort()).toEqual(['design.md', 'proposal.md', 'specs/alerts/spec.md', 'tasks.md'])
     expect(texts['specs/alerts/spec.md']).toBe(delta)
     expect(developer.contextFileTexts({ contextFiles: { stray: [path.join(root, 'openspec/config.yaml')] } })).toEqual({})
+    // The CLI may spell the change through another route than realpathSync (macOS /var vs /private/var,
+    // Windows short names): the same file is still read, keyed by its change-relative path.
+    const spelled = path.join(root, 'openspec', 'changes', 'medical-alert', 'specs', 'alerts', 'spec.md')
+    expect(developer.contextFileTexts({ contextFiles: { specs: [spelled] } })).toEqual({ 'specs/alerts/spec.md': delta })
     expect(developer.contextFileTexts(undefined)).toEqual({})
     const bounded = developer.contextFileTexts(apply, Buffer.byteLength(texts['proposal.md']!) + 10)
     expect(Object.values(bounded).every(text => Object.values(texts).includes(text))).toBe(true)

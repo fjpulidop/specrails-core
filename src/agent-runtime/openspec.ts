@@ -349,8 +349,10 @@ export class OpenSpecTools {
     let total = 0
     for (const entry of Object.values(files)) for (const file of (Array.isArray(entry) ? entry : [entry])) {
       if (typeof file !== 'string') continue
-      const relative = path.relative(root, file).replace(/\\/g, '/')
-      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue
+      // The CLI may spell the change root differently than realpathSync (Windows short names, case,
+      // /var vs /private/var); resolve through the canonical spellings, never by text alone.
+      const relative = changeRelativeArtifact(file, root, this.context.change)
+      if (!relative || !path.isAbsolute(file)) continue
       let text: string
       try { text = readFileSync(artifactPath(root, relative), 'utf8') } catch { continue }
       total += Buffer.byteLength(text)
