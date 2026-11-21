@@ -83,13 +83,6 @@ describe('four CLI execution contracts', () => {
     expect(provider === 'kimi' ? invocation.args[invocation.args.indexOf('-p') + 1] : invocation.stdin).toBe(input.prompt)
     expect(invocation.args.join(' ')).not.toContain('implement')
   })
-  it('loads the scoped OpenSpec tools up front on Claude, so no role turn spends a round trip on ToolSearch', () => {
-    expect(buildCliInvocation('claude', request(), { mcpConfigFile: '/tmp/mcp.json' }).env).toEqual({ ENABLE_TOOL_SEARCH: 'false' })
-    expect(buildCliInvocation('claude', request({ role: 'reviewer' }), { mcpConfigFile: '/tmp/mcp.json' }).env).toEqual({ ENABLE_TOOL_SEARCH: 'false' })
-    // Without the MCP server the user's own tool-loading preference is untouched.
-    expect(buildCliInvocation('claude', request()).env).toBeUndefined()
-    expect(buildCliInvocation('codex', request(), { mcpConfigFile: '/tmp/mcp.json' }).env).toBeUndefined()
-  })
   it('gives the developer the legacy Implement autonomy inside each CLI sandbox, never a read-only role', () => {
     const developer = buildCliInvocation('claude', request()).args
     expect(developer).toContain('--dangerously-skip-permissions')
@@ -363,12 +356,6 @@ describe('portable child process transport', () => {
     const input = request()
     const output = await runCliProcess({ command: process.execPath, args: ['-e', 'process.stdin.pipe(process.stdout)'], stdin: input.prompt + '\n¡hola! 日本語' }, { cwd: input.cwd, timeoutMs: 5000 })
     expect(output).toMatchObject({ exitCode: 0, stdout: input.prompt + '\n¡hola! 日本語' })
-  })
-  it('gives a child the variables its invocation names, over the runner environment', async () => {
-    const input = request()
-    const output = await runCliProcess({ command: process.execPath, args: ['-e', 'process.stdout.write(`${process.env.ENABLE_TOOL_SEARCH}|${process.env.SPEED_PROBE}`)'], env: { ENABLE_TOOL_SEARCH: 'false' } },
-      { cwd: input.cwd, timeoutMs: 5000, env: { ...process.env, ENABLE_TOOL_SEARCH: 'true', SPEED_PROBE: 'kept' } })
-    expect(output.stdout).toBe('false|kept')
   })
   it('keeps explicitly untimed children alive until completion or cancellation', async () => {
     const input = request()

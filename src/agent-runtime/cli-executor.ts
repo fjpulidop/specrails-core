@@ -69,9 +69,7 @@ export function buildCliInvocation(provider: CliProvider, request: AgentRequest,
   const extraRoots = request.allowedRoots.filter(root => root !== request.cwd)
   const resume = request.resumeSessionId
   switch (provider) {
-    // With the scoped OpenSpec MCP server, the CLI's on-demand tool loading would spend a whole model round
-    // trip (ToolSearch) in every role turn before the first workflow call; the server exposes at most two tools.
-    case 'claude': return { command: 'claude', ...(request.nativeCommand ? {} : { stdin: request.prompt }), ...(options.mcpConfigFile ? { env: { ENABLE_TOOL_SEARCH: 'false' } } : {}), args: [
+    case 'claude': return { command: 'claude', ...(request.nativeCommand ? {} : { stdin: request.prompt }), args: [
       '-p', ...(request.nativeCommand ? [request.prompt] : []), '--output-format', 'stream-json', '--verbose', ...(request.maxTurns === undefined ? [] : ['--max-turns', String(request.maxTurns)]), ...model,
       ...(request.effort === undefined ? [] : ['--effort', request.effort]),
       // Project instructions and rules stay visible; the user's global config,
