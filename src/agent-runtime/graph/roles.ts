@@ -162,6 +162,9 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       let output: Record<string, unknown> | undefined, parseError: unknown
       if (structured) {
         try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { parseError = error }
+        // Several different structured results in one turn: whichever the provider kept may be a stub
+        // (a "placeholder" review with score 0 once failed a run). Ask the same session for exactly one.
+        if (output && (result.structuredResults ?? 0) > 1) { parseError = new Error(`Duplicate structured results: the turn submitted ${result.structuredResults} different results; submit exactly one, the complete final result`); output = undefined }
       }
       // A genuine planner question (low confidence, or a high-impact
       // clarification without a safe default) can precede artifact creation,
@@ -180,9 +183,13 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
         // Apply/verify read-only prerequisites are host-owned, not a probabilistic
         // provider action. Deliver the actual pinned skill and CLI outputs; all
         // artifact, task, verification and review gates still run normally.
-        const loaded = await workflow.execute({ action: 'load_skill' }, 'host')
+        const loaded = await workflow.execute({ action: 'load_skill' }, 'host') as Record<string, unknown>
         const procedure = skill === 'openspec-verify-change' ? 'verify' : 'apply'
-        const context = `\n## Host-loaded official ${procedure} workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below, read its contextFiles, and carry out the remaining procedure. You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n` + JSON.stringify(loaded)
+        // The skill's next step reads every contextFile: hand over their current text, so the role does
+        // not spend model round trips opening artifacts it must read anyway (code is still read normally).
+        const planning = loaded.planning as { apply?: unknown } | undefined
+        const artifacts = workflow.contextFileTexts(planning?.apply)
+        const context = `\n## Host-loaded official ${procedure} workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below and carry out the remaining procedure. ${Object.keys(artifacts).length ? 'artifactTexts holds the current text of its contextFiles (change-relative path → text, read when this turn started): read them there instead of opening those files again; read code, tests and evidence as usual.' : 'Read its contextFiles.'} You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n` + JSON.stringify(Object.keys(artifacts).length ? { ...loaded, artifactTexts: artifacts } : loaded)
         options = { ...options, prompt: options.prompt + context, ...(options.fallbackPrompt ? { fallbackPrompt: options.fallbackPrompt + context } : {}) }
         note(role, `Core loaded the pinned OpenSpec ${procedure} skill and current planning context for this turn.`)
       }

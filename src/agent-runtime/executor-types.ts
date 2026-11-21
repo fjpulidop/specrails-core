@@ -163,6 +163,8 @@ export interface AgentResult {
   usage: AgentUsage
   sessionId?: string
   structured?: Record<string, unknown>
+  /** Distinct structured results the provider's turn submitted (Claude `StructuredOutput` calls); more than one is ambiguous. */
+  structuredResults?: number
 }
 export type AgentLimits = Pick<AgentRequest, 'maxTokens' | 'maxCostUsd'>
 export interface AgentExecutor {

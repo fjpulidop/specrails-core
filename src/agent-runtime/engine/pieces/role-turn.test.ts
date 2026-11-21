@@ -186,7 +186,8 @@ describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
       message: expect.stringContaining('the plan model (fixture/small) skipped the required OpenSpec steps again after one corrective reminder') } })
     expect(f.requests).toHaveLength(2)
     expect(f.requests[1]!.prompt).toContain('Your turn ended without these required steps: load_skill, instructions tasks.')
-    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"new"}')
+    // load_skill creates the change and runs every instructions query, so the writes follow it directly.
+    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"write_artifact","path":"proposal.md"}')
   })
 })
 
@@ -240,6 +241,20 @@ describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
     expect(asked[0]).toMatchObject({ kind: 'question', text: contradiction, asker: 'fixer', recommended: 'b', options: [{ id: 'a' }, { id: 'b', label: 'Drop 2.1' }] })
     expect(f.requests[1].prompt).toContain('The person chose \\"Drop 2.1\\" (Keeps the non-goal.).')
     expect((result.output as { structured: Record<string, unknown> }).structured).toEqual({ summary: 'Dropped', incomplete: [] })
+  })
+
+  it('asks the same session for exactly one result when a turn submitted several different ones', async () => {
+    // Seen in the speed benchmark: a reviewer submitted a "placeholder" result (score 0) next to its real one;
+    // the CLI kept the placeholder and the run failed after a pointless correction.
+    const f = fixture()
+    const replies = [{ structured: { summary: 'placeholder', incomplete: [] }, structuredResults: 2 }, { structured: { summary: 'Real result', incomplete: [] } }]
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift()!; return { text: JSON.stringify(reply.structured), usage: unknownUsage(), ...reply } } })
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('Duplicate structured results')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Real result' } } })
   })
 
   it('stays autonomous when the role needs no decision: one call, the host schema shape, no answers', async () => {

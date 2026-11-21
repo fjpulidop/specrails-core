@@ -157,6 +157,18 @@ describe('four CLI execution contracts', () => {
     expect(inspected).toBe(true)
   })
 
+  it('counts the distinct structured results a Claude turn submitted, ignoring refused submissions', async () => {
+    const submit = (id: string, input: unknown) => ({ type: 'assistant', message: { id: 'm-' + id, content: [{ type: 'tool_use', id, name: 'StructuredOutput', input }] } })
+    const refused = (id: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'schema' }] } })
+    const result = { type: 'result', subtype: 'success', result: '', structured_output: { approved: true }, usage: { input_tokens: 1, output_tokens: 1 } }
+    // A placeholder next to the real result (one message, parallel calls): ambiguous.
+    expect(parseCliOutput('claude', jsonl({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'a', name: 'StructuredOutput', input: { summary: 'placeholder', score: 0 } }, { type: 'tool_use', id: 'b', name: 'StructuredOutput', input: { summary: 'real', score: 90 } }] } }, result)).structuredResults).toBe(2)
+    // A refused submission corrected by a second one: one result.
+    expect(parseCliOutput('claude', jsonl(submit('a', { score: 'x' }), refused('a'), submit('b', { score: 90 }), result)).structuredResults).toBe(1)
+    // The same result twice is not ambiguous.
+    expect(parseCliOutput('claude', jsonl(submit('a', { score: 90 }), submit('b', { score: 90 }), result)).structuredResults).toBe(1)
+    expect(parseCliOutput('claude', jsonl(result)).structuredResults).toBeUndefined()
+  })
   it('returns Claude structured output and streams tool activity with short details', async () => {
     const stdout = jsonl(
       { type: 'assistant', session_id: 's1', message: { id: 'one', content: [{ type: 'text', text: 'Reading.' }, { type: 'tool_use', id: 't', name: 'Read', input: { file_path: '/repo/src/very/long/path/'.padEnd(200, 'x') + '/file.ts' } }] } },

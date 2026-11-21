@@ -3,7 +3,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { JsonValue, PieceExecutionContext } from '../contracts.js'
-import { artifactContractPiece, declaredNonGoals, humanCheckText, taskCheckboxes, tasksContradictingNonGoals, tasksEditingFrozenArtifacts, tasksNeedingManualCheck } from './artifact-contract.js'
+import { artifactContractPiece, declaredNonGoals, protectsExistingCode, humanCheckText, taskCheckboxes, tasksContradictingNonGoals, tasksEditingFrozenArtifacts, tasksNeedingManualCheck } from './artifact-contract.js'
 import type { PieceDependencies } from './ports.js'
 const roots: string[] = []
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })))
@@ -170,6 +170,32 @@ describe('tasks that contradict a declared non-goal', () => {
     expect(tasksContradictingNonGoals([{ text: keeps }], nonGoals)).toEqual([])
     const changes = '1.2 Rewrite the mix signature and its test to take u16 channels'
     expect(tasksContradictingNonGoals([{ text: changes }], nonGoals)).toEqual([{ task: changes, nonGoal: nonGoals[0] }])
+  })
+  it('flags a task against a non-goal that protects existing code only when the task alters it (speed benchmark plans)', () => {
+    // Every discount plan of the speed benchmark was refused once (one extra architect turn, ~20 % of the run)
+    // although its tasks only named `total` as an anchor or a style to follow.
+    const protects = ['No change to `total(items)`, `formatPrice`, `createOrder`, or any other export.',
+      '`src/cart.js` `total(items)` has placeholder JSDoc (`@param {*} items`, `@returns {*}`) and no input validation. Not changed here.',
+      'Changing `total(items)` or its tests', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.',
+      'Does not change `total()`, `formatPrice()`, `createOrder()` or any other export.', 'Do not change `formatPrice` or `src/format.js`; no caller is migrated.', 'Does not change `formatPrice`, its test, or any other export.']
+    const names = [
+      '1.1 In `src/cart.js`, add `export function applyDiscount(totalCents, percent)` with a JSDoc block directly above it, in the same style as `total`. The body runs the guards first.',
+      '1.3 In `README.md`, add `- `applyDiscount(totalCents, percent)` (src/cart.js)` to the `## API` list, after the `total(items)` entry, in the same format as the other entries.',
+      '1.1 Export `applyDiscount(totalCents, percent)` from `src/cart.js` with a JSDoc block. Validate `totalCents` first, then compute from the total.',
+      '1.4 In `test/cart.test.js`, assert the `TypeError` cases with `assert.throws(() => applyDiscount(t, 10), TypeError)`. Verify: `npm test` passes these assertions.',
+      '1.2 In `test/cart.test.js`, change the import to `{ total, applyDiscount }` and add tests in the existing style.',
+      '3.1 Update `README.md` `## API` list by adding, after the existing `formatPrice` entry, a line for `parseMoney(text)`.',
+      '1.1 In `test/format.test.js`, extend the import to `{ formatPrice, slugify }` and add `test()` cases for slugify.',
+    ]
+    expect(tasksContradictingNonGoals(names.map(text => ({ text })), protects)).toEqual([])
+    const alters = ['2.1 Update `total(items)` in `src/cart.js` to apply the discount', '2.2 Refactor `total` in `src/cart.js` to validate its items']
+    expect(tasksContradictingNonGoals(alters.map(text => ({ text })), protects).map(item => item.task)).toEqual(alters)
+  })
+  it('tells a non-goal that protects existing code from one that excludes a feature', () => {
+    for (const goal of ['No change to `total(items)`', 'Does not change `mix`, its signature, or its tests.', 'Changing the public API', '`total` stays the same', 'Existing exports remain unchanged', 'Not modified: `src/format.js`', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.'])
+      expect(protectsExistingCode(goal), goal).toBe(true)
+    for (const goal of ['Mobile touch controls: keyboard and mouse only.', 'Multiplayer', 'No touch controls', 'No sound', 'Payments', 'WebGL2-only shaders (keep WebGL1)'])
+      expect(protectsExistingCode(goal), goal).toBe(false)
   })
   it('ignores short single-word non-goals and long explanatory ones', () => {
     expect(tasksContradictingNonGoals([{ text: 'Add an API route' }], ['API'])).toEqual([])
