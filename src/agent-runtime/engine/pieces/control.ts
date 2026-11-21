@@ -2,7 +2,8 @@ import { EngineError, type HostBlocker, type JsonValue, type Piece, type PieceEx
 import { parseExpression } from '../expressions.js'
 import type { PieceDependencyProvider } from './ports.js'
 import { boundedBlocker } from '../../verification-repair.js'
-import { answerEntry, historyEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
+import { answerText, structuredQuestion } from '../question-options.js'
+import { answerEntry, boundedText, historyEntry, idSchema, paramsSchema, positiveInteger, stringSchema, text } from './shared.js'
 
 /** A host blocker committed by `verify` (`output.blocker`) or by a correction role's structured JSON (`output.structured.blocker`). */
 function committedBlocker(output: JsonValue | undefined): HostBlocker | undefined {
@@ -33,19 +34,46 @@ export function controlPieces(bindings: PieceDependencyProvider): Piece[] {
   for (const kind of ['approval', 'question', 'gate'] as const) {
     const field = kind === 'question' ? 'text' : 'reason'
     pieces.push({
-      descriptor: { kind, paramsSchema: paramsSchema({ [field]: { ...stringSchema, minLength: 1 }, bindCandidate: { type: 'boolean' }, enabled: { type: 'boolean' } }, [field]), outcomes: ['next'], effect: 'read', requiresAI: false },
+      descriptor: { kind, paramsSchema: paramsSchema({ [field]: { ...stringSchema, minLength: 1 }, bindCandidate: { type: 'boolean' }, enabled: { type: 'boolean' },
+        // questionOptions: a question may offer choices (static, or the structured questionOptions/recommendedOption of an earlier node).
+        ...(kind === 'question' ? { asker: idSchema, why: { type: 'string', maxLength: 600 }, options: { type: 'array', maxItems: 6, items: { type: 'object' } }, recommended: { type: 'string', maxLength: 40 },
+          endsRun: { type: 'array', maxItems: 6, items: { type: 'string', maxLength: 40 } }, optionsFrom: idSchema } : {}) }, [field]), outcomes: ['next'], effect: 'read', requiresAI: false },
       async execute(params, context) {
         const memo = bindings().memo(context)
         const bound = params.bindCandidate ? memo.get('approval-candidate') ?? bindings().executionSnapshot(context).candidate?.hash ?? null : undefined
         if (params.bindCandidate && memo.get('approval-candidate') === undefined) memo.set('approval-candidate', bound!)
-        const response = kind === 'approval' && params.enabled === false ? { approved: true } : context.interrupt({ kind, prompt: text(params[field]), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId })
+        // questionOptions: an approval says it can be rejected with a reason (`--reject`); a gate cannot.
+        const asked = kind === 'question' ? questionFields(params, context) : { prompt: text(params[field]), ...(kind === 'approval' ? { rejectable: true } : {}) }
+        const request = { kind, ...asked, nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId }
+        const response = kind === 'approval' && params.enabled === false ? { approved: true } : context.interrupt(request)
         // A question's answer also enters the history, so a later turn's {{history.text}} sees it.
         return { outcome: 'next', output: { response, ...(params.bindCandidate ? { candidateHash: bound! } : {}) },
-          ...(kind === 'question' ? { answers: [answerEntry(context, response)], history: [historyEntry(context, `Human question: ${text(params.text)}\nHuman answer:\n${JSON.stringify(response)}`)] } : {}) }
+          ...(kind === 'question' ? questionRecord(context, text(params.text), chosenAnswer(response, request as unknown as JsonValue), response) : {}) }
       },
     })
   }
   return pieces
+}
+
+/** A question's answer for `$answers` (with what was asked, for later role turns) and for the history. */
+function questionRecord(context: PieceExecutionContext, question: string, answer: string, response: JsonValue) {
+  return { answers: [answerEntry(context, response, 0, { question: boundedText(question, 4000), answer: boundedText(answer, 4000) })],
+    history: [historyEntry(context, `Human question: ${question}\nHuman answer:\n${answer}`)] }
+}
+
+/** The recorded answer: unchanged JSON for a free answer, the chosen option spelled out (questionOptions) otherwise. */
+function chosenAnswer(response: JsonValue, request: JsonValue): string {
+  const chosen = response && typeof response === 'object' && !Array.isArray(response) && typeof response.optionId === 'string'
+  return chosen ? answerText(response, request) : JSON.stringify(response)
+}
+
+/** A question node's structured fields: static params, or the questionOptions/recommendedOption an earlier node's structured output proposed. */
+function questionFields(params: Record<string, JsonValue>, context: PieceExecutionContext) {
+  const from = typeof params.optionsFrom === 'string' ? context.state.$outputs[params.optionsFrom] : undefined
+  const structured = from && typeof from === 'object' && !Array.isArray(from) && from.structured && typeof from.structured === 'object' && !Array.isArray(from.structured) ? from.structured : undefined
+  const proposed = Array.isArray(structured?.questionOptions) ? structured.questionOptions : undefined
+  return structuredQuestion({ text: text(params.text), asker: params.asker, why: params.why ?? structured?.questionWhy,
+    options: proposed ?? params.options, recommended: (proposed ? structured?.recommendedOption : undefined) ?? params.recommended, endsRun: params.endsRun })
 }
 
 /** Composition kinds are compiled as actual child graphs, never ordinary opaque calls. */

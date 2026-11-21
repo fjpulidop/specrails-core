@@ -486,7 +486,104 @@ it('upgrades a version 1 run database before recording a pause and keeps version
     const lease = new RunLease(database, f.context.runId), token = lease.acquire('owner')
     expect((await pauseRun(f.directory, { requestId: 'after-upgrade' })).outcome).toBe('requested')
     lease.release(token)
-    expect(database.schemaVersion).toBe(2)
+    // 1 → 2 (pause kind) → 3 (deduplicated row history): the same tables, upgraded in one step.
+    expect(database.schemaVersion).toBe(3)
     expect(database.sqlite.prepare("SELECT kind FROM control_inbox ORDER BY created_at").all().map(row => row.kind)).toEqual(['steer', 'pause'])
   } finally { database.close() }
+})
+
+it("routes a write role's decision to the person and resumes the same node with the answer, without repeating the settled turn", async () => {
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'complete', invalid: null, failed: null } },
+    complete: { kind: 'condition', params: { expr: '$outputs.build.structured.incomplete.length == 0' }, ends: { true: 'done', false: 'stalled' } },
+    stalled: { kind: 'end', params: { outcome: 'failure' }, ends: {} }, done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Keyboard done', incomplete: ['2.1 touch controls'], decisionNeeded: 'Task 2.1 needs touch controls, a declared non-goal: implement or drop?' },
+    { summary: 'Touch controls implemented', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun({ ...f, registry: registry() })
+  expect(paused.state.status).toBe('paused')
+  expect(paused.state.pendingInterrupts).toEqual([expect.objectContaining({ kind: 'question', nodePath: 'build' })])
+  expect(JSON.stringify(paused.state.pendingInterrupts[0])).toContain('a declared non-goal')
+  const resumed = await resumeRun(f.directory, { registry: registry(), answers: { [paused.state.pendingInterrupts[0].id]: { answer: 'Implement them' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(2)
+  expect(f.requests[1].prompt).toContain('Implement them')
+  expect(resumed.efficiencySummary.invocations.total).toBe(2)
+})
+
+it('questionOptions: a decision carries its choices on the interrupt, an answer by option id reaches the rerun, an unknown id is refused', async () => {
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'done', invalid: null, failed: null } },
+    done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Keyboard done', incomplete: ['2.1'], decisionNeeded: 'Task 2.1 needs touch controls, a declared non-goal.',
+    decisionOptions: [{ id: 'implement', label: 'Implement touch', meaning: 'Adds touch controls despite the non-goal.' }, { id: 'drop', label: 'Drop task 2.1', meaning: 'Keeps the non-goal; 2.1 stays undone.' }], decisionRecommended: 'drop' },
+    { summary: 'Dropped 2.1', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const paused = await createRun({ ...f, registry: registry() })
+  const pending = paused.state.pendingInterrupts[0]
+  expect(pending.value).toMatchObject({ kind: 'question', asker: 'builder', text: 'Task 2.1 needs touch controls, a declared non-goal.', recommended: 'drop',
+    options: [{ id: 'implement', label: 'Implement touch' }, { id: 'drop', label: 'Drop task 2.1' }] })
+  expect((pending.value as { prompt: string }).prompt).toContain('- Drop task 2.1: Keeps the non-goal; 2.1 stays undone. (recommended)')
+  await expect(resumeRun(f.directory, { registry: registry(), answers: { [pending.id]: { answer: 'x', optionId: 'nope' } } })).rejects.toMatchObject({ code: 'invalid_resume' })
+  const resumed = await resumeRun(f.directory, { registry: registry(), answers: { [pending.id]: { answer: 'Drop task 2.1', optionId: 'drop' } } })
+  expect(resumed.state.status).toBe('succeeded')
+  expect(f.requests[1].prompt).toContain('The person chose \\"Drop task 2.1\\" (Keeps the non-goal; 2.1 stays undone.).')
+  expect(JSON.stringify(resumed.state)).not.toContain('decisionOptions')
+})
+
+it('a role that asks again after an answer pauses on the new question, and the second answer reaches its rerun', async () => {
+  // LangGraph names both interrupts of the node task alike: the second was dropped as already answered,
+  // so the run ended "Graph stopped without a durable completion or pending interruption".
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'done', invalid: null, failed: null } },
+    done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Part one', incomplete: ['1.1'], decisionNeeded: 'Should 0.0006ms round to 0 or 1?' },
+    { summary: 'Your answer does not add up', incomplete: ['1.1'], decisionNeeded: 'Under that rule 0.0005ms is 0, not 1: which input should the test use?' },
+    { summary: 'Done with 0.5ms', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const first = await createRun({ ...f, registry: registry() })
+  const asked = first.state.pendingInterrupts[0]
+  const second = await resumeRun(f.directory, { registry: registry(), answers: { [asked.id]: { answer: 'Use 0.0005ms' } } })
+  expect(second.state.status).toBe('paused')
+  expect(second.state.pendingInterrupts).toHaveLength(1)
+  const again = second.state.pendingInterrupts[0]
+  expect(again.id).not.toBe(asked.id)
+  expect(JSON.stringify(again.value)).toContain('which input should the test use?')
+  // Resuming without an answer keeps it pending: the earlier answer is never reused for it.
+  expect((await resumeRun(f.directory, { registry: registry() })).state.pendingInterrupts.map(value => value.id)).toEqual([again.id])
+  const done2 = await resumeRun(f.directory, { registry: registry(), answers: { [again.id]: { answer: 'Use 0.5ms' } } })
+  expect(done2.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(3)
+  expect(f.requests[2].prompt).toContain('Use 0.0005ms')
+  expect(f.requests[2].prompt).toContain('Use 0.5ms')
+})
+
+it('questionOptions: an approval can be rejected with a reason and the definition takes its negative edge; a reason is required', async () => {
+  const f = fixture({
+    approve: { kind: 'approval', params: { reason: 'Approve archiving?' }, ends: { next: 'policy' } },
+    policy: { kind: 'condition', params: { expr: '$outputs.approve.response.approved == true' }, ends: { true: 'done', false: 'rejected' } },
+    rejected: { kind: 'end', params: { outcome: 'failure', reason: 'Rejected: {{outputs.approve.response.reason}}' }, ends: {} }, done,
+  }, { delivery: { requiresVerified: false } })
+  const paused = await createRun(f)
+  const id = paused.state.pendingInterrupts[0].id
+  expect(paused.state.pendingInterrupts[0].value).toMatchObject({ kind: 'approval', rejectable: true })
+  await expect(resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false } } })).rejects.toMatchObject({ code: 'invalid_resume' })
+  const resumed = await resumeRun(f.directory, { registry: f.registry, answers: { [id]: { approved: false, reason: 'Wrong colours' } } })
+  expect(resumed.state.status).toBe('failed')
+  expect(JSON.stringify(resumed.completion)).toContain('Rejected: Wrong colours')
 })

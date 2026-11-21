@@ -1,8 +1,37 @@
+import { randomUUID } from 'node:crypto'
+import { hostname } from 'node:os'
 import { EngineError, type ExecutionLease } from '../contracts.js'
 import { appendRunEvent, RunDatabase } from './database.js'
 
 const LEASE_MS = 60_000
 export const LEASE_HEARTBEAT_MS = 15_000
+
+const OWNER_PROCESS = /^pid:(\d+)@([^:]+):/
+
+/** A lease owner that names its process, so a lease left by a process that died on this machine is not live. */
+export function leaseOwner(): string {
+  return `pid:${process.pid}@${hostname()}:${randomUUID()}`
+}
+
+/**
+ * False only when the owner names a process on this machine that no longer exists: it can neither
+ * renew nor release its lease, so waiting for the expiry (up to a minute after a host restart killed
+ * it) protects nothing. Any other owner (another machine, an older owner without a process, a
+ * process this user cannot signal) is assumed alive until its lease expires.
+ */
+export function leaseOwnerAlive(owner: string, kill: (pid: number, signal: 0) => void = process.kill.bind(process)): boolean {
+  const match = OWNER_PROCESS.exec(owner)
+  if (!match || match[2] !== hostname()) return true
+  const pid = Number(match[1])
+  if (!Number.isSafeInteger(pid) || pid <= 0 || pid === process.pid) return true
+  try { kill(pid, 0); return true }
+  catch (error) { return (error as NodeJS.ErrnoException)?.code !== 'ESRCH' }
+}
+
+/** Whether a lease still fences the run: unexpired and held by an owner that can still act. */
+export function leaseLive(lease: Pick<ExecutionLease, 'owner' | 'expiresAt'> | undefined, now: number = Date.now()): boolean {
+  return !!lease && lease.expiresAt > now && leaseOwnerAlive(lease.owner)
+}
 
 /** Fencing is checked in the same SQLite transaction as every execution mutation. */
 export class RunLease {
@@ -18,7 +47,7 @@ export class RunLease {
     return this.db.transaction('lease-acquired', () => {
       const now = this.now(), prior = this.current(), run = this.db.get('runs', { run_id: this.runId })
       if (!run) throw new EngineError('run_not_found', 'Run does not exist')
-      if (prior && prior.expiresAt > now) throw new EngineError('lease_held', 'Another executor holds this run lease', { expiresAt: prior.expiresAt })
+      if (prior && leaseLive(prior, now)) throw new EngineError('lease_held', 'Another executor holds this run lease', { expiresAt: prior.expiresAt })
       const epoch = Number(run.lease_epoch) + 1, at = new Date(now).toISOString(), expiresAt = now + ttlMs
       this.db.sqlite.prepare('INSERT OR REPLACE INTO lease(run_id,owner,epoch,acquired_at,heartbeat_at,expires_at) VALUES (?,?,?,?,?,?)')
         .run(this.runId, owner, epoch, at, at, new Date(expiresAt).toISOString())
@@ -30,9 +59,17 @@ export class RunLease {
     })
   }
 
+  /**
+   * The token still fences the run while the lease row names it (same owner and epoch). An
+   * expiry alone does not end it: the expiry only lets ANOTHER executor take the run over, and
+   * a takeover writes a new owner and epoch in the same transaction that would otherwise renew
+   * this one. A process frozen past the expiry (a laptop that slept, SIGSTOP, a debugger) that
+   * nobody replaced resumes its run: it used to fail `lease_lost` at its first heartbeat after
+   * waking, although nothing else had run (a 3-minute SIGSTOP failed a 160-task run after an hour).
+   */
   assert(token: ExecutionLease): void {
     const current = this.current()
-    if (token.runId !== this.runId || !current || current.owner !== token.owner || current.epoch !== token.epoch || current.expiresAt <= this.now()) {
+    if (token.runId !== this.runId || !current || current.owner !== token.owner || current.epoch !== token.epoch) {
       throw new EngineError('lease_lost', 'Execution lease expired or was replaced; late effects cannot commit')
     }
   }

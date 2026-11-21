@@ -7,7 +7,7 @@
  */
 import type { SessionEvent, SessionEventEnvelope, ToolActivity } from './domain/events.js'
 import type { SessionSnapshot } from './domain/snapshot.js'
-import type { Attachment, DriverDescriptor, InputDelivery, OutputChannel, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
+import type { Attachment, ContextUsage, DriverDescriptor, InputDelivery, OutputChannel, RateLimitInfo, SessionPolicy, SubagentKind, SubagentPhase } from './domain/types.js'
 import type { ReportedUsage, UsageBaseline } from './domain/usage.js'
 
 // ── Drivers ─────────────────────────────────────────────────────────────────
@@ -64,7 +64,7 @@ export type DriverEvent =
   | ({ kind: 'turn.tool' } & ToolActivity)
   /** The provider generated an image and saved it locally (`path` is absolute). */
   | { kind: 'turn.image'; imageId: string; path: string; mimeType: string; prompt?: string }
-  | { kind: 'turn.completed'; status: 'completed' | 'failed' | 'stopped'; text: string; error?: string; usage: ReportedUsage }
+  | { kind: 'turn.completed'; status: 'completed' | 'failed' | 'stopped'; text: string; error?: string; usage: ReportedUsage; context?: ContextUsage }
   | { kind: 'subagent.started'; subagentId: string; parentId: string | null; agentKind: SubagentKind; agentType?: string; description: string; prompt?: string }
   | { kind: 'subagent.phase'; subagentId: string; phase: SubagentPhase; reason?: string }
   | { kind: 'subagent.output'; subagentId: string; channel: 'text' | 'tool'; delta?: string; tool?: ToolActivity }
@@ -74,6 +74,8 @@ export type DriverEvent =
   /** The provider's authoritative list of live sub-agent ids, when it reports one. */
   | { kind: 'roster'; liveSubagentIds: string[] }
   | { kind: 'diagnostic'; level: 'info' | 'warning'; code: string; message: string }
+  /** The provider account's usage-limit state (drivers with `reportsRateLimits`). */
+  | { kind: 'rate-limit'; rateLimit: RateLimitInfo }
 
 export type DriverEventSink = (event: DriverEvent) => void
 

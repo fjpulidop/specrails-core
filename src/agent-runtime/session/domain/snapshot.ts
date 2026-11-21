@@ -10,7 +10,9 @@ import {
   isLiveSubagentPhase,
 } from './state-machines.js'
 import type {
+  ContextUsage,
   InputDelivery,
+  RateLimitInfo,
   InputState,
   SessionPhase,
   SessionPolicy,
@@ -47,6 +49,8 @@ export interface TurnRecord {
   startedAt: string
   endedAt: string | null
   usage: Usage | null
+  /** Context window fill at the end of the turn, when the driver reports it. */
+  context?: ContextUsage
 }
 
 export interface SubagentNode {
@@ -95,6 +99,8 @@ export interface SessionSnapshot {
   /** Interrupted work the agent has not been told about yet. */
   pendingInterruptions: { subagentIds: string[]; inputIds: string[] }
   closedReason: string | null
+  /** The provider account's last reported usage-limit state; absent until the driver reports one. */
+  rateLimit?: RateLimitInfo
 }
 
 export function emptySnapshot(sessionId: string): SessionSnapshot {
@@ -146,7 +152,7 @@ function requireOpenTurn(state: SessionSnapshot, turnId: string): OpenTurn {
  * contains foldable events and replay equals the live state.
  */
 export function applyEvent(state: SessionSnapshot, event: SessionEvent): SessionSnapshot {
-  if (state.status === 'closed' && event.type !== 'provider.diagnostic') {
+  if (state.status === 'closed' && event.type !== 'provider.diagnostic' && event.type !== 'provider.rate-limit') {
     throw new SessionError('session_closed', `Session ${state.sessionId} is closed`)
   }
   switch (event.type) {
@@ -222,7 +228,7 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
       const turns = state.turns.map((turn) => {
         if (turn.turnId !== event.turnId) return turn
         assertTransition('turn', TURN_TRANSITIONS, turn.status, event.status)
-        return { ...turn, status: event.status, endedAt: event.at, usage: event.usage }
+        return { ...turn, status: event.status, endedAt: event.at, usage: event.usage, ...(event.context ? { context: event.context } : {}) }
       })
       return { ...state, openTurn: null, turns }
     }
@@ -288,6 +294,8 @@ export function applyEvent(state: SessionSnapshot, event: SessionEvent): Session
           inputIds: state.pendingInterruptions.inputIds.filter((id) => !event.inputIds.includes(id)),
         },
       }
+    case 'provider.rate-limit':
+      return { ...state, rateLimit: event.rateLimit }
     case 'output.truncated':
     case 'provider.diagnostic':
       return state

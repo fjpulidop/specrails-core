@@ -17,6 +17,7 @@ import { statusRun } from './run-status.js'
 import { classifyFailure } from '../failure-classification.js'
 import { forkRun, type ForkRunOptions } from './fork.js'
 import { HOST_TASK_OUTPUT_LIMIT_BYTES } from './pieces/host-task.js'
+import { readRouteOverrideFile } from './route-overrides.js'
 
 export { NODE_KINDS_VERSION }
 type Flags = Record<string, string | boolean>
@@ -64,8 +65,9 @@ export function isDefinitionCommand(flags: Flags, command: string): boolean {
 const workflowIdentity = (workflow: { id: string; version: string; source: string }) => ({ ...workflow, definitionHash: workflow.version, engine: 2 as const })
 
 /** `failure` (contract 5.8): the structured classification of a failed or blocked definition run; absent otherwise. */
-export function definitionFailure(state: { status: string; steps?: unknown; recentFailures?: unknown; nextStep?: unknown; error?: unknown }) {
-  const failure = classifyFailure({ status: state.status, error: state.error, steps: state.steps as never, recentFailures: state.recentFailures as never, nextStep: state.nextStep })
+export function definitionFailure(state: { status: string; steps?: unknown; recentFailures?: unknown; nextStep?: unknown; error?: unknown }, completion?: unknown) {
+  const failure = classifyFailure({ status: state.status, error: state.error, steps: state.steps as never, recentFailures: state.recentFailures as never, nextStep: state.nextStep,
+    ...(completion && typeof completion === 'object' ? { completion: completion as { reasons?: unknown; blocker?: unknown } } : {}) })
   return failure ? { failure } : {}
 }
 
@@ -86,7 +88,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   }
   if (command === 'status') {
     const status = await statusRun(directory(flags), flags.compact === true)
-    emit({ ...status, ...definitionFailure(status.state), workflow: workflowIdentity(status.workflow) }); return 0
+    emit({ ...status, ...definitionFailure(status.state, status.completion), workflow: workflowIdentity(status.workflow) }); return 0
   }
   if (command === 'signal') {
     if (flags.stdin !== true) throw new EngineError('invalid_arguments', 'Signal requires --stdin')
@@ -102,14 +104,20 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
   const cutOptions = () => ({ ...(flags['scope-id'] === undefined ? {} : { scopeId: required(flags, 'scope-id') }),
     ...(flags.visit === undefined ? {} : { visit: Number(required(flags, 'visit')) }) })
   if (command === 'fork') {
+    // forkRouteOverrides: the new run starts with roles moved to another provider (a continuation after a usage limit).
+    const routeOverride = flags['route-overrides'] === undefined ? undefined : readRouteOverrideFile(required(flags, 'route-overrides'))
+    if (routeOverride && ['answer', 'approve', 'reject', 'option', 'host-result', 'invalidate', 'interrupt-id', 'recover'].some(key => flags[key] !== undefined)) {
+      throw new EngineError('invalid_arguments', '--route-overrides on a fork only moves roles; answers, approvals, host results, recovery and invalidation belong to runtime resume')
+    }
     const fork = await forkRun(directory(flags), { fromNodePath: required(flags, 'from'), runId: required(flags, 'run-id'), ...cutOptions(),
-      ...(flags['request-id'] === undefined ? {} : { requestId: required(flags, 'request-id') }),
+      ...(flags['request-id'] === undefined ? {} : { requestId: required(flags, 'request-id') }), ...(routeOverride ? { routeOverride } : {}),
       ...(flags.state === undefined ? {} : { state: read(required(flags, 'state')) as ForkRunOptions['state'] }) })
     await freezeRunRequest(fork.directory)
     emit(fork)
     return 0
   }
-  const controller = new AbortController(), abort = () => controller.abort(new EngineError('aborted', 'Process termination requested'))
+  // The record names the signal: a host's own stop and a signal from elsewhere read differently.
+  const controller = new AbortController(), abort = (signal: NodeJS.Signals) => controller.abort(new EngineError('aborted', `Process termination requested (${signal})`))
   process.on('SIGINT', abort); process.on('SIGTERM', abort)
   try {
     let previous: Awaited<ReturnType<typeof statusRun>> | undefined
@@ -121,6 +129,11 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
     } else if (command === 'resume') {
       if (flags.definition !== undefined || flags.config !== undefined) throw new EngineError('invalid_arguments', 'Resume uses the frozen definition and config')
       if ((flags.answer !== undefined || flags.approve !== undefined) && (flags.recover !== undefined || flags.invalidate !== undefined)) throw new EngineError('invalid_arguments', 'Human answers and recovery cannot be combined')
+      // routeOverrides: roles move to another provider for the rest of THIS run; a plain resume otherwise.
+      const routeOverride = flags['route-overrides'] === undefined ? undefined : readRouteOverrideFile(required(flags, 'route-overrides'))
+      if (routeOverride && ['answer', 'approve', 'reject', 'option', 'host-result', 'invalidate', 'interrupt-id'].some(key => flags[key] !== undefined)) {
+        throw new EngineError('invalid_arguments', '--route-overrides resumes a stopped run as is; it cannot be combined with an answer, approval, host result or invalidation')
+      }
       let target = directory(flags)
       previous = await statusRun(target)
       if (flags.invalidate !== undefined) {
@@ -151,14 +164,21 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       if (flags.answer !== undefined) {
         const matches = pending.filter(item => item.kind === 'question' && (flags['interrupt-id'] === undefined || item.id === required(flags, 'interrupt-id')))
         if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Select one pending question with --interrupt-id')
-        answers[matches[0].id] = { answer: required(flags, 'answer') }
+        answers[matches[0].id] = { answer: required(flags, 'answer'), ...(flags.option !== undefined ? { optionId: required(flags, 'option') } : {}) }
+      } else if (flags.option !== undefined) throw new EngineError('invalid_arguments', '--option requires --answer (the choice label or the person\'s words)')
+      if (flags.reject !== undefined) {
+        const node = required(flags, 'reject'), reason = flags.reason === undefined ? '' : required(flags, 'reason').trim()
+        if (!reason) throw new EngineError('invalid_arguments', '--reject requires a nonempty --reason')
+        const matches = pending.filter(item => item.kind === 'approval' && (item.nodePath === node || item.id === node))
+        if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Rejection must identify exactly one pending approval')
+        answers[matches[0].id] = { approved: false, reason }
       }
       if (flags.approve !== undefined) for (const node of required(flags, 'approve').split(',')) {
         const matches = pending.filter(item => ['approval', 'gate'].includes(item.kind) && (item.nodePath === node || item.id === node))
         if (matches.length !== 1) throw new EngineError('interrupt_ambiguous', 'Approval must identify exactly one pending node or interrupt')
         answers[matches[0].id] = { approved: true }
       }
-      result = await resumeRun(target, { signal: controller.signal, onEvent: emit, answers,
+      result = await resumeRun(target, { signal: controller.signal, onEvent: emit, answers, ...(routeOverride ? { routeOverride } : {}),
         recover: optional(flags, 'recover')?.split(','),
         ...(flags.context && flags.invalidate === undefined ? { context: validatePipelineContext(read(required(flags, 'context'))) } : {}) })
     } else throw new EngineError('invalid_arguments', `Unsupported definition command ${command}`)
@@ -166,7 +186,7 @@ export async function runDefinitionCommand(flags: Flags, positionals: string[], 
       const current = result.state.usage[key], prior = previous ? previous.state.usage[key] : 0
       return current === null || prior === null ? null : Math.max(0, current - prior)
     }
-    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, ...definitionFailure({ ...result.state, ...('error' in result ? { error: result.error } : {}) }), revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
+    emit({ type: 'runtime-result', engineVersion: 2, ...result.state, ...definitionFailure({ ...result.state, ...('error' in result ? { error: result.error } : {}) }, result.completion), revision: result.revision, eventCursor: result.eventCursor, workflow: workflowIdentity(result.workflow), completion: result.completion,
       ...('forkOf' in result ? { forkOf: result.forkOf } : {}), ...('error' in result ? { error: result.error } : {}),
       usage: result.state.usage, invocationUsage: { costUsd: delta('costUsd'), inputTokens: delta('inputTokens'), outputTokens: delta('outputTokens') }, metrics: result.metrics, efficiencySummary: result.efficiencySummary })
     return result.state.status === 'succeeded' ? 0 : result.state.status === 'paused' ? 2 : 1

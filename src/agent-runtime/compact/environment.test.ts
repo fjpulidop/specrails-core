@@ -32,6 +32,16 @@ describe('hostPreconditionFailure', () => {
   it('names a system Python that refuses installs (PEP 668) and an unreachable Docker daemon', async () => {
     const { hostPrecondition } = await import('./environment.js')
     expect(hostPrecondition('error: externally-managed-environment\n\n× This environment is externally managed')).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('venv') })
+    // wasm-rs: `cargo build --target wasm32-unknown-unknown` without the target ran three corrections and ended tests_failed.
+    expect(hostPrecondition("error[E0463]: can't find crate for `std`\n  |\n  = note: the `wasm32-unknown-unknown` target may not be installed\n  = help: consider downloading the target with `rustup target add wasm32-unknown-unknown`"))
+      .toEqual({ kind: 'toolchain', reason: 'the Rust target wasm32-unknown-unknown is not installed on this machine', requiredAction: expect.stringContaining('`rustup target add wasm32-unknown-unknown`'),
+        install: 'rustup target add wasm32-unknown-unknown', tool: 'the Rust target wasm32-unknown-unknown' })
+    expect(hostPrecondition("error: 'cargo-clippy' is not installed for the toolchain 'stable-aarch64-apple-darwin'")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('`rustup component add clippy`'), install: 'rustup component add clippy' })
+    expect(hostPrecondition("* What went wrong:\nSDK location not found. Define a valid SDK location with an ANDROID_HOME environment variable or by setting the sdk.dir path in your project's local properties file")).toMatchObject({ kind: 'toolchain', requiredAction: expect.stringContaining('ANDROID_HOME') })
+    expect(hostPrecondition('error[E0308]: mismatched types')).toBeUndefined()
+    // lowdisk: npm install hit ENOSPC and three correction rounds retried it on a full volume.
+    expect(hostPrecondition("npm error code ENOSPC\nnpm error nospc ENOSPC: no space left on device, open '/w/ticket-1/package.json'\nnpm error nospc Clear up some disk space and try again.")).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Free disk space') })
+    expect(hostPrecondition('fatal: write error: No space left on device')).toMatchObject({ kind: 'environment' })
     expect(hostPrecondition('permission denied while trying to connect to the Docker daemon socket at unix:///Users/x/.docker/run/docker.sock: connect: operation not permitted')).toMatchObject({ kind: 'environment', requiredAction: expect.stringContaining('Start Docker') })
     expect(hostPrecondition('Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?')).toMatchObject({ kind: 'environment' })
     expect(hostPrecondition('AssertionError: expected 3 to equal 4')).toBeUndefined()
@@ -68,11 +78,18 @@ describe('plannedInstalls', () => {
     const node = root({ 'package.json': '{}' })
     expect(plannedInstalls(node)).toMatchObject([{ ecosystem: 'node', command: 'npm' }])
     expect(plannedInstalls(root({ 'package.json': '{}' }, ['node_modules']))).toEqual([])
-    expect(plannedInstalls(root({ 'package.json': '{}', 'pnpm-lock.yaml': '' }))).toMatchObject([{ command: 'pnpm', args: ['install'] }])
-    expect(plannedInstalls(root({ 'requirements.txt': 'pytest\n' }))).toMatchObject([{ ecosystem: 'python', args: ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] }])
+    expect(plannedInstalls(root({ 'package.json': '{}', 'pnpm-lock.yaml': '' }))).toMatchObject([{ command: expect.stringMatching(/^(pnpm|npx)$/), args: expect.arrayContaining(['install']) }])
+    // Never the system Python: a project .venv, then an install into it.
+    expect(plannedInstalls(root({ 'requirements.txt': 'pytest\n' }))).toMatchObject([{ ecosystem: 'python', args: ['-m', 'venv', '.venv'] }, { ecosystem: 'python', command: expect.stringMatching(/\.venv[\\/](bin|Scripts)[\\/]python/), args: ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] }])
     expect(plannedInstalls(root({ 'go.mod': 'module x\n' }))).toMatchObject([{ ecosystem: 'go' }])
     expect(plannedInstalls(root({ 'Cargo.toml': '' }))).toMatchObject([{ ecosystem: 'rust' }])
     expect(plannedInstalls(root())).toEqual([])
+  })
+
+  it('never creates an npm lockfile in a repository that keeps none', () => {
+    expect(plannedInstalls(root({ 'package.json': '{}' }))[0]!.args).toContain('--no-package-lock')
+    expect(plannedInstalls(root({ 'package.json': '{}', 'package-lock.json': '{}' }))[0]!.args).not.toContain('--no-package-lock')
+    expect(plannedInstalls(root({ 'package.json': '{}', 'npm-shrinkwrap.json': '{}' }))[0]!.args).not.toContain('--no-package-lock')
   })
 })
 
@@ -83,7 +100,7 @@ describe('installEnvironment', () => {
     const events: unknown[] = []
     const outcomes = await installEnvironment([node, root({ 'go.mod': '' })], { spawn: spawn as never, onEvent: event => events.push(event) })
     expect(spawn).toHaveBeenCalledTimes(2)
-    expect(spawn.mock.calls[0]![1]).toEqual(['install', '--no-audit', '--no-fund', '--loglevel=error'])
+    expect(spawn.mock.calls[0]![1]).toEqual(['install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock'])
     expect((spawn.mock.calls[0]![2] as { cwd: string; timeout: number }).cwd).toBe(node)
     expect(outcomes.map(item => item.ok)).toEqual([true, false])
     expect(outcomes[1]!.detail).toContain('boom')
@@ -101,7 +118,7 @@ describe('suggested packages from failure output', () => {
     expect(suggestedPackages(output)).toEqual(['@types/jest', '@types/mocha'])
     const node = root({ 'package.json': '{}' }, ['node_modules'])
     expect(plannedInstalls(node)).toEqual([])
-    expect(plannedInstalls(node, output)).toMatchObject([{ command: 'npm', args: ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', '@types/jest', '@types/mocha'] }])
+    expect(plannedInstalls(node, output)).toMatchObject([{ command: 'npm', args: ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock', '@types/jest', '@types/mocha'] }])
     const spawn = vi.fn(() => ({ status: 0, stdout: '', stderr: '', pid: 1, output: [], signal: null })) as never
     expect((await installEnvironment([node], { spawn, failureOutput: output }))[0]).toMatchObject({ ok: true })
     expect(suggestedPackages('FAIL: expect(received).toBe(expected)')).toEqual([])
@@ -248,7 +265,7 @@ describe('Playwright browser builds', () => {
     expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { playwright: '^1.48' } }) }, ['node_modules/playwright']), 'Looks like Playwright was just installed or updated.')).toMatchObject([{ command: 'npx', args: ['playwright', 'install'], installs: 'Playwright browsers' }])
     expect(plannedInstalls(root({ 'package.json': JSON.stringify({ devDependencies: { jest: '^29' } }) }, ['node_modules/jest']), missing)).toEqual([])
     // A fresh worktree installs node_modules first: `npx playwright` needs the package.
-    expect(plannedInstalls(root({ 'package.json': manifest }), missing).map(plan => [plan.command, ...plan.args])).toEqual([['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error'], ['npx', 'playwright', 'install', 'chromium']])
+    expect(plannedInstalls(root({ 'package.json': manifest }), missing).map(plan => [plan.command, ...plan.args])).toEqual([['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock'], ['npx', 'playwright', 'install', 'chromium']])
     expect(plannedInstalls(root({ 'package.json': manifest, 'pnpm-lock.yaml': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'pnpm', args: ['exec', 'playwright', 'install', 'chromium'] }])
     expect(plannedInstalls(root({ 'package.json': manifest, 'yarn.lock': '' }, ['node_modules/@playwright/test']), missing)).toMatchObject([{ command: 'yarn', args: ['playwright', 'install', 'chromium'] }])
   })
@@ -312,7 +329,7 @@ describe('host preparation before writer turns', () => {
       return { status: 0, stdout, stderr: '', pid: 1, output: [], signal: null }
     })
     const outcomes = await prepareEnvironment([dir], { spawn: spawn as never })
-    expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error', 'npx --no playwright install chromium'])
+    expect(outcomes.map(outcome => [outcome.command, ...outcome.args].join(' '))).toEqual(['npm install --no-audit --no-fund --loglevel=error --no-package-lock', 'npx --no playwright install chromium'])
     expect(outcomes.every(outcome => outcome.ok)).toBe(true)
     expect(outcomes[1]).toMatchObject({ installs: 'Playwright chromium', timeoutMs: 10 * 60_000 })
     calls.length = 0
@@ -394,7 +411,14 @@ describe('drift-driven installs', () => {
   it('plans the runner install on drift and names the packages in the outcome detail', () => {
     const dir = stale()
     writeFileSync(path.join(dir, 'yarn.lock'), '')
-    expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
+    const bin = mkdtempSync(path.join(tmpdir(), 'yarn-bin-')); writeFileSync(path.join(bin, process.platform === 'win32' ? 'yarn.cmd' : 'yarn'), '') // Windows runs the .cmd shim
+    vi.stubEnv('PATH', bin)
+    try {
+      expect(plannedInstalls(dir)).toEqual([{ ecosystem: 'node', root: dir, command: 'yarn', args: ['install'], drift: [{ name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] }])
+      // A host without yarn installs through npx at the pinned version instead of failing to spawn.
+      vi.stubEnv('PATH', path.join(bin, 'none'))
+      expect(plannedInstalls(dir)[0]).toMatchObject({ command: 'npx', args: ['--yes', 'yarn@1', 'install'] })
+    } finally { vi.unstubAllEnvs(); rmSync(bin, { recursive: true, force: true }) }
     expect(describeDrift([...Array(6)].map((_, index) => ({ name: `p${index}`, declared: '^2', installed: '1.0.0' })))).toBe('p0 1.0.0 does not satisfy ^2, p1 1.0.0 does not satisfy ^2, p2 1.0.0 does not satisfy ^2, p3 1.0.0 does not satisfy ^2, p4 1.0.0 does not satisfy ^2 and 1 more')
   })
   it('repairs a drifted tree once before the first role turn and plans nothing for a healthy one', async () => {
@@ -506,5 +530,24 @@ describe('hostSpawn', () => {
       rmSync(dir, { recursive: true, force: true })
     }
     expect(ticks).toBeGreaterThanOrEqual(8)
+  })
+})
+
+describe('python environment preparation', () => {
+  it('keeps the project .venv out of the delivery through the checkout exclude, also in a linked worktree', () => {
+    const main = root({ 'requirements.txt': 'pytest\n' })
+    execFileSync('git', ['init', '-q'], { cwd: main })
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: main })
+    const linked = path.join(main, '..', path.basename(main) + '-wt')
+    execFileSync('git', ['worktree', 'add', '-q', linked], { cwd: main })
+    writeFileSync(path.join(linked, 'requirements.txt'), 'pytest\n')
+    plannedInstalls(linked)
+    plannedInstalls(linked)
+    const exclude = readFileSync(path.join(main, '.git', 'info', 'exclude'), 'utf8')
+    expect(exclude.split('\n').filter(line => line === '/.venv/')).toHaveLength(1)
+    mkdirSync(path.join(linked, '.venv'))
+    writeFileSync(path.join(linked, '.venv', 'pyvenv.cfg'), 'home = /usr/bin\n')
+    expect(execFileSync('git', ['status', '--porcelain'], { cwd: linked, encoding: 'utf8' })).not.toContain('.venv')
+    rmSync(linked, { recursive: true, force: true })
   })
 })

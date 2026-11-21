@@ -6,7 +6,7 @@ Agent workflow engine for specrails-desktop: a deterministic installer that rend
 
 | Layer | Tech |
 |-------|------|
-| CLI + installer | TypeScript (ESM, strict), Node ≥ 20.19.0, macOS/Linux/Windows |
+| CLI + installer | TypeScript (ESM, strict), Node ≥ 22.22.3, macOS/Linux/Windows |
 | Runtime | @langchain/langgraph state graph, provider CLI executors, OpenAI-compatible chat loop |
 | Specs | OpenSpec (pinned in `pinned-versions.json`) |
 | Tests | vitest (OS × Node CI matrix) |
@@ -24,7 +24,7 @@ src/pipeline/pipeline-state.ts  pipeline journal, gates and verification receipt
 src/agent-runtime/            runtime: workflow engine, graph nodes/roles, executors, compact loop, recovery, CLI, project rules inventory (.specrails/rules.json)
 src/shared/                   helpers shared by the CLIs (argument parsing, Specrails home, secret redaction)
 templates/                    implement/retry commands, provider settings, Kimi runner (roles are runtime-defined, never templated)
-integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.12)
+integration-contract.json     Desktop ⇄ Core contract (schemaVersion 5.17)
 ```
 
 ## Commands

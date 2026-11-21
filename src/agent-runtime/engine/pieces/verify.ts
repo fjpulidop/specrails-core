@@ -9,6 +9,7 @@ import { verificationDiagnosticPriority, verificationFailureSummary } from '../.
 import type { HostBlocker, JsonObject, Piece, PieceExecutionContext, PieceResult, ReceiptEvidence } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
 import { boundedText, json, paramsSchema, positiveInteger } from './shared.js'
+import { askMachineInstalls } from './machine-install.js'
 import { describeDrift } from '../../compact/environment.js'
 import { guardrailEnabled } from '../../guardrails.js'
 import { NONDETERMINISTIC_OUTPUT_CODE, adoptedOutputNote, checkoutRelative, environmentFailure, nondeterministicOutputBlocker, preconditionBlock, repairEnvironment, selfMutationOnly } from '../../verification-repair.js'
@@ -28,6 +29,15 @@ export function verificationSummary(receipt: VerificationReceipt): string {
   })
   const text = lines.join('\n') || 'No verification commands ran.'
   return text.length > 2000 ? text.slice(0, 1999) + '…' : text
+}
+
+/** The no-progress stop names the check that keeps failing and what it last said, so the diagnosis is actionable without opening logs. */
+function noProgressMessage(receipt: VerificationReceipt): string {
+  const failing = receipt.commands.find(command => command.exitCode !== 0)
+  const base = 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections'
+  if (!failing) return base + '; inspect the failed checks.'
+  const fact = verificationFailureSummary(failing)[0]?.trim().slice(0, 200)
+  return `${base}: \`${[failing.command, ...failing.args].join(' ').slice(0, 120)}\` keeps failing${fact ? ` (${fact})` : ` with exit ${failing.exitCode}`}.`
 }
 
 function verificationDiagnostics(receipt: VerificationReceipt) {
@@ -133,15 +143,35 @@ function setupBlocker(deps: PieceDependencies, command: CommandReceipt): HostBlo
 }
 
 export function verifyPiece(bindings: PieceDependencyProvider): Piece {
-  return {
+  const piece: Piece = {
     descriptor: { kind: 'verify', paramsSchema: paramsSchema({ commands: { oneOf: [{ const: 'configured' }, verificationCommandList] },
       additionalCommandsFrom: { type: 'string', minLength: 1, maxLength: 128 }, unverified: { type: 'boolean' }, maxConcurrency: { type: 'integer', minimum: 1, maximum: 4 },
-      setup: { oneOf: [{ const: 'configured' }, verificationCommandList] }, hostBlockers: { type: 'boolean' } }, ['commands']), outcomes: [...VERIFY_OUTCOMES, 'blocked'], effect: 'write', requiresAI: false, storeAccess: 'write' },
+      setup: { oneOf: [{ const: 'configured' }, verificationCommandList] }, hostBlockers: { type: 'boolean' }, machineInstalls: { enum: ['ask'] } }, ['commands']), outcomes: [...VERIFY_OUTCOMES, 'blocked'], effect: 'write', requiresAI: false, storeAccess: 'write' },
     // `blocked` is opt-in so definitions published before host blockers keep their exact `ends`.
     getOutcomes: params => params.hostBlockers === true ? [...VERIFY_OUTCOMES, 'blocked'] : VERIFY_OUTCOMES,
     async execute(params, context) {
+      if (params.machineInstalls !== 'ask') return verifyOnce(params, context)
+      // A precondition that names a machine-wide install (a missing Rust target) asks the
+      // person once; after the host installed it the plan runs again on a fresh receipt.
+      const progress = (line: string): void => context.progress({ type: 'verification-output', payload: { text: line } })
+      return askMachineInstalls(context, { key: 'verify-install', memo: bindings().memo(context), run: () => verifyOnce(params, context),
+        blocker: output => output.blocker && typeof output.blocker === 'object' && !Array.isArray(output.blocker) ? output.blocker : undefined,
+        onInstalled: request => progress(`[environment] The person approved \`${request.command}\` and the host installed it; verifying again.`) })
+    },
+  }
+  async function verifyOnce(params: JsonObject, context: PieceExecutionContext): Promise<PieceResult> {
       const deps = bindings()
       const commands = resolveVerificationPlan(deps, context, params)
+      // Nothing configured and nothing proposed: the run cannot verify any change.
+      // With host blockers that is the person's action to take (add a check),
+      // stated as such before any spend, never a bare validation failure.
+      if (commands.length === 0 && params.unverified !== true && params.hostBlockers === true) {
+        const blocker: HostBlocker = { kind: 'setup', reason: 'no verification command is configured for this project and the plan proposed none, so the run cannot check any change',
+          command: '', args: [], cwd: '.', requiredAction: 'Add a check the run can execute (for example a "test" script in package.json, or a verification command in the project settings), then retry the run.' }
+        const nothingToRun: PieceResult = { outcome: 'blocked', status: 'blocked', error: { code: 'verification_host_precondition', message: `${blocker.reason}. ${blocker.requiredAction}` },
+          output: { valid: false, candidateHash: deps.executionSnapshot(context).candidate?.hash ?? null, reason: 'No verification command to run', summary: 'No verification command is configured or proposed.', blocker: json(blocker) }, verified: null }
+        return nothingToRun
+      }
       const coversAll = deps.context.repositories.every(repository => commands.some(command => command.repositoryId === repository.id))
       const request = { kind: coversAll || params.unverified === true ? 'full' as const : 'scoped' as const, commands, ...(params.unverified === true ? { unverified: true } : {}) }
       validateVerificationRequest(deps.context, request)
@@ -262,9 +292,9 @@ export function verifyPiece(bindings: PieceDependencyProvider): Piece {
         error: { code: NONDETERMINISTIC_OUTPUT_CODE, message: `${nondeterministic.reason}. ${nondeterministic.requiredAction}` }, output: { ...output, valid: false, blocker: json(nondeterministic) } }
       // Without the opt-in outcome a blocker still travels in the output, and the no-progress stop keeps bounding the loop.
       if (blocker && (params.hostBlockers === true || !stalled)) return { ...blocked(blocker, output), vars, receipt: receiptEvidence(receipt) }
-      return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: 'Verification failed three times on the same unchanged candidate. Stopping automatic corrections; inspect the failed checks.' } } : {}), ...(infrastructure ? executionError(receipt) : {}),
+      return { outcome: stalled ? 'failed' : outcome, vars, ...(stalled ? { status: 'failed' as const, error: { code: 'verification_no_progress', message: noProgressMessage(receipt) } } : {}), ...(infrastructure ? executionError(receipt) : {}),
         output: { ...output, ...(blocker ? { blocker: json(blocker) } : {}) },
         receipt: receiptEvidence(receipt), ...(verified ? { verified: { receiptId: receipt.id, candidateHash: receipt.candidateHash, atTransition: context.frame.transition, revision: context.frame.transition } } : { verified: null }) }
-    },
   }
+  return piece
 }

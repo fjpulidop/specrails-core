@@ -2,7 +2,7 @@
 
 ## Setup
 
-Requires Node.js 20.19.0+, npm 10+ and Git 2.25+. Development and CI run on macOS, Linux and Windows; no bash or Python is needed.
+Requires Node.js 22.22.3+, npm 10+ and Git 2.25+. Development and CI run on macOS, Linux and Windows; no bash or Python is needed.
 
 ```bash
 git clone https://github.com/fjpulidop/specrails-core.git
@@ -19,9 +19,9 @@ npm run test:coverage  # vitest with v8 coverage (thresholds enforced)
 npm run ci             # complete production quality suite
 ```
 
-Tests live next to their subject as `*.test.ts`. `src/installer/__tests__/reserved-paths.test.ts` is the contract for what the installer must never touch. CI runs the suite on Ubuntu, macOS and Windows × Node 22/24, each as a complete set of parallel partitions (see [CI and publishing](docs/ci-cd.md)).
+Tests live next to their subject as `*.test.ts`. `src/installer/__tests__/reserved-paths.test.ts` is the contract for what the installer must never touch. CI runs the suite on Ubuntu, macOS and Windows × Node 22.22.3/24, each as a complete set of parallel partitions (see [CI and publishing](docs/ci-cd.md)).
 
-Engine v2 decision experiments are separate from the production suite: after building, use Node exactly 22.22.3 and run `npm run test:engine-spikes`. The directly executable prototypes are not shipped or included in production coverage. See [their acceptance criteria](docs/engine-v2/spikes/README.md) for the required platform/package evidence; they do not change Core's supported Node minimum.
+The engine decision probes are separate from the production suite: after building, use Node exactly 22.22.3 and run `npm run test:engine-spikes`. The prototypes are not shipped or included in coverage; see [the spike record](docs/engine-v2/spikes/README.md).
 
 To try an install against a scratch repository:
 
@@ -37,9 +37,10 @@ node bin/specrails-core.mjs init --root-dir /path/to/test-project --yes --provid
 - Changes to what Desktop reads (`integration-contract.json`, CLI flags, `.specrails/runtime/*`, runtime JSON output) need a paired change in [specrails-desktop](https://github.com/fjpulidop/specrails-desktop).
 - Every change to `integration-contract.json` bumps its `schemaVersion`: the **minor** for additive changes (new key, capability, node kind, event type, optional field), the **major** for removals, type changes or narrowed semantics, together with `!` or a `BREAKING CHANGE:` footer. Free-text annotations (values under `description`, `note`, `notes` or `documentation` keys) are exempt; any other string, however prose-like, is a contract value. The `contract-policy` CI job enforces this on pull requests; run `node scripts/check-contract-bump.mjs --base origin/main` locally. Desktop gates features on advertised capabilities, ignores unknown additions and treats a higher major as incompatible.
 - Deprecate before removing: announce it with a `deprecate(<scope>):` commit (listed under **Deprecations** in the changelog) and keep it working for at least two minor versions.
+- Update the documentation the change makes stale (`README.md`, `docs/`, the module READMEs under `src/`) in the same pull request.
+- Sign off your commits (`git commit -s`) under the [Developer Certificate of Origin](https://developercertificate.org/).
 
 Release channels (`latest`, monthly `stable`), contract versioning and the deprecation window are described in [the release policy](docs/release-policy.md).
-- Sign off your commits (`git commit -s`) under the [Developer Certificate of Origin](https://developercertificate.org/).
 
 Report bugs through [GitHub Issues](https://github.com/fjpulidop/specrails-core/issues) with your OS, Node.js version, the command you ran and its full output.
 

@@ -167,7 +167,7 @@ describe('engine v2 environment repair', () => {
     // only the wall-clock limit.
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 }]
     const result = await f.run({ commands: 'configured', hostBlockers: true })
-    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: 'A verification command failed: Verification command timed out' } })
+    expect(result).toMatchObject({ outcome: 'failed', status: 'failed', error: { code: 'verification_timeout', message: expect.stringMatching(/^A verification command failed: Verification command timed out: `.+` was still running when it reached its 1 s limit/) } })
   })
 
   it('keeps the execution-error code for a command stopped by anything other than a limit', async () => {
@@ -213,7 +213,7 @@ describe('engine v2 environment repair', () => {
     for (let i = 1; i <= 3; i++) {
       const result = await f.run({ commands: 'configured' })
       expect(result).toMatchObject({ outcome: i === 3 ? 'failed' : 'fail', output: { noProgressCount: i, blocker: { kind: 'credential' } } })
-      if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress' })
+      if (i === 3) expect(result.error).toMatchObject({ code: 'verification_no_progress', message: expect.stringMatching(/install\.cjs.*keeps failing/) })
       Object.assign(f.execution.state.$vars, result.vars)
     }
   })
@@ -234,7 +234,7 @@ describe('verification repair of version drift', () => {
   it('installs once, verifies again and records the drifted packages when lint fails on a stale package', async () => {
     const f = fixture()
     const manifest = drifted(f)
-    installs.handler = (command, args) => { expect([command, ...args]).toEqual(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error']); writeFileSync(manifest, JSON.stringify({ version: '5.24.1' })); return { status: 0, stdout: '', stderr: '' } }
+    installs.handler = (command, args) => { expect([command, ...args]).toEqual(['npm', 'install', '--no-audit', '--no-fund', '--loglevel=error', '--no-package-lock']); writeFileSync(manifest, JSON.stringify({ version: '5.24.1' })); return { status: 0, stdout: '', stderr: '' } }
     const result = await f.run({ commands: 'configured', hostBlockers: true })
     expect(result).toMatchObject({ outcome: 'pass', output: { valid: true, environmentRepair: { attempted: true, reverified: true, installs: [{ command: 'npm', ok: true }],
       drift: [{ root: '.', name: '@busuu/experiments', declared: '^5.24.0', installed: '5.23.0' }] } } })
@@ -379,6 +379,16 @@ describe('setup commands', () => {
     expect(f.receipts).toHaveLength(2)
   })
 
+  it('blocks with the action to take when nothing is configured or proposed, and keeps the validation failure without host blockers', async () => {
+    const f = fixture()
+    f.execution.state.$outputs.architect = { structured: { verification: [] } }
+    const result = await f.run({ commands: 'configured', additionalCommandsFrom: 'architect', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'blocked', status: 'blocked', error: { code: 'verification_host_precondition' }, verified: null,
+      output: { valid: false, summary: 'No verification command is configured or proposed.', blocker: { kind: 'setup', requiredAction: expect.stringMatching(/^Add a check the run can execute/) } } })
+    expect(f.receipts).toHaveLength(0)
+    await expect(f.run({ commands: 'configured', additionalCommandsFrom: 'architect' })).rejects.toThrow('Verification requires bounded structured commands')
+  })
+
   it('rejects a setup command that escapes the admitted workspace with the scoped-command validation error', async () => {
     const f = fixture()
     f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['-e', '0'] }]
@@ -408,3 +418,51 @@ describe('definition admission', () => {
   })
 })
 
+
+describe("verify machineInstalls: 'ask' (capability machineInstalls)", () => {
+  /** A cargo build that fails on a missing wasm32 target until the host-side marker exists. */
+  function rustRepository(f: ReturnType<typeof fixture>) {
+    const marker = path.join(f.root, '..', path.basename(f.root) + '-wasm32-installed')
+    roots.push(marker)
+    writeFileSync(path.join(f.root, 'build.cjs'), `if(!require('fs').existsSync(${JSON.stringify(marker)})){process.stderr.write("error[E0463]: can't find crate for \`core\`\\n  = note: the \`wasm32-unknown-unknown\` target may not be installed");process.exitCode=1}else console.log('Finished')`)
+    f.deps.config.verification = [{ repositoryId: 'repo', command: process.execPath, args: ['build.cjs'] }]
+    return { marker }
+  }
+
+  it('asks the person once with the exact install, never runs it itself, and verifies again after the host installed it', async () => {
+    const f = fixture()
+    const { marker } = rustRepository(f)
+    const params = { commands: 'configured', hostBlockers: true, machineInstalls: 'ask' } as Record<string, JsonValue>
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.receipts).toHaveLength(1)
+    expect(installs.calls.some(call => call[0] === 'rustup')).toBe(false)
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); writeFileSync(marker, 'installed'); return { answer: 'installed' } }
+    const result = await f.run(params)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: 'This run needs the Rust target wasm32-unknown-unknown. Install it with `rustup target add wasm32-unknown-unknown`?',
+      options: [expect.objectContaining({ id: 'install' }), expect.objectContaining({ id: 'self' })], data: { kind: 'machine-install', command: 'rustup target add wasm32-unknown-unknown', tool: 'the Rust target wasm32-unknown-unknown' } })])
+    // The resume replays the memoized blocked receipt, then verifies once more on a fresh receipt.
+    expect(f.receipts.map(receipt => receipt.valid)).toEqual([false, true])
+    expect(result).toMatchObject({ outcome: 'pass', answers: [{ value: { answer: 'installed' } }] })
+    expect(f.progressText()).toContain('[environment] The person approved `rustup target add wasm32-unknown-unknown` and the host installed it; verifying again.')
+  })
+
+  it("keeps the blocker with the person's step when they install it themselves", async () => {
+    const f = fixture()
+    rustRepository(f)
+    f.execution.interrupt = () => ({ answer: 'declined' })
+    const result = await f.run({ commands: 'configured', hostBlockers: true, machineInstalls: 'ask' })
+    expect(result).toMatchObject({ outcome: 'blocked', status: 'blocked', output: { blocker: { kind: 'toolchain', install: 'rustup target add wasm32-unknown-unknown',
+      requiredAction: 'Run `rustup target add wasm32-unknown-unknown` yourself (it is shared by every project on this machine), then continue the run.' } } })
+    expect(result.error!.message).toContain('Run `rustup target add wasm32-unknown-unknown` yourself')
+    expect(f.receipts).toHaveLength(1)
+  })
+
+  it('never asks without the opt-in: the blocker carries the install for the host', async () => {
+    const f = fixture()
+    rustRepository(f)
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    const result = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(result).toMatchObject({ outcome: 'blocked', output: { blocker: { kind: 'toolchain', install: 'rustup target add wasm32-unknown-unknown' } } })
+  })
+})

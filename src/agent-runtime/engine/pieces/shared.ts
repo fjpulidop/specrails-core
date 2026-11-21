@@ -28,9 +28,9 @@ export function historyEntry(context: PieceExecutionContext, text: string, ordin
   return { id: context.frame.attemptId + ':history:' + ordinal, transition: context.frame.transition,
     attempt: context.frame.attempt, ordinal, nodePath: context.frame.nodePath, text: boundedText(text), ...(text.length > 32_000 ? { truncated: true } : {}) }
 }
-export function answerEntry(context: PieceExecutionContext, value: JsonValue, ordinal = 0): EngineAnswer {
+export function answerEntry(context: PieceExecutionContext, value: JsonValue, ordinal = 0, asked?: EngineAnswer['asked']): EngineAnswer {
   return { id: context.frame.attemptId + ':answer:' + ordinal, transition: context.frame.transition,
-    attempt: context.frame.attempt, ordinal, nodePath: context.frame.nodePath, value }
+    attempt: context.frame.attempt, ordinal, nodePath: context.frame.nodePath, value, ...(asked ? { asked } : {}) }
 }
 export function captures(params: JsonObject, output: string): Record<string, JsonValue> {
   const values: Record<string, JsonValue> = Object.create(null) as Record<string, JsonValue>

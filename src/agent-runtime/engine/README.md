@@ -1,8 +1,7 @@
 # Definition engine
 
-This module is the additive Core v2 engine. This integration branch advertises
-engine 2 and node catalog 1; publication still requires the integrated CLI,
-retained package and platform acceptance gates. The legacy
+This module is the Core definition engine (engine 2, node catalog 9; see
+[`docs/engine-v2/`](../../../docs/engine-v2/README.md)). The legacy built-in
 workflow retains its frozen identity and independent entry point.
 
 `definition-validator.ts` publishes a draft as an immutable JSON definition. It
@@ -35,4 +34,4 @@ reducers, actual graph metadata, nested interruption and SQLite reopening with
 completed sibling reuse. `compiler-sqlite.test.ts` uses the real compiler, saver,
 ledger and execution coordinator, including a local map limit below the global AI
 limit. The normative decisions and outstanding acceptance gates live in
-[`c3-protocol.md`](../../../../openspec/changes/core-agent-engine/c3-protocol.md).
+[`c3-protocol.md`](../../../openspec/changes/core-agent-engine/c3-protocol.md).

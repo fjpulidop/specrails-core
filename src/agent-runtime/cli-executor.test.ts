@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildCliInvocation, CliExecutor, cliToolEvents, parseCliOutput } from './cli-executor.js'
-import { cliProcessEnvironment, runCliProcess, windowsKimiInvocation, type CliProcessRunner } from './cli-process.js'
-import type { AgentRequest, CliProvider } from './executor-types.js'
+import { agentProcessEnvironment, cliProcessEnvironment, runCliProcess, windowsKimiInvocation, type CliProcessRunner } from './cli-process.js'
+import { AgentExecutionError, type AgentRequest, type CliProvider } from './executor-types.js'
+import { classifyFailure } from './failure-classification.js'
 import { GEMINI_READONLY_POLICY } from './gemini-policy.js'
 
 const temporary: string[] = []
@@ -37,6 +38,43 @@ describe('four CLI execution contracts', () => {
   it('propagates the real Codex schema error instead of suggesting authentication', async () => {
     const runProcess: CliProcessRunner = async () => ({ stdout: jsonl({ type: 'turn.failed', error: { message: "Invalid schema: Missing 'cwd'." } }), stderr: '', exitCode: 1 })
     await expect(new CliExecutor('codex', { runProcess }).execute(request())).rejects.toThrow("Invalid schema: Missing 'cwd'.")
+  })
+
+  it('re-runs a Codex turn its service refused before any work, then succeeds', async () => {
+    const outage = { stdout: jsonl({ type: 'error', message: 'workspace routing discovery failed' }, { type: 'turn.failed', error: { message: 'workspace routing discovery failed' } }), stderr: '', exitCode: 1 }
+    const runProcess = vi.fn<CliProcessRunner>().mockResolvedValueOnce(outage).mockResolvedValueOnce({ stdout: fixtures.codex, stderr: '', exitCode: 0 })
+    const events: unknown[] = []
+    const result = await new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [1, 1] }).execute(request({ onEvent: event => events.push(event) }))
+    expect(result.text).toBe('done')
+    expect(runProcess).toHaveBeenCalledTimes(2)
+    expect(events).toContainEqual(expect.objectContaining({ kind: 'text', text: expect.stringContaining('codex service unavailable (workspace routing discovery failed); retrying') }))
+  })
+  it('types a provider outage that outlasts the retries as provider_unavailable, never a crash', async () => {
+    const outage = { stdout: jsonl({ type: 'turn.failed', error: { message: 'workspace routing discovery failed' } }), stderr: '', exitCode: 1 }
+    const runProcess = vi.fn<CliProcessRunner>(async () => outage)
+    const error = await new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [1, 1] }).execute(request()).catch((caught: unknown) => caught)
+    expect(runProcess).toHaveBeenCalledTimes(3)
+    expect(error).toBeInstanceOf(AgentExecutionError)
+    expect(error).toMatchObject({ code: 'provider_unavailable', message: 'codex execution failed (exit 1). workspace routing discovery failed' })
+    expect(classifyFailure({ status: 'failed', recentFailures: [{ nodePath: 'architect', status: 'failed', error: { code: 'provider_execution_error', message: (error as Error).message } }] }))
+      .toMatchObject({ kind: 'provider_unavailable', phase: 'architect', resumablePhase: 'architect', confidence: 'high', detail: expect.stringContaining('codex: workspace routing discovery failed') })
+  })
+  it('never re-runs a turn that already did work, nor an ordinary failure', async () => {
+    const worked = vi.fn<CliProcessRunner>(async (_invocation, options) => {
+      options.onLine?.(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command: 'npm test' } }))
+      return { stdout: jsonl({ type: 'turn.failed', error: { message: 'stream disconnected before completion: error sending request for url' } }), stderr: '', exitCode: 1 }
+    })
+    await expect(new CliExecutor('codex', { runProcess: worked, transientRetryDelaysMs: [1, 1] }).execute(request())).rejects.toMatchObject({ code: 'provider_unavailable' })
+    expect(worked).toHaveBeenCalledTimes(1)
+    const ordinary = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'turn.failed', error: { message: "Invalid schema: Missing 'cwd'." } }), stderr: '', exitCode: 1 }))
+    await expect(new CliExecutor('codex', { runProcess: ordinary, transientRetryDelaysMs: [1, 1] }).execute(request())).rejects.toMatchObject({ code: 'provider_execution_error' })
+    expect(ordinary).toHaveBeenCalledTimes(1)
+  })
+  it('stops waiting for a provider outage when the run is cancelled', async () => {
+    const controller = new AbortController()
+    const runProcess = vi.fn<CliProcessRunner>(async () => { setTimeout(() => controller.abort(), 5); return { stdout: jsonl({ type: 'turn.failed', error: { message: 'workspace routing discovery timed out' } }), stderr: '', exitCode: 1 } })
+    await expect(new CliExecutor('codex', { runProcess, transientRetryDelaysMs: [60_000] }).execute(request({ signal: controller.signal }))).rejects.toMatchObject({ code: 'aborted' })
+    expect(runProcess).toHaveBeenCalledTimes(1)
   })
 
   it.each(['claude', 'codex', 'gemini', 'kimi'] as const)('retains %s prompt identity without using platform skills', provider => {
@@ -119,6 +157,18 @@ describe('four CLI execution contracts', () => {
     expect(inspected).toBe(true)
   })
 
+  it('counts the distinct structured results a Claude turn submitted, ignoring refused submissions', async () => {
+    const submit = (id: string, input: unknown) => ({ type: 'assistant', message: { id: 'm-' + id, content: [{ type: 'tool_use', id, name: 'StructuredOutput', input }] } })
+    const refused = (id: string) => ({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'schema' }] } })
+    const result = { type: 'result', subtype: 'success', result: '', structured_output: { approved: true }, usage: { input_tokens: 1, output_tokens: 1 } }
+    // A placeholder next to the real result (one message, parallel calls): ambiguous.
+    expect(parseCliOutput('claude', jsonl({ type: 'assistant', message: { id: 'm', content: [{ type: 'tool_use', id: 'a', name: 'StructuredOutput', input: { summary: 'placeholder', score: 0 } }, { type: 'tool_use', id: 'b', name: 'StructuredOutput', input: { summary: 'real', score: 90 } }] } }, result)).structuredResults).toBe(2)
+    // A refused submission corrected by a second one: one result.
+    expect(parseCliOutput('claude', jsonl(submit('a', { score: 'x' }), refused('a'), submit('b', { score: 90 }), result)).structuredResults).toBe(1)
+    // The same result twice is not ambiguous.
+    expect(parseCliOutput('claude', jsonl(submit('a', { score: 90 }), submit('b', { score: 90 }), result)).structuredResults).toBe(1)
+    expect(parseCliOutput('claude', jsonl(result)).structuredResults).toBeUndefined()
+  })
   it('returns Claude structured output and streams tool activity with short details', async () => {
     const stdout = jsonl(
       { type: 'assistant', session_id: 's1', message: { id: 'one', content: [{ type: 'text', text: 'Reading.' }, { type: 'tool_use', id: 't', name: 'Read', input: { file_path: '/repo/src/very/long/path/'.padEnd(200, 'x') + '/file.ts' } }] } },
@@ -206,6 +256,14 @@ describe('four CLI execution contracts', () => {
     const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout: jsonl({ type: 'result', subtype, is_error: true, total_cost_usd: 2.422, usage: { input_tokens: 100, output_tokens: 20 } }), stderr: 'secret-provider-details', exitCode: 1 }))
     await expect(new CliExecutor('claude', { runProcess }).execute(request())).rejects.toMatchObject({ code, message: expect.stringContaining(message), usage: { costUsd: 2.422 } })
   })
+  it("keeps Claude's own error sentence from its final result frame (a session limit is then classifiable)", async () => {
+    const stdout = jsonl({ type: 'system', subtype: 'init', session_id: 's1' }, { type: 'result', subtype: 'success', is_error: true, num_turns: 1, result: "You've hit your session limit · resets 3am (Europe/Madrid)", total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 } })
+    const runProcess = vi.fn<CliProcessRunner>(async () => ({ stdout, stderr: '', exitCode: 1 }))
+    const failure = await new CliExecutor('claude', { runProcess }).execute(request()).then(() => { throw new Error('expected a provider failure') }, (error: unknown) => error as AgentExecutionError)
+    expect(failure).toMatchObject({ code: 'provider_execution_error', message: expect.stringContaining("You've hit your session limit · resets 3am (Europe/Madrid)") })
+    expect(failure.message).not.toContain('did not report a diagnostic')
+    expect(classifyFailure({ status: 'failed', error: { code: failure.code, message: failure.message } })).toMatchObject({ kind: 'provider_limit', resetAt: '3am (Europe/Madrid)' })
+  })
   it('reports a resumed Claude session without a stored transcript as session_not_found, and only on resume', async () => {
     // Recorded from Claude Code 2.1.309 (`claude -p --resume <unknown id>`).
     const stdout = jsonl({ type: 'result', subtype: 'error_during_execution', is_error: true, num_turns: 0, session_id: 'gone', total_cost_usd: 0, usage: { input_tokens: 0, output_tokens: 0 }, errors: ['No conversation found with session ID: gone'] })
@@ -290,6 +348,12 @@ describe('portable child process transport', () => {
   })
   it('rejects non-standard Windows shell wrappers', () => {
     expect(() => windowsKimiInvocation(buildCliInvocation('kimi', request()), { env: { PATH: 'C:\\bin' }, exists: file => file.endsWith('kimi.cmd'), read: () => '@echo off\nkimi %*' })).toThrow('Unsupported Kimi Windows shim')
+  })
+  it('starts every agent process headless and transport-clean', () => {
+    const env = agentProcessEnvironment({ PATH: '/bin', CLAUDECODE: '1' }, 'darwin')
+    expect(env).toMatchObject({ PATH: '/bin', SPECRAILS_HEADLESS: '1', BROWSER: 'none' })
+    expect(env.CLAUDECODE).toBeUndefined()
+    expect(agentProcessEnvironment({ SPECRAILS_HEADLESS: '0' }, 'darwin')).toEqual({ SPECRAILS_HEADLESS: '0' })
   })
   it('normalizes Windows env keys and preserves the actual system directory', () => {
     expect(cliProcessEnvironment({ SYSTEMROOT: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe', CLAUDECODE: '1' }, 'win32')).toEqual({ SystemRoot: 'D:\\Win', windir: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe' })
@@ -389,5 +453,26 @@ describe('Claude Sonnet generation', () => {
     expect(pinned[pinned.indexOf('--model') + 1]).toBe('claude-fable-5-1')
     const explicit = buildCliInvocation('claude', request({ model: 'claude-fable-5' })).args
     expect(explicit[explicit.indexOf('--model') + 1]).toBe('claude-fable-5')
+  })
+})
+
+describe('Claude usage limits in CLI runs', () => {
+  const limitEvent = (status: string) => ({ type: 'rate_limit_event', rate_limit_info: { status, resetsAt: 1791368400, rateLimitType: 'five_hour', unifiedWindows: { five_hour: { utilization: status === 'rejected' ? 1 : 0.82, resetsAt: 1791368400 } } } })
+  const streaming = (stdout: string, exitCode: number): CliProcessRunner => async (_invocation, options) => {
+    for (const line of stdout.split('\n').filter(Boolean)) options.onLine?.(line)
+    return { stdout, stderr: '', exitCode }
+  }
+
+  it('reports each usage-limit state as a rate-limit agent event', async () => {
+    const events: unknown[] = []
+    const stdout = jsonl(limitEvent('allowed_warning'), ...fixtures.claude.trim().split('\n').map(line => JSON.parse(line)))
+    await new CliExecutor('claude', { runProcess: streaming(stdout, 0) }).execute(request({ onEvent: event => events.push(event) }))
+    expect(events).toContainEqual({ kind: 'rate-limit', provider: 'claude', rateLimit: expect.objectContaining({ status: 'allowed_warning', utilization: 0.82, resetsAt: new Date(1791368400_000).toISOString() }) })
+  })
+
+  it('fails a refused invocation with the typed provider_limit code and the ISO reset', async () => {
+    const stdout = jsonl(limitEvent('rejected'), { type: 'result', subtype: 'success', is_error: true, result: "You've hit your session limit · resets 3am (Europe/Madrid)" })
+    const failure = new CliExecutor('claude', { runProcess: streaming(stdout, 1) }).execute(request())
+    await expect(failure).rejects.toMatchObject({ code: 'provider_limit', message: expect.stringContaining(`usage limit reached (five_hour window, resets ${new Date(1791368400_000).toISOString()})`) })
   })
 })

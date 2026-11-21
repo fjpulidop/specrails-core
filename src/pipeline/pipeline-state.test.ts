@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateManifest, timeLimitReason, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -89,6 +89,37 @@ describe('pipeline runtime journal and verification receipts', () => {
     expect(fingerprintCandidate(state)).toBe(original)
     write(path.join(repo, 'src', 'coverage-report.ts'), 'export const x = 1')
     expect(fingerprintCandidate(state)).not.toBe(original)
+  })
+
+  it('fingerprints a git submodule by the commit it points at, initialized or not', () => {
+    // A repository with a submodule failed every run at once: "Candidate contains a directory
+    // entry or unsupported file: vendor/sublib".
+    const repo = context.repositories[1]!.path
+    const git = (cwd: string, args: string[]): string => {
+      const result = spawnSync('git', ['-c', 'protocol.file.allow=always', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-C', cwd, ...args], { encoding: 'utf8' })
+      if (result.status !== 0) throw new Error(result.stderr)
+      return result.stdout
+    }
+    const lib = path.join(root, 'sublib')
+    mkdirSync(lib)
+    git(lib, ['init', '-q'])
+    write(path.join(lib, 'util.js'), 'module.exports = 2\n')
+    git(lib, ['add', '.'])
+    git(lib, ['commit', '-qm', 'lib'])
+    git(repo, ['submodule', 'add', '-q', lib, 'vendor/sublib'])
+    git(repo, ['commit', '-qm', 'submodule'])
+    const state = initializePipeline(context, change)
+    const original = fingerprintCandidate(state)
+    const entry = candidateManifest(state).repositories[1]!.files.find(([file]) => file === 'vendor/sublib')
+    expect(entry?.[1]).toBe('gitlink:' + git(lib, ['rev-parse', 'HEAD']).trim())
+    // Moving the submodule to another commit is a change of the candidate.
+    write(path.join(repo, 'vendor', 'sublib', 'util.js'), 'module.exports = 3\n')
+    git(path.join(repo, 'vendor', 'sublib'), ['commit', '-qam', 'bump'])
+    expect(fingerprintCandidate(state)).not.toBe(original)
+    // An uninitialized submodule (an empty directory) uses the index pointer.
+    rmSync(path.join(repo, 'vendor', 'sublib'), { recursive: true, force: true })
+    mkdirSync(path.join(repo, 'vendor', 'sublib'))
+    expect(() => fingerprintCandidate(state)).not.toThrow()
   })
 
   it('hashes untracked additions and tracked deletions while excluding only owned lifecycle artifacts', () => {
@@ -817,6 +848,17 @@ it('stops a verification command that goes silent (a hanging test) and names the
   } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
 })
 
+it('says the tool hung before running any test when it printed only the script banner', async () => {
+  initializePipeline(context, change)
+  process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
+  try {
+    const receipt = await verifyPipeline(context, request('process.stdout.write("\\n> e2e\\n> playwright test\\n\\n"); setInterval(() => {}, 1000)'), () => {})
+    expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
+    expect(receipt.reason).toContain('hung before running any test')
+    expect(receipt.reason).toContain(`Node ${process.versions.node}`)
+  } finally { delete process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS }
+})
+
 it('reports why a silent command was stopped in the live log and the receipt reason, without terminal escapes', async () => {
   initializePipeline(context, change)
   process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS = '400'
@@ -834,7 +876,16 @@ it('reports the total timeout as the reason a command was stopped', async () => 
   initializePipeline(context, change)
   const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: process.execPath, args: ['-e', 'setInterval(() => process.stdout.write("."), 20)'], timeoutMs: 200 })) })
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'timed-out' })
-  expect(receipt.reason).toBe('A verification command failed: Verification command timed out')
+  // A suite slower than its limit stops the same way on every run: the reason names the command,
+  // the limit and the setting to change (an overnight run spent a continuation re-running it).
+  expect(receipt.reason).toMatch(/^A verification command failed: Verification command timed out: `.+ -e setInterval.+` was still running when it reached its 1 s limit and was stopped\. Running it again will stop the same way: .*longer timeout \(timeoutMs\)/)
+  expect(receipt.commands[0]!.terminationReason).toContain('reached its 1 s limit')
+})
+
+it('names the run budget when the remaining run time, not the command limit, stopped a check', () => {
+  expect(timeLimitReason({ command: 'npm', args: ['test'] }, 90_000, 15 * 60_000, '  ok 12 - scenario 12'))
+    .toBe("Verification command timed out: `npm test` was still running when the run's remaining time budget (2 min) ran out; its own limit is 15 min. Last output: ok 12 - scenario 12")
+  expect(timeLimitReason({ command: 'npm', args: ['test'] }, 15 * 60_000, 15 * 60_000)).toMatch(/reached its 15 min limit and was stopped\. Running it again/)
 })
 
 it.skipIf(process.platform === 'win32')('names the signal when something outside the runner killed the command', async () => {
@@ -844,11 +895,75 @@ it.skipIf(process.platform === 'win32')('names the signal when something outside
   expect(receipt.reason).toContain('killed by SIGKILL from outside the runner')
 })
 
+it('stops a command that entered watch mode at its prompt and says how to run it once', async () => {
+  initializePipeline(context, change)
+  const started = Date.now()
+  const receipt = await verifyPipeline(context, request('console.log("PASS test/a.test.js"); console.log("Watch Usage"); console.log(" › Press w to show more."); setInterval(() => {}, 1000)'))
+  expect(Date.now() - started).toBeLessThan(20_000)
+  expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
+  expect(receipt.reason).toContain('watch mode')
+  expect(receipt.reason).toMatch(/--watchAll=false|vitest run/)
+})
+
+it('runs a watch-mode test script once with the runner\'s own switch', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'watch-'))
+  const scripts = (value: Record<string, string>) => writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ scripts: value }))
+  scripts({ test: 'jest --watchAll', 'test:w': 'vitest --watch', plain: 'node --test' })
+  expect(runOnceArguments('npm', ['test'], cwd)).toEqual(['--', '--watchAll=false', '--watch=false'])
+  expect(runOnceArguments('yarn', ['test'], cwd)).toEqual(['--watchAll=false', '--watch=false'])
+  expect(runOnceArguments('npm', ['run', 'test:w'], cwd)).toEqual(['--', '--run'])
+  expect(runOnceArguments('npm', ['run', 'plain'], cwd)).toEqual([])
+  expect(runOnceArguments('npm', ['test', '--', '--ci'], cwd)).toEqual([])
+  expect(runOnceArguments('node', ['test.js'], cwd)).toEqual([])
+  rmSync(cwd, { recursive: true, force: true })
+})
+
+it('tells a tool that never started from a test that went silent', async () => {
+  expect(producedOwnOutput('\n> e2e\n> playwright test\n\n')).toBe(false)
+  expect(producedOwnOutput('\n> test\n> node --test\n✔ smoke\n')).toBe(true)
+})
+
+it('runs a yarn, pnpm or bun the host lacks through npx at the pinned version', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'pm-'))
+  writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ packageManager: 'yarn@1.22.22' }))
+  // POSIX: `PATH` is ':'-separated; a Windows host's temp dir (C:\\...) cannot be a POSIX PATH entry.
+  if (process.platform !== 'win32') {
+    const bin = path.join(cwd, 'bin'); mkdirSync(bin)
+    expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'yarn@1.22.22'])
+    expect(packageManagerFallback('pnpm', cwd, { PATH: bin }, 'darwin')).toEqual(['--yes', 'pnpm@latest'])
+    writeFileSync(path.join(bin, 'yarn'), '')
+    expect(packageManagerFallback('yarn', cwd, { PATH: bin }, 'darwin')).toBeNull()
+  }
+  expect(packageManagerFallback('npm', cwd, { PATH: '' }, 'darwin')).toBeNull()
+  expect(packageManagerFallback('/opt/yarn', cwd, { PATH: '' }, 'darwin')).toBeNull()
+  // Windows: `Path` is ';'-separated and only the .cmd/.exe shim runs.
+  const winBin = path.join(cwd, 'win-bin'); mkdirSync(winBin); writeFileSync(path.join(winBin, 'yarn'), '')
+  expect(packageManagerFallback('yarn', cwd, { Path: `C:\\Windows;${winBin}` }, 'win32')).toEqual(['--yes', 'yarn@1.22.22'])
+  writeFileSync(path.join(winBin, 'yarn.cmd'), '')
+  expect(packageManagerFallback('yarn', cwd, { Path: `C:\\Windows;${winBin}` }, 'win32')).toBeNull()
+  rmSync(cwd, { recursive: true, force: true })
+})
+
+it('runs project commands with the project .venv activated', () => {
+  const cwd = mkdtempSync(path.join(os.tmpdir(), 'venv-'))
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin' }, cwd, 'darwin')).toEqual({ PATH: '/usr/bin' })
+  mkdirSync(path.join(cwd, '.venv', 'bin'), { recursive: true }); writeFileSync(path.join(cwd, '.venv', 'bin', 'python'), '')
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin' }, cwd, 'darwin')).toEqual({ PATH: `${path.join(cwd, '.venv', 'bin')}:/usr/bin`, VIRTUAL_ENV: path.join(cwd, '.venv') })
+  expect(activateProjectVirtualEnv({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' }, cwd, 'darwin')).toEqual({ PATH: '/usr/bin', VIRTUAL_ENV: '/elsewhere' })
+  // Windows: the venv's executables live in .venv\Scripts, PATH (spelled Path) is ';'-separated.
+  expect(activateProjectVirtualEnv({ Path: 'C:\\Windows' }, cwd, 'win32')).toEqual({ Path: 'C:\\Windows' })
+  mkdirSync(path.join(cwd, '.venv', 'Scripts'), { recursive: true }); writeFileSync(path.join(cwd, '.venv', 'Scripts', 'python.exe'), '')
+  expect(activateProjectVirtualEnv({ Path: 'C:\\Windows' }, cwd, 'win32')).toEqual({ Path: `${path.join(cwd, '.venv', 'Scripts')};C:\\Windows`, VIRTUAL_ENV: path.join(cwd, '.venv') })
+  rmSync(cwd, { recursive: true, force: true })
+})
+
 it('names a command that could not start', async () => {
   initializePipeline(context, change)
   const receipt = await verifyPipeline(context, { kind: 'full', commands: context.repositories.map(repo => ({ repositoryId: repo.id, command: path.join(os.tmpdir(), 'specrails-no-such-binary'), args: [] })) })
   expect(receipt.commands[0]).toMatchObject({ exitCode: -1, outcome: 'failed' })
   expect(receipt.reason).toContain('could not start')
+  expect(receipt.reason).toContain('`specrails-no-such-binary` is not installed or not on PATH')
+  expect(receipt.reason).toMatch(/retry verification/)
 })
 
 it('keeps the generic reason for a command that failed on its own', async () => {

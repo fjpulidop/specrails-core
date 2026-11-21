@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "5.12",
+  "schemaVersion": "5.17",
   "providers": {
     "claude": {
       "cli": {
@@ -252,7 +252,7 @@
     "validationTransport": "runtime validate --stdin accepts UTF-8 configuration JSON up to 2 MiB, mutually exclusive with --config",
     "compactStatus": "runtime status --compact omits workflow history, events and outputs, frozen pipeline context and verification command output; retains identities (runId, traceId), phase statuses and visits, pendingApproval, pendingQuestion, usage, completion, acceptance summary and verification metadata",
     "interrupts": "A paused run (exit 2) carries pendingApproval (resume --approve <step>) or pendingQuestion (resume --answer <text>, nonempty, at most 20000 characters); the architect asks only after one autonomous investigation pass unless architect.onLowConfidence is proceed; a host-task interrupt (capability hostTasks) is a machine interrupt resumed only with resume --interrupt-id <id> --host-result <json>",
-    "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event, verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
+    "eventStream": "run/resume emit JSON lines typed workflow-event, agent-event (kinds text, tool-start, tool-end, usage, session and, since 5.14, rate-limit with event.provider and event.rateLimit in the session protocol's RateLimitInfo shape), verification-output, span ({traceId, spanId, name, stepId, attempt, visit, startedAt, endedAt, status, usage?, error?}) and a final runtime-result",
     "reviewGate": "review.minScore and review.aspects may only tighten Core's own gate (minScore 70, security 75, other aspects 60); the pipeline journal enforces the floor",
     "acceptance": "The reviewer certifies every frozen acceptance criterion by specId and criterionIndex; Core records the verification commands it ran as required checks and binds the report to the exact candidate before the reviewer verdict",
     "reviewBrief": {
@@ -287,7 +287,7 @@
       "report": "{schemaVersion: 1, generatedAt, changes, evidence: receipt | tests-passed | none, receiptId, requirements, demonstrated[{id, name, tests}], undemonstrated[{id, name, reason, tests}], untagged[{tag, repositoryId, file, line, form}], touched, touchedUndemonstrated, scannedFiles}",
       "reportPath": "<backlogRoot>/.specrails/pipeline/<runId>/spec-trace.json (written after each passing verification, bound to the receipt id)",
       "runResult": "runtime-result.specTrace: the report | null (engine 1 builtin runs)",
-      "advisory": "The trace never changes verification or acceptance status; the acceptance report carries a finding 'Spec trace (advisory, receipt <id>): Requirements demonstrated X/Y…', the reviewer treats a touched requirement without a demonstrated tag as an issue",
+      "advisory": "The trace never changes verification or acceptance status; the acceptance report carries a finding 'Spec trace (advisory, receipt <id>): Requirements demonstrated X/Y\u2026', the reviewer treats a touched requirement without a demonstrated tag as an issue",
       "divergences": "reviewer check 9 fills brief.divergences[{capability, requirement, observed}] with spec claims of touched capabilities the code contradicts",
       "cli": "specrails-core pipeline trace [--root <dir>] [--context <context.json>] [--change <name>[,...]] [--tests <glob>[,...]] [--tests-passed] [--check] [--json] [--out <file>]; installed projects also get node .specrails/runtime/trace.mjs; normal mode exits 0, --check exits 1 when a requirement touched by the change is not demonstrated",
       "driftSweepDefinition": "src/agent-runtime/engine/__fixtures__/drift-sweep.json (read-only role-turn of a host-declared read role drift-auditor; structured output {divergences[{capability, requirement, observed}], unchecked[]})",
@@ -321,33 +321,118 @@
       "documentation": "docs/agent-runtime.md#project-rules-inventory"
     },
     "failureClassification": {
-      "version": 1,
+      "version": 4,
       "capability": "failureClassification",
       "kinds": [
         "tests_failed",
         "provider_limit",
+        "provider_unavailable",
         "environment",
         "blocked",
         "timeout",
         "tool_inactivity",
         "crash",
+        "incomplete_tasks",
+        "spec_invalid",
+        "workflow_protocol",
         "unknown"
       ],
-      "record": "{kind, phase?, rounds?, resetAt?, detail?, resumablePhase?, confidence: high | low}",
+      "record": "{kind, phase?, rounds?, resetAt?, resetsAt?, detail?, resumablePhase?, incompleteTasks?, role?, provider?, model?, missingSteps?, confidence: high | low}",
       "runResult": "runtime-result.failure and runtime-status.failure (both engines): the record when the run status is failed or blocked; absent otherwise. A run Core could not start (fatal argument or configuration error) carries none.",
-      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification.",
+      "semantics": "classified only from signals the run already produced (status, the failing step or node, error codes and messages); a failure it cannot tie to a documented signal is kind unknown with confidence low and a host must show it as an unknown cause. phase is the failing step id (engine 1) or node path (engine 2); rounds counts visits of correction steps; resetAt is the provider's own wording of the reset time, never reformatted; resetsAt (since 5.14) is the ISO-8601 reset of the refusing window when the provider reported a typed usage-limit refusal (CLI executor error code provider_limit); detail is one bounded sentence from the run's own error; resumablePhase is the step runtime resume continues from when resuming can help (blocked runs and transient kinds), absent for a plain failed verification. Since 5.15 a definition run that reached a failure end node (no run error) is classified from its completion: completion.blocker or a host-blocker end reason is environment, a reason naming approved tasks still incomplete is incomplete_tasks with incompleteTasks (at most 20 task texts of at most 300 characters, from the reason's 'Incomplete: [...]' JSON list), an OpenSpec validation, plan contract or archive rejection is spec_invalid, an exhausted implementation budget or an unchanged correction is blocked; phase is then the end node id. Since 5.16 a role turn that skipped its required OpenSpec workflow steps (load_skill, instructions tasks or instructions apply) gets one corrective turn naming the missing steps and the exact scoped-tool calls that complete them (a planner that answers with confidence low or a blocking clarification is exempt, whatever its role id); when that turn skips them too the step fails (engine 2 error code openspec_workflow_omitted) and the run is workflow_protocol with role, provider, model (when configured) and missingSteps parsed from the error, a plain detail sentence, and resumablePhase set to rerun the role. Since 5.17 a provider CLI that fails on a transient outage of its own service (Codex workspace routing discovery failed or timed out, a stream disconnected before completion, an exceeded retry limit on a 5xx, an overloaded API, a reset connection) before the turn did any work is re-run by the CLI executor after 15 s and again after 45 s; when the outage outlasts those waits, or the turn had already done work, the step fails with engine 2 error code provider_unavailable and the run is provider_unavailable with a plain detail naming the provider's words and resumablePhase set to rerun that step. A usage limit or a signed-out CLI is never provider_unavailable.",
       "kindMeaning": {
         "tests_failed": "verification kept failing, or the correction loop stopped on the same failing change",
         "provider_limit": "the provider reported a session, usage, rate or quota limit",
+        "provider_unavailable": "the provider's service, or the network to it, failed for a moment (Codex account routing discovery, a dropped stream, a 5xx, an overloaded API) and kept failing through the executor's retries; nothing about the work is wrong and continuing re-runs the same step after a short wait",
         "environment": "the host environment cannot run verification (credentials, toolchain, setup command, non-deterministic generated output, edits outside the scope)",
         "blocked": "a configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change",
         "timeout": "the total execution or active-duration limit elapsed",
         "tool_inactivity": "the agent produced no tool call, reply or usage within the idle limit",
         "crash": "the provider process, endpoint, lease or storage failed under the run",
+        "incomplete_tasks": "the run ended with approved tasks still unticked (a stall or an exhausted implementation budget); incompleteTasks names them",
+        "spec_invalid": "OpenSpec or the plan contract rejected the change's artifacts (validation, freeze or archive) and planning could not repair them",
+        "workflow_protocol": "a role ended its turn, and its one corrective turn, without the required OpenSpec workflow steps: the model did not follow the tool protocol; continuing from that step (ideally on a stronger model for that role) can help",
         "unknown": "no documented signal matched"
       },
-      "compatibility": "additive: hosts ignore an absent field; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
+      "compatibility": "additive: hosts ignore an absent field and treat an unknown kind as unknown; an older Core never emits it and the host derives a low-confidence diagnosis from the error text",
       "documentation": "docs/agent-runtime.md#failure-classification"
+    },
+    "humanTasks": {
+      "version": 1,
+      "capability": "humanTasks",
+      "tag": "'[human]' right after the optional task number of a tasks.md checkbox: '- [ ] 4.1 [human] <check>'; case-insensitive",
+      "meaning": "a check only a person can do (taste, a real device, real credentials); the run never has to tick it",
+      "artifactContract": "artifact-contract check never counts an unticked [human] task as incomplete (requireCompletedTasks passes without it); output adds incompleteTasks[] (unticked untagged tasks) and humanChecks[] (every [human] task without its tag), each at most 20 texts of at most 300 characters. The frozen fingerprint ignores the tag on unticked tasks, so a host or role may tag a task after the freeze; any other change to its text is still artifacts_changed",
+      "freeze": "artifact-contract freeze fails with reason tasks_need_manual_check and tasks[] when an untagged task asks for a manual or visual check without naming how the run performs it (manual check/test/review, by hand, visually verify without a screenshot or browser tool); the history entry tells the planner to rewrite it as a check the run performs (commands, the host browser tool $SPECRAILS_BROWSE) or tag it [human]",
+      "roles": "the default architect instructions require every task to be completable and checkable by the run, with person-only checks tagged [human]; the default developer instructions say to check UI behaviour with $SPECRAILS_BROWSE when the host exports it, to install a missing tool outside the repository manifests, and never to tick a [human] task",
+      "compatibility": "additive: an older Core counts a [human] task as an ordinary task, so a host enables the tag only when runtime capabilities advertise humanTasks",
+      "documentation": "docs/agent-runtime.md#human-checks"
+    },
+    "roleDecisions": {
+      "version": 1,
+      "capability": "roleDecisions",
+      "param": "role-turn decisions: 'ask' (requires an object structuredOutput with properties that does not declare decisionNeeded)",
+      "semantics": "Core adds an optional string decisionNeeded to the role's schema and a rule: use it only when the approved artifacts or requirements contradict each other (for example a task requires a declared non-goal) and the choice is the person's. A non-empty decisionNeeded memoizes the settled turn and pauses the node on an ordinary question interrupt (kind question, nodePath of the role turn, prompt = the question); runtime resume --answer reruns the role in the same node visit with the question and answer appended to its task, without repeating the settled turn. At most 3 questions per node visit; the fourth round runs on the host schema without the rule. The committed output keeps the host schema shape (decisionNeeded removed) and adds decisions [{question, answer}]; answers and history carry each question and answer so later turns read them in {{history.text}}. A turn that needs no decision is unchanged: one call, no interrupt.",
+      "freeze": "artifact-contract freeze (every Core with this capability) fails once per contract with reason tasks_contradict_non_goals, tasks[] and nonGoals[] when a task seems to require a bullet of a Non-Goals or Out of scope section of design.md or proposal.md; the history entry tells the planner to drop the non-goal, drop or rewrite the task, or ask the person with confidence low. A plan frozen again after that review passes, so a false match costs one plan repair, never the run.",
+      "compatibility": "additive: older Cores reject the unknown decisions param, so a host sends it only when runtime capabilities advertise roleDecisions",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
+    "questionOptions": {
+      "version": 1,
+      "capability": "questionOptions",
+      "interrupt": "a question interrupt keeps its self-contained prompt (the question, why and the choices as plain lines) and may add text (the bare question), asker (role id: architect, developer, fixer or a custom role), why, options [{id, label, meaning?, detail?}] (2 to 6; id matches ^[a-z0-9][a-z0-9-]{0,39}$, label at most 80 characters, meaning at most 300, detail at most 2000, e.g. an exact command), recommended (an option id), endsRun (option ids that end the run) and detail (at most 2000 characters). Absent fields mean a plain question.",
+      "sources": "role-turn decisions: 'ask' adds decisionOptions [{id, label, meaning}] and decisionRecommended to the role's schema and carries them on its question (asker = the role id, or fixer for the fixer stance), removing both from the committed output; the question piece accepts asker, why, options, recommended, endsRun and optionsFrom (a node id whose structured output's questionOptions, recommendedOption and questionWhy fill the choices).",
+      "answer": "runtime resume --answer <text> [--option <id>]: {answer, optionId?}; an optionId must be one of the pending question's options (invalid_resume otherwise). The asker reads 'The person chose \"<label>\" (<meaning>).' plus the person's words when they differ from the label. --option without --answer is invalid_arguments.",
+      "reject": "runtime resume --reject <node|interrupt-id> --reason <text>: answers one pending approval (never a gate) with {approved: false, reason}; every approval interrupt of this Core carries rejectable: true; the approval piece outputs that response, so the definition's own negative edge runs (for example a condition on response.approved). --reject without a nonempty --reason is invalid_arguments.",
+      "compatibility": "additive: an older Core never emits the fields (hosts render prompt as plain text), rejects --option and --reject as unknown flags and refuses approved false, so a host offers choices and rejection only when runtime capabilities advertise questionOptions",
+      "documentation": "docs/engine-v2/pieces.md#question"
+    },
+    "routeOverrides": {
+      "version": 1,
+      "capability": "routeOverrides",
+      "cli": "specrails-core runtime resume --context <json> --route-overrides <file> [--recover <attemptId>]; engine 2 runs only; not combinable with --answer, --approve, --reject, --option, --host-result, --invalidate or --interrupt-id",
+      "request": "{schemaVersion: 1, requestId (^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$), reason? (lowercase token, e.g. provider-limit), fromProvider?, routes: {<roleId | fixer>: {provider, model?, effort?}} (at least one), providers?: [{id, kind: cli, cli}] (at most 8; CLI connections the frozen configuration lacks)}; at most 64 KiB",
+      "semantics": "The roles named move to the new provider/model/effort for the rest of the run: the refused step and every later step of those roles. A moved selection keeps only the role's maxTurns (escalation and thinking belong to the old engine). The frozen request (agent-runtime-request.json, ledger request_json) is never rewritten: the accepted request is a durable routes_overridden ledger event (also streamed as a workflow-event) and every later admission applies the recorded overrides in order on top of the frozen configuration, then validates the result like a new run (configured provider, confirmed effort). A role session never carries across: its session identity includes the selection, so the moved role's next turn starts fresh with full context. Worktree, candidate and evidence are kept. Completed invocations keep the provider they ran on.",
+      "idempotency": "the same requestId with the same body is applied once; a different body with that id is control_conflict",
+      "errors": [
+        "invalid_route_override (malformed request, unknown role, finished run)",
+        "engine_unsupported (engine 1 run)"
+      ],
+      "failure": "failureClassification provider_limit records carry provider when the typed refusal names the CLI (additive)",
+      "fork": "a fork inherits the overrides recorded before its cut",
+      "compatibility": "additive: an older Core never advertises the capability and rejects nothing it did not accept before; hosts gate on capabilities.routeOverrides === 1",
+      "documentation": "docs/agent-runtime.md#route-overrides"
+    },
+    "forkRouteOverrides": {
+      "version": 1,
+      "capability": "forkRouteOverrides",
+      "cli": "specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--request-id <id>] [--scope-id <scope>] [--visit <number>] [--state <json>] --route-overrides <file>; not combinable with --answer, --approve, --reject, --option, --host-result, --invalidate, --interrupt-id or --recover",
+      "request": "the routeOverrides request file (schemaVersion 1)",
+      "semantics": "The next attempt of a settled (failed or stopped) run starts with the named roles moved. Core applies the overrides inherited before the cut and then this request to the frozen configuration and admits the result like a new run (known role, configured provider, confirmed effort) before publishing; a refused request publishes no fork. The accepted request is the fork's own routes_overridden ledger event, replayed by every later admission of the fork and inherited by its forks. The source run and its frozen request are untouched.",
+      "result": "runtime-forked carries routesOverridden (the accepted request) when the fork moved roles",
+      "idempotency": "the override is part of the fork request digest: the same --request-id with the same file returns the published child; other routes under that id are run_exists",
+      "errors": [
+        "invalid_route_override (malformed request, unknown role)",
+        "invalid_arguments (combined with a resume-only control)"
+      ],
+      "compatibility": "additive: hosts gate on capabilities.forkRouteOverrides === 1; without it a host can still resume the published fork with --route-overrides (routeOverrides: 1)",
+      "documentation": "docs/agent-runtime.md#route-overrides"
+    },
+    "machineInstalls": {
+      "version": 1,
+      "capability": "machineInstalls",
+      "param": "role-turn and verify machineInstalls: 'ask'",
+      "semantics": "A HostBlocker may carry install (the exact machine-wide install that provides a missing tool, one line, at most 300 characters) and tool (what it provides). Core never runs it. verify sets it for a missing Rust target or component (rustup target add <target>, rustup component add <component>). With machineInstalls: 'ask', a write role-turn whose structured blocker (kind toolchain, setup or environment) names install, or a verify whose blocker does, memoizes its settled result and pauses on an ordinary question interrupt: prompt 'This run needs <tool>. Install it with `<install>`?', options [{id: install, label, meaning}, {id: self, label, meaning}] and data {kind: 'machine-install', command, tool}. The host performs an approved install itself, outside the run, and answers exactly 'installed'; the node then runs again in the same visit (the role with a Host install note, verify on a fresh receipt), at most 3 installs per node visit. Any other answer ('declined', 'failed: <detail>', 'refused: <detail>' or free text) commits the memoized result with the blocker's requiredAction rewritten as the person's step. Answers use ordinals 100+ and history records 'Machine-wide install requested: <install>'.",
+      "compatibility": "additive: older Cores reject the unknown machineInstalls param and drop install from blockers, so a host sends it only when runtime capabilities advertise machineInstalls",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
+    "reviewTriage": {
+      "version": 1,
+      "capability": "reviewTriage",
+      "applies": "every role-turn whose role has read access and whose structured output has boolean approved and array issues (a review); no param",
+      "semantics": "Core classifies each issue: a check outside the host plan (real device, simulator or emulator, manual pass, host verification that did not run a command), a request to revert or delete a lockfile the toolchain regenerates (with no other file named), an edit to the frozen proposal.md, design.md or delta specs, or a criterion the person withdrew in an answer recorded in $answers. An issue that also asks for code, tests or another file stays actionable. Non-actionable issues leave structured.issues, are appended to structured.brief.humanChecks when the review declares it (as 'Not a run issue (<reason>): <issue>'), and are listed in output.reviewNotes [{kind: host-only-check | regenerated-lockfile | frozen-artifact | withdrawn-criterion, issue, reason}]. When approved is false and every issue was non-actionable, the role is re-run once in the same node with the notes and told to re-judge without them; its review (triaged again, never re-run twice) is committed. A rejection with any actionable issue keeps approved, score and its actionable issues unchanged.",
+      "compatibility": "additive: the committed structured output keeps the host schema shape; an older Core returns the reviewer's issues unchanged",
+      "documentation": "docs/engine-v2/pieces.md#role-turn"
     },
     "findingLocations": {
       "version": 1,
@@ -525,7 +610,7 @@
       ],
       "verificationProposals": "output.structured.verification (at most 20, architect schema); bind them with verify additionalCommandsFrom: <derive node id>",
       "reviewer": "A reviewer role-turn in the same run receives derivation.json; every unexplained file is an issue",
-      "correctionLoop": "role-turn stance 'fixer' (write roles only; the built-in developer takes the FIXER instructions, rolePrompts.fixer and config.fixer in a fresh session). flow-spec routes a rejected review or a failing check to at most correctionLimit (2) rounds of fix then derive (feedback) then check then review; a fixer turn that leaves $outputs.fix.candidateHash equal to $outputs.check.candidateHash, or a spent budget, ends at end node changes-requested with reason 'Flow → Spec: the reviewer requested changes that <n> correction round(s) did not resolve. Latest findings: <findings>'",
+      "correctionLoop": "role-turn stance 'fixer' (write roles only; the built-in developer takes the FIXER instructions, rolePrompts.fixer and config.fixer in a fresh session). flow-spec routes a rejected review or a failing check to at most correctionLimit (2) rounds of fix then derive (feedback) then check then review; a fixer turn that leaves $outputs.fix.candidateHash equal to $outputs.check.candidateHash, or a spent budget, ends at end node changes-requested with reason 'Flow \u2192 Spec: the reviewer requested changes that <n> correction round(s) did not resolve. Latest findings: <findings>'",
       "referenceDefinition": "src/agent-runtime/engine/__fixtures__/flow-spec.json"
     },
     "openRoles": {
@@ -591,7 +676,8 @@
         "subagents.settled",
         "output.truncated",
         "notice.interruption",
-        "provider.diagnostic"
+        "provider.diagnostic",
+        "provider.rate-limit"
       ],
       "capabilities": [
         "sessions",
@@ -603,7 +689,9 @@
         "steer",
         "interrupt"
       ],
-      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions"
+      "interruptDelivery": "session.send delivery 'interrupt' cuts the running turn (turn.completed status 'interrupted', partial text kept) and runs the input as the next turn, ahead of inputs queued before it; on an idle session it behaves like 'queue'. Drivers declare capabilities.interrupt 'native' (provider primitive) or 'emulated'; runtime api advertises flowSessions",
+      "deferredMcpTools": "initialize drivers[].capabilities.deferredMcpTools (boolean, absent on older Cores): true when the driver defers MCP tool schemas until the model searches for them (Claude: ToolSearch kept in every --tools list), so attached MCP connectors cost almost no context until used",
+      "rateLimits": "event provider.rate-limit {rateLimit: {status: allowed | allowed_warning | rejected, rateLimitType, resetsAt (ISO), utilization (0..1), windows: {<provider window id>: {utilization, resetsAt, windowMinutes?}}, overage: {status, inUse, disabledReason, resetsAt} | null}} carries the provider account's usage-limit state as last reported (a snapshot that replaces the previous one, journaled only on change, kept as snapshot.rateLimit); drivers declare initialize drivers[].capabilities.reportsRateLimits (claude: rate_limit_event, codex: account/rateLimits/updated; absent on older Cores)"
     }
   },
   "execution": {

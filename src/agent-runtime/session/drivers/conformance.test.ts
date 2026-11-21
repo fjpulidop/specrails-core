@@ -75,6 +75,7 @@ describe('driver registry', () => {
     expect(registry.descriptors().map((item) => item.id)).toEqual(['claude', 'codex', 'gemini'])
     expect(registry.get('gemini')?.descriptor.capabilities).toMatchObject({ resident: false, subagents: 'unsupported' })
     expect(registry.descriptors().map((item) => [item.id, item.capabilities.interrupt])).toEqual([['claude', 'native'], ['codex', 'native'], ['gemini', 'emulated']])
+    expect(registry.descriptors().map((item) => [item.id, item.capabilities.deferredMcpTools])).toEqual([['claude', true], ['codex', false], ['gemini', false]])
     expect(createDriverRegistry({ claude: false, codex: false }).descriptors()).toEqual([])
     expect(Object.isFrozen(registry)).toBe(true)
   })
@@ -89,6 +90,8 @@ describe('driver registry', () => {
     expect(() => validateDescriptor(descriptor('x', { interrupt: 'sometimes' as never }))).toThrow(/interrupt must be/)
     expect(() => validateDescriptor(descriptor('x', { resident: false, nativeInputQueue: false, autonomousContinuation: false, subagents: 'unsupported', subagentDisable: false, interrupt: 'native' }))).toThrow(/native interrupt requires/)
     expect(() => validateDescriptor(descriptor('x', { interrupt: undefined }))).not.toThrow()
+    expect(() => validateDescriptor(descriptor('x', { deferredMcpTools: 'yes' as never }))).toThrow(/deferredMcpTools must be a boolean/)
+    expect(() => validateDescriptor(descriptor('x', { deferredMcpTools: undefined }))).not.toThrow()
   })
 })
 

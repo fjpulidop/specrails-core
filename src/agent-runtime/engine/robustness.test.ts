@@ -12,7 +12,7 @@ const directories: string[] = [], children = new Set<ChildProcess>()
 type Message = Record<string, any>
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 // Measured on windows-latest (run 39913609133): the SIGKILL cases take 115-120 s
-// (they include the real 60 s lease wait) and the cancel case reaches its
+// (they included the real 60 s lease wait, which a dead local owner no longer needs) and the cancel case reaches its
 // boundary, after fifteen sequential shell nodes, in ~25 s when healthy and
 // in more than 30 s when loaded (runs 36560238422, 39977990477). POSIX keeps the
 // original bounds.
@@ -87,14 +87,12 @@ it.concurrent.each(['before', 'during', 'after-writes', 'after-snapshot'])('reco
   expect(crashed.stderr).toContain('engine-test-crash s10:' + phase)
   if (process.platform !== 'win32') expect(crashed.signal).toBe('SIGKILL')
   else expect(crashed.code).not.toBe(0)
-  const status = await f.status(), lease = status.last.state.lease
-  expect(lease.active).toBe(true)
-  const early = await f.resume()
-  expect(early.last.error).toMatchObject({ code: 'lease_held' })
-  // Real production TTL: no clock patches, private SQL updates or shortened lease.
-  await sleep(Math.max(0, Number(lease.expiresAt) - Date.now() + 100))
-  const inactive = await f.status()
-  expect(inactive.last.state.lease.active).toBe(false)
+  // The killed executor's lease is unexpired, but its process is gone from this machine: it can
+  // never renew or release, so the lease no longer fences the run and recovery starts at once.
+  const inactive = await f.status(), lease = inactive.last.state.lease
+  expect(Number(lease.expiresAt)).toBeGreaterThan(Date.now())
+  expect(lease.owner).toMatch(/^pid:\d+@/)
+  expect(lease.active).toBe(false)
   let resumed = await f.resume()
   if (phase === 'before' || phase === 'during') {
     expect(resumed.last.error).toMatchObject({ code: 'recover_required' })
@@ -137,6 +135,8 @@ it.each(['cancel', ...(process.platform === 'win32' ? [] : ['SIGTERM'])])('cance
   }
   const cancelled = await running.result
   expect(cancelled.last, cancelled.stderr).toMatchObject({ status: 'cancelled' })
+  // A signal names itself in the run's record, so a host can tell it from its own cancel request.
+  if (mode === 'SIGTERM') expect(JSON.stringify(cancelled.lines)).toContain('Process termination requested (SIGTERM)')
   const pid = Number(readFileSync(pidFile, 'utf8'))
   await until(() => { try { process.kill(pid, 0); return false } catch { return true } }, 5000)
   expect((await f.status()).last.state).toMatchObject({ status: 'cancelled', lease: null })

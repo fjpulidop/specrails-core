@@ -18,8 +18,8 @@ const change = 'quick-change'
 const directories: string[] = [], children = new Set<ChildProcess>()
 type Message = Record<string, any>
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-// Every case waits out the real 60 s production lease before resuming, so the
-// budget is that fixed wait plus the measured work. Healthy windows-latest runs
+// Cases used to wait out the real 60 s lease before resuming (a dead local owner no
+// longer fences the run); the budgets below were measured then. Healthy windows-latest runs
 // take 73-99 s per case with five cases in flight next to robustness.test.ts
 // (run 39913609133); loaded ones exceeded 150 s (runs 39436705336, 39716192266).
 const CASE_TIMEOUT_MS = process.platform === 'win32' ? 300_000 : 150_000
@@ -75,10 +75,11 @@ function fixture() {
   }
 }
 async function afterLease(f: ReturnType<typeof fixture>) {
+  // The killed executor's unexpired lease names a process that no longer exists on this
+  // machine, so it no longer fences the run: recovery needs no wait for the 60 s TTL.
   const lease = (await f.status()).last.state.lease
-  expect(lease.active).toBe(true)
-  // Real production TTL: no clock patch, private SQL update or shortened lease.
-  await sleep(Math.max(0, Number(lease.expiresAt) - Date.now() + 100))
+  expect(Number(lease.expiresAt)).toBeGreaterThan(Date.now())
+  expect(lease.active).toBe(false)
 }
 function expectDelivered(f: ReturnType<typeof fixture>) {
   expect(readFileSync(path.join(f.repository, 'value.cjs'), 'utf8')).toBe('module.exports = 2\n')

@@ -1,16 +1,17 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
 import path from 'node:path'
 import { Annotation, Command, END, interrupt, Send, START, StateGraph, type LangGraphRunnableConfig } from '@langchain/langgraph'
 import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
-import { RunDatabase } from './database.js'
-import { RunLease } from './lease.js'
+import { appendRunEvent, RunDatabase } from './database.js'
+import { leaseLive, leaseOwner, leaseOwnerAlive, RunLease } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
+import { recordedRouteOverrides, ROUTE_OVERRIDE_EVENT } from '../route-overrides.js'
 
 const cleanup: Array<() => Promise<void>> = []
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close() })
@@ -315,6 +316,19 @@ describe('durable checkpoint and ledger boundary', () => {
     expect(ledger.events().filter(event => event.type === 'step_succeeded')).toHaveLength(2)
   })
 
+  it('does not spend the attempt budget on turns refused at the provider usage limit', async () => {
+    const { ledger } = await fixture()
+    const limited = { code: 'provider_execution_error', message: "claude execution failed (exit 1). You've hit your session limit · resets 3am (Europe/Madrid)" }
+    const enter = () => ledger.enter(admission('task', 'work', { retry: { maxAttempts: 1 } }))
+    for (let refusal = 0; refusal < 3; refusal++) {
+      ledger.fail(enter(), limited, true)
+    }
+    const frame = enter()
+    expect(frame.attempt).toBe(4)
+    ledger.fail(frame, { code: 'provider_execution_error', message: 'claude execution failed (exit 1). Invalid request' }, true)
+    expect(() => enter()).toThrow('Maximum physical attempts reached for this visit')
+  })
+
   it('keeps an uncertain write pending as __error__ and executes it only after explicit recovery', async () => {
     const { db, ledger } = await fixture(), saver = new SqliteRunSaver(db, ledger)
     const state = Annotation.Root({ value: Annotation<string>(), $commit: new EphemeralValue<TerminalCommit>(false) })
@@ -437,5 +451,148 @@ describe('durable checkpoint and ledger boundary', () => {
     expect(fork.sqlite.prepare("SELECT DISTINCT checkpoint_ns FROM checkpoints WHERE checkpoint_ns!=''").all()).toHaveLength(2)
     expect(db.sqlite.prepare('SELECT * FROM row_versions ORDER BY revision,table_name,row_key').all()).toEqual(source)
     fork.checkIntegrity()
+  })
+})
+
+describe('a lease that expired while its process was frozen', () => {
+  // Soak 2: a Core child stopped 3 minutes (SIGSTOP; a laptop sleep freezes it the same way) failed
+  // its 160-task run with lease_lost at the first heartbeat after SIGCONT, although no one took over.
+  it('is renewed and keeps fencing when nobody replaced it', async () => {
+    let now = Date.now()
+    const { db, lease, ledger, token } = await fixture({ now: () => now })
+    now += 180_000
+    const renewed = lease.renew(token)
+    expect(renewed).toMatchObject({ owner: token.owner, epoch: token.epoch })
+    expect(renewed.expiresAt).toBe(now + 60_000)
+    expect(() => lease.assert(token)).not.toThrow()
+    expect(() => ledger.enter(admission('after-wake'))).not.toThrow()
+    // Renewed: another executor cannot take it over.
+    expect(() => lease.acquire('second-owner')).toThrow(/Another executor holds this run lease/)
+    db.close()
+  })
+  it('is lost when another executor took the run over during the freeze', async () => {
+    let now = Date.now()
+    const { db, lease, token } = await fixture({ now: () => now })
+    now += 180_000
+    const takeover = lease.acquire('second-owner')
+    expect(takeover.epoch).toBe(token.epoch + 1)
+    expect(() => lease.renew(token)).toThrow('expired or was replaced')
+    expect(() => lease.assert(token)).toThrow('expired or was replaced')
+    db.close()
+  })
+})
+
+describe('a lease whose owner process died on this machine', () => {
+  // A Desktop restart SIGKILLs its Core children; their unexpired leases made every Resume wait up to a minute.
+  const dead = (pid: number) => { const error = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' }); if (pid > 0) throw error }
+  it('names its process and is not live once that process is gone', () => {
+    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:[0-9a-f-]{36}$`))
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, dead)).toBe(false)
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => {})).toBe(true)
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }) })).toBe(true)
+    expect(leaseOwnerAlive('pid:999999@another-machine:x', dead)).toBe(true)
+    expect(leaseOwnerAlive('first-owner', dead)).toBe(true)
+    expect(leaseLive({ owner: `pid:${process.pid}@${hostname()}:x`, expiresAt: Date.now() + 60_000 })).toBe(true)
+    expect(leaseLive({ owner: 'first-owner', expiresAt: Date.now() - 1 })).toBe(false)
+  })
+  it('is taken over at once instead of waiting for the expiry', async () => {
+    const { db, lease, token } = await fixture()
+    lease.release(token)
+    const gone = 2 ** 22 + 12345 // above the default pid range, so no live process holds it
+    const held = lease.acquire(`pid:${gone}@${hostname()}:killed`)
+    expect(held.expiresAt).toBeGreaterThan(Date.now())
+    const next = lease.acquire(leaseOwner())
+    expect(next.epoch).toBe(held.epoch + 1)
+    expect(() => lease.acquire('third-owner')).toThrow(/Another executor holds this run lease/)
+    db.close()
+  })
+})
+
+describe('row history of a long run', () => {
+  async function bigFixture(schema?: 2) {
+    const dir = await mkdtemp(path.join(tmpdir(), 'engine row history '))
+    cleanup.push(() => rm(dir, { recursive: true, force: true }))
+    const file = path.join(dir, 'run.sqlite')
+    const db = await RunDatabase.open(file, { create: true })
+    cleanup.push(async () => db.close())
+    if (schema === 2) db.sqlite.exec('PRAGMA user_version=2')
+    // A real Implement run freezes ~70 KB of request and ~47 KB of definition in its run row.
+    const request = { prompt: 'r'.repeat(70_000) }, definition = { nodes: 'd'.repeat(47_000) }
+    RunLedger.initialize(db, { runId: 'run', workflowId: 'w', definitionHash: 'h', definition, request, runtimeIdentity: {}, source: 'definition', budget: {} })
+    return { db, dir, file }
+  }
+  const events = (db: RunDatabase, n: number) => { for (let i = 0; i < n; i++) db.transaction('event', () => { appendRunEvent(db, 'run', 'tick', { i }) }) }
+  const historyBytes = (db: RunDatabase) => Number(db.sqlite.prepare("SELECT SUM(LENGTH(row_json)) AS n FROM row_versions WHERE table_name='runs'").get()!.n)
+
+  it('writes the frozen request and definition once, not once per event', async () => {
+    const { db } = await bigFixture()
+    events(db, 200)
+    // 201 versions of a ~117 KB row were ~23.5 MB; the text is now stored once.
+    expect(historyBytes(db)).toBeLessThan(300_000)
+    const cut = db.revision - 50
+    const rows = db.transaction(undefined, () => db.rowsAt(cut))
+    const run = rows.find(row => row.table === 'runs')!.row
+    expect(JSON.parse(String(run.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    expect(JSON.parse(String(run.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    expect(Number(run.next_event_sequence)).toBeGreaterThan(100)
+  })
+
+  it('forks a deduplicated history into a complete, deduplicated copy', async () => {
+    const { db, dir } = await bigFixture()
+    events(db, 30)
+    const fork = await RunDatabase.open(path.join(dir, 'fork', 'run.sqlite'), { create: true }); cleanup.push(async () => fork.close())
+    db.forkAt(fork, { revision: db.revision - 5, runId: 'fork' })
+    const forked = fork.sqlite.prepare('SELECT request_json, fork_of FROM runs').get()!
+    expect(JSON.parse(String(forked.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    expect(forked.fork_of).toBe('run')
+    expect(historyBytes(fork)).toBeLessThan(200_000)
+    const early = fork.transaction(undefined, () => fork.rowsAt(3)).find(row => row.table === 'runs')!.row
+    expect(early.run_id).toBe('fork')
+    expect(JSON.parse(String(early.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    fork.checkIntegrity()
+  })
+
+  it('forks a deduplicated history with its route overrides: the fork admits the same routes', async () => {
+    const { db, dir } = await bigFixture()
+    // A large override (over the dedupe threshold) is still an event row of its own, never a reference.
+    const override = { schemaVersion: 1 as const, requestId: 'desktop-switch:run:1', reason: 'provider-limit', fromProvider: 'codex',
+      routes: Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`role-${i}`, { provider: 'claude', model: 'sonnet', effort: 'medium' }])) }
+    events(db, 10)
+    db.transaction('event', () => { appendRunEvent(db, 'run', ROUTE_OVERRIDE_EVENT, override) })
+    events(db, 10)
+    expect(String(db.sqlite.prepare('SELECT payload_json FROM events WHERE type=?').get(ROUTE_OVERRIDE_EVENT)!.payload_json).length).toBeGreaterThan(1024)
+    const fork = await RunDatabase.open(path.join(dir, 'fork-routes', 'run.sqlite'), { create: true }); cleanup.push(async () => fork.close())
+    db.forkAt(fork, { revision: db.revision - 3, runId: 'fork' })
+    expect(recordedRouteOverrides(fork)).toEqual([override])
+    expect(JSON.parse(String(fork.sqlite.prepare('SELECT request_json FROM runs').get()!.request_json))).toEqual({ prompt: 'r'.repeat(70_000) })
+    // A cut before the override neither carries it nor misreads the deduplicated run row.
+    const early = await RunDatabase.open(path.join(dir, 'fork-early', 'run.sqlite'), { create: true }); cleanup.push(async () => early.close())
+    db.forkAt(early, { revision: 5, runId: 'early' })
+    expect(recordedRouteOverrides(early)).toEqual([])
+    expect(JSON.parse(String(early.sqlite.prepare('SELECT definition_json FROM runs').get()!.definition_json))).toEqual({ nodes: 'd'.repeat(47_000) })
+    fork.checkIntegrity(); early.checkIntegrity()
+  })
+
+  it('keeps writing full rows into a schema 2 database (an older Core may still open it) until it is upgraded', async () => {
+    const { db } = await bigFixture(2)
+    events(db, 5)
+    expect(historyBytes(db)).toBeGreaterThan(5 * 117_000)
+    db.upgradeSchema()
+    expect(db.schemaVersion).toBe(3)
+    const before = historyBytes(db)
+    events(db, 20)
+    expect(historyBytes(db) - before).toBeLessThan(50_000)
+    const rows = db.transaction(undefined, () => db.rowsAt(db.revision))
+    expect(JSON.parse(String(rows.find(row => row.table === 'runs')!.row.request_json)).prompt).toHaveLength(70_000)
+  })
+
+  it('refuses a version whose referenced text is missing or changed', async () => {
+    const { db } = await bigFixture()
+    events(db, 3)
+    const first = Number(db.sqlite.prepare("SELECT MIN(revision) AS r FROM row_versions WHERE table_name='runs'").get()!.r)
+    const row = JSON.parse(String(db.sqlite.prepare("SELECT row_json FROM row_versions WHERE table_name='runs' AND revision=?").get(first)!.row_json))
+    row.request_json = 'tampered'
+    db.sqlite.prepare("UPDATE row_versions SET row_json=? WHERE table_name='runs' AND revision=?").run(JSON.stringify(row), first)
+    expect(() => db.transaction(undefined, () => db.rowsAt(db.revision))).toThrow(/references a missing request_json/)
   })
 })

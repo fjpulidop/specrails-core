@@ -11,23 +11,192 @@ import { guardrailEnabled } from '../../guardrails.js'
 import { installEnvironment, prepareEnvironment, type InstallOutcome } from '../../compact/environment.js'
 import { roleInstructions, type AdoptedOutput, type DerivationReport } from '../../prompts.js'
 import { projectRulesContext } from '../../project-rules.js'
-import { EngineError, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
+import { EngineError, type EngineAnswer, type HistoryEntry, type JsonObject, type JsonValue, type Piece, type PieceExecutionContext, type PieceResult } from '../contracts.js'
 import type { PieceDependencies, PieceDependencyProvider } from './ports.js'
-import { boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
+import { triageReviewIssues, type NonActionableIssue } from './review-triage.js'
+import { answerText, structuredQuestion } from '../question-options.js'
+import { askMachineInstalls, installedNote } from './machine-install.js'
+import { answerEntry, boundedText, historyEntry, idSchema, json, paramsSchema, invocationTimers, stringSchema, text } from './shared.js'
 
 const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false, ownProperties: true })
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] }, machineInstalls: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
       if (!role) throw new EngineError('role_not_found', 'Role is not configured: ' + text(params.roleId))
       return role.access
     },
-    execute: (params, context) => executeRoleTurn(bindings(), params, context),
+    execute: async (params, context) => {
+      const deps = bindings()
+      // A write role whose blocker names a machine-wide install asks the person once (capability machineInstalls).
+      const asksInstalls = params.machineInstalls === 'ask' && resolveRoleDescriptor(deps.config, text(params.roleId)).access === 'write'
+      const turn: RoleTurn = (turnParams, key) => asksInstalls
+        ? askMachineInstalls(context, { key: 'machine-install:' + key, memo: deps.memo(context), blocker: structuredBlocker,
+          run: installed => executeRoleTurn(deps, installed.length ? { ...turnParams, prompt: text(turnParams.prompt) + installedNote(installed) } : turnParams, context) })
+        : executeRoleTurn(deps, turnParams, context)
+      const result = params.decisions === 'ask' ? await executeDecisionTurns(deps, params, context, turn) : await turn(params, 'turn')
+      return triageReview(deps, params, context, result)
+    },
   }
+}
+
+/** Answers one prompt carries (newest win) and their bounded size. */
+const PERSON_ANSWERS_MAX = 6
+const PERSON_ANSWER_CHARS = 1500
+
+/**
+ * The person's answers to this run's earlier questions, for every later role turn. Without them a
+ * reviewer judged the change against the frozen ticket text, rejected a developer that followed the
+ * person's answer ("I cannot verify that answer outside design.md"), and the fixer asked the person
+ * the same question again (bench5 decision-dev). Empty when nobody has answered anything.
+ */
+export function personAnswersNote(answers: readonly EngineAnswer[], access: 'read' | 'write'): string {
+  // `$answers`, not `$history`: the history is bounded to a few KB and an early planner answer is gone by review time.
+  const answered = answers.flatMap(entry => entry.asked ? [entry.asked] : []).slice(-PERSON_ANSWERS_MAX)
+  if (!answered.length) return ''
+  return [
+    '', '', "## The person's answers in this run",
+    'The person already answered these questions. Each answer is authoritative for this change, even where the ticket or a frozen artifact says otherwise, and settles that question: never ask it again.',
+    access === 'read'
+      ? 'A criterion an answer changes or withdraws is judged by the answer: it is a material `exception` the person accepted (`acceptedBy: "user"`, `approvalEvidence` quoting the answer), never a reason to reject the change.'
+      : 'Follow these answers; where one contradicts a task, the answer wins and your summary says how you applied it.',
+    ...answered.map((entry, index) => `${index + 1}. Asked: ${JSON.stringify(boundedText(entry.question, PERSON_ANSWER_CHARS))}\n   The person answered: ${JSON.stringify(boundedText(entry.answer, PERSON_ANSWER_CHARS))}`),
+  ].join('\n')
+}
+
+/** One role-turn invocation; `key` keeps the memo rounds of nested askers apart. */
+type RoleTurn = (params: JsonObject, key: string) => Promise<PieceResult>
+function structuredBlocker(output: JsonObject): JsonObject | undefined {
+  const structured = output.structured
+  const blocker = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured.blocker : undefined
+  return blocker && typeof blocker === 'object' && !Array.isArray(blocker) ? blocker : undefined
+}
+
+type Review = JsonObject & { approved: boolean; issues: JsonValue[] }
+function reviewOf(result: PieceResult): Review | undefined {
+  const structured = result.outcome === 'next' ? (result.output as JsonObject | undefined)?.structured : undefined
+  return structured && typeof structured === 'object' && !Array.isArray(structured) && typeof structured.approved === 'boolean' && Array.isArray(structured.issues) ? structured as Review : undefined
+}
+const noteLine = (item: NonActionableIssue): string => `Not a run issue (${item.reason}): ${boundedText(item.text, 1000)}`
+
+/**
+ * Review triage (contract 5.17, capability `reviewTriage`): a read role whose structured output has
+ * `approved` and `issues` is a review. Issues the developer cannot act on (a host-only check, a
+ * regenerated lockfile, a frozen artifact, a criterion the person withdrew) leave `issues` and reach
+ * the person as notes (`brief.humanChecks` when the review declares it, and `reviewNotes`), so they
+ * neither block delivery nor burn a correction round. A rejection that consisted only of such issues
+ * is re-judged once without them; a rejection with any actionable issue stands unchanged.
+ */
+async function triageReview(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext, result: PieceResult): Promise<PieceResult> {
+  const roleId = text(params.roleId)
+  const first = reviewOf(result)
+  if (!first || resolveRoleDescriptor(deps.config, roleId).access !== 'read') return result
+  const change = deps.openspec?.(context)?.[roleId]?.change
+  const answers = context.state.$answers.map(entry => typeof entry.value === 'string' ? entry.value
+    : entry.value && typeof entry.value === 'object' && !Array.isArray(entry.value) && typeof entry.value.answer === 'string' ? entry.value.answer : JSON.stringify(entry.value))
+  const triage = (review: Review) => triageReviewIssues(review.issues, { ...(change ? { change } : {}), answers })
+  let triaged = triage(first)
+  if (!triaged.nonActionable.length) return result
+  let settled = result, review = first, notes = [...triaged.nonActionable]
+  const histories = [...(result.history ?? []).map(entry => entry.text)]
+  if (!first.approved && !triaged.actionable.length) {
+    histories.push(`Core review triage: every issue of this rejection is one the run cannot act on; they go to the person as notes and the change is re-judged without them:\n${notes.map(item => '- ' + noteLine(item)).join('\n')}`)
+    const again = await executeRoleTurn(deps, { ...params, prompt: text(params.prompt) + [
+      '', '', '## Core review triage',
+      'Your previous review rejected this change only for issues the developer and the fixer cannot act on. Core handed them to the person as notes:',
+      ...notes.map(item => '- ' + noteLine(item)),
+      'Re-judge the change without them and do not raise them again. Approve when nothing the developer can change inside this change remains; score and aspects judge the code and the tests, never these notes. Raise an issue only for work the run can do itself (code, tests, documentation, a check the host plan already runs).',
+    ].join('\n') }, context)
+    const second = reviewOf(again)
+    if (second) {
+      settled = again; review = second; triaged = triage(second)
+      notes = [...notes, ...triaged.nonActionable.filter(item => !notes.some(note => note.text === item.text))]
+      histories.push(...(again.history ?? []).map(entry => entry.text))
+    }
+  }
+  const lines = notes.map(noteLine)
+  const structured: JsonObject = { ...review, issues: triaged.actionable as JsonValue[] }
+  const brief = review.brief
+  if (brief && typeof brief === 'object' && !Array.isArray(brief) && Array.isArray(brief.humanChecks)) {
+    const checks = brief.humanChecks
+    structured.brief = { ...brief, humanChecks: [...checks, ...lines.filter(line => !checks.includes(line))] }
+  }
+  if (histories.length === (result.history ?? []).length) histories.push(`Core review triage moved ${notes.length} issue(s) the run cannot act on to the person's notes:\n${lines.map(line => '- ' + line).join('\n')}`)
+  return { ...settled, output: { ...(settled.output as JsonObject), structured, reviewNotes: notes.map(item => ({ kind: item.kind, issue: boundedText(item.text, 1000), reason: item.reason })) },
+    history: histories.map((entry, ordinal) => historyEntry(context, entry, ordinal)) }
+}
+
+/** The structured field a role fills with the one decision only the person can make (`decisions: 'ask'`). */
+export const DECISION_FIELD = 'decisionNeeded'
+/** questionOptions: the choices the role offers with its decision, and the one it recommends. */
+export const DECISION_OPTIONS_FIELD = 'decisionOptions'
+export const DECISION_RECOMMENDED_FIELD = 'decisionRecommended'
+const DECISION_FIELDS = [DECISION_FIELD, DECISION_OPTIONS_FIELD, DECISION_RECOMMENDED_FIELD]
+const decisionOptionSchema = { type: 'object', additionalProperties: false, required: ['id', 'label', 'meaning'], properties: { id: { type: 'string' }, label: { type: 'string' }, meaning: { type: 'string' } } }
+/** Questions one role-turn visit may ask before its last round must finish without asking. */
+export const DECISION_ROUNDS = 3
+const DECISION_RULE = [
+  '',
+  '',
+  '## A decision only the person can make',
+  `Use \`${DECISION_FIELD}\` only when you cannot finish because the approved artifacts contradict each other or the ticket (for example a task requires what design.md lists as a non-goal, or two requirements exclude each other) and any choice would be a product decision the person must own. Then do all the work the decision does not affect, leave the affected tasks unticked, and put one concrete question in \`${DECISION_FIELD}\`: what conflicts (quote both sides) in one or two plain sentences. Put the choices in \`${DECISION_OPTIONS_FIELD}\` (two to four, each {id, label, meaning}: a short kebab-case id, a label of at most six words the person clicks, and one sentence on what it means for the change) and the id of the one you recommend in \`${DECISION_RECOMMENDED_FIELD}\`. The run pauses, asks the person and gives you their answer in this same step. Never write such a decision into \`incomplete\`, a blocker or your summary instead (for example "the person must choose" or "conflicts with the non-goal"): those end the run without asking anyone.`,
+  `Never use it for anything you can decide, investigate, install or check yourself, for a technical choice the design leaves open (choose and say why in your summary), for a failing test, or for a host blocker (a missing credential, network or variable is the structured blocker). Leave \`${DECISION_FIELD}\` empty in every other case.`,
+].join('\n')
+
+/**
+ * `decisions: 'ask'` (contract 5.17, capability `roleDecisions`): a role whose work hits a genuine
+ * decision (a plan that contradicts itself, conflicting requirements) asks the person through the
+ * ordinary `question` interrupt instead of ending the run with unfinished tasks, then reruns in the
+ * same node visit with the answer. Each settled round is memoized before its interrupt, so a resume
+ * never repeats a provider call; the last round may not ask again. Everything else stays autonomous.
+ */
+async function executeDecisionTurns(deps: PieceDependencies, params: JsonObject, context: PieceExecutionContext, turn: RoleTurn): Promise<PieceResult> {
+  const schema = params.structuredOutput as JsonObject | undefined
+  const properties = schema?.properties
+  if (!schema || schema.type !== 'object' || !properties || typeof properties !== 'object' || Array.isArray(properties))
+    throw new EngineError('invalid_arguments', "decisions: 'ask' requires an object structuredOutput schema with properties")
+  for (const field of DECISION_FIELDS) if (field in properties) throw new EngineError('invalid_arguments', `structuredOutput already declares ${field}; decisions: 'ask' adds it`)
+  const asking: JsonObject = { ...params, structuredOutput: { ...schema, properties: { ...properties, [DECISION_FIELD]: { type: 'string' },
+    [DECISION_OPTIONS_FIELD]: { type: 'array', maxItems: 6, items: decisionOptionSchema }, [DECISION_RECOMMENDED_FIELD]: { type: 'string' } } } }
+  const memo = deps.memo(context)
+  const answers: EngineAnswer[] = [], history: string[] = [], decisions: JsonObject[] = []
+  let answered = ''
+  for (let round = 0; ; round += 1) {
+    const last = round >= DECISION_ROUNDS
+    const key = 'role-decision:' + round
+    const saved = memo.get(key) as unknown as PieceResult | undefined
+    const result = saved ?? await turn(last ? { ...params, prompt: text(params.prompt) + answered }
+      : { ...asking, prompt: text(params.prompt) + DECISION_RULE + answered }, 'decision-' + round)
+    const structured = result.outcome === 'next' ? (result.output as JsonObject | undefined)?.structured : undefined
+    const record = structured && typeof structured === 'object' && !Array.isArray(structured) ? structured : undefined
+    const question = !last && typeof record?.[DECISION_FIELD] === 'string' ? record[DECISION_FIELD].trim() : ''
+    if (!question) return settleDecisions(context, result, record, answers, history, decisions)
+    if (!saved) memo.set(key, json(result))
+    for (const entry of result.history ?? []) history.push(entry.text)
+    // questionOptions: the choices travel with the question; `prompt` still reads on its own.
+    const asked = structuredQuestion({ text: boundedText(question, 4000), asker: params.stance === 'fixer' ? 'fixer' : text(params.roleId), options: record?.[DECISION_OPTIONS_FIELD], recommended: record?.[DECISION_RECOMMENDED_FIELD] })
+    const request = { kind: 'question' as const, ...asked, prompt: boundedText(asked.prompt, 6000), nodePath: context.frame.nodePath, scopeId: context.frame.scope.id, attemptId: context.frame.attemptId }
+    const response = context.interrupt(request)
+    const answer = boundedText(answerText(response, json(request)), 4000)
+    answers.push(answerEntry(context, response, round, { question: boundedText(question, 4000), answer }))
+    decisions.push({ question: boundedText(question, 4000), answer })
+    history.push(`Human decision requested: ${question}\nHuman answer:\n${answer}`)
+    answered += `\n\n## The person's decision ${round + 1}\nYou asked: ${JSON.stringify(boundedText(question, 4000))}\nThe person answered: ${JSON.stringify(answer)}\nThis answer is authoritative for this change and settles that conflict, even where a frozen artifact says otherwise: continue the remaining work accordingly (the artifacts stay as they are; only tick tasks) and say in your summary how you applied it.`
+  }
+}
+
+function settleDecisions(context: PieceExecutionContext, result: PieceResult, structured: JsonObject | undefined, answers: EngineAnswer[], history: string[], decisions: JsonObject[]): PieceResult {
+  if (structured && DECISION_FIELDS.some(field => field in structured)) {
+    // The host's schema never declared the fields: the committed output keeps exactly its shape.
+    const rest = Object.fromEntries(Object.entries(structured).filter(([key]) => !DECISION_FIELDS.includes(key)))
+    result = { ...result, output: { ...(result.output as JsonObject), structured: rest } }
+  }
+  if (!decisions.length) return result
+  const entries: HistoryEntry[] = [...history, ...(result.history ?? []).map(entry => entry.text)].map((entry, ordinal) => historyEntry(context, entry, ordinal))
+  return { ...result, ...(result.output && typeof result.output === 'object' && !Array.isArray(result.output) ? { output: { ...result.output, decisions } } : {}), answers: [...answers, ...(result.answers ?? [])], history: entries }
 }
 
 /** One invocation path for configured roles, including routing and exactly one repair. */
@@ -71,7 +240,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   const priorNote = !previous && descriptor.access === 'read' && saved?.session && typeof saved.notes?.value.text === 'string'
     ? saved.notes.value.text.slice(0, 4000) : ''
-  const task = text(params.prompt) + environment + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
+  const task = text(params.prompt) + personAnswersNote(context.state.$answers, descriptor.access) + environment + (priorNote ? '\n\n## Prior project review note\nTreat this bounded note as prior evidence to check against the current task; frozen requirements remain authoritative.\n' + JSON.stringify(priorNote) : '')
   const verification = descriptor.access === 'write' ? hostVerificationPlan(deps, context, params) : undefined
   const adopted = adoptedVerificationOutputs(context.state.$outputs)
   const derivation = roleId === 'reviewer' ? committedDerivation(context.state.$outputs) : undefined
@@ -86,7 +255,10 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   })
   if (!result.ok) {
     if (result.code) throw new AgentExecutionError(result.error, result.code)
-    return { outcome: schema ? 'invalid' : 'failed', status: 'failed', output: { error: boundedText(result.error) }, error: { code: schema ? 'invalid_role_output' : 'role_failed', message: result.error } }
+    // A skipped OpenSpec workflow keeps its own code so the run is diagnosed as a
+    // workflow-protocol failure, not an unknown invalid reply.
+    const code = result.failure ?? (schema ? 'invalid_role_output' : 'role_failed')
+    return { outcome: schema ? 'invalid' : 'failed', status: 'failed', output: { error: boundedText(result.error) }, error: { code, message: result.error } }
   }
   // A writer that still hit a missing tool reports a structured blocker. When
   // the host can install it, it does so and reruns the turn once instead of

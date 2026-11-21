@@ -12,4 +12,4 @@ Core executes immutable workflow definitions through LangGraph with a SQLite run
 - [Legacy runtime and configuration](../agent-runtime.md)
 - [Measured platform experiments](spikes/README.md)
 
-This branch advertises engine 2 and node catalog 7, including `workflowAgentSteps: 1` and legacy `implementationSteps: 1`. Publication requires the paired integration and platform gates; capability metadata is not rollout evidence. Engine 1 retains its frozen workflow 7, instructions 10 and API 1 contracts. Run old executions through their retained original package.
+Core advertises engine 2 with node catalog 9 (`nodeKindsVersion`), including `workflowAgentSteps: 1` and legacy `implementationSteps: 1`; hosts gate on the capabilities `runtime api` reports, not on the package version. Engine 1, the built-in workflow 7 pipeline, remains available for saved runs. Continue old executions with their retained original package.

@@ -7,6 +7,10 @@ export function providerDiagnostic(stdout: string, stderr: string, env: NodeJS.P
     try {
       const event = JSON.parse(line)
       if (event.type === 'turn.failed' || event.type === 'error') message = typeof event.error?.message === 'string' ? event.error.message : typeof event.message === 'string' ? event.message : message
+      // Claude reports its own failures (a session or usage limit, an expired
+      // login, an API error) as the final `result` frame with `is_error` and
+      // the provider's sentence in `result`.
+      else if (event.type === 'result' && event.is_error === true && typeof event.result === 'string' && event.result.trim()) message = event.result
     } catch { /* Non-protocol output is not a diagnostic. */ }
   }
   if (!message) message = stderr.trim().slice(-3000)

@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
-| Latest 6.x minor (npm `latest`, currently 6.6.x) | ✅ |
+| Latest 6.x minor (npm `latest`) | ✅ |
 | Version on the npm `stable` dist-tag | ✅ |
 | Older releases, including 5.x | ❌ |
 

@@ -45,6 +45,11 @@ One turn of a configured role through Core's role invoker: role instructions, Op
 - Fixer stance (`stance: 'fixer'`, optional): the turn is a correction round. The role must have `access: 'write'`; publication rejects a configured read role with `invalid_role_access` at `/params/stance` (portable `--structural` validation defers unresolved roles) and execution throws `invalid_arguments` before any provider call. The built-in `developer` takes the FIXER instructions (`fixerSection` in `prompts.ts`) with the host-editable `rolePrompts.fixer` definition instead of the developer's, runs on the configured `fixer` engine when the runtime config defines one (the `Fixer route` note; sessions never carry across engines, so that turn starts fresh and records no `$sessions` entry) and sends `stance: 'fixer'` to the provider. A custom write role keeps its own instructions and engine; only its request and `agent-event`s carry the `fixer` label. Without `stance` the turn is unchanged.
 - Host environment (write roles, `guardrails['environment-repair'] !== false`): agents run sandboxed and cannot install what the repository needs (Codex cannot write the Playwright browser cache), so before the turn the host runs `prepareEnvironment` for every repository in scope: the Node dependencies a manifest declares but `node_modules` lacks or holds at a version outside the declared range, then the browser builds the installed Playwright pins when `playwright install --dry-run <browsers>` names an install location that does not exist (browsers read from `playwright.config.*`, chromium by default; never downloads a Playwright package). Other ecosystems keep their failure-driven repair in `verify`. A browser download that times out on the network is retried once with an IPv4-first DNS preload (hosts that resolve AAAA records without an IPv6 route make Node's family auto-selection abort Playwright's download). What was installed or refused is appended to the task under `## Host environment` and narrated on `verification-output`. If the turn still returns a structured `blocker` of kind `toolchain`, `setup` or `environment`, the host plans installs from its text plus the preparation above and, when any install succeeds, reruns the turn exactly once with a note naming what it installed; otherwise the blocker stands for the graph to route.
 
+- Decisions (`decisions: 'ask'`, optional, capability `roleDecisions`): for a decision only the person can make (the approved artifacts contradict each other, for example a task requires a declared non-goal, or two requirements exclude each other). Requires an object `structuredOutput` with `properties` (`invalid_arguments` otherwise, and when it already declares `decisionNeeded`). Core adds an optional string `decisionNeeded` to the schema and a rule to the task. A non-empty `decisionNeeded` memoizes the settled turn, then pauses the node on a `question` interrupt whose prompt is the question; the resume reruns the role in the same visit with the question and the person's answer appended, never repeating the settled turn. A later round may ask again: LangGraph names every interrupt of one node task alike, so the ledger records each later question as its own durable interrupt `<id>~<n>` (answered by that id) and resumes LangGraph with the latest answer. With capability `questionOptions` Core also adds `decisionOptions` (`[{ id, label, meaning }]`, at most 6) and `decisionRecommended` and asks for two to four choices; the question interrupt carries them as `options`/`recommended` with `asker` = the role id (`fixer` for the fixer stance), both fields leave the committed output, and an answer by `--option` reaches the rerun as the chosen label and meaning. At most 3 questions per visit; the next round runs on the host schema without the rule. The committed output keeps the host schema (`decisionNeeded` removed) and adds `decisions: [{ question, answer }]`; `$answers` and `$history` carry every question and answer. A turn that returns no decision is a single ordinary call.
+
+- Review triage (capability `reviewTriage`, no param): a read role whose structured output has boolean `approved` and array `issues` is a review. Issues no correction round can act on (a check outside the host plan such as a real device, simulator or manual pass; a request to revert or delete a toolchain-regenerated lockfile; an edit to the frozen proposal, design or delta specs; a criterion the person withdrew in an answer) leave `issues`, are appended to `brief.humanChecks` when the review declares it, and are listed in `output.reviewNotes`. An issue that also asks for code, tests or another file stays actionable. A rejection made only of such issues is re-judged once in the same node with the notes; a rejection with any actionable issue keeps its verdict, score and actionable issues.
+- Machine-wide installs (capability `machineInstalls`, param `machineInstalls: 'ask'` on a write role-turn or on `verify`): a blocker whose `install` names a machine-wide install (`brew install terraform`, `rustup target add wasm32-unknown-unknown`) memoizes the settled result and pauses on a `question` interrupt with `options` (`install`, `self`) and `data: { kind: 'machine-install', command, tool }`. Core never installs anything machine-wide. The host runs an approved install itself and answers `installed`; the node runs again in the same visit (at most three installs). Any other answer keeps the blocker, its `requiredAction` naming the person's step.
+
 ### `decider`
 
 Desktop's evidence-oriented loop decider adapted to a declared read-only role (`invalid_role_access` otherwise). It receives the bounded `$history`, the frozen specs (each bounded to 4,000 characters) and `goal`, and must answer `{ verdict: 'continue' | 'stop' | 'blocked', reason }` as structured output with no session continuity.
@@ -132,13 +137,15 @@ Writes the OpenSpec change for code that already exists (Intent mode, formerly F
 
 ### `approval`
 
-Pauses the run with a human interrupt `{ kind: 'approval', prompt: reason, nodePath, scopeId, attemptId }`. The process exits with code 2 and `runtime-result.status = 'paused'`; the attempt stays `paused` and is reused on resume. Resume with `runtime resume --approve <nodePath|interruptId>`.
+Pauses the run with a human interrupt `{ kind: 'approval', prompt: reason, nodePath, scopeId, attemptId }`. The process exits with code 2 and `runtime-result.status = 'paused'`; the attempt stays `paused` and is reused on resume. Resume with `runtime resume --approve <nodePath|interruptId>`. With capability `questionOptions` the person may reject instead: `runtime resume --reject <nodePath|interruptId> --reason <text>` answers `{ approved: false, reason }`, so the definition's negative edge (a condition on `$outputs.<id>.response.approved`) runs; such a Core marks every approval interrupt `rejectable: true`. A gate is never rejected.
 
 - Outcomes: `next`. Effect: read. Writes `$outputs[nodeId] = { response }`.
 
 ### `question`
 
 Pauses the run with a `question` interrupt whose prompt is `text`. Resume with `runtime resume --answer <text> [--interrupt-id <id>]`; the answer must be a nonempty string.
+
+Structured choices (capability `questionOptions`, additive): optional params `asker` (a role id shown as who asks), `why`, `options` (2–6 `{ id, label, meaning?, detail? }`), `recommended` (an option id), `endsRun` (option ids after which the definition ends the run) and `optionsFrom` (a node id: its `structured.questionOptions`, `structured.recommendedOption` and `structured.questionWhy` take precedence over the static `options`/`recommended`/`why`). The interrupt then carries `text` (the bare question), `asker`, `why`, `options`, `recommended`, `endsRun` and `detail` beside a `prompt` that lists the choices as plain lines, so a host that ignores the fields still shows a complete question. Malformed or missing ids are derived from labels; fewer than two valid choices means a plain question. The person answers by choice with `runtime resume --answer <label or words> --option <id>` (the id must be offered, `invalid_resume` otherwise) or with free text as before. `$history` then records `The person chose "<label>" (<meaning>).` plus their own words when they differ from the label; a free answer is recorded unchanged.
 
 - Outcomes: `next`. Effect: read. Writes `$outputs[nodeId] = { response }` and appends the reply to `$answers`.
 
@@ -253,6 +260,8 @@ Exactly one of: `text`, `nativeCommand`.
 | `sessionContinuity` | no | `"run"` / `"none"` |
 | `stance` | no | `"fixer"` |
 | `verificationProposalsFrom` | no | string (1–128 chars) |
+| `decisions` | no | `"ask"` |
+| `machineInstalls` | no | `"ask"` |
 
 ### Descriptor: `decider`
 
@@ -291,6 +300,7 @@ Exactly one of: `text`, `nativeCommand`.
 | `maxConcurrency` | no | integer (1–4) |
 | `setup` | no | `"configured"` / array of object { `repositoryId`: string (1–128 chars), `command`: string (1–4096 chars), `args`: array of string (≤ 32000 chars) (≤ 1024 items), `cwd`: string (≤ 4096 chars), `env`: object of string (≤ 32000 chars), `timeoutMs`: integer (1–7200000), `key`: string (≤ 128 chars), `label`: string (1–256 chars), `policy`: object } (required: `repositoryId`, `command`, `args`) (≤ 100 items) |
 | `hostBlockers` | no | boolean |
+| `machineInstalls` | no | `"ask"` |
 
 ### Descriptor: `shell`
 
@@ -431,6 +441,12 @@ Exactly one of: `argv`, `commandLine`.
 | `text` | yes | string (1–32000 chars) |
 | `bindCandidate` | no | boolean |
 | `enabled` | no | boolean |
+| `asker` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
+| `why` | no | string (≤ 600 chars) |
+| `options` | no | array of object (≤ 6 items) |
+| `recommended` | no | string (≤ 40 chars) |
+| `endsRun` | no | array of string (≤ 40 chars) (≤ 6 items) |
+| `optionsFrom` | no | string matching `^[a-z][a-z0-9-]{0,63}$` |
 
 ### Descriptor: `gate`
 
@@ -596,6 +612,24 @@ delta specs (the artifact is the object of an editing verb, or the target of rec
 evidence): such a task can never be completed after the freeze. It emits `fail` with
 `reason: 'tasks_edit_frozen_artifacts'`, the offending `tasks`, and a history note the
 planning role repairs from. Citing those artifacts ("as described in design.md") is fine.
+It also refuses (`reason: 'tasks_need_manual_check'`) an untagged task that asks for a
+manual or visual check without saying how the run performs it. Once per contract it refuses
+(`reason: 'tasks_contradict_non_goals'`, `tasks`, `nonGoals`) a plan whose task seems to
+require a bullet of a `Non-Goals` or `Out of scope` section of design.md or proposal.md
+(capability `roleDecisions`): a self-contradicting plan would stop the developer at a
+decision only the person can make. The history note asks the planner to drop the non-goal,
+drop or rewrite the task, or ask the person with low confidence; a plan frozen again after
+that review passes, so an apparent overlap costs one repair and never the run. A non-goal
+that protects existing code instead of excluding a feature ("No change to `total(items)`",
+"… Not changed here", "Changing the public API", "left as is") conflicts only with a task
+clause whose alteration verb (change, update, rename, remove, refactor, …) comes right before
+a word of its subject ("rewrite the mix signature"); a task that merely names it as an anchor
+or a style to follow, or alters something else next to it ("change the import to { total, … }"),
+agrees with it. A task tagged
+`- [ ] N.M [human] …` (contract 5.15, capability `humanTasks`) is a person's check:
+`check` never counts it as incomplete, the frozen fingerprint ignores the tag on an
+unticked task, and the output reports `incompleteTasks` and `humanChecks` (see
+[Human checks](../agent-runtime.md#human-checks)).
 
 `verify.additionalCommandsFrom` reads `structured.verification` from a committed
 agent output. All host-configured checks remain mandatory; proposals supplement

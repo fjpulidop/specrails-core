@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 
-import { cliProcessEnvironment } from '../../../cli-process.js'
+import { agentProcessEnvironment } from '../../../cli-process.js'
 
 export interface ProcessSpec {
   command: string
@@ -45,7 +45,7 @@ export const MAX_LINE_BYTES = 16 * 1024 * 1024
 
 /** Production spawner: cross-spawn, own process group on POSIX, tree-kill on every platform. */
 export const spawnResidentProcess: ProcessSpawner = (spec, handlers) => {
-  const env = cliProcessEnvironment(spec.env)
+  const env = agentProcessEnvironment(spec.env)
   const child = crossSpawn(spec.command, spec.args, {
     cwd: spec.cwd,
     env,

@@ -192,8 +192,9 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
       'specrails-core runtime status --context <json> [--compact]',
       'specrails-core runtime resume --context <json> [--approve archive] [--answer <text>] [--recover developer] [--invalidate verify]',
       'specrails-core runtime resume --context <json> --interrupt-id <id> --host-result <json>',
+      'specrails-core runtime resume --context <json> --route-overrides <json> [--recover <attemptId>]',
       'specrails-core runtime recovery --context <json> --stdin',
-      'specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--scope-id <scope>] [--visit <number>] [--state <json>]',
+      'specrails-core runtime fork --context <json> --from <nodePath> --run-id <newRunId> [--scope-id <scope>] [--visit <number>] [--state <json>] [--route-overrides <json>]',
       'specrails-core runtime signal --context <json> --stdin [--request-id <id>]',
       'specrails-core runtime cancel --context <json> [--request-id <id>]',
       'specrails-core runtime pause --context <json> [--request-id <id>] [--reason requested|budget|<token>]',
@@ -206,7 +207,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     emit({ type: 'runtime-api', apiVersion: RUNTIME_API_VERSION, coreVersion: CORE_PACKAGE_VERSION, runtimeIdentity: coreRuntimeIdentity(), workflowVersions: [CORE_WORKFLOW_VERSION],
       engineVersion: 2, engines: RUNTIME_ENGINES, nodeKindsVersion: NODE_KINDS_VERSION, nodeKinds: validationPieceRegistry().kinds(),
       capabilities: { openRoles: 1, scopedRecovery: 1, efficientRoleExecution: 1, reproducibleVerification: 1, implementationEfficiencyMetrics: 1, compactAgentLoop: 1, configurableGuardrails: 1, compactOutputBudget: 1, roleThinkingControl: 1, repositoryScope: 1,
-        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, environmentFacts: 1, verificationSummary: 1, sessions: 1, flowSessions: 1, reviewBrief: 1, deriveChange: 1, architectClarifications: 1, specTrace: 1, baselineOnTouch: 1, rulesInventory: 1, pauseRuns: 1, failureClassification: 1, findingLocations: 1, hostTasks: 1, unlimitedTurns: 1 }, guardrails: GUARDRAIL_CATALOG })
+        engineV2: 1, workflowAgentSteps: 1, implementationSteps: 1, workflowDefinitions: 1, fanOut: 1, fork: 1, forkIdempotency: 1, steeringInbox: 1, hostBlockers: 1, setupCommands: 1, environmentFacts: 1, verificationSummary: 1, sessions: 1, flowSessions: 1, reviewBrief: 1, deriveChange: 1, architectClarifications: 1, specTrace: 1, baselineOnTouch: 1, rulesInventory: 1, pauseRuns: 1, failureClassification: 4, findingLocations: 1, hostTasks: 1, unlimitedTurns: 1, humanTasks: 1, roleDecisions: 1, reviewTriage: 1, machineInstalls: 1, questionOptions: 1, routeOverrides: 1, forkRouteOverrides: 1 }, guardrails: GUARDRAIL_CATALOG })
     return 0
   }
   if (command === 'host') return runSessionHost(flags)
@@ -253,6 +254,7 @@ export async function runRuntimeCommand(flags: Record<string, string | boolean>,
     request = read(requestFile) as typeof request
     if (request.runtimeIdentity && !sameRuntimeIdentity(request.runtimeIdentity, coreRuntimeIdentity())) throw new Error('The original runtime package identity differs. Restore the retained original runtime; the saved request has not been changed.')
     if (flags.config || flags.change) throw new Error('Resume uses the frozen configuration and change; start a new run to change them')
+    if (flags['route-overrides'] !== undefined) throw new EngineError('engine_unsupported', 'Route overrides apply to workflow-definition (engine 2) runs only')
   } else {
     if (flags.answer !== undefined || flags.approve !== undefined) throw new Error('Answers and approvals apply to runtime resume')
     // The built-in workflow has no published definition hash; its resume identity is the checkpoint's workflowFingerprint.

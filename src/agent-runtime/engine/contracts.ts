@@ -119,6 +119,15 @@ export interface HostBlocker {
   cwd: string
   requiredAction: string
   evidenceId?: string
+  /**
+   * The exact machine-wide install that would provide the missing tool (for example
+   * `brew install terraform`, `rustup target add wasm32-unknown-unknown`), when one is
+   * known (capability `machineInstalls`). Core never runs it; a host may ask the person
+   * once and run it outside the run.
+   */
+  install?: string
+  /** The tool `install` provides, for the person's question. */
+  tool?: string
 }
 
 export interface EngineCompletion {
@@ -136,6 +145,8 @@ export interface EngineAnswer {
   ordinal: number
   nodePath: string
   value: JsonValue
+  /** A question the person answered (a question node or a role decision): what was asked and the answer as the asker reads it. Later role turns are given these. */
+  asked?: { question: string; answer: string }
 }
 
 export interface BranchResult {
@@ -227,10 +238,36 @@ export interface TransientEngineEvent {
 
 export interface HumanInterrupt {
   kind: 'approval' | 'question' | 'gate'
+  /** Self-contained text: the question, why and the choices in plain words (what an older host shows). */
   prompt: string
   nodePath: string
   scopeId: string
   attemptId: string
+  /** Structured choices a host may render as buttons (capabilities `machineInstalls`, `questionOptions`).
+   *  An install question is answered with plain text (`installed`); a questionOptions answer may name the chosen `optionId`. */
+  options?: InterruptOption[]
+  /** Typed facts behind the question (`kind` names its vocabulary, e.g. `machine-install`). */
+  data?: JsonObject
+  /** questionOptions (see question-options.ts): the bare question, who asks (a role id), why it matters,
+   *  the recommended option id, the option ids that end the run, and a verbatim detail (e.g. a command). */
+  text?: string
+  asker?: string
+  why?: string
+  recommended?: string
+  endsRun?: string[]
+  detail?: string
+  /** An approval this Core lets the person reject with a reason (`runtime resume --reject`). */
+  rejectable?: boolean
+}
+
+/** One structured answer to a question interrupt. */
+export interface InterruptOption {
+  id: string
+  label: string
+  /** What choosing it does, in one sentence (may be empty when the asker gave none). */
+  meaning: string
+  /** questionOptions: a verbatim detail of this choice (for example the exact command it runs). */
+  detail?: string
 }
 
 /**

@@ -1,5 +1,5 @@
 import { DatabaseSync, type SQLInputValue, type SQLOutputValue } from 'node:sqlite'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { EngineError, type DurableEngineEvent, type JsonValue } from '../contracts.js'
 
 import { PersistenceError, privateSqlitePath } from '../storage/private-path.js'
@@ -101,11 +101,18 @@ CREATE INDEX visits_run ON visits(run_id,node_path,scope_id,local_visit);
 CREATE INDEX attempts_visit ON attempts(visit_id,attempt);
 CREATE INDEX events_cursor ON events(run_id,sequence);
 CREATE INDEX revisions_cut ON row_versions(revision,table_name);
-PRAGMA user_version=2;
+PRAGMA user_version=3;
 `
 
-/** Current run database schema. Version 1 lacks the 'pause' control kind and stays readable. */
-export const RUN_DATABASE_SCHEMA = 2
+/**
+ * Current run database schema. Version 1 lacks the 'pause' control kind and stays readable.
+ * Version 3 has the same tables; its row versions may carry `{ $sqliteSameAs, sha256 }` for a
+ * large column unchanged since an earlier version of the same row (see `encodeVersion`), so a
+ * Core that does not know the marker refuses the file instead of misreading it.
+ */
+export const RUN_DATABASE_SCHEMA = 3
+/** Text columns at least this long are written once per row history while they stay unchanged. */
+export const VERSION_DEDUPE_MIN_CHARS = 1024
 /**
  * Version 1 → 2 only widens the control_inbox kind CHECK to admit 'pause'.
  * SQLite cannot alter a CHECK constraint, so the table is rebuilt in place.
@@ -119,6 +126,11 @@ DROP TABLE control_inbox;
 ALTER TABLE control_inbox_v2 RENAME TO control_inbox;
 PRAGMA user_version=2;
 `
+
+const migrateV2ToV3 = 'PRAGMA user_version=3;'
+type SameAs = { $sqliteSameAs: number; sha256: string }
+const isSameAs = (value: unknown): value is SameAs => !!value && typeof value === 'object' && typeof (value as SameAs).$sqliteSameAs === 'number'
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex')
 
 function encodeRow(row: WriteRow | DatabaseRow): string {
   return JSON.stringify(Object.fromEntries(Object.entries(row).map(([key, value]) => [key,
@@ -146,7 +158,7 @@ export class RunDatabase {
       if (!options.readOnly) sqlite.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;')
       const version = Number(sqlite.prepare('PRAGMA user_version').get()?.user_version)
       if (version === 0 && options.create) { sqlite.exec('BEGIN IMMEDIATE'); try { sqlite.exec(schema); sqlite.exec('COMMIT') } catch (error) { sqlite.exec('ROLLBACK'); throw error } }
-      else if (version !== 1 && version !== RUN_DATABASE_SCHEMA) throw new PersistenceError('resume_incompatible', `Unsupported run database schema ${version}`)
+      else if (version !== 1 && version !== 2 && version !== RUN_DATABASE_SCHEMA) throw new PersistenceError('resume_incompatible', `Unsupported run database schema ${version}`)
       return new RunDatabase(target, sqlite)
     } catch (error) { sqlite.close(); throw error }
   }
@@ -164,6 +176,7 @@ export class RunDatabase {
     this.sqlite.exec('BEGIN IMMEDIATE')
     try {
       if (this.schemaVersion === 1) this.sqlite.exec(migrateV1ToV2)
+      if (this.schemaVersion === 2) this.sqlite.exec(migrateV2ToV3)
       this.sqlite.exec('COMMIT')
     } catch (error) { this.sqlite.exec('ROLLBACK'); throw error }
   }
@@ -199,7 +212,44 @@ export class RunDatabase {
     const update = columns.filter(column => !(primary as readonly string[]).includes(column))
     this.sqlite.prepare(`INSERT INTO ${table} (${columns.join(',')}) VALUES (${columns.map(() => '?').join(',')}) ON CONFLICT(${primary.join(',')}) DO ${update.length ? `UPDATE SET ${update.map(column => `${column}=excluded.${column}`).join(',')}` : 'NOTHING'}`).run(...columns.map(column => row[column]))
     const stored = this.get(table, row)!
-    this.sqlite.prepare('INSERT OR REPLACE INTO row_versions(table_name,row_key,revision,row_json) VALUES (?,?,?,?)').run(table, JSON.stringify(primary.map(key => stored[key])), revision, encodeRow(stored))
+    const rowKey = JSON.stringify(primary.map(key => stored[key]))
+    this.sqlite.prepare('INSERT OR REPLACE INTO row_versions(table_name,row_key,revision,row_json) VALUES (?,?,?,?)').run(table, rowKey, revision, this.encodeVersion(table, rowKey, revision, stored))
+  }
+
+  /**
+   * A row version, with every large text column that equals the same column of this row's
+   * previous version written as a reference to the version that holds the text. A long run
+   * rewrites its `runs` row (≈120 KB of frozen request and definition) on every event: a copy
+   * per revision grew one 40-task run's database by 12 MB in 45 minutes. Schema 3 only.
+   */
+  private encodeVersion(table: RevisionTable, rowKey: string, revision: number, row: WriteRow | DatabaseRow): string {
+    if (this.schemaVersion < 3) return encodeRow(row)
+    const large = Object.entries(row).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length >= VERSION_DEDUPE_MIN_CHARS)
+    if (!large.length) return encodeRow(row)
+    const previous = this.sqlite.prepare('SELECT revision,row_json FROM row_versions WHERE table_name=? AND row_key=? AND revision<? ORDER BY revision DESC LIMIT 1').get(table, rowKey, revision)
+    if (!previous?.row_json) return encodeRow(row)
+    const before = JSON.parse(String(previous.row_json)) as Record<string, unknown>
+    const out: Record<string, unknown> = JSON.parse(encodeRow(row))
+    for (const [column, text] of large) {
+      const old = before[column]
+      const hash = sha256(text)
+      if (isSameAs(old) && old.sha256 === hash) out[column] = old
+      else if (typeof old === 'string' && old.length === text.length && old === text) out[column] = { $sqliteSameAs: Number(previous.revision), sha256: hash }
+    }
+    return JSON.stringify(out)
+  }
+
+  /** Decode a stored row version, resolving `$sqliteSameAs` references (always to a literal). */
+  private decodeVersion(table: string, rowKey: string, json: string): WriteRow {
+    const row = decodeRow(json) as Record<string, unknown>
+    for (const [column, value] of Object.entries(row)) {
+      if (!isSameAs(value)) continue
+      const source = this.sqlite.prepare('SELECT row_json FROM row_versions WHERE table_name=? AND row_key=? AND revision=?').get(table, rowKey, value.$sqliteSameAs)
+      const text = source?.row_json ? (JSON.parse(String(source.row_json)) as Record<string, unknown>)[column] : undefined
+      if (typeof text !== 'string' || sha256(text) !== value.sha256) throw new PersistenceError('storage_corrupt', `Row version of ${table} references a missing ${column}`)
+      row[column] = text
+    }
+    return row as WriteRow
   }
 
   delete(table: RevisionTable, key: WriteRow): void {
@@ -212,11 +262,11 @@ export class RunDatabase {
   rowsAt(revision: number): Array<{ table: RevisionTable; row: WriteRow }> {
     if (!this.inTransaction) throw new PersistenceError('internal', 'Historical reads require a source transaction')
     if (!Number.isSafeInteger(revision) || revision < 1 || revision > this.revision) throw new PersistenceError('invalid_arguments', 'Invalid historical revision')
-    const rows = this.sqlite.prepare(`SELECT v.table_name,v.row_json FROM row_versions v JOIN (
+    const rows = this.sqlite.prepare(`SELECT v.table_name,v.row_key,v.row_json FROM row_versions v JOIN (
       SELECT table_name,row_key,MAX(revision) revision FROM row_versions WHERE revision<=? GROUP BY table_name,row_key
     ) cut ON v.table_name=cut.table_name AND v.row_key=cut.row_key AND v.revision=cut.revision WHERE v.row_json IS NOT NULL`).all(revision)
     const order = Object.keys(keys)
-    return rows.map(row => ({ table: String(row.table_name) as RevisionTable, row: decodeRow(String(row.row_json)) }))
+    return rows.map(row => ({ table: String(row.table_name) as RevisionTable, row: this.decodeVersion(String(row.table_name), String(row.row_key), String(row.row_json)) }))
       .sort((a, b) => order.indexOf(a.table) - order.indexOf(b.table))
   }
 
@@ -261,12 +311,13 @@ export class RunDatabase {
         for (const version of versions) {
           const table = String(version.table_name) as RevisionTable
           if (!(table in keys)) throw new EngineError('storage_corrupt', 'Unknown revision table')
-          const original = version.row_json ? decodeRow(String(version.row_json)) : undefined
+          const original = version.row_json ? this.decodeVersion(table, String(version.row_key), String(version.row_json)) : undefined
           if (!keep(table, original)) continue
           const row = original ? rewrite(table, original, revisionTimes.get(Number(version.revision))) : undefined
           const key = row ? keys[table].map(name => row[name]) : (JSON.parse(String(version.row_key)) as SQLInputValue[]).map((value, index) => keys[table][index] === 'run_id' ? options.runId : value)
+          const rowKey = JSON.stringify(key)
           destination.sqlite.prepare('INSERT INTO row_versions(table_name,row_key,revision,row_json) VALUES (?,?,?,?)')
-            .run(table, JSON.stringify(key), version.revision, row ? encodeRow(row) : null)
+            .run(table, rowKey, version.revision, row ? destination.encodeVersion(table, rowKey, Number(version.revision), row) : null)
         }
         for (const { table, row: original } of activeRows) {
           if (!keep(table, original)) continue

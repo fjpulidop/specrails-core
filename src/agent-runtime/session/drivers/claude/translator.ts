@@ -1,5 +1,6 @@
-import type { SubagentPhase } from '../../domain/types.js'
+import type { ContextUsage, SubagentPhase } from '../../domain/types.js'
 import type { DriverEvent } from '../../ports.js'
+import { claudeRateLimit } from '../../../provider-rate-limits.js'
 
 /**
  * Anti-corruption layer for Claude Code `--output-format stream-json`.
@@ -21,9 +22,9 @@ const TASK_PHASE: Readonly<Record<string, SubagentPhase>> = Object.freeze({
 })
 
 /** System subtypes that carry nothing the session model needs. */
-const IGNORED_SYSTEM = new Set(['thinking_tokens', 'task_summary', 'post_turn_summary', 'status', 'hook_response', 'hook_started', 'compact_boundary'])
+const IGNORED_SYSTEM = new Set(['thinking_tokens', 'task_summary', 'post_turn_summary', 'status', 'hook_response', 'hook_started'])
 // `control_response` acknowledges our interrupt (`still_queued` lists commands that survive it).
-const IGNORED_TYPES = new Set(['rate_limit_event', 'stream_event', 'keep_alive', 'control_response'])
+const IGNORED_TYPES = new Set(['stream_event', 'keep_alive', 'control_response'])
 
 function str(value: unknown): string | undefined {
   return typeof value === 'string' ? value : undefined
@@ -31,6 +32,24 @@ function str(value: unknown): string | undefined {
 
 function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+/** Claude Code's model id suffix for the 1M-token context variant. */
+const ONE_MILLION_SUFFIX = '[1m]'
+
+/**
+ * Context window of the main model from `result.modelUsage`: the key equal to
+ * the `system/init` model first (it carries a `[1m]` variant), then the key of
+ * the assistant message model, then the largest window reported.
+ */
+function contextWindow(modelUsage: Frame | undefined, initModel: string | null, messageModel: string | null): { windowTokens: number | null; model: string | null } {
+  const entries = Object.entries(modelUsage ?? {}).map(([key, value]) => [key, num((value as Frame | undefined)?.contextWindow)] as const)
+  const pick = (key: string | null) => (key ? entries.find(([name, window]) => name === key && window !== undefined) : undefined)
+  const largest = entries.filter(([, window]) => window !== undefined).sort((a, b) => b[1]! - a[1]!)[0]
+  const found = pick(initModel) ?? pick(messageModel) ?? largest
+  if (found) return { windowTokens: found[1]!, model: found[0] }
+  const model = initModel ?? messageModel
+  return { windowTokens: model?.endsWith(ONE_MILLION_SUFFIX) ? 1_000_000 : null, model }
 }
 
 function textOf(content: unknown): string {
@@ -54,6 +73,11 @@ export class ClaudeTranslator {
   private readonly taskByToolUse = new Map<string, string>()
   private readonly taskPhase = new Map<string, SubagentPhase>()
   private readonly reportedUnknown = new Set<string>()
+  /** Per turn: the `system/init` model and the newest main-agent request size. */
+  private initModel: string | null = null
+  private messageModel: string | null = null
+  private contextTokens: number | null = null
+  private compacted = false
 
   /** The driver wrote this input; its receipts and replays belong to us. */
   noteInput(inputId: string): void { this.written.add(inputId) }
@@ -69,6 +93,11 @@ export class ClaudeTranslator {
       case 'assistant': return this.assistant(frame)
       case 'user': return this.user(frame)
       case 'result': return this.result(frame)
+      case 'rate_limit_event': {
+        // The account's usage limits, reported with each request (snapshot, not delta).
+        const rateLimit = claudeRateLimit(frame.rate_limit_info)
+        return rateLimit ? [{ kind: 'rate-limit', rateLimit }] : this.unknown('rate_limit_event:malformed')
+      }
       default:
         if (type && IGNORED_TYPES.has(type)) return []
         return this.unknown(`type:${type ?? '<missing>'}`)
@@ -83,6 +112,12 @@ export class ClaudeTranslator {
         const ref = str(frame.session_id)
         if (ref && ref !== this.sessionRef) { this.sessionRef = ref; events.push({ kind: 'provider.ref', providerSessionRef: ref }) }
         if (!this.turnOpen) {
+          this.contextTokens = null
+          this.messageModel = null
+          this.compacted = false
+        }
+        this.initModel = str(frame.model) ?? this.initModel
+        if (!this.turnOpen) {
           this.turnOpen = true
           const inputIds = this.startedInputs
           this.startedInputs = []
@@ -90,6 +125,11 @@ export class ClaudeTranslator {
         }
         return events
       }
+      case 'compact_boundary':
+        // The conversation was summarized: the last measured request no longer describes the window.
+        this.contextTokens = null
+        this.compacted = true
+        return []
       case 'task_started': return this.taskStarted(frame)
       case 'task_progress': {
         const taskId = str(frame.task_id)
@@ -183,6 +223,7 @@ export class ClaudeTranslator {
   private assistant(frame: Frame): DriverEvent[] {
     const owner = this.ownerOf(frame)
     if (owner === undefined) return this.unknown('assistant:unattributed-parent')
+    if (owner === null && frame.isSidechain !== true) this.noteContext(frame.message as Frame | undefined)
     const content = ((frame.message as Frame | undefined)?.content ?? []) as Frame[]
     const events: DriverEvent[] = []
     for (const block of Array.isArray(content) ? content : []) {
@@ -203,6 +244,27 @@ export class ClaudeTranslator {
       }
     }
     return events
+  }
+
+  /**
+   * The newest main-agent request with usage defines how full the window is:
+   * its prompt (fresh + cache write + cache read), never output and never a sum
+   * across requests. All-zero usage (partial stream frames) is skipped.
+   */
+  private noteContext(message: Frame | undefined): void {
+    const usage = message?.usage as Frame | undefined
+    if (!usage) return
+    const used = (num(usage.input_tokens) ?? 0) + (num(usage.cache_creation_input_tokens) ?? 0) + (num(usage.cache_read_input_tokens) ?? 0)
+    if (used <= 0) return
+    this.contextTokens = used
+    this.compacted = false
+    this.messageModel = str(message?.model) ?? this.messageModel
+  }
+
+  private context(modelUsage: Frame | undefined): ContextUsage | undefined {
+    const { windowTokens, model } = contextWindow(modelUsage, this.initModel, this.messageModel)
+    if (this.contextTokens === null && windowTokens === null && !this.compacted) return undefined
+    return { usedTokens: this.contextTokens, windowTokens, model, ...(this.compacted ? { compacted: true } : {}) }
   }
 
   private user(frame: Frame): DriverEvent[] {
@@ -237,6 +299,7 @@ export class ClaudeTranslator {
     const failed = frame.is_error === true || (str(frame.subtype) !== undefined && frame.subtype !== 'success')
     const usage = frame.usage as Frame | undefined
     const modelUsage = frame.modelUsage as Frame | undefined
+    const context = this.context(modelUsage)
     return [{
       kind: 'turn.completed',
       status: interrupted ? 'stopped' : failed ? 'failed' : 'completed',
@@ -250,6 +313,7 @@ export class ClaudeTranslator {
         cacheWriteTokens: num(usage?.cache_creation_input_tokens) ?? null,
         model: modelUsage ? Object.keys(modelUsage)[0] ?? null : null,
       },
+      ...(context ? { context } : {}),
     }]
   }
 

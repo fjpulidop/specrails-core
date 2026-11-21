@@ -227,6 +227,7 @@ describe('runtime host binary', () => {
     const init = (await call(1, 'initialize', { protocolVersions: [1], host: { name: 'smoke', version: '1' }, scope: 'smoke' })).result as Json
     expect(init).toMatchObject({ protocolVersion: 1, scope: 'smoke', capabilities: { sessions: 1 } })
     expect((init.drivers as Json[]).map((driver) => driver.id)).toEqual(['claude', 'codex', 'gemini', 'kimi'])
+    expect((init.drivers as Json[]).map((driver) => (driver.capabilities as Json).deferredMcpTools)).toEqual([true, false, false, false])
     expect((await call(2, 'session.list')).result).toEqual({ sessions: [] })
     expect(existsSync(path.join(home, '.specrails', 'sessions', 'smoke', 'sessions.sqlite'))).toBe(true)
     await call(3, 'host.shutdown')

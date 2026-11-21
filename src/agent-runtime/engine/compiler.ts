@@ -9,6 +9,7 @@ import { boundPieceOutput } from './output.js'
 import { compileImplementationGraph, implementationContext, implementationInput } from './implementation-compiler.js'
 import type { ImplementationAdapter } from './pieces/implementation.js'
 import type { JsonObject } from './contracts.js'
+import { isProviderLimitError } from '../failure-classification.js'
 
 class ClassifiedRetry extends Error {
   constructor(public readonly cause: unknown) { super(cause instanceof Error ? cause.message : String(cause)); this.name = 'ClassifiedRetry' }
@@ -109,6 +110,12 @@ export function compileWorkflowDefinition(definition: WorkflowDefinition, regist
           if (child || implementationChild) { await execution.interrupted(frame, error); throw error }
           const code = error instanceof EngineError || (error && typeof error === 'object' && 'code' in error) ? String((error as { code: string }).code) : 'piece_failed'
           if (effect === 'write' && ['aborted', 'timeout', 'idle_timeout', 'lease_lost'].includes(code)) {
+            await execution.interrupted(frame, error)
+            throw error
+          }
+          // A usage limit stops the run without a completion so the host can
+          // wait for the reset and resume this same step.
+          if (isProviderLimitError(code, error instanceof Error ? error.message : String(error))) {
             await execution.interrupted(frame, error)
             throw error
           }

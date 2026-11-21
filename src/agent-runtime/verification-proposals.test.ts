@@ -75,3 +75,58 @@ it('keeps the ordinary limit for package scripts and an explicit timeout', () =>
       .toEqual([{ repositoryId: 'app', command: 'npm', args: ['run', 'test:e2e'] }, { repositoryId: 'app', command: 'bash', args: ['check.sh'], timeoutMs: 120_000 }])
   } finally { rmSync(root, { recursive: true, force: true }) }
 })
+
+describe('toolchain checks next to configured checks', () => {
+  // The shapes that stalled real runs: a Swift package whose acceptance needs the iOS Simulator
+  // build, a Tauri app whose Rust core is tested with cargo next to `npm test`, and the
+  // `node --check` of browser-only code no test imports.
+  const repo = () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'toolchain-'))
+    mkdirSync(path.join(root, 'src-tauri'))
+    mkdirSync(path.join(root, 'web'))
+    writeFileSync(path.join(root, 'src-tauri/Cargo.toml'), '[package]\nname = "x"\n')
+    writeFileSync(path.join(root, 'web/main.js'), 'export {}\n')
+    writeFileSync(path.join(root, 'compose.yaml'), 'services: {}\n')
+    return root
+  }
+  const configured = (root: string) => [{ repositoryId: 'app', command: 'npm', args: ['test'], cwd: root }]
+  const context = (root: string) => ({ repositories: [{ id: 'app', name: 'App', path: root }] }) as unknown as PipelineContext
+
+  it('admits build and test verbs of the repository toolchain', () => {
+    const root = repo()
+    try {
+      const proposals = [
+        { repositoryId: 'app', command: 'xcodebuild', args: ['-scheme', 'Habits', '-destination', 'generic/platform=iOS Simulator', 'build'] },
+        { repositoryId: 'app', command: 'cargo', args: ['test', '--manifest-path', 'src-tauri/Cargo.toml'] },
+        { repositoryId: 'app', command: 'swift', args: ['build'] },
+        { repositoryId: 'app', command: 'go', args: ['vet', './...'] },
+        { repositoryId: 'app', command: 'node', args: ['--check', 'web/main.js'] },
+        { repositoryId: 'app', command: 'docker', args: ['compose', '-f', 'compose.yaml', 'config'] },
+      ]
+      expect(admitVerificationProposals(context(root), configured(root), proposals, command => command)).toEqual(proposals)
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
+
+  it('refuses publishing, archiving, running, output redirection and paths outside the repository', () => {
+    const root = repo()
+    try {
+      const refused = [
+        { repositoryId: 'app', command: 'cargo', args: ['publish'] },
+        { repositoryId: 'app', command: 'cargo', args: ['run'] },
+        { repositoryId: 'app', command: 'cargo', args: ['fmt'] },
+        { repositoryId: 'app', command: 'cargo', args: ['+nightly', 'test'] },
+        { repositoryId: 'app', command: 'cargo', args: ['test', '--manifest-path', '../other/Cargo.toml'] },
+        { repositoryId: 'app', command: 'xcodebuild', args: ['-scheme', 'Habits', 'archive'] },
+        { repositoryId: 'app', command: 'xcodebuild', args: ['-exportArchive', '-archivePath', 'x'] },
+        { repositoryId: 'app', command: 'go', args: ['build', '-o', '/usr/local/bin/x'] },
+        { repositoryId: 'app', command: 'go', args: ['run', '.'] },
+        { repositoryId: 'app', command: 'node', args: ['--check', '../outside.js'] },
+        { repositoryId: 'app', command: 'node', args: ['-e', 'process.exit(0)'] },
+        { repositoryId: 'app', command: 'docker', args: ['compose', 'up'] },
+        { repositoryId: 'app', command: 'docker', args: ['run', 'alpine'] },
+        { repositoryId: 'app', command: 'swift', args: ['package', 'update'] },
+      ]
+      expect(admitVerificationProposals(context(root), configured(root), refused, command => command)).toEqual([])
+    } finally { rmSync(root, { recursive: true, force: true }) }
+  })
+})

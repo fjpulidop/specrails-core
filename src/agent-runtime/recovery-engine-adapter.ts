@@ -1,5 +1,4 @@
-import { randomUUID } from 'node:crypto'
-import { RunLease } from './engine/checkpoint/lease.js'
+import { leaseOwner, RunLease } from './engine/checkpoint/lease.js'
 import type { ExecutionLease } from './engine/contracts.js'
 import { lstat } from 'node:fs/promises'
 import { existsSync, readFileSync } from 'node:fs'
@@ -150,7 +149,7 @@ export async function acquireRecoveryExecutionLease(runDir: string, context: Pip
     try { if (token) lease.release(token) } finally { database.close() }
   }
   try {
-    token = lease.acquire(randomUUID())
+    token = lease.acquire(leaseOwner())
     signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort()
     stopHeartbeat = lease.heartbeat(token, error => controller.abort(error))
     const current = await readRecoveryAuthority(runDir, 'v2', action, context)

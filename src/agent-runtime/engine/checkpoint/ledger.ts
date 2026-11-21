@@ -5,6 +5,7 @@ import { EngineError, type AttemptFrame, type DurableEngineEvent, type EngineUsa
   type JsonValue, type NodeAdmission, type PieceResult, type TaskIdentity, type TerminalCommit, type WorkflowBudget } from '../contracts.js'
 import { appendRunEvent, RunDatabase, type DatabaseRow } from './database.js'
 import { RunLease } from './lease.js'
+import { isProviderLimitError } from '../../failure-classification.js'
 import { ControlInbox } from '../steering/inbox.js'
 
 export interface FrozenLedgerInput {
@@ -108,13 +109,20 @@ export class RunLedger {
       }
       this.checkAdmission({ pause: true })
       if (prior?.status === 'running' && prior.lease_epoch === this.token.epoch && !prior.inherited) throw new EngineError('attempt_running', 'The task is already executing')
-      if (prior && (prior.status === 'running' || prior.status === 'interrupted') && input.effect === 'write' && !prior.recovery_authorized) throw new EngineError('recover_required', 'An interrupted write requires explicit recovery')
+      // A write the provider refused on its usage limit stopped on the provider's word, not on an
+      // unknown crash: the host's resume after the limit pause (same or another provider) re-runs it.
+      const refusedAtLimit = prior?.status === 'interrupted' && isProviderLimitError(String(prior.error_code ?? ''), String(prior.error_message ?? ''))
+      if (prior && (prior.status === 'running' || prior.status === 'interrupted') && input.effect === 'write' && !prior.recovery_authorized && !refusedAtLimit) throw new EngineError('recover_required', 'An interrupted write requires explicit recovery')
       if (prior?.status === 'running') {
         this.db.put('attempts', { ...prior, status: 'interrupted', ended_at: at, error_code: 'owner_lost', error_message: 'Previous executor did not settle this attempt' })
         this.event(JSON.parse(String(prior.frame_json)) as AttemptFrame, 'step_interrupted', { code: 'owner_lost' })
       }
       const attempt = Number(prior?.attempt ?? 0) + 1
-      if (attempt > input.retry.maxAttempts && !prior?.recovery_authorized) throw new EngineError('retry_exhausted', 'Maximum physical attempts reached for this visit')
+      // An attempt the provider refused on its usage limit did no work: the host waits for the
+      // reset and resumes, and that retry must not spend the visit's attempt budget (a second
+      // refusal used to end the run as "Maximum physical attempts reached").
+      const afterUsageLimit = !!prior && ['failed', 'interrupted'].includes(String(prior.status)) && isProviderLimitError(String(prior.error_code ?? ''), String(prior.error_message ?? ''))
+      if (attempt > input.retry.maxAttempts && !prior?.recovery_authorized && !afterUsageLimit) throw new EngineError('retry_exhausted', 'Maximum physical attempts reached for this visit')
       const frame: AttemptFrame = { runId: this.runId, nodePath: input.nodePath, scope: input.scope, task: input.task,
         visitId: String(visit.visit_id), visit: Number(visit.local_visit), transition: Number(visit.global_transition), attemptId: randomUUID(), attempt, leaseEpoch: this.token.epoch }
       this.db.put('attempts', { attempt_id: frame.attemptId, visit_id: frame.visitId, run_id: this.runId, node_path: frame.nodePath, scope_id: frame.scope.id,
@@ -248,18 +256,30 @@ export class RunLedger {
     this.assertFrame(frame)
     const at = new Date(this.now()).toISOString(), events: DurableEngineEvent[] = []
     for (const value of values) {
-      if (this.db.get('interrupts', { interrupt_id: value.id })) continue
+      // LangGraph names every interrupt of one node task after the task's namespace, so a node that asks
+      // again after an answer (a role's next decision round) reports the same id. A re-reported pending
+      // interrupt is the same question; once every earlier occurrence is answered, it is a new one.
+      const occurrences = this.interruptOccurrences(value.id)
+      if (occurrences.some(row => row.answer_json === null)) continue
+      const durableId = interruptOccurrenceId(value.id, occurrences.length)
       const payload = value.value && typeof value.value === 'object' && !Array.isArray(value.value) ? value.value : {}
-      this.db.put('interrupts', { interrupt_id: value.id, run_id: this.runId, visit_id: frame.visitId, attempt_id: frame.attemptId,
+      this.db.put('interrupts', { interrupt_id: durableId, run_id: this.runId, visit_id: frame.visitId, attempt_id: frame.attemptId,
         node_path: frame.nodePath, scope_id: frame.scope.id, branch_id: frame.scope.branchId ?? null, kind: String(payload.kind ?? 'gate'),
         requested_at: at, payload_json: canonicalJson(value.value) })
-      events.push(this.event(frame, 'step_paused', { interruptId: value.id, request: value.value }))
+      events.push(this.event(frame, 'step_paused', { interruptId: durableId, request: value.value }))
     }
     this.db.put('attempts', { ...attempt, status: 'paused' })
     const step = this.db.get('steps', { run_id: this.runId, node_path: frame.nodePath, scope_id: frame.scope.id })!
     this.db.put('steps', { ...step, status: 'paused', updated_at: at })
     this.db.put('runs', { ...this.run(), status: 'paused', updated_at: at, active_duration_ms: this.activeDurationMs(), active_started_at: null })
     return events
+  }
+
+  /** The durable occurrences of one LangGraph interrupt id, oldest first. */
+  private interruptOccurrences(id: string): Array<{ interrupt_id: unknown; answer_json: unknown }> {
+    return (this.db.sqlite.prepare("SELECT interrupt_id, answer_json FROM interrupts WHERE run_id=? AND (interrupt_id=? OR interrupt_id LIKE ? ESCAPE '\\')").all(this.runId, id, id.replace(/[\\%_]/g, '\\$&') + '~%') as Array<{ interrupt_id: unknown; answer_json: unknown }>)
+      .filter(row => interruptLangGraphId(String(row.interrupt_id)) === id)
+      .sort((a, b) => interruptOccurrence(String(a.interrupt_id)) - interruptOccurrence(String(b.interrupt_id)))
   }
 
   /** Actual LangGraph interrupt identities, with answers retained across crashes before resume. */
@@ -496,4 +516,18 @@ export function failReason(result: Pick<PieceResult, 'history' | 'output'>): str
   const fallback = result.output && typeof result.output === 'object' && !Array.isArray(result.output) && typeof result.output.reason === 'string' ? result.output.reason : undefined
   const text = (note ?? fallback)?.trim()
   return text ? (text.length > 4000 ? text.slice(0, 3999) + '…' : text) : undefined
+}
+
+/** Durable id of the `occurrence`-th interrupt (from 0) a node task raised under one LangGraph id. */
+export function interruptOccurrenceId(langGraphId: string, occurrence: number): string {
+  return occurrence === 0 ? langGraphId : `${langGraphId}~${occurrence}`
+}
+/** The LangGraph id a durable interrupt id belongs to. */
+export function interruptLangGraphId(durableId: string): string {
+  const at = durableId.lastIndexOf('~')
+  return at > 0 && /^\d+$/.test(durableId.slice(at + 1)) ? durableId.slice(0, at) : durableId
+}
+/** Which occurrence (from 0) of its LangGraph id a durable interrupt id is. */
+export function interruptOccurrence(durableId: string): number {
+  return durableId === interruptLangGraphId(durableId) ? 0 : Number(durableId.slice(durableId.lastIndexOf('~') + 1))
 }
