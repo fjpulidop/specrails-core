@@ -186,7 +186,8 @@ describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
       message: expect.stringContaining('the plan model (fixture/small) skipped the required OpenSpec steps again after one corrective reminder') } })
     expect(f.requests).toHaveLength(2)
     expect(f.requests[1]!.prompt).toContain('Your turn ended without these required steps: load_skill, instructions tasks.')
-    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"new"}')
+    // load_skill creates the change and runs every instructions query, so the writes follow it directly.
+    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"write_artifact","path":"proposal.md"}')
   })
 })
 

@@ -219,18 +219,31 @@ export class OpenSpecTools {
       // Execute them as part of the skill request and return their actual
       // outputs, so loading a skill cannot omit its required planning context.
       const fastForward = openSpecSkill(this.context) === 'openspec-ff-change'
-      let planning: { status: OpenSpecStatus; tasks?: unknown; apply?: unknown } | undefined
+      let planning: { status: OpenSpecStatus; tasks?: unknown; apply?: unknown; instructions?: Record<string, unknown> } | undefined
+      let next: string | undefined
       if (!fastForward) planning = { status: await this.status(), apply: await this.call(['instructions', 'apply', '--change', this.context.change, '--json']) }
-      else if (existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}`))) {
+      const exists = existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}`))
+      if (fastForward && !exists && openSpecPolicy(this.context).artifacts === 'all') {
+        // The skill's first steps for a fresh change are new, status and one instructions query per
+        // artifact; the host runs them here, so the architect starts writing instead of spending a
+        // model round trip on each. Writing keeps its gates: dependency order, instructions read.
+        await this.call(['new', 'change', this.context.change, '--json'])
+        prerequisites.push({ action: 'new', via: 'load_skill' })
+      }
+      if (fastForward && (exists || prerequisites.length)) {
         const status = await this.status()
         // Reusing complete artifacts still requires the official task context.
-        // Fresh/incomplete changes continue through the ordinary dependency order.
-        if (status.isComplete) planning = { status, tasks: await this.call(['instructions', 'tasks', '--change', this.context.change, '--json']) }
-      }
+        const pending = status.isComplete ? ['tasks'] : status.artifacts.filter(item => item.status !== 'done').map(item => item.id)
+        const results = await Promise.all(pending.map(id => this.call(['instructions', id, '--change', this.context.change, '--json'])))
+        const instructions = Object.fromEntries(pending.map((id, index) => [id, results[index]]))
+        planning = status.isComplete ? { status, tasks: instructions.tasks } : { status, instructions }
+        prerequisites.push({ action: 'status', via: 'load_skill' }, ...pending.map(artifact => ({ action: 'instructions', artifact, via: 'load_skill' })))
+        if (!status.isComplete) next = `The change exists and the official status and instructions queries for ${pending.join(', ')} have executed for this request: planning.instructions holds each artifact's instruction, template, output path and dependencies as OpenSpec returned them (their done flags describe the change before you write). Do not repeat these queries; write each artifact with write_artifact in dependency order, following its instruction and template, then validate.`
+      } else if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact: 'apply', via: 'load_skill' })
       const artifact = fastForward ? 'tasks' : 'apply'
-      if (planning) prerequisites.push({ action: 'status', via: 'load_skill' }, { action: 'instructions', artifact, via: 'load_skill' })
+      next ??= `The official status and instructions ${artifact} queries have executed for this request. Read the returned context and current artifacts, reconcile them with the requested change, and perform the remaining role skill steps. Existing artifacts are not proof that the current request is satisfied.`
       result = { name: openSpecSkill(this.context), source: this.context.skillPath, version: OPENSPEC_VERSION, content,
-        ...(planning ? { planning, next: `The official status and instructions ${artifact} queries have executed for this request. Read the returned context and current artifacts, reconcile them with the requested change, and perform the remaining role skill steps. Existing artifacts are not proof that the current request is satisfied.` } : {}),
+        ...(planning ? { planning, next } : {}),
         ...(!fastForward ? { savedProgress: readProgress(this.context) } : {}),
       }
     } else if (action === 'new') {
@@ -305,13 +318,15 @@ export class OpenSpecTools {
       if (missing.some(item => item.startsWith('instructions '))) steps.push(call({ action: 'instructions', artifact: 'apply' }))
       return steps
     }
+    // load_skill creates the change and runs status and every pending instructions query itself.
+    const prefetched = missing.includes('load_skill') && openSpecPolicy(this.context).artifacts === 'all'
     let status: OpenSpecStatus | undefined
     if (existsSync(artifactPath(this.context.root, `openspec/changes/${this.context.change}/.openspec.yaml`))) {
       try { status = await this.status() } catch { status = undefined }
-    } else steps.push(call({ action: 'new' }))
+    } else if (!prefetched) steps.push(call({ action: 'new' }))
     const pending = status ? status.artifacts.filter(item => item.status !== 'done').map(item => item.id) : ['proposal', 'design', 'specs', 'tasks']
     for (const artifact of pending) {
-      steps.push(call({ action: 'instructions', artifact }))
+      if (!prefetched) steps.push(call({ action: 'instructions', artifact }))
       steps.push(call({ action: 'write_artifact', path: artifact === 'specs' ? 'specs/<capability>/spec.md' : `${artifact}.md` }) + ' with content: the complete Markdown')
     }
     // tasks.md may exist (written outside the tool, or reused) without its instructions read.
@@ -363,7 +378,7 @@ export function openSpecPrompt(context: OpenSpecRoleContext, transport: OpenSpec
   const tool = openSpecToolReference(transport)
   if (!isBuiltinRole(context.role)) return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. Load action=load_skill using ${tool} Follow the pinned official skill. Use scoped tools for status, instructions, validation and permitted artifact writes. Workspace access: ${openSpecPolicy(context).access}; artifacts: ${openSpecPolicy(context).artifacts}. Read required artifact instructions before writing. Never archive or coordinate another role.\n`
 
-  return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. This headless transport loads the official, version-pinned skill through ${tool} This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered, and so are the skill's store selection and project check: no store is selected (never pass --store or run store commands), and the host has admitted this repository as the OpenSpec project, so action=new may create its repo-local openspec/ root; do not run openspec list to check for one. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
+  return `\n## Official OpenSpec workflow binding\nExecute ${openSpecSkill(context)} for change ${context.change}. This headless transport loads the official, version-pinned skill through ${tool} This is explicit skill-document adaptation, not a native slash command.\nFirst call action=load_skill and follow the returned complete official skill. Bind its openspec CLI commands to this tool: new change -> action=new; status -> status; instructions <artifact> -> instructions with artifact; validate -> validate. Author each artifact yourself using write_artifact with its change-relative path and content; read the official instructions first. Do not reproduce templates from memory or return the artifacts in final JSON. The tool fixes the change identity and runs OpenSpec ${OPENSPEC_VERSION}.\nRead source/dependencies with your normal read tools. For this frozen scope, change selection is already answered, and so are the skill's store selection and project check: no store is selected (never pass --store or run store commands), and the host has admitted this repository as the OpenSpec project, so action=new may create its repo-local openspec/ root; do not run openspec list to check for one. Bind AskUserQuestion to a low-confidence final result with question (architect), or a reported blocking issue (other roles); LangGraph asks the requester. Bind TodoWrite to concise progress narration and, for developer, persist the current handoff through action=write_progress with progress {summary, completedTasks, nextTasks, checks: [{command, outcome}], blockers}. Save after each completed task or changed blocker, at most 8 KB. This host journal is separate from frozen OpenSpec artifacts; never write runtime files directly. Developer/reviewer receive savedProgress from load_skill and can refresh with read_progress. Reconcile this advisory history with current files; old test outcomes never replace required host verification. Do not invoke another role, apply/archive from architect, or archive from developer/reviewer. Return the Specrails JSON report after the official workflow. For the architect, load_skill already creates the change and executes status and the instructions of every artifact still to write, and returns their real outputs in planning.instructions. For developer and reviewer, load_skill already executes status and instructions apply and returns their real outputs in planning; read planning.apply.contextFiles and perform the rest of the official skill. You may refresh instructions apply when needed. Verify is a skill, not an instructions artifact.\n`
 }
 export function writeOpenSpecBridge(context: OpenSpecRoleContext, directory: string): { command: string; args: string[] } {
   const file = path.join(directory, 'openspec-context.json')
