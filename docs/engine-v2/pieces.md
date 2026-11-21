@@ -622,8 +622,10 @@ drop or rewrite the task, or ask the person with low confidence; a plan frozen a
 that review passes, so an apparent overlap costs one repair and never the run. A non-goal
 that protects existing code instead of excluding a feature ("No change to `total(items)`",
 "… Not changed here", "Changing the public API", "left as is") conflicts only with a task
-clause that alters its subject (change, update, rename, remove, refactor, …); a task that
-merely names it as an anchor or a style to follow agrees with it. A task tagged
+clause whose alteration verb (change, update, rename, remove, refactor, …) comes right before
+a word of its subject ("rewrite the mix signature"); a task that merely names it as an anchor
+or a style to follow, or alters something else next to it ("change the import to { total, … }"),
+agrees with it. A task tagged
 `- [ ] N.M [human] …` (contract 5.15, capability `humanTasks`) is a person's check:
 `check` never counts it as incomplete, the frozen fingerprint ignores the tag on an
 unticked task, and the output reports `incompleteTasks` and `humanChecks` (see
