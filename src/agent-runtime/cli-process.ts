@@ -5,7 +5,8 @@ import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { AgentExecutionError } from './executor-types.js'
 
-export interface CliInvocation { command: string; args: string[]; stdin?: string }
+/** One provider CLI call. `env` holds variables this invocation itself needs, over the runner's environment. */
+export interface CliInvocation { command: string; args: string[]; stdin?: string; env?: Readonly<Record<string, string>> }
 export interface CliDuplexControl { send(line: string): void; complete(): void }
 export interface CliProcessOptions { cwd: string; signal?: AbortSignal; timeoutMs: number; idleTimeoutMs?: number; env?: NodeJS.ProcessEnv; onLine?: (line: string) => void; duplex?: (control: CliDuplexControl) => void }
 export interface CliProcessResult { stdout: string; stderr: string; exitCode: number }
@@ -64,7 +65,7 @@ export const runCliProcess: CliProcessRunner = async (raw, options) => {
   for (const value of [options.timeoutMs, options.idleTimeoutMs]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647)) throw new AgentExecutionError('Invalid process timeout', 'invalid_limit')
   }
-  const env = cliProcessEnvironment(options.env ?? process.env)
+  const env = cliProcessEnvironment({ ...(options.env ?? process.env), ...raw.env })
   const invocation = process.platform === 'win32' && raw.command === 'kimi' ? windowsKimiInvocation(raw, { env }) : raw
   return new Promise<CliProcessResult>((resolve, reject) => {
     const child = crossSpawn(invocation.command, invocation.args, { cwd: options.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, detached: process.platform !== 'win32' })
