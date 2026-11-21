@@ -672,15 +672,23 @@ No global provider configuration is rewritten. Supported planning is currently *
 When fast-forward reuses an existing complete change, `load_skill` returns real
 `status` and `instructions tasks` results and records both prerequisites. The
 architect must still reconcile the artifacts with the current request; existing
-files never bypass completeness or validation. Fresh and incomplete changes keep
-the normal artifact dependency order. Missing workflow diagnostics name the
-specific omitted instructions in the correction message.
+files never bypass completeness or validation. For a fresh change (a role that may
+create one) `load_skill` also runs `new`; for a fresh or incomplete change it runs
+`status` and the `instructions` of every artifact still to write (in parallel) and
+returns them under `planning.instructions`, recording each as a `via: load_skill`
+prerequisite. This saves the model one round trip per query; writes still follow
+the artifact dependency order and need their instructions read. Missing workflow
+diagnostics name the specific omitted steps in the correction message (after an
+omitted `load_skill`, only the writes and `validate` that follow it).
 
 Apply-bound developer/correction and verify-bound reviewer turns receive the exact pinned official
 skill and real status/apply instructions from Core before provider invocation.
 The scoped trace marks these prerequisite queries with `origin: host`; provider
-calls retain their own origin. Agents still read the returned context files and
-perform the remaining skill procedure. Reviewer bootstrap retains read-only
+calls retain their own origin. The host-loaded context also carries the current text of
+the context files (`artifactTexts`, change-relative path → text, confined to the
+change and at most 96 KB in total; files past the bound are left out, never cut), so
+the role does not open them again; it still reads code, tests and evidence and
+performs the remaining skill procedure. Reviewer bootstrap retains read-only
 source access and no artifact writes, including for custom review roles.
 This bootstrap cannot certify tasks,
 verification, review or delivery, and an unrelated failed check remains a failure.
