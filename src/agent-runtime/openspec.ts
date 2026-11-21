@@ -337,6 +337,28 @@ export class OpenSpecTools {
     steps.push(call({ action: 'validate' }))
     return steps
   }
+  /**
+   * The current text of the change artifacts an apply context names (`contextFiles`), keyed by their
+   * change-relative path, confined to the change and bounded in total (later files are left out, never cut).
+   */
+  contextFileTexts(apply: unknown, limitBytes = CONTEXT_FILE_TEXT_LIMIT): Record<string, string> {
+    const files = apply && typeof apply === 'object' && 'contextFiles' in apply ? (apply as OpenSpecApply).contextFiles : undefined
+    if (!files || typeof files !== 'object') return {}
+    const root = artifactPath(this.context.root, `openspec/changes/${this.context.change}`)
+    const texts: Record<string, string> = {}
+    let total = 0
+    for (const entry of Object.values(files)) for (const file of (Array.isArray(entry) ? entry : [entry])) {
+      if (typeof file !== 'string') continue
+      const relative = path.relative(root, file).replace(/\\/g, '/')
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue
+      let text: string
+      try { text = readFileSync(artifactPath(root, relative), 'utf8') } catch { continue }
+      total += Buffer.byteLength(text)
+      if (total > limitBytes) return texts
+      texts[relative] = text
+    }
+    return texts
+  }
   async assertReady(): Promise<OpenSpecApply> {
     const status = await this.status()
     if (!status.isComplete) throw new Error('OpenSpec planning artifacts remain incomplete')
@@ -354,6 +376,8 @@ export class OpenSpecTools {
     return apply
   }
 }
+/** Total size of the artifact texts a host-loaded apply or verify context carries. */
+export const CONTEXT_FILE_TEXT_LIMIT = 96 * 1024
 const OPENSPEC_BRIDGE_ENTRY = fileURLToPath(new URL('./openspec-tool-server.js', import.meta.url))
 
 export const OPENSPEC_TOOL_ACTIONS = ['load_skill', 'new', 'status', 'instructions', 'validate', 'write_artifact', 'read_progress', 'write_progress'] as const

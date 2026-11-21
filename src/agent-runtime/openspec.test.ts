@@ -124,6 +124,18 @@ describe('official OpenSpec CLI and confined role tools', () => {
     await developer.execute({ action: 'load_skill' }).catch(() => null)
     expect(existsSync(path.join(root, 'openspec/changes/medical-alert'))).toBe(false)
   }, 60000)
+  it('reads the apply context files of the change, within a total bound and never outside the change', async () => {
+    await author()
+    const apply = await developer.apply()
+    const texts = developer.contextFileTexts(apply)
+    expect(Object.keys(texts).sort()).toEqual(['design.md', 'proposal.md', 'specs/alerts/spec.md', 'tasks.md'])
+    expect(texts['specs/alerts/spec.md']).toBe(delta)
+    expect(developer.contextFileTexts({ contextFiles: { stray: [path.join(root, 'openspec/config.yaml')] } })).toEqual({})
+    expect(developer.contextFileTexts(undefined)).toEqual({})
+    const bounded = developer.contextFileTexts(apply, Buffer.byteLength(texts['proposal.md']!) + 10)
+    expect(Object.values(bounded).every(text => Object.values(texts).includes(text))).toBe(true)
+    expect(Object.keys(bounded).length).toBeLessThan(4)
+  }, 60000)
   it('returns real task instructions when the architect reuses complete artifacts', async () => {
     await author()
     const cursor = architect.participationCursor()
@@ -147,6 +159,9 @@ describe('official OpenSpec CLI and confined role tools', () => {
       expect(request.prompt).toContain('Host-loaded official ' + (skill === 'openspec-verify-change' ? 'verify' : 'apply') + ' workflow')
       expect(request.prompt).toContain(skill)
       expect(request.prompt).toContain('contextFiles')
+      // The current artifact texts travel with the context, so the role does not reopen them.
+      expect(request.prompt).toContain('artifactTexts')
+      expect(request.prompt).toContain(JSON.stringify('## 1. Alerts\n- [ ] 1.1 Display alerts and cover booking behavior\n'))
       if (skill === 'openspec-verify-change') {
         expect(request.access).toBe('read')
         expect(request.artifacts).toBe('none')
