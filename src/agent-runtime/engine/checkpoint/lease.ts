@@ -45,7 +45,10 @@ export function processStartedAt(pid: number, platform: NodeJS.Platform = proces
       return Number.isFinite(ticks) && boot ? Number(boot[1]) * 1000 + Math.round(ticks * 1000 / hz) : null
     }
     const result = platform === 'win32'
-      ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().ToString('o')`], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
+      // Win32_Process reads the system's process list, so it has the creation time of any process,
+      // also one this user cannot open (Get-Process StartTime is access-denied for system processes,
+      // which is where Windows often puts a freed pid).
+      ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction Stop).CreationDate.ToUniversalTime().ToString('o')`], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
       : spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: 5_000, env: { ...process.env, LC_ALL: 'C' } })
     const at = result.status === 0 ? Date.parse(String(result.stdout).trim()) : NaN
     return Number.isFinite(at) ? at : null
