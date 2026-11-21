@@ -4,6 +4,7 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, re
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { stripVTControlCharacters } from 'node:util'
+import { fileURLToPath } from 'node:url'
 
 /** Wall-clock limit of one verification command without its own `timeoutMs` (tests, lint, type checks). */
 export const DEFAULT_VERIFICATION_TIMEOUT_MS = 15 * 60_000
@@ -173,6 +174,25 @@ function probeLoginShellPath(shell: string, env: NodeJS.ProcessEnv): string | nu
   const begin = result.stdout.indexOf(LOGIN_PATH_BEGIN)
   const end = begin < 0 ? -1 : result.stdout.indexOf(LOGIN_PATH_END, begin)
   return end < 0 ? null : result.stdout.slice(begin + LOGIN_PATH_BEGIN.length, end) || null
+}
+/** The Electron guard Core ships next to this module (absent in a project's copy of this file). */
+export const ELECTRON_HEADLESS_GUARD = fileURLToPath(new URL('./electron-headless-guard.cjs', import.meta.url))
+/**
+ * The headless contract for every agent and project command Core starts: the
+ * person keeps using this machine, so nothing a run starts may open a window
+ * over theirs or take focus. `SPECRAILS_HEADLESS=1` tells a project's launcher
+ * and tests to keep windows hidden; `BROWSER=none` stops dev servers (Vite,
+ * Create React App, webbrowser) from opening a browser tab; the guard on
+ * `NODE_OPTIONS` keeps any Electron window transparent, click-through and
+ * unfocused even when the project does not honour the variable. An explicit
+ * `SPECRAILS_HEADLESS=0` in the host environment opts out.
+ */
+export function headlessEnvironment(env: NodeJS.ProcessEnv, guard: string = ELECTRON_HEADLESS_GUARD, exists: (file: string) => boolean = existsSync): NodeJS.ProcessEnv {
+  if (env.SPECRAILS_HEADLESS === '0') return env
+  const result: NodeJS.ProcessEnv = { ...env, SPECRAILS_HEADLESS: '1', BROWSER: 'none' }
+  const current = env.NODE_OPTIONS ?? ''
+  if (!current.includes(guard) && exists(guard)) result.NODE_OPTIONS = `${current} --require ${JSON.stringify(guard)}`.trim()
+  return result
 }
 /**
  * The environment for the project's own commands (dependency installs and
@@ -1085,7 +1105,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const keys = verificationEnvironmentKeys(process.env, overrideKeys)
   const hash = environmentHash(keys)
   const overridesHash = digest(canonical(overrides))
-  const env = activateProjectVirtualEnv(verificationEnvironment(projectCommandEnvironment(process.env), overrides), command.cwd)
+  const env = activateProjectVirtualEnv(verificationEnvironment(headlessEnvironment(projectCommandEnvironment(process.env)), overrides), command.cwd)
   const configuredTimeoutMs = command.timeoutMs ?? DEFAULT_VERIFICATION_TIMEOUT_MS
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
   // A test that never returns (a `while` that cannot exit) keeps a runner at

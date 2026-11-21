@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import semver from 'semver'
-import { packageManagerFallback, projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
+import { headlessEnvironment, packageManagerFallback, projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
@@ -530,7 +530,7 @@ export async function runGroupCheck(roots: readonly string[], io: { spawn?: Host
     if (!check) continue
     const label = `${check.command} ${check.args.join(' ')}`
     io.onEvent?.({ kind: 'tool-start', tool: check.command, detail: `${check.args.join(' ')} (${path.basename(root)}, group check)` })
-    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...projectCommandEnvironment(process.env), CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
+    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...headlessEnvironment(projectCommandEnvironment(process.env)), CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
     io.onEvent?.({ kind: 'tool-end', tool: check.command })
     const timedOut = result.error?.message?.includes('ETIMEDOUT') || result.signal === 'SIGKILL'
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.replace(/\u001b\[[0-9;]*m/g, '').trim().slice(-6000)

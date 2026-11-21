@@ -229,6 +229,18 @@ Roles are told to trust these facts over older notes. Verification also classifi
 
 Each `verify` output carries a bounded `summary` (one line per command with its exit code and first failure facts; capability `verificationSummary: 1`), small enough for a host to template into a role prompt, for example a baseline run before the developer.
 
+## Headless commands
+
+The person keeps using the machine while a run works, so nothing a run starts may open a window over theirs or take focus. Every agent process (`agentProcessEnvironment` in `cli-process.ts`) and every verification or group check (`headlessEnvironment` in `pipeline-state.ts`) gets:
+
+| Variable | Why |
+| --- | --- |
+| `SPECRAILS_HEADLESS=1` | The contract: a project's launcher and UI tests keep their windows hidden when it is set (Electron `showInactive()` at opacity 0 with mouse events ignored and macOS `app.setActivationPolicy('accessory')`; Tauri `visible(false)` and `ActivationPolicy::Accessory`). |
+| `BROWSER=none` | Dev servers that open a browser tab on start (Vite, Create React App, Python `webbrowser`) stop doing so. |
+| `NODE_OPTIONS=… --require <core>/dist/pipeline/electron-headless-guard.cjs` | A defensive layer for projects that do not honour the variable yet. Plain Node passes it on to asynchronously spawned children that still carry `SPECRAILS_HEADLESS=1` (Playwright's Electron launcher drops `NODE_OPTIONS`); in an Electron main process it creates windows hidden, then shows them without activation, transparent and click-through, makes `show`/`focus`/`moveTop`/`app.focus` non-activating and hides the Dock icon. Rendering, input, `capturePage` and Playwright keep working, and `isVisible()` stays true, so UI tests still run for real. |
+
+`CI` is deliberately not set: it changes test runners' retries, reporters and watch modes. An explicit `SPECRAILS_HEADLESS=0` in the host environment opts out. Not covered: apps started through LaunchServices (`open`), native toolkits other than Electron (Tauri, Qt, SwiftUI) unless the project honours the variable, Linux window opacity, and a test that launches Electron with an environment that drops `SPECRAILS_HEADLESS`. Roles are told the same rules in their boundaries.
+
 ## Questions and approvals
 
 The graph pauses through LangGraph interrupts; the host resumes it with the matching answer.

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildCliInvocation, CliExecutor, cliToolEvents, parseCliOutput } from './cli-executor.js'
-import { cliProcessEnvironment, runCliProcess, windowsKimiInvocation, type CliProcessRunner } from './cli-process.js'
+import { agentProcessEnvironment, cliProcessEnvironment, runCliProcess, windowsKimiInvocation, type CliProcessRunner } from './cli-process.js'
 import { AgentExecutionError, type AgentRequest, type CliProvider } from './executor-types.js'
 import { classifyFailure } from './failure-classification.js'
 import { GEMINI_READONLY_POLICY } from './gemini-policy.js'
@@ -336,6 +336,12 @@ describe('portable child process transport', () => {
   })
   it('rejects non-standard Windows shell wrappers', () => {
     expect(() => windowsKimiInvocation(buildCliInvocation('kimi', request()), { env: { PATH: 'C:\\bin' }, exists: file => file.endsWith('kimi.cmd'), read: () => '@echo off\nkimi %*' })).toThrow('Unsupported Kimi Windows shim')
+  })
+  it('starts every agent process headless and transport-clean', () => {
+    const env = agentProcessEnvironment({ PATH: '/bin', CLAUDECODE: '1' }, 'darwin')
+    expect(env).toMatchObject({ PATH: '/bin', SPECRAILS_HEADLESS: '1', BROWSER: 'none' })
+    expect(env.CLAUDECODE).toBeUndefined()
+    expect(agentProcessEnvironment({ SPECRAILS_HEADLESS: '0' }, 'darwin')).toEqual({ SPECRAILS_HEADLESS: '0' })
   })
   it('normalizes Windows env keys and preserves the actual system directory', () => {
     expect(cliProcessEnvironment({ SYSTEMROOT: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe', CLAUDECODE: '1' }, 'win32')).toEqual({ SystemRoot: 'D:\\Win', windir: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe' })
