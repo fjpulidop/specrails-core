@@ -243,6 +243,20 @@ describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
     expect((result.output as { structured: Record<string, unknown> }).structured).toEqual({ summary: 'Dropped', incomplete: [] })
   })
 
+  it('asks the same session for exactly one result when a turn submitted several different ones', async () => {
+    // Seen in the speed benchmark: a reviewer submitted a "placeholder" result (score 0) next to its real one;
+    // the CLI kept the placeholder and the run failed after a pointless correction.
+    const f = fixture()
+    const replies = [{ structured: { summary: 'placeholder', incomplete: [] }, structuredResults: 2 }, { structured: { summary: 'Real result', incomplete: [] } }]
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift()!; return { text: JSON.stringify(reply.structured), usage: unknownUsage(), ...reply } } })
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('Duplicate structured results')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Real result' } } })
+  })
+
   it('stays autonomous when the role needs no decision: one call, the host schema shape, no answers', async () => {
     const f = fixture()
     scripted(f, [{ summary: 'All done', incomplete: [], decisionNeeded: '' }])

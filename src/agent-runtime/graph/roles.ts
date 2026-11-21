@@ -162,6 +162,9 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       let output: Record<string, unknown> | undefined, parseError: unknown
       if (structured) {
         try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { parseError = error }
+        // Several different structured results in one turn: whichever the provider kept may be a stub
+        // (a "placeholder" review with score 0 once failed a run). Ask the same session for exactly one.
+        if (output && (result.structuredResults ?? 0) > 1) { parseError = new Error(`Duplicate structured results: the turn submitted ${result.structuredResults} different results; submit exactly one, the complete final result`); output = undefined }
       }
       // A genuine planner question (low confidence, or a high-impact
       // clarification without a safe default) can precede artifact creation,

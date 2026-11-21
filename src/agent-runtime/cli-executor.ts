@@ -163,12 +163,17 @@ function inclusiveCacheUsage(reported: Record<string, unknown>): CacheTokenUsage
   return { cacheReadInputTokens: cached !== null && input !== null && cached <= input ? cached : null, uncachedInputTokens: cached !== null && input !== null && cached <= input ? input - cached : null, cacheWriteInputTokens: null }
 }
 interface ParsedCliResult extends AgentResult { terminal: boolean; failed: boolean; turns: number; failureKind?: 'max_turns' | 'cost_budget' | 'structured_output_retries' }
+/** The tool Claude's --json-schema mode submits a structured result through. */
+const CLAUDE_STRUCTURED_TOOL = 'StructuredOutput'
 export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCliResult {
   let text = '', terminal = false, failed = false, sessionId: string | undefined, turns = 0
   let usage = unknownUsage()
   let failureKind: ParsedCliResult['failureKind']
   let structured: Record<string, unknown> | undefined
   const claudeMessages = new Map<string, AgentUsage>()
+  // A model can submit several structured results in one turn (seen: a placeholder next to the real one,
+  // in parallel); the CLI keeps one of them, so the caller must know the result is ambiguous.
+  const submitted = new Map<string, string>()
   for (const line of stdout.split(/\r?\n/)) {
     let event: Record<string, unknown>
     try { event = object(JSON.parse(line)) } catch { continue }
@@ -180,10 +185,16 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
         const message = object(event.message), reported = object(message.usage)
         const messageText = textBlocks(message.content)
         if (messageText) text = messageText
+        if (Array.isArray(message.content)) for (const block of message.content.map(object)) if (block.type === 'tool_use' && block.name === CLAUDE_STRUCTURED_TOOL) submitted.set(String(block.id ?? submitted.size), JSON.stringify(block.input ?? null))
         const id = typeof message.id === 'string' ? message.id : `anonymous-${claudeMessages.size}`
         const input = number(reported.input_tokens)
         claudeMessages.set(id, { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: null, ...claudeCacheUsage(reported) })
         turns = claudeMessages.size
+      }
+      // A submission the CLI refused (schema validation) is a retry, not a second result.
+      if (event.type === 'user') {
+        const content = object(event.message).content
+        if (Array.isArray(content)) for (const block of content.map(object)) if (block.type === 'tool_result' && block.is_error === true) submitted.delete(String(block.tool_use_id))
       }
       if (event.type === 'result' && object(event.origin).kind !== 'task-notification') {
         terminal = true
@@ -224,7 +235,7 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
     usage = { inputTokens: messages.some(message => message.inputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.inputTokens ?? 0), 0), outputTokens: messages.some(message => message.outputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.outputTokens ?? 0), 0), costUsd: null, ...sumCacheUsage(messages) }
   }
   if (structured && !text.trim()) text = JSON.stringify(structured)
-  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text), ...(failureKind ? { failureKind } : {}) }
+  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text), ...(submitted.size ? { structuredResults: new Set(submitted.values()).size } : {}), ...(failureKind ? { failureKind } : {}) }
 }
 /** Live tool activity for one streamed JSON line, or undefined when the line carries none. */
 export function cliToolEvents(provider: CliProvider, event: Record<string, unknown>): AgentEvent[] {
@@ -399,7 +410,7 @@ export class CliExecutor implements AgentExecutor {
         parsed.structured = restoreOptionalFields(parsed.structured, request.outputSchema) as Record<string, unknown>
         parsed.text = JSON.stringify(parsed.structured)
       }
-      return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured }
+      return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured, ...(parsed.structuredResults ? { structuredResults: parsed.structuredResults } : {}) }
     } catch (error) {
       if (error instanceof AgentExecutionError) {
         const partial = parseCliOutput(this.provider, stream)
