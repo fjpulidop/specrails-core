@@ -427,12 +427,20 @@
       "documentation": "docs/engine-v2/pieces.md#role-turn"
     },
     "reviewTriage": {
-      "version": 1,
+      "version": 2,
       "capability": "reviewTriage",
       "applies": "every role-turn whose role has read access and whose structured output has boolean approved and array issues (a review); no param",
-      "semantics": "Core classifies each issue: a check outside the host plan (real device, simulator or emulator, manual pass, host verification that did not run a command), a request to revert or delete a lockfile the toolchain regenerates (with no other file named), an edit to the frozen proposal.md, design.md or delta specs, or a criterion the person withdrew in an answer recorded in $answers. An issue that also asks for code, tests or another file stays actionable. Non-actionable issues leave structured.issues, are appended to structured.brief.humanChecks when the review declares it (as 'Not a run issue (<reason>): <issue>'), and are listed in output.reviewNotes [{kind: host-only-check | regenerated-lockfile | frozen-artifact | withdrawn-criterion, issue, reason}]. When approved is false and every issue was non-actionable, the role is re-run once in the same node with the notes and told to re-judge without them; its review (triaged again, never re-run twice) is committed. A rejection with any actionable issue keeps approved, score and its actionable issues unchanged.",
-      "compatibility": "additive: the committed structured output keeps the host schema shape; an older Core returns the reviewer's issues unchanged",
+      "semantics": "Core classifies each issue: a check outside the host plan (real device, simulator or emulator, manual pass, host verification that did not run a command), a request to revert or delete a lockfile the toolchain regenerates (with no other file named), an edit to the frozen proposal.md, design.md or delta specs, or a criterion the person withdrew in an answer recorded in $answers. An issue that also asks for code, tests or another file stays actionable. Version 2: the reviewer may mark a finding itself, as a string starting with [advice] (also [optional], [nit], [suggestion]) or [out-of-scope] (also [follow-up]), or as an object issue with actionable: false (kind out-of-scope, otherwise advice); a marked finding is non-actionable whatever its words. Non-actionable issues leave structured.issues and are listed in output.reviewNotes [{kind: host-only-check | regenerated-lockfile | frozen-artifact | withdrawn-criterion | advice | out-of-scope, issue, reason}] (a marked finding's issue has its tag removed); every kind except advice and out-of-scope is also appended to structured.brief.humanChecks when the review declares it (as 'Not a run issue (<reason>): <issue>'). When approved is false and every issue was non-actionable, the role is re-run once in the same node with the notes and told to re-judge without them; its review (triaged again, never re-run twice) is committed. A rejection with any actionable issue keeps approved, score and its actionable issues unchanged.",
+      "compatibility": "additive: the committed structured output keeps the host schema shape; an older Core returns the reviewer's issues unchanged, and a version 1 Core treats a marked finding as an ordinary issue, so a host asks the reviewer to mark findings only when runtime capabilities advertise reviewTriage >= 2",
       "documentation": "docs/engine-v2/pieces.md#role-turn"
+    },
+    "environmentRepairSignal": {
+      "version": 1,
+      "capability": "environmentRepairSignal",
+      "applies": "every verify node; no param",
+      "semantics": "A failed verify output carries environmentFailure: true when the failure that survives the host's own environment repair still looks environmental (a missing tool or dependency in the output, or installed dependencies outside their declared ranges) and no host blocker or nondeterministic-output stop applies. A correction role that repairs the environment (installs into an ignored directory, writes an ignored env file) changes no candidate file, so a host recipe can verify again instead of treating the unchanged candidate as a stalled correction. The field is absent otherwise.",
+      "compatibility": "additive: an older Core omits the field, so a host reads it with exists()",
+      "documentation": "docs/engine-v2/pieces.md#verify"
     },
     "findingLocations": {
       "version": 1,

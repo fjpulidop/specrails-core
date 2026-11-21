@@ -207,6 +207,23 @@ describe('engine v2 environment repair', () => {
     expect(await f.run({ commands: 'configured', hostBlockers: true })).toMatchObject({ outcome: 'blocked', output: { blocker: { kind: 'credential' } } })
   })
 
+  it('signals a failure that is still environmental after the host repair, and only that one (environmentRepairSignal)', async () => {
+    const f = fixture()
+    // A tool no install plan provides (a Homebrew-only formatter): the host cannot repair it, a correction role might.
+    f.deps.config.verification = [f.check('taplo.cjs', 'sh: taplo: command not found', 127)]
+    const missing = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(missing).toMatchObject({ outcome: 'fail', output: { valid: false, environmentFailure: true } })
+    expect(missing.output).not.toHaveProperty('blocker')
+    f.deps.config.verification = [f.check('unit.cjs', 'FAIL src/game.spec.ts\n  expect(received).toBe(expected)', 1)]
+    const assertion = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(assertion).toMatchObject({ outcome: 'fail' })
+    expect(assertion.output).not.toHaveProperty('environmentFailure')
+    f.deps.config.verification = [f.check('install.cjs', REGISTRY_401, 1)]
+    const blocked = await f.run({ commands: 'configured', hostBlockers: true })
+    expect(blocked).toMatchObject({ outcome: 'blocked' })
+    expect(blocked.output).not.toHaveProperty('environmentFailure')
+  })
+
   it('keeps the no-progress stop as the loop bound when a blocker repeats without the opt-in outcome', async () => {
     const f = fixture()
     f.deps.config.verification = [f.check('install.cjs', REGISTRY_401, 1)]
