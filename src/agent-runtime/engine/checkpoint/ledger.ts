@@ -256,18 +256,30 @@ export class RunLedger {
     this.assertFrame(frame)
     const at = new Date(this.now()).toISOString(), events: DurableEngineEvent[] = []
     for (const value of values) {
-      if (this.db.get('interrupts', { interrupt_id: value.id })) continue
+      // LangGraph names every interrupt of one node task after the task's namespace, so a node that asks
+      // again after an answer (a role's next decision round) reports the same id. A re-reported pending
+      // interrupt is the same question; once every earlier occurrence is answered, it is a new one.
+      const occurrences = this.interruptOccurrences(value.id)
+      if (occurrences.some(row => row.answer_json === null)) continue
+      const durableId = interruptOccurrenceId(value.id, occurrences.length)
       const payload = value.value && typeof value.value === 'object' && !Array.isArray(value.value) ? value.value : {}
-      this.db.put('interrupts', { interrupt_id: value.id, run_id: this.runId, visit_id: frame.visitId, attempt_id: frame.attemptId,
+      this.db.put('interrupts', { interrupt_id: durableId, run_id: this.runId, visit_id: frame.visitId, attempt_id: frame.attemptId,
         node_path: frame.nodePath, scope_id: frame.scope.id, branch_id: frame.scope.branchId ?? null, kind: String(payload.kind ?? 'gate'),
         requested_at: at, payload_json: canonicalJson(value.value) })
-      events.push(this.event(frame, 'step_paused', { interruptId: value.id, request: value.value }))
+      events.push(this.event(frame, 'step_paused', { interruptId: durableId, request: value.value }))
     }
     this.db.put('attempts', { ...attempt, status: 'paused' })
     const step = this.db.get('steps', { run_id: this.runId, node_path: frame.nodePath, scope_id: frame.scope.id })!
     this.db.put('steps', { ...step, status: 'paused', updated_at: at })
     this.db.put('runs', { ...this.run(), status: 'paused', updated_at: at, active_duration_ms: this.activeDurationMs(), active_started_at: null })
     return events
+  }
+
+  /** The durable occurrences of one LangGraph interrupt id, oldest first. */
+  private interruptOccurrences(id: string): Array<{ interrupt_id: unknown; answer_json: unknown }> {
+    return (this.db.sqlite.prepare("SELECT interrupt_id, answer_json FROM interrupts WHERE run_id=? AND (interrupt_id=? OR interrupt_id LIKE ? ESCAPE '\\')").all(this.runId, id, id.replace(/[\\%_]/g, '\\$&') + '~%') as Array<{ interrupt_id: unknown; answer_json: unknown }>)
+      .filter(row => interruptLangGraphId(String(row.interrupt_id)) === id)
+      .sort((a, b) => interruptOccurrence(String(a.interrupt_id)) - interruptOccurrence(String(b.interrupt_id)))
   }
 
   /** Actual LangGraph interrupt identities, with answers retained across crashes before resume. */
@@ -504,4 +516,18 @@ export function failReason(result: Pick<PieceResult, 'history' | 'output'>): str
   const fallback = result.output && typeof result.output === 'object' && !Array.isArray(result.output) && typeof result.output.reason === 'string' ? result.output.reason : undefined
   const text = (note ?? fallback)?.trim()
   return text ? (text.length > 4000 ? text.slice(0, 3999) + '…' : text) : undefined
+}
+
+/** Durable id of the `occurrence`-th interrupt (from 0) a node task raised under one LangGraph id. */
+export function interruptOccurrenceId(langGraphId: string, occurrence: number): string {
+  return occurrence === 0 ? langGraphId : `${langGraphId}~${occurrence}`
+}
+/** The LangGraph id a durable interrupt id belongs to. */
+export function interruptLangGraphId(durableId: string): string {
+  const at = durableId.lastIndexOf('~')
+  return at > 0 && /^\d+$/.test(durableId.slice(at + 1)) ? durableId.slice(0, at) : durableId
+}
+/** Which occurrence (from 0) of its LangGraph id a durable interrupt id is. */
+export function interruptOccurrence(durableId: string): number {
+  return durableId === interruptLangGraphId(durableId) ? 0 : Number(durableId.slice(durableId.lastIndexOf('~') + 1))
 }

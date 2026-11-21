@@ -541,6 +541,38 @@ it('questionOptions: a decision carries its choices on the interrupt, an answer 
   expect(JSON.stringify(resumed.state)).not.toContain('decisionOptions')
 })
 
+it('a role that asks again after an answer pauses on the new question, and the second answer reaches its rerun', async () => {
+  // LangGraph names both interrupts of the node task alike: the second was dropped as already answered,
+  // so the run ended "Graph stopped without a durable completion or pending interruption".
+  const schema = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  const f = fixture({
+    build: { kind: 'role-turn', params: { roleId: 'builder', prompt: 'Implement every task', structuredOutput: schema, sessionContinuity: 'none', decisions: 'ask' }, ends: { next: 'done', invalid: null, failed: null } },
+    done,
+  }, { roles: ['builder'], delivery: { requiresVerified: false } }, { roles: { builder: { provider: 'fixture', access: 'write', artifacts: 'none' } } })
+  const replies = [{ summary: 'Part one', incomplete: ['1.1'], decisionNeeded: 'Should 0.0006ms round to 0 or 1?' },
+    { summary: 'Your answer does not add up', incomplete: ['1.1'], decisionNeeded: 'Under that rule 0.0005ms is 0, not 1: which input should the test use?' },
+    { summary: 'Done with 0.5ms', incomplete: [] }]
+  const registry = () => new ExecutorRegistry().register('fixture', { async execute(request) {
+    f.requests.push(request)
+    return { text: JSON.stringify(replies.shift()), usage: { inputTokens: 3, outputTokens: 2, costUsd: null } }
+  } })
+  const first = await createRun({ ...f, registry: registry() })
+  const asked = first.state.pendingInterrupts[0]
+  const second = await resumeRun(f.directory, { registry: registry(), answers: { [asked.id]: { answer: 'Use 0.0005ms' } } })
+  expect(second.state.status).toBe('paused')
+  expect(second.state.pendingInterrupts).toHaveLength(1)
+  const again = second.state.pendingInterrupts[0]
+  expect(again.id).not.toBe(asked.id)
+  expect(JSON.stringify(again.value)).toContain('which input should the test use?')
+  // Resuming without an answer keeps it pending: the earlier answer is never reused for it.
+  expect((await resumeRun(f.directory, { registry: registry() })).state.pendingInterrupts.map(value => value.id)).toEqual([again.id])
+  const done2 = await resumeRun(f.directory, { registry: registry(), answers: { [again.id]: { answer: 'Use 0.5ms' } } })
+  expect(done2.state.status).toBe('succeeded')
+  expect(f.requests).toHaveLength(3)
+  expect(f.requests[2].prompt).toContain('Use 0.0005ms')
+  expect(f.requests[2].prompt).toContain('Use 0.5ms')
+})
+
 it('questionOptions: an approval can be rejected with a reason and the definition takes its negative edge; a reason is required', async () => {
   const f = fixture({
     approve: { kind: 'approval', params: { reason: 'Approve archiving?' }, ends: { next: 'policy' } },

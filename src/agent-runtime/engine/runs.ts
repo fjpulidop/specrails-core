@@ -8,7 +8,7 @@ import type { RuntimeConfig } from '../executor-types.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.js'
 import type { ExecutorRegistry } from '../executors.js'
 import { appendRunEvent, RunDatabase } from './checkpoint/database.js'
-import { RunLedger } from './checkpoint/ledger.js'
+import { interruptLangGraphId, interruptOccurrence, RunLedger } from './checkpoint/ledger.js'
 import { leaseLive, leaseOwner, RunLease } from './checkpoint/lease.js'
 import { EngineError, type JsonObject, type JsonValue } from './contracts.js'
 import { EngineEventStream } from './events.js'
@@ -160,7 +160,14 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
     stream.flush()
     const snapshot = await graph.getState(config, { subgraphs: true })
     const activeInterrupts = new Set(snapshot.tasks.flatMap(task => task.interrupts).map(value => value.id))
-    const answers = Object.fromEntries(ledger.interrupts().filter(value => value.answer !== undefined && activeInterrupts.has(value.id)).map(value => [value.id, value.answer!]))
+    // Resume each active LangGraph interrupt with the answer of its latest durable occurrence, and only when
+    // that occurrence is answered: LangGraph appends it to the task's earlier answers (a later decision round).
+    const latest = new Map<string, ReturnType<RunLedger['interrupts']>[number]>()
+    for (const value of ledger.interrupts()) {
+      const id = interruptLangGraphId(value.id), seen = latest.get(id)
+      if (activeInterrupts.has(id) && (!seen || interruptOccurrence(value.id) > interruptOccurrence(seen.id))) latest.set(id, value)
+    }
+    const answers = Object.fromEntries([...latest].filter(([, value]) => value.answer !== undefined).map(([id, value]) => [id, value.answer!]))
     const checkpoint = await saver.getTuple(config)
     const hasInterrupts = snapshot.tasks.some(task => task.interrupts.length > 0)
     if (hasInterrupts && !Object.keys(answers).length) return projectRunStatus(ledger)
