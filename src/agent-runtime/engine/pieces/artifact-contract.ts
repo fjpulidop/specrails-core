@@ -108,7 +108,7 @@ export function protectsExistingCode(goal: string): boolean {
     || /\b(?:not|never)\s+(?:be(?:ing)?\s+)?(?:changed|modified|edited|touched|renamed|altered|rewritten|refactored|removed|deleted|replaced)\b|\b(?:unchanged|untouched|unmodified)\b|\b(?:stays?|remains?|kept|left)\s+(?:as[- ]is|as it is|alone|the same|unchanged|untouched|intact)\b/i.test(plain)
 }
 /** A clause that alters (not merely names) what it mentions. */
-const ALTERS = /\b(?:chang|modif|edit|rewrit|renam|alter|refactor|remov|delet|replac|updat|rework|restructur|extend|break|convert|migrat|drop|deprecat|overrid)\w*/i
+const ALTERS = /^(?:chang|modif|edit|rewrit|renam|alter|refactor|remov|delet|replac|updat|rework|restructur|extend|break|convert|migrat|drop|deprecat|overrid)\w*/i
 
 export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; human?: boolean }>, nonGoals: readonly string[]): Array<{ task: string; nonGoal: string }> {
   const negated = /(?:\b(?:no|not|never|nor|without|avoid|avoiding|exclud(?:e|es|ing)|except|instead of)|n't)\s+(?:\S+\s+){0,4}$/i
@@ -129,7 +129,10 @@ export function tasksContradictingNonGoals(tasks: ReadonlyArray<{ text: string; 
         // A clause that keeps the subject as it is agrees with a "does not change X" non-goal
         // ("done when `mix` and its test are unchanged"); it never requires X.
         if (preserved.test(clause)) return false
-        if (protects && !ALTERS.test(clause)) return false
+        // A protective non-goal conflicts only with a clause that alters its subject itself: the verb is
+        // directly before a subject word ("rewrite the mix signature"), not elsewhere in the clause
+        // ("change the import to { total, applyDiscount }", "update README after the formatPrice entry").
+        if (protects && !raw.some((word, at) => ALTERS.test(word) && tokens.slice(at + 1, at + 4).some(next => subject.includes(next)))) return false
         const first = Math.min(...matched.map(word => tokens.indexOf(word)))
         return !negated.test(raw.slice(0, first).join(' ') + ' ')
       })

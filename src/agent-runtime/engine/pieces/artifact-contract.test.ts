@@ -176,12 +176,16 @@ describe('tasks that contradict a declared non-goal', () => {
     // although its tasks only named `total` as an anchor or a style to follow.
     const protects = ['No change to `total(items)`, `formatPrice`, `createOrder`, or any other export.',
       '`src/cart.js` `total(items)` has placeholder JSDoc (`@param {*} items`, `@returns {*}`) and no input validation. Not changed here.',
-      'Changing `total(items)` or its tests', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.']
+      'Changing `total(items)` or its tests', '`test/cart.test.js` contains only a `total` test; its existing test is left as is.',
+      'Does not change `total()`, `formatPrice()`, `createOrder()` or any other export.', 'Do not change `formatPrice` or `src/format.js`; no caller is migrated.', 'Does not change `formatPrice`, its test, or any other export.']
     const names = [
       '1.1 In `src/cart.js`, add `export function applyDiscount(totalCents, percent)` with a JSDoc block directly above it, in the same style as `total`. The body runs the guards first.',
       '1.3 In `README.md`, add `- `applyDiscount(totalCents, percent)` (src/cart.js)` to the `## API` list, after the `total(items)` entry, in the same format as the other entries.',
       '1.1 Export `applyDiscount(totalCents, percent)` from `src/cart.js` with a JSDoc block. Validate `totalCents` first, then compute from the total.',
       '1.4 In `test/cart.test.js`, assert the `TypeError` cases with `assert.throws(() => applyDiscount(t, 10), TypeError)`. Verify: `npm test` passes these assertions.',
+      '1.2 In `test/cart.test.js`, change the import to `{ total, applyDiscount }` and add tests in the existing style.',
+      '3.1 Update `README.md` `## API` list by adding, after the existing `formatPrice` entry, a line for `parseMoney(text)`.',
+      '1.1 In `test/format.test.js`, extend the import to `{ formatPrice, slugify }` and add `test()` cases for slugify.',
     ]
     expect(tasksContradictingNonGoals(names.map(text => ({ text })), protects)).toEqual([])
     const alters = ['2.1 Update `total(items)` in `src/cart.js` to apply the discount', '2.2 Refactor `total` in `src/cart.js` to validate its items']
