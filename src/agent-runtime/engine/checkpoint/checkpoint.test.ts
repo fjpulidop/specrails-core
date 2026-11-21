@@ -8,7 +8,7 @@ import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
 import { appendRunEvent, RunDatabase } from './database.js'
-import { leaseLive, leaseOwner, leaseOwnerAlive, RunLease } from './lease.js'
+import { leaseLive, leaseOwner, leaseOwnerAlive, processStartedAt, RunLease } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
 import { recordedRouteOverrides, ROUTE_OVERRIDE_EVENT } from '../route-overrides.js'
@@ -486,7 +486,7 @@ describe('a lease whose owner process died on this machine', () => {
   // A Desktop restart SIGKILLs its Core children; their unexpired leases made every Resume wait up to a minute.
   const dead = (pid: number) => { const error = Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' }); if (pid > 0) throw error }
   it('names its process and is not live once that process is gone', () => {
-    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:proc-[0-9a-f]{12}:[0-9a-f-]{36}$`))
+    expect(leaseOwner()).toMatch(new RegExp(`^pid:${process.pid}@${hostname().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:proc-[0-9a-f]{12}\\.\\d+:[0-9a-f-]{36}$`))
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, dead)).toBe(false)
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => {})).toBe(true)
     expect(leaseOwnerAlive(`pid:999999@${hostname()}:x`, () => { throw Object.assign(new Error('EPERM'), { code: 'EPERM' }) })).toBe(true)
@@ -497,13 +497,34 @@ describe('a lease whose owner process died on this machine', () => {
   })
   it('is not live when an earlier process with this process\'s pid left it (Windows reuses pids at once)', () => {
     const mine = leaseOwner()
-    const token = /:proc-([0-9a-f]{12}):/.exec(mine)![1]
+    const token = /:proc-([0-9a-f]{12})\./.exec(mine)![1]
     const other = token === '000000000000' ? '111111111111' : '000000000000'
     expect(leaseOwnerAlive(mine, dead)).toBe(true)
     expect(leaseOwnerAlive(`pid:${process.pid}@${hostname()}:proc-${other}:killed`, () => {})).toBe(false)
     expect(leaseLive({ owner: `pid:${process.pid}@${hostname()}:proc-${other}:killed`, expiresAt: Date.now() + 60_000 })).toBe(false)
     // An owner from an older Core names no process token: still live until it expires.
     expect(leaseOwnerAlive(`pid:${process.pid}@${hostname()}:x`, dead)).toBe(true)
+  })
+  it('is not live when a newer process was given the dead owner\'s pid', () => {
+    const at = 1_795_000_000_000, owner = `pid:999999@${hostname()}:proc-000000000000.${at}:killed`
+    // The pid answers, but the process holding it started after the owner: the owner died.
+    expect(leaseOwnerAlive(owner, () => {}, () => at + 30_000)).toBe(false)
+    // The owner itself (the OS start precedes the recorded one, or is within the clock tolerance).
+    expect(leaseOwnerAlive(owner, () => {}, () => at - 200)).toBe(true)
+    expect(leaseOwnerAlive(owner, () => {}, () => at + 900)).toBe(true)
+    // A start time that cannot be read, or an owner that recorded none, keeps the lease until it expires.
+    expect(leaseOwnerAlive(owner, () => {}, () => null)).toBe(true)
+    expect(leaseOwnerAlive(`pid:999999@${hostname()}:proc-000000000000:killed`, () => {}, () => at + 30_000)).toBe(true)
+  })
+  it('reads this process\'s OS start time no later than the start its lease owners record', () => {
+    const recorded = Number(/\.(\d+):/.exec(leaseOwner())![1])
+    const actual = processStartedAt(process.pid)
+    if (process.platform === 'linux' || process.platform === 'darwin' || process.platform === 'win32') expect(actual).not.toBeNull()
+    if (actual !== null) {
+      expect(actual).toBeLessThanOrEqual(recorded + 1_500)
+      expect(actual).toBeGreaterThan(recorded - 10 * 60_000)
+    }
+    expect(leaseOwnerAlive(`pid:${process.ppid}@${hostname()}:proc-000000000000.${Date.now() + 60_000}:parent`)).toBe(true)
   })
   it('lets a process that inherited a killed executor\'s pid take its lease at once', async () => {
     const { db, lease, token } = await fixture()
