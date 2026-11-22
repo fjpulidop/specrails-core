@@ -1,4 +1,5 @@
 import { resolveRoleDescriptor } from '../config.js'
+import { isProviderLimitError } from '../failure-classification.js'
 import { isBuiltinRole } from '../executor-types.js'
 import { repositoryContextSnapshot, renderRepositoryContext } from '../repository-context.js'
 import { readRoleState, writeRoleState, type RoleStatePort } from '../role-state.js'
@@ -38,7 +39,9 @@ export interface InvokeOptions {
 }
 export type InvokeOutcome<T> =
   | { ok: true; value: T; text: string; result: AgentResult }
-  | { ok: false; error: string; code?: string }
+  | { ok: false; error: string; code?: string; failure?: typeof OPENSPEC_WORKFLOW_OMITTED }
+/** The role ended its turn, and then its corrective turn, without the required OpenSpec workflow steps. */
+export const OPENSPEC_WORKFLOW_OMITTED = 'openspec_workflow_omitted'
 /** Validates and converts a role's reply. Throwing `Invalid|Expected|requires|Duplicate|malformed` requests one repair turn. */
 export type Accept<T> = (output: Record<string, unknown> | undefined, text: string, result: AgentResult) => T
 export type RoleInvoker = <T>(role: AgentRole, step: WorkflowStepContext, options: InvokeOptions, accept: Accept<T>) => Promise<InvokeOutcome<T>>
@@ -83,6 +86,8 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     const shaped = event.kind === 'tool-start' && event.detail ? { ...event, detail: relativize(event.detail) } : event
     try { deps.onAgentEvent?.(role, shaped) } catch { /* Observer cannot replay agent effects. */ }
   }
+  /** The provider/model each returned result ran on, for a diagnosis that names it. */
+  const routed = new WeakMap<AgentResult, RuntimeAgentConfig>()
   const note = (role: AgentEventRole, text: string): void => { try { deps.onAgentEvent?.(role, { kind: 'text', text }) } catch { /* Observer cannot replay agent effects. */ } }
   const execute = async (role: AgentRole, step: WorkflowStepContext, prompt: string, structured: boolean, extra: Omit<InvokeOptions, 'prompt'>): Promise<AgentResult> => {
     const directory = deps.openspec?.[role]?.stateDirectory ?? path.join(pipelineStateDirectory(context), 'agent-workflow')
@@ -135,6 +140,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       else delete saved.sessions[role]
       persist()
       succeeded = true
+      routed.set(result, selected)
       return result
     } catch (error) {
       if (!usageReported) {
@@ -156,11 +162,18 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       let output: Record<string, unknown> | undefined, parseError: unknown
       if (structured) {
         try { output = result.structured ?? parseAgentObject(result.text) } catch (error) { parseError = error }
+        // Several different structured results in one turn: whichever the provider kept may be a stub
+        // (a "placeholder" review with score 0 once failed a run). Ask the same session for exactly one.
+        if (output && (result.structuredResults ?? 0) > 1) { parseError = new Error(`Duplicate structured results: the turn submitted ${result.structuredResults} different results; submit exactly one, the complete final result`); output = undefined }
       }
-      // A genuine architect question (low confidence, or a high-impact
-      // clarification without a safe default) can precede artifact creation.
+      // A genuine planner question (low confidence, or a high-impact
+      // clarification without a safe default) can precede artifact creation,
+      // whatever the planning role is called (a definition's `plan` role binds
+      // the same fast-forward skill as the built-in architect).
       // Completed role results must prove this invocation used the workflow, not an old visit.
-      if (!(role === 'architect' && (output?.confidence === 'low' || asksBeforePlanning(output?.clarifications)))) workflow?.assertParticipation(cursor)
+      const planner = role === 'architect' || (workflow !== undefined && openSpecSkill(workflow.context) === 'openspec-ff-change')
+      // A planner that declines the ticket (the person said "not in this repository") plans nothing either.
+      if (!(planner && (output?.confidence === 'low' || output?.confidence === 'declined' || asksBeforePlanning(output?.clarifications)))) workflow?.assertParticipation(cursor)
       if (structured && !output && !options.lenient) throw new Error('Invalid structured role response: ' + (parseError instanceof Error ? parseError.message : 'missing object'))
       return { ok: true, value: accept(output, result.text, result), text: result.text, result }
     }
@@ -170,9 +183,13 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
         // Apply/verify read-only prerequisites are host-owned, not a probabilistic
         // provider action. Deliver the actual pinned skill and CLI outputs; all
         // artifact, task, verification and review gates still run normally.
-        const loaded = await workflow.execute({ action: 'load_skill' }, 'host')
+        const loaded = await workflow.execute({ action: 'load_skill' }, 'host') as Record<string, unknown>
         const procedure = skill === 'openspec-verify-change' ? 'verify' : 'apply'
-        const context = `\n## Host-loaded official ${procedure} workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below, read its contextFiles, and carry out the remaining procedure. You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n` + JSON.stringify(loaded)
+        // The skill's next step reads every contextFile: hand over their current text, so the role does
+        // not spend model round trips opening artifacts it must read anyway (code is still read normally).
+        const planning = loaded.planning as { apply?: unknown } | undefined
+        const artifacts = workflow.contextFileTexts(planning?.apply)
+        const context = `\n## Host-loaded official ${procedure} workflow\nCore executed load_skill, status and instructions apply for this turn. Follow the exact skill and planning context below and carry out the remaining procedure. ${Object.keys(artifacts).length ? 'artifactTexts holds the current text of its contextFiles (change-relative path → text, read when this turn started): read them there instead of opening those files again; read code, tests and evidence as usual.' : 'Read its contextFiles.'} You may refresh these queries through the scoped tool. A pre-existing unrelated test failure remains a verification failure; report its evidence instead of claiming success.\n` + JSON.stringify(Object.keys(artifacts).length ? { ...loaded, artifactTexts: artifacts } : loaded)
         options = { ...options, prompt: options.prompt + context, ...(options.fallbackPrompt ? { fallbackPrompt: options.fallbackPrompt + context } : {}) }
         note(role, `Core loaded the pinned OpenSpec ${procedure} skill and current planning context for this turn.`)
       }
@@ -189,31 +206,54 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       } else {
         result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance })
       }
-      let problem: string, omittedWorkflow = false
-      try { return evaluate(result) }
-      catch (error) {
-        problem = error instanceof Error ? error.message : String(error)
-        omittedWorkflow = error instanceof OpenSpecParticipationError
-        if (!omittedWorkflow && !REPAIRABLE.test(problem)) return { ok: false, error: problem }
-      }
-      // A single repair budget covers protocol omissions and malformed output.
+      // At most one corrective turn per problem class: a skipped workflow step and a
+      // malformed reply each get one, so a format repair never spends the
+      // workflow reminder (and the reverse). Two extra turns at most.
       // Use the same provider session when possible; sessionless APIs receive the
       // complete original role prompt and existing artifacts, never another role.
-      const repair = omittedWorkflow ? openSpecRepairPrompt(workflow!.context) : repairInstructions(role, problem)
-      note(role, omittedWorkflow
-        ? `The ${role} omitted its required OpenSpec workflow (${problem}); requesting one correction in the same role before accepting the result.`
-        : `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
-      const repaired = await execute(role, step,
-        result.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,
-        structured, { ...timers, kind: 'repair', resumeSessionId: result.sessionId, outputSchema: options.outputSchema,
-          fallbackPrompt: (options.fallbackPrompt ?? options.prompt) + '\nPrevious response (bounded):\n' + result.text.slice(-32_000) + '\n' + repair,
-        })
-      try { return evaluate(repaired) }
-      catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) } }
+      const repaired = { workflow: false, format: false }
+      let current = result
+      for (;;) {
+        let problem: string, omitted: OpenSpecParticipationError | undefined
+        try { return evaluate(current) }
+        catch (error) {
+          problem = error instanceof Error ? error.message : String(error)
+          omitted = error instanceof OpenSpecParticipationError ? error : undefined
+          if (!omitted && !REPAIRABLE.test(problem)) return { ok: false, error: problem }
+        }
+        if (omitted && repaired.workflow) return omittedWorkflowFailure(role, problem, routed.get(current))
+        if (!omitted && repaired.format) return { ok: false, error: problem }
+        repaired[omitted ? 'workflow' : 'format'] = true
+        const repair = omitted
+          ? openSpecRepairPrompt(workflow!.context, { missing: omitted.missing, steps: await workflow!.remainingSteps(omitted.missing) })
+          : repairInstructions(role, problem)
+        note(role, omitted
+          ? `The ${role} ended its turn without required OpenSpec steps (missing ${omitted.missing.join(', ')}); giving it one corrective turn that names each missing step before accepting the result.`
+          : `The ${role} reply was not a valid result (${problem}); asking the same session to resend it.`)
+        current = await execute(role, step,
+          current.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,
+          structured, { ...timers, kind: 'repair', resumeSessionId: current.sessionId, outputSchema: options.outputSchema,
+            fallbackPrompt: (options.fallbackPrompt ?? options.prompt) + '\nPrevious response (bounded):\n' + current.text.slice(-32_000) + '\n' + repair,
+          })
+      }
 
     } catch (error) {
       if (deps.propagateInterruptions && error instanceof AgentExecutionError && ['aborted', 'timeout', 'idle_timeout', 'lease_lost'].includes(error.code)) throw error
+      // A usage-limit refusal stops an independent step without a completion, so the host can
+      // wait for the reset (or move the role to another provider) and resume this same step.
+      if (deps.propagateInterruptions && error instanceof AgentExecutionError && isProviderLimitError(error.code, error.message)) throw error
       return { ok: false, error: error instanceof Error ? error.message : String(error), ...(error instanceof AgentExecutionError ? { code: error.code } : {}) }
     }
   }
+}
+
+/**
+ * The run error of a role that skipped its required OpenSpec steps twice. It keeps the
+ * participation sentence and names the model that skipped them, so the failure
+ * classification (`workflow_protocol`) can say which role to rerun and on what.
+ */
+function omittedWorkflowFailure(role: AgentRole, problem: string, selected: RuntimeAgentConfig | undefined): InvokeOutcome<never> {
+  const model = selected ? `${selected.provider}${selected.model ? '/' + selected.model : ''}` : undefined
+  return { ok: false, failure: OPENSPEC_WORKFLOW_OMITTED,
+    error: `${problem}; the ${role} model${model ? ` (${model})` : ''} skipped the required OpenSpec steps again after one corrective reminder` }
 }

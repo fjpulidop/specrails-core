@@ -141,3 +141,308 @@ describe('role-turn fixer stance', () => {
     expect(events).toContainEqual(expect.objectContaining({ role: 'fixer', event: { kind: 'text', text: 'working' } }))
   })
 })
+
+describe("role-turn: the person's earlier answers (bench5)", () => {
+  const asked = (question: string, answer: string, ordinal: number) => ({ id: 'a:' + ordinal, transition: ordinal, attempt: 1, ordinal, nodePath: 'architect', value: { answer }, asked: { question, answer } })
+
+  it('gives a later reviewer the answers as authoritative, so it never rejects a change that followed them', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [asked('Should total() stay numeric?', 'The person chose "Keep total() numeric, add formatter".', 1)]
+    await f.run({ roleId: 'analyst', prompt: 'Review the change' })
+    const prompt = f.requests[0].prompt
+    expect(prompt).toContain("## The person's answers in this run")
+    expect(prompt).toContain('Asked: "Should total() stay numeric?"')
+    expect(prompt).toContain('The person answered: "The person chose \\"Keep total() numeric, add formatter\\"."')
+    expect(prompt).toContain('acceptedBy: "user"')
+  })
+
+  it('tells a later writer (the fixer) never to ask the same question again', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [asked('Q?', 'A', 1)]
+    await f.run({ roleId: 'writer', prompt: 'Fix', stance: 'fixer' })
+    expect(f.requests[0].prompt).toContain('never ask it again')
+    expect(f.requests[0].prompt).toContain('the answer wins')
+  })
+
+  it('adds nothing without answered questions (an install answer carries no question)', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [{ id: 'i', transition: 1, attempt: 1, ordinal: 100, nodePath: 'developer', value: 'installed' }]
+    await f.run({ roleId: 'analyst', prompt: 'Review' })
+    expect(f.requests[0].prompt).not.toContain("The person's answers")
+  })
+})
+
+describe('role-turn skipped OpenSpec workflow (contract 5.16)', () => {
+  it('fails the turn with code openspec_workflow_omitted after one corrective turn, never as an unknown invalid reply', async () => {
+    const f = fixture()
+    const stateDirectory = path.join(f.deps.context.artifactRoot, '.plan-state')
+    f.deps.config.roles!.plan = { provider: 'fixture', model: 'small', access: 'write', artifacts: 'all', prompt: 'Plan the change.', openspecSkill: 'openspec-ff-change' }
+    // The binding is never executed here: the fixture role makes no workflow calls at all.
+    f.deps.openspec = () => ({ plan: { root: f.deps.context.artifactRoot, change: 'skipped', stateDirectory, cli: '/unused/openspec.js', skillPath: '/unused/SKILL.md', skillHash: 'unused',
+      role: 'plan', access: 'write', artifacts: 'all', openspecSkill: 'openspec-ff-change' } }) as never
+    const schema = { type: 'object', required: ['confidence'], properties: { confidence: { type: 'string' } } }
+    const result = await f.run({ roleId: 'plan', prompt: 'Plan', structuredOutput: schema })
+    expect(result).toMatchObject({ outcome: 'invalid', error: { code: 'openspec_workflow_omitted',
+      message: expect.stringContaining('the plan model (fixture/small) skipped the required OpenSpec steps again after one corrective reminder') } })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1]!.prompt).toContain('Your turn ended without these required steps: load_skill, instructions tasks.')
+    // load_skill creates the change and runs every instructions query, so the writes follow it directly.
+    expect(f.requests[1]!.prompt).toContain('1. {"action":"load_skill"}\n2. {"action":"write_artifact","path":"proposal.md"}')
+  })
+})
+
+describe("role-turn decisions: 'ask' (capability roleDecisions)", () => {
+  const implementation = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } } } }
+  /** Replies in order; each reply is the structured JSON the role returns. */
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const contradiction = 'Task 2.1 requires touch controls, but design.md lists touch controls as a non-goal. Implement them (option A) or drop task 2.1 (option B)?'
+
+  it('asks the person the contradiction, memoizes the turn before pausing, and reruns once with the answer', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'Did the keyboard part', incomplete: ['2.1 touch controls'], decisionNeeded: contradiction },
+      { summary: 'Implemented touch controls as the person decided', incomplete: [], decisionNeeded: '' }])
+    const params = { roleId: 'writer', prompt: 'Implement every task', structuredOutput: implementation, decisions: 'ask' } as Record<string, JsonValue>
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    // The role sees the rule and the extra field; the host's own schema stays untouched.
+    expect(f.requests[0].prompt).toContain('## A decision only the person can make')
+    expect(f.requests[0].prompt).toContain('Never write such a decision into `incomplete`')
+    expect(JSON.stringify(f.requests[0].outputSchema)).toContain('decisionNeeded')
+    expect(JSON.stringify(implementation)).not.toContain('decisionNeeded')
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'Option A: implement them.' } }
+    const result = await f.run(params)
+    // The resume replays the memoized first round instead of calling the provider again.
+    expect(f.requests).toHaveLength(2)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: contradiction, nodePath: 'node' })])
+    expect(f.requests[1].prompt).toContain("## The person's decision 1")
+    expect(f.requests[1].prompt).toContain('Option A: implement them.')
+    expect(result).toMatchObject({ outcome: 'next', answers: [{ value: { answer: 'Option A: implement them.' } }],
+      output: { structured: { summary: 'Implemented touch controls as the person decided', incomplete: [] }, decisions: [{ question: contradiction, answer: 'Option A: implement them.' }] } })
+    expect((result.output as { structured: Record<string, unknown> }).structured).not.toHaveProperty('decisionNeeded')
+    // Later turns read the question and the answer through {{history.text}}.
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Human decision requested: ' + contradiction)
+    expect(new Set(result.history?.map(entry => entry.id)).size).toBe(result.history?.length)
+  })
+
+  it('questionOptions: offers the role\'s choices with its question and removes them from the committed output', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'Keyboard part', incomplete: ['2.1'], decisionNeeded: contradiction, decisionOptions: [{ id: 'a', label: 'Implement touch', meaning: 'Adds it.' }, { id: 'b', label: 'Drop 2.1', meaning: 'Keeps the non-goal.' }], decisionRecommended: 'b' },
+      { summary: 'Dropped', incomplete: [], decisionNeeded: '', decisionOptions: [], decisionRecommended: '' }])
+    const params = { roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask', stance: 'fixer' } as Record<string, JsonValue>
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'Drop 2.1', optionId: 'b' } }
+    const result = await f.run(params).catch(() => f.run(params))
+    expect(f.requests[0].prompt).toContain('decisionOptions')
+    expect(asked[0]).toMatchObject({ kind: 'question', text: contradiction, asker: 'fixer', recommended: 'b', options: [{ id: 'a' }, { id: 'b', label: 'Drop 2.1' }] })
+    expect(f.requests[1].prompt).toContain('The person chose \\"Drop 2.1\\" (Keeps the non-goal.).')
+    expect((result.output as { structured: Record<string, unknown> }).structured).toEqual({ summary: 'Dropped', incomplete: [] })
+  })
+
+  it('asks the same session for exactly one result when a turn submitted several different ones', async () => {
+    // Seen in the speed benchmark: a reviewer submitted a "placeholder" result (score 0) next to its real one;
+    // the CLI kept the placeholder and the run failed after a pointless correction.
+    const f = fixture()
+    const replies = [{ structured: { summary: 'placeholder', incomplete: [] }, structuredResults: 2 }, { structured: { summary: 'Real result', incomplete: [] } }]
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift()!; return { text: JSON.stringify(reply.structured), usage: unknownUsage(), ...reply } } })
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('Duplicate structured results')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Real result' } } })
+  })
+
+  it('stays autonomous when the role needs no decision: one call, the host schema shape, no answers', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'All done', incomplete: [], decisionNeeded: '' }])
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask' })
+    expect(f.requests).toHaveLength(1)
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'All done', incomplete: [] } } })
+    expect(result.answers).toBeUndefined()
+    expect(result.output).not.toHaveProperty('decisions')
+    expect((result.output as { structured: Record<string, unknown> }).structured).not.toHaveProperty('decisionNeeded')
+  })
+
+  it('bounds the questions: after the last allowed answer the role must finish without asking', async () => {
+    const f = fixture()
+    scripted(f, [...Array.from({ length: 3 }, (_, index) => ({ summary: 'stuck', incomplete: ['x'], decisionNeeded: 'Question ' + index })), { summary: 'finished', incomplete: [] }])
+    let asked = 0
+    f.execution.interrupt = () => 'answer ' + asked++
+    const result = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation, decisions: 'ask' })
+    expect(asked).toBe(3)
+    expect(f.requests).toHaveLength(4)
+    expect(f.requests[3].prompt).not.toContain('## A decision only the person can make')
+    expect(JSON.stringify(f.requests[3].outputSchema)).not.toContain('decisionNeeded')
+    expect(f.requests[3].prompt).toContain('answer 2')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'finished' } } })
+    expect((result.output as { decisions: unknown[] }).decisions).toHaveLength(3)
+  })
+
+  it('validates the opt-in: only an object schema with properties, never one already declaring the field', async () => {
+    const f = fixture()
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'x', decisions: 'always' }, '/test')).not.toEqual([])
+    await expect(f.run({ roleId: 'writer', prompt: 'x', decisions: 'ask' })).rejects.toMatchObject({ code: 'invalid_arguments' })
+    await expect(f.run({ roleId: 'writer', prompt: 'x', decisions: 'ask', structuredOutput: { type: 'object', properties: { decisionNeeded: { type: 'string' } } } })).rejects.toMatchObject({ code: 'invalid_arguments' })
+    expect(f.requests).toHaveLength(0)
+  })
+})
+
+describe('role-turn review triage (capability reviewTriage)', () => {
+  const reviewSchema = { type: 'object', additionalProperties: false, required: ['approved', 'summary', 'issues', 'score', 'brief'], properties: { approved: { type: 'boolean' }, summary: { type: 'string' }, issues: { type: 'array', items: { type: 'string' } }, score: { type: 'number' },
+    brief: { type: 'object', additionalProperties: false, required: ['humanChecks'], properties: { humanChecks: { type: 'array', items: { type: 'string' } } } } } }
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const lockfile = 'Delete src-tauri/Cargo.lock: it is out-of-scope churn.'
+  const frozen = 'Amend design.md to record the cargo manifest path.'
+
+  it('re-judges a rejection made only of issues the run cannot act on, and hands them to the person as notes (the Tauri run)', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: false, summary: 'Churn', issues: [lockfile, frozen], score: 60, brief: { humanChecks: ['Open the window on macOS'] } },
+      { approved: true, summary: 'Search works and is tested', issues: [], score: 88, brief: { humanChecks: ['Open the window on macOS'] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review the change', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('## Core review triage')
+    expect(f.requests[1].prompt).toContain(lockfile)
+    const output = result.output as { structured: { approved: boolean; issues: string[]; score: number; brief: { humanChecks: string[] } }; reviewNotes: Array<{ kind: string }> }
+    expect(output.structured).toMatchObject({ approved: true, issues: [], score: 88 })
+    expect(output.structured.brief.humanChecks[0]).toBe('Open the window on macOS')
+    expect(output.structured.brief.humanChecks.slice(1)).toEqual([expect.stringContaining(lockfile), expect.stringContaining(frozen)])
+    expect(output.reviewNotes.map(note => note.kind)).toEqual(['regenerated-lockfile', 'frozen-artifact'])
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Core review triage')
+  })
+
+  it('keeps a genuine rejection: only the non-actionable issue leaves, no second review', async () => {
+    const f = fixture()
+    const genuine = 'The search handler ignores an empty query; return every item and add a test for it.'
+    scripted(f, [{ approved: false, summary: 'Bug', issues: [genuine, lockfile], score: 55, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: false, issues: [genuine], score: 55, brief: { humanChecks: [expect.stringContaining(lockfile)] } } })
+  })
+
+  it('stays rejected when the re-judged review still rejects, without a third call', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: false, summary: 'x', issues: [frozen], score: 50, brief: { humanChecks: [] } },
+      { approved: false, summary: 'Missing test', issues: ['No test covers the empty query; add one to the vitest suite.'], score: 60, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(2)
+    expect(result.output).toMatchObject({ structured: { approved: false, issues: ['No test covers the empty query; add one to the vitest suite.'] }, reviewNotes: [{ kind: 'frozen-artifact' }] })
+  })
+
+  it('drops an issue about a criterion the person withdrew in an answer from an approving review', async () => {
+    const f = fixture()
+    f.execution.state.$answers = [{ id: 'a', transition: 1, attempt: 1, ordinal: 0, nodePath: 'clarify', value: { answer: 'Drop O(1) and uniqueness.' } }]
+    scripted(f, [{ approved: true, summary: 'ok', issues: ['Lookup is O(n), the spec requires O(1).'], score: 80, brief: { humanChecks: [] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: true, issues: [] }, reviewNotes: [{ kind: 'withdrawn-criterion' }] })
+  })
+
+  it('delivers an approving review whose only findings the reviewer marked as advice or out of scope, recording them as notes, not checks', async () => {
+    const f = fixture()
+    scripted(f, [{ approved: true, summary: 'ok', issues: ['[advice] Consider a test for the empty list.', '[out-of-scope] Paginate the export later.'], score: 86, brief: { humanChecks: ['Open the page'] } }])
+    const result = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(1)
+    expect(result.output).toMatchObject({ structured: { approved: true, issues: [], brief: { humanChecks: ['Open the page'] } },
+      reviewNotes: [{ kind: 'advice', issue: 'Consider a test for the empty list.' }, { kind: 'out-of-scope', issue: 'Paginate the export later.' }] })
+  })
+
+  it('keeps only the actionable findings of a mixed review, and re-judges a rejection made only of marked findings', async () => {
+    const f = fixture()
+    const genuine = 'The export drops the last row; fix the loop and add a test.'
+    scripted(f, [{ approved: false, summary: 'Bug', issues: [genuine, '[advice] Rename the helper.'], score: 60, brief: { humanChecks: [] } },
+      { approved: false, summary: 'Only style', issues: ['[nit] Shorten the comment.'], score: 82, brief: { humanChecks: [] } },
+      { approved: true, summary: 'Fine', issues: [], score: 85, brief: { humanChecks: [] } }])
+    const mixed = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(mixed.output).toMatchObject({ structured: { approved: false, issues: [genuine], brief: { humanChecks: [] } }, reviewNotes: [{ kind: 'advice', issue: 'Rename the helper.' }] })
+    expect(f.requests).toHaveLength(1)
+    const rejudged = await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })
+    expect(f.requests).toHaveLength(3)
+    expect(f.requests[2].prompt).toContain('Shorten the comment.')
+    expect(rejudged.output).toMatchObject({ structured: { approved: true, issues: [] }, reviewNotes: [{ kind: 'advice', issue: 'Shorten the comment.' }] })
+  })
+
+  it('leaves write roles and reviews without such issues exactly as returned', async () => {
+    const f = fixture()
+    const reply = { approved: false, summary: 'Bug', issues: ['Fix paginate() off-by-one and add a test.'], score: 40, brief: { humanChecks: [] } }
+    scripted(f, [reply, { ...reply, issues: [lockfile] }])
+    expect((await f.run({ roleId: 'analyst', prompt: 'Review', structuredOutput: reviewSchema })).output).toEqual(expect.objectContaining({ structured: reply }))
+    f.execution.frame.nodePath = 'writer-node'
+    const written = await f.run({ roleId: 'writer', prompt: 'Build', structuredOutput: reviewSchema })
+    expect(written.output).toMatchObject({ structured: { issues: [lockfile] } })
+    expect(written.output).not.toHaveProperty('reviewNotes')
+    expect(f.requests).toHaveLength(2)
+  })
+})
+
+describe("role-turn machineInstalls: 'ask' (capability machineInstalls)", () => {
+  const blocker = { type: 'object', properties: { kind: { type: 'string' }, command: { type: 'string' }, evidence: { type: 'string' }, requiredAction: { type: 'string' }, install: { type: 'string' } }, required: ['kind', 'requiredAction'] }
+  const implementation = { type: 'object', additionalProperties: false, required: ['summary', 'incomplete'], properties: { summary: { type: 'string' }, incomplete: { type: 'array', items: { type: 'string' } }, blocker } }
+  function scripted(f: ReturnType<typeof fixture>, replies: Array<Record<string, unknown>>) {
+    const registry = f.deps.registry
+    f.deps.registry = new ExecutorRegistry().register('fixture', { capabilities: () => registry.capabilities('fixture'),
+      async execute(request) { f.requests.push(request); const reply = replies.shift(); if (!reply) throw new Error('unexpected provider call'); return { text: JSON.stringify(reply), usage: unknownUsage() } } })
+  }
+  const needsTerraform = { summary: 'Module written; terraform validate could not run', incomplete: ['3.1 validate the module'],
+    blocker: { kind: 'toolchain', command: 'terraform validate', evidence: 'terraform: command not found', requiredAction: 'Install terraform with `brew install terraform`.', install: 'brew install terraform' } }
+  const params = { roleId: 'writer', prompt: 'Implement every task', structuredOutput: implementation, machineInstalls: 'ask' } as Record<string, JsonValue>
+
+  it('asks once with the exact command and options, memoizes the turn, and reruns it after the host installed the tool', async () => {
+    const f = fixture()
+    scripted(f, [needsTerraform, { summary: 'Validated the module', incomplete: [] }])
+    await expect(f.run(params)).rejects.toThrow('PAUSED')
+    expect(f.requests).toHaveLength(1)
+    const asked: unknown[] = []
+    f.execution.interrupt = request => { asked.push(request); return { answer: 'installed' } }
+    const result = await f.run(params)
+    expect(asked).toEqual([expect.objectContaining({ kind: 'question', prompt: 'This run needs terraform. Install it with `brew install terraform`?', nodePath: 'node',
+      options: [{ id: 'install', label: 'Install', meaning: expect.any(String) }, { id: 'self', label: "I'll do it myself", meaning: expect.any(String) }],
+      data: { kind: 'machine-install', command: 'brew install terraform', tool: 'terraform' } })])
+    expect(f.requests).toHaveLength(2)
+    expect(f.requests[1].prompt).toContain('## Host install')
+    expect(f.requests[1].prompt).toContain('The person approved `brew install terraform` and the host ran it outside the run')
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Validated the module', incomplete: [] } }, answers: [{ value: { answer: 'installed' } }] })
+    expect(result.history?.map(entry => entry.text).join('\n')).toContain('Machine-wide install requested: brew install terraform')
+  })
+
+  it("commits the blocker with the person's step on 'I'll do it myself' or a failed install, without another provider call", async () => {
+    for (const [answer, action] of [['declined', 'Run `brew install terraform` yourself'], ['failed: Error: No available formula', 'The approved install `brew install terraform` failed (Error: No available formula)'], ['refused: it needs an administrator password', 'Specrails cannot run `brew install terraform` for you (it needs an administrator password)']]) {
+      const f = fixture()
+      scripted(f, [needsTerraform])
+      f.execution.interrupt = () => ({ answer })
+      const result = await f.run(params)
+      expect(f.requests).toHaveLength(1)
+      expect((result.output as { structured: { blocker: { requiredAction: string; install: string } } }).structured.blocker).toMatchObject({ install: 'brew install terraform', requiredAction: expect.stringContaining(action) })
+    }
+  })
+
+  it('stays autonomous without an install, without the opt-in and for a read role', async () => {
+    const f = fixture()
+    scripted(f, [{ summary: 'done', incomplete: [] }, needsTerraform])
+    f.execution.interrupt = () => { throw new Error('must not ask') }
+    await f.run(params)
+    const plain = await f.run({ roleId: 'writer', prompt: 'Implement', structuredOutput: implementation })
+    expect((plain.output as { structured: { blocker: unknown } }).structured.blocker).toMatchObject({ install: 'brew install terraform' })
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'x', machineInstalls: 'always' }, '/test')).not.toEqual([])
+  })
+
+  it('composes with decisions: an install asked inside a decision round keeps its own memo', async () => {
+    const f = fixture()
+    scripted(f, [needsTerraform, { summary: 'Validated', incomplete: [], decisionNeeded: '' }])
+    const asked: Array<{ data?: unknown }> = []
+    f.execution.interrupt = request => { asked.push(request as { data?: unknown }); return { answer: 'installed' } }
+    const result = await f.run({ ...params, decisions: 'ask' })
+    expect(asked).toHaveLength(1)
+    expect(asked[0].data).toMatchObject({ kind: 'machine-install' })
+    expect(result).toMatchObject({ outcome: 'next', output: { structured: { summary: 'Validated' } } })
+  })
+})

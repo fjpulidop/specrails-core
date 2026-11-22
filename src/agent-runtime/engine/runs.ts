@@ -8,8 +8,8 @@ import type { RuntimeConfig } from '../executor-types.js'
 import { sameRuntimeIdentity, type RuntimeIdentity } from '../runtime-identity.js'
 import type { ExecutorRegistry } from '../executors.js'
 import { appendRunEvent, RunDatabase } from './checkpoint/database.js'
-import { RunLedger } from './checkpoint/ledger.js'
-import { RunLease } from './checkpoint/lease.js'
+import { interruptLangGraphId, interruptOccurrence, RunLedger } from './checkpoint/ledger.js'
+import { leaseLive, leaseOwner, RunLease } from './checkpoint/lease.js'
 import { EngineError, type JsonObject, type JsonValue } from './contracts.js'
 import { EngineEventStream } from './events.js'
 import { initialDefinitionState } from './state.js'
@@ -21,6 +21,8 @@ import { composeDefinitionRuntime } from './composition.js'
 import { createEngineTelemetry } from './otel.js'
 import { describeDefinition } from './graph-description.js'
 import { validateHostTaskResult } from './pieces/host-task.js'
+import { offeredOptions } from './question-options.js'
+import { applyRouteOverrides, recordedRouteOverrides, routeOverrideRecorded, ROUTE_OVERRIDE_EVENT, type RouteOverrideRequest } from './route-overrides.js'
 
 export const definitionRunDirectory = (context: PipelineContext): string => path.join(pipelineStateDirectory(context), 'agent-workflow')
 /** Frozen request shared with the legacy runtime (contracts.md section 9); `workflow.engine` selects the resume engine. */
@@ -64,6 +66,8 @@ export interface ResumeDefinitionOptions extends RunObservers {
   recover?: string[]
   /** Optional frozen host context assertion prevents attaching another project's run. */
   context?: PipelineContext
+  /** Capability `routeOverrides`: move roles to another provider/model/effort for the rest of the run. */
+  routeOverride?: RouteOverrideRequest
 }
 type Admitted = Awaited<ReturnType<typeof preflightDefinition>>
 
@@ -94,19 +98,25 @@ export async function resumeRun(directory: string, options: ResumeDefinitionOpti
       const { contentDigest } = await import('./canonical-json.js')
       if (contentDigest(options.context) !== contentDigest(request.context)) throw new EngineError('scope_mismatch', 'Host context differs from the frozen run')
     }
+    if ((row.completion_json || row.status === 'cancelled') && options.routeOverride) throw new EngineError('invalid_route_override', 'A finished run cannot change its routes')
     if (row.completion_json || row.status === 'cancelled') {
       new EngineEventStream(cursor => view.events(cursor), options.onEvent ?? (() => {})).send(describeDefinition(view.runId, JSON.parse(String(row.definition_json))))
       return projectRunStatus(view)
     }
-    const admitted = await preflightDefinition({ ...request, definition: JSON.parse(String(row.definition_json)), registry: options.registry })
-    const result = await execute(database, admitted, options, true)
+    // Route overrides: the frozen request stays as written; accepted overrides apply on top, in order.
+    const recorded = recordedRouteOverrides(database)
+    const routeOverride = options.routeOverride && !routeOverrideRecorded(recorded, options.routeOverride) ? options.routeOverride : undefined
+    const overrides = routeOverride ? [...recorded, routeOverride] : recorded
+    const config = overrides.length ? applyRouteOverrides(request.config, overrides) : request.config
+    const admitted = await preflightDefinition({ ...request, config, definition: JSON.parse(String(row.definition_json)), registry: options.registry })
+    const result = await execute(database, admitted, { ...options, routeOverride }, true)
     return { ...projectRunStatus(observeLedger(database)), ...('error' in result ? { error: result.error } : {}) }
   } finally { database.close() }
 }
 
 /** Every effect runs under one lease and cancellation domain; the saver owns settlement. */
 async function execute(database: RunDatabase, admitted: Admitted, options: ResumeDefinitionOptions, resume: boolean) {
-  const runId = admitted.request.context.runId, lease = new RunLease(database, runId), token = lease.acquire(randomUUID())
+  const runId = admitted.request.context.runId, lease = new RunLease(database, runId), token = lease.acquire(leaseOwner())
   const ledger = new RunLedger(database, token, { maxTransitions: admitted.definition.maxTransitions, failFast: admitted.definition.policies?.failFast })
   const controller = new AbortController(), abort = () => controller.abort(options.signal?.reason ?? new EngineError('aborted', 'Execution cancelled'))
   if (options.signal?.aborted) abort()
@@ -144,12 +154,20 @@ async function execute(database: RunDatabase, admitted: Admitted, options: Resum
       lease.assert(token)
       // An explicit resume supersedes pause requests that arrived before it.
       inbox.consumePauses()
+      if (options.routeOverride) appendRunEvent(database, runId, ROUTE_OVERRIDE_EVENT, JSON.parse(JSON.stringify(options.routeOverride)) as JsonValue)
       appendRunEvent(database, runId, 'workflow_resumed', {})
     })
     stream.flush()
     const snapshot = await graph.getState(config, { subgraphs: true })
     const activeInterrupts = new Set(snapshot.tasks.flatMap(task => task.interrupts).map(value => value.id))
-    const answers = Object.fromEntries(ledger.interrupts().filter(value => value.answer !== undefined && activeInterrupts.has(value.id)).map(value => [value.id, value.answer!]))
+    // Resume each active LangGraph interrupt with the answer of its latest durable occurrence, and only when
+    // that occurrence is answered: LangGraph appends it to the task's earlier answers (a later decision round).
+    const latest = new Map<string, ReturnType<RunLedger['interrupts']>[number]>()
+    for (const value of ledger.interrupts()) {
+      const id = interruptLangGraphId(value.id), seen = latest.get(id)
+      if (activeInterrupts.has(id) && (!seen || interruptOccurrence(value.id) > interruptOccurrence(seen.id))) latest.set(id, value)
+    }
+    const answers = Object.fromEntries([...latest].filter(([, value]) => value.answer !== undefined).map(([id, value]) => [id, value.answer!]))
     const checkpoint = await saver.getTuple(config)
     const hasInterrupts = snapshot.tasks.some(task => task.interrupts.length > 0)
     if (hasInterrupts && !Object.keys(answers).length) return projectRunStatus(ledger)
@@ -215,7 +233,15 @@ function validateAnswers(ledger: RunLedger, answers: Record<string, JsonValue>):
       continue
     }
     const object = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
-    if (request.kind === 'question' ? typeof object.answer !== 'string' || !object.answer.trim() : object.approved !== true) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
+    if (request.kind === 'question') {
+      if (typeof object.answer !== 'string' || !object.answer.trim()) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
+      // questionOptions: an answer may name one offered choice by id.
+      if (object.optionId !== undefined && (typeof object.optionId !== 'string' || !offeredOptions(request.value).some(option => option.id === object.optionId))) throw new EngineError('invalid_resume', 'The chosen option is not one the question offered')
+      continue
+    }
+    // questionOptions: an approval (never a gate) may be rejected with the person's reason.
+    const rejected = request.kind === 'approval' && object.approved === false && typeof object.reason === 'string' && !!object.reason.trim()
+    if (object.approved !== true && !rejected) throw new EngineError('invalid_resume', 'Resume requires a matching nonempty answer or explicit approval')
   }
 }
 
@@ -229,8 +255,8 @@ export async function cancelRun(directory: string, requestId?: string) {
   try {
     const runId = observeLedger(database).runId, inbox = new ControlInbox(database, runId), accepted = inbox.cancel(requestId)
     const lease = new RunLease(database, runId)
-    if ((lease.current()?.expiresAt ?? 0) > Date.now()) return accepted
-    const token = lease.acquire(randomUUID())
+    if (leaseLive(lease.current())) return accepted
+    const token = lease.acquire(leaseOwner())
     try {
       const ledger = new RunLedger(database, token, { maxTransitions: 1 })
       database.transaction('workflow-cancelled', () => {
@@ -273,14 +299,14 @@ export async function pauseRun(directory: string, options: { requestId?: string;
     // Only this exact package can resume the run, so only it may pause it.
     if (!sameRuntimeIdentity(JSON.parse(String(view.run().runtime_identity_json)) as RuntimeIdentity, coreRuntimeIdentity())) throw new EngineError('resume_incompatible', 'Pause requires the retained original Core package')
     const lease = new RunLease(database, runId)
-    if ((lease.current()?.expiresAt ?? 0) > Date.now()) {
+    if (leaseLive(lease.current())) {
       database.upgradeSchema()
       const accepted = new ControlInbox(database, runId).pause(reason, requestId)
       return result('requested', accepted.createdAt)
     }
     if (view.run().status === 'paused') return result('already-paused')
     if (view.run().status !== 'running') return result('not-running')
-    const token = lease.acquire(randomUUID())
+    const token = lease.acquire(leaseOwner())
     let outcome: PauseOutcome = 'paused'
     try {
       const ledger = new RunLedger(database, token, { maxTransitions: 1 })

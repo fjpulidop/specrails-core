@@ -1,7 +1,9 @@
 import type {
   Attachment,
+  ContextUsage,
   InputDelivery,
   OutputChannel,
+  RateLimitInfo,
   SessionPhase,
   SessionPolicy,
   SubagentKind,
@@ -40,7 +42,7 @@ export type SessionEventBody =
   | ({ type: 'turn.tool'; turnId: string } & ToolActivity)
   /** An image the provider generated during the turn, saved by the provider at `path` (absolute, local). */
   | { type: 'turn.image'; turnId: string; imageId: string; path: string; mimeType: string; prompt?: string }
-  | { type: 'turn.completed'; turnId: string; status: 'completed' | 'failed' | 'stopped' | 'interrupted'; text: string; error?: string; usage: Usage }
+  | { type: 'turn.completed'; turnId: string; status: 'completed' | 'failed' | 'stopped' | 'interrupted'; text: string; error?: string; usage: Usage; context?: ContextUsage }
   | { type: 'subagent.started'; subagentId: string; parentId: string | null; kind: SubagentKind; agentType?: string; description: string; prompt?: string; delegated?: { driver: string; model: string } }
   | { type: 'subagent.phase'; subagentId: string; phase: SubagentPhase; reason?: string }
   | { type: 'subagent.output'; subagentId: string; channel: 'text' | 'tool'; delta?: string; tool?: ToolActivity }
@@ -50,6 +52,8 @@ export type SessionEventBody =
   | { type: 'output.truncated'; scope: { turnId: string } | { subagentId: string }; droppedEvents: number; droppedBytes: number }
   | { type: 'notice.interruption'; subagentIds: string[]; inputIds: string[] }
   | { type: 'provider.diagnostic'; level: 'info' | 'warning'; code: string; message: string }
+  /** The provider account's usage-limit state, as last reported (replaces the previous one). */
+  | { type: 'provider.rate-limit'; rateLimit: RateLimitInfo }
 
 export type SessionEventType = SessionEventBody['type']
 
@@ -86,4 +90,5 @@ export const SESSION_EVENT_TYPES = Object.freeze([
   'output.truncated',
   'notice.interruption',
   'provider.diagnostic',
+  'provider.rate-limit',
 ] as const satisfies readonly SessionEventType[])

@@ -43,7 +43,14 @@ A scope has at most one live host. A second host for the same scope fails
 `initialize` returns `capabilities: { sessions: 1, delegation: 1, flowSessions: 1 }`.
 Each driver descriptor in `drivers` may carry `capabilities.interrupt:
 'native' | 'emulated'`; treat its absence as "interrupt delivery unsupported"
-(an older Core).
+(an older Core). `capabilities.deferredMcpTools: true` means the driver defers
+MCP tools: only their names reach the prompt and a tool's schema loads when the
+model searches for it, so attached connectors cost almost no context until
+used. It is `true` for `claude` and `false` for the others; treat its absence
+as `false` (an older Core). `capabilities.reportsRateLimits: true` means the
+driver journals the provider account's usage limits as `provider.rate-limit`
+events (see [Usage limits](#usage-limits)); it is `true` for `claude` and
+`codex`, `false` for the executor-backed drivers, and absent on an older Core.
 
 ### Deliveries
 
@@ -118,7 +125,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `turn.output` | `turnId, channel: 'text' \| 'thinking', delta` |
 | `turn.tool` | `turnId, toolUseId, name, phase: 'started' \| 'completed', input?, output?, isError?` |
 | `turn.image` | `turnId, imageId, path, mimeType, prompt?` — an image the provider generated in the turn, saved by the provider at the absolute local `path` (Codex `imageGeneration`). Image bytes never enter the journal; the host copies the file if it keeps it |
-| `turn.completed` | `turnId, status: 'completed' \| 'failed' \| 'stopped' \| 'interrupted', text, error?, usage: Usage` |
+| `turn.completed` | `turnId, status: 'completed' \| 'failed' \| 'stopped' \| 'interrupted', text, error?, usage: Usage, context?: ContextUsage` |
 | `subagent.started` | `subagentId, parentId \| null, kind: 'foreground' \| 'background', agentType?, description, prompt?` |
 | `subagent.phase` | `subagentId, phase: 'running' \| 'idle' \| 'failed' \| 'stopped' \| 'killed' \| 'interrupted', reason?` |
 | `subagent.output` | `subagentId, channel: 'text' \| 'tool', delta?, tool?: { toolUseId, name, phase, input?, output?, isError? }` |
@@ -128,6 +135,7 @@ Every event has `{ type, at }`, where `at` is an ISO-8601 commit time.
 | `output.truncated` | `scope: { turnId } \| { subagentId }, droppedEvents, droppedBytes` |
 | `notice.interruption` | `subagentIds, inputIds` (the notice was prefixed to the next input) |
 | `provider.diagnostic` | `level: 'info' \| 'warning', code, message` |
+| `provider.rate-limit` | `rateLimit: RateLimitInfo` — the account's usage-limit state as last reported (see [Usage limits](#usage-limits)) |
 
 `parentId: null` means the session's main agent. A sub-agent's phase can return
 from `idle` to `running`, because providers restart sub-agents. `subagents.settled`
@@ -147,6 +155,66 @@ interface Usage {
 ```
 
 A missing provider value is `null`, never `0`.
+
+`turn.completed.context` (also kept on the snapshot's `turns[].context`) is how
+full the main agent's context window was when the turn ended. It is a snapshot,
+not a delta, and is absent when the driver reports nothing (executor-backed
+drivers, or a turn without a measured request). Events journaled before the
+field existed have no `context`.
+
+```ts
+interface ContextUsage {
+  usedTokens: number | null   // size of the last main-agent request; null after a compaction
+  windowTokens: number | null // the model's context window
+  model: string | null
+  compacted?: boolean         // true when the provider compacted after the last measured request
+}
+```
+
+- Claude: `usedTokens` is `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`
+  of the newest main-agent `assistant` frame with non-zero usage (sub-agent and
+  sidechain frames ignored, output never counted, never summed across frames).
+  A later `system/compact_boundary` makes it `null` with `compacted: true`.
+  `windowTokens` is `result.modelUsage[<model>].contextWindow` for the
+  `system/init` model, else the assistant message model, else the largest window;
+  a `…[1m]` model without one is `1000000`.
+- Codex: `usedTokens` is the root thread's `tokenUsage.last.totalTokens` and
+  `windowTokens` its `tokenUsage.modelContextWindow`, from the last
+  `thread/tokenUsage/updated` of the turn.
+
+## Usage limits
+
+`provider.rate-limit` carries the provider account's usage-limit state. It is
+a snapshot that replaces the previous one, journaled only when it changes and
+kept on the session snapshot as `rateLimit` (absent until the driver reports
+one). It is account-wide: every session on the same account sees the same
+windows. A closed session still accepts it.
+
+```ts
+interface RateLimitInfo {
+  status: 'allowed' | 'allowed_warning' | 'rejected'  // rejected: requests are refused until the window resets
+  rateLimitType: string | null    // the binding window (provider id, e.g. five_hour, seven_day, codex:primary)
+  resetsAt: string | null         // ISO-8601 reset of that window
+  utilization: number | null      // 0..1 of that window
+  windows: Record<string, { utilization: number | null; resetsAt: string | null; windowMinutes?: number }>
+  overage: { status: 'allowed' | 'allowed_warning' | 'rejected' | null; inUse: boolean; disabledReason: string | null; resetsAt: string | null } | null
+}
+```
+
+- Claude: one `rate_limit_event` per request. `rate_limit_info.status`,
+  `rateLimitType`, `resetsAt` (epoch seconds), `utilization` and
+  `unifiedWindows.<id>.{utilization, resetsAt}` map one to one;
+  `overageStatus`, `isUsingOverage`, `overageDisabledReason` and
+  `overageResetsAt` fill `overage`. A `rejected` status covered by allowed or
+  in-use overage still serves requests.
+- Codex: `account/rateLimits/updated` (no thread). `primary`/`secondary`
+  become `<limitId>:primary` / `<limitId>:secondary` with
+  `usedPercent / 100` and `windowDurationMins`; `rateLimitReachedType` set
+  means `rejected` on the window it names, otherwise the fullest window is the
+  binding one. Codex reports no warning state; hosts derive thresholds from
+  `utilization`.
+- Malformed reports are dropped (Claude journals a `provider.unknown`
+  diagnostic once); values are never guessed.
 
 ## Policy
 

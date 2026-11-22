@@ -24,19 +24,29 @@ import { specrailsHome } from '../shared/specrails-home.js'
  * own tests start Core and verify, as Desktop's suite does) runs within that
  * turn: a holder that is an ancestor of this process never makes it wait.
  *
- * `SPECRAILS_VERIFY_SLOTS` sets the number of slots (default 1); `0` or `off`
- * turns the turns off.
+ * `SPECRAILS_VERIFY_SLOTS` sets the number of slots; `0` or `off` turns the
+ * turns off. The default gives one slot per four cores (at least one, at most
+ * four): a full suite already uses a few cores, so a single machine-wide slot
+ * serialized every parallel rail behind the slowest suite (a 10-core machine
+ * with five rails waited minutes per verification), while one per core
+ * brought the oversubscription back.
  */
 export const VERIFY_SLOTS_ENV = 'SPECRAILS_VERIFY_SLOTS'
-export const DEFAULT_VERIFY_SLOTS = 1
 const MAX_VERIFY_SLOTS = 64
+const CORES_PER_SLOT = 4, MAX_DEFAULT_SLOTS = 4
 
-export function verificationSlotCount(env: NodeJS.ProcessEnv = process.env): number {
+/** The default slot count for a machine with `cores` logical cores. */
+export function defaultVerificationSlots(cores: number = typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length): number {
+  return Math.max(1, Math.min(MAX_DEFAULT_SLOTS, Math.floor((Number.isFinite(cores) ? cores : 1) / CORES_PER_SLOT)))
+}
+
+export function verificationSlotCount(env: NodeJS.ProcessEnv = process.env, cores?: number): number {
+  const fallback = defaultVerificationSlots(cores)
   const raw = env[VERIFY_SLOTS_ENV]?.trim().toLowerCase()
-  if (raw === undefined || raw === '') return DEFAULT_VERIFY_SLOTS
+  if (raw === undefined || raw === '') return fallback
   if (raw === 'off') return 0
   const value = Number(raw)
-  return Number.isInteger(value) && value >= 0 ? Math.min(value, MAX_VERIFY_SLOTS) : DEFAULT_VERIFY_SLOTS
+  return Number.isInteger(value) && value >= 0 ? Math.min(value, MAX_VERIFY_SLOTS) : fallback
 }
 
 export interface VerificationSlotOptions {

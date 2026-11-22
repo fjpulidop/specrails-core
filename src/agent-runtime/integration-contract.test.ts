@@ -23,7 +23,7 @@ const contract = JSON.parse(readFileSync(new URL('../../integration-contract.jso
 
 describe('Desktop integration contract', () => {
   it('matches the runtime identity and ordered implementation phases', () => {
-    expect(contract.schemaVersion).toBe('5.12')
+    expect(contract.schemaVersion).toBe('5.17')
     expect(contract.agentRuntime.apiVersion).toBe(RUNTIME_API_VERSION)
     expect(contract.agentRuntime.workflowVersion).toBe(CORE_WORKFLOW_VERSION)
     expect(contract.agentRuntime.instructionsVersion).toBe(String(ROLE_INSTRUCTIONS_VERSION))
@@ -48,6 +48,44 @@ describe('Desktop integration contract', () => {
     expect(contract.agentRuntime.pauseRuns).toMatchObject({ version: 1, capability: 'pauseRuns', outcomes: [...PAUSE_OUTCOMES] })
     expect(contract.agentRuntime.pauseRuns.reason).toContain(PAUSE_REASON.source)
     expect(contract.agentRuntime.cliOperations).toContain('pause')
+  })
+
+  it('documents role decisions as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.agentRuntime.roleDecisions).toMatchObject({ version: 1, capability: 'roleDecisions' })
+    expect(contract.agentRuntime.roleDecisions.param).toContain("decisions: 'ask'")
+    expect(contract.agentRuntime.roleDecisions.freeze).toContain('tasks_contradict_non_goals')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.roleDecisions).toBe(1)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.reviewTriage).toBe(2)
+    expect(contract.agentRuntime.reviewTriage).toMatchObject({ version: 2, capability: 'reviewTriage' })
+    expect(contract.agentRuntime.reviewTriage.semantics).toContain('[out-of-scope]')
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.environmentRepairSignal).toBe(1)
+    expect(contract.agentRuntime.environmentRepairSignal).toMatchObject({ version: 1, capability: 'environmentRepairSignal' })
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.machineInstalls).toBe(1)
+    expect(contract.agentRuntime.machineInstalls).toMatchObject({ version: 1, capability: 'machineInstalls' })
+  })
+
+  it('documents structured question options as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.schemaVersion).toBe('5.17')
+    expect(contract.agentRuntime.questionOptions).toMatchObject({ version: 1, capability: 'questionOptions' })
+    expect(contract.agentRuntime.questionOptions.answer).toContain('--option')
+    expect(contract.agentRuntime.questionOptions.reject).toContain('--reject')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    expect((messages[0] as { capabilities: Record<string, unknown> }).capabilities.questionOptions).toBe(1)
+  })
+
+  it('documents fork route overrides as an additive capability the runtime advertises (contract 5.17)', async () => {
+    expect(contract.schemaVersion).toBe('5.17')
+    expect(contract.agentRuntime.forkRouteOverrides).toMatchObject({ version: 1, capability: 'forkRouteOverrides' })
+    expect(contract.agentRuntime.forkRouteOverrides.cli).toContain('runtime fork')
+    expect(contract.agentRuntime.forkRouteOverrides.cli).toContain('--route-overrides')
+    const messages: unknown[] = []
+    expect(await runRuntimeCommand({}, ['api'], value => messages.push(value))).toBe(0)
+    const capabilities = (messages[0] as { capabilities: Record<string, unknown> }).capabilities
+    expect(capabilities.forkRouteOverrides).toBe(1)
+    expect(capabilities.routeOverrides).toBe(1)
   })
 
   it('covers every machine operation exactly once and classifies presentation separately', () => {
@@ -94,6 +132,10 @@ describe('Desktop integration contract', () => {
     expect(sessions.eventTypes).toEqual([...SESSION_EVENT_TYPES])
     expect(sessions.capabilities).toEqual(Object.keys(SESSION_HOST_CAPABILITIES))
     expect(sessions.deliveries).toEqual([...SESSION_DELIVERIES])
+    expect(sessions.deferredMcpTools).toMatch(/drivers\[\]\.capabilities\.deferredMcpTools/)
+    expect(sessions.rateLimits).toMatch(/provider\.rate-limit/)
+    expect(sessions.rateLimits).toMatch(/capabilities\.reportsRateLimits/)
+    expect(contract.agentRuntime.failureClassification.record).toContain('resetsAt?')
     const send = validatorFor('session.send')!
     for (const delivery of sessions.deliveries) expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery } })).toBe(true)
     expect(send({ sessionId: 's', input: { inputId: 'i', text: 't', delivery: 'later' } })).toBe(false)
@@ -156,7 +198,7 @@ describe('Desktop integration contract', () => {
 
   it('announces the failure classification with exactly the kinds the classifier emits', async () => {
     const failure = contract.agentRuntime.failureClassification
-    expect(failure).toMatchObject({ version: 1, capability: 'failureClassification' })
+    expect(failure).toMatchObject({ version: 4, capability: 'failureClassification' })
     expect(failure.kinds).toEqual([...FAILURE_KINDS])
     expect(Object.keys(failure.kindMeaning)).toEqual([...FAILURE_KINDS])
     const messages: unknown[] = []

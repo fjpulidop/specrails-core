@@ -4,6 +4,7 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readFileSync, re
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { stripVTControlCharacters } from 'node:util'
+import { fileURLToPath } from 'node:url'
 
 /** Wall-clock limit of one verification command without its own `timeoutMs` (tests, lint, type checks). */
 export const DEFAULT_VERIFICATION_TIMEOUT_MS = 15 * 60_000
@@ -173,6 +174,27 @@ function probeLoginShellPath(shell: string, env: NodeJS.ProcessEnv): string | nu
   const begin = result.stdout.indexOf(LOGIN_PATH_BEGIN)
   const end = begin < 0 ? -1 : result.stdout.indexOf(LOGIN_PATH_END, begin)
   return end < 0 ? null : result.stdout.slice(begin + LOGIN_PATH_BEGIN.length, end) || null
+}
+/** The Electron guard Core ships next to this module (absent in a project's copy of this file). */
+export const ELECTRON_HEADLESS_GUARD = fileURLToPath(new URL('./electron-headless-guard.cjs', import.meta.url))
+/**
+ * The headless contract for every agent and project command Core starts: the
+ * person keeps using this machine, so nothing a run starts may open a window
+ * over theirs or take focus. `SPECRAILS_HEADLESS=1` tells a project's launcher
+ * and tests to keep windows hidden; `BROWSER=none` stops dev servers (Vite,
+ * Create React App, webbrowser) from opening a browser tab; the guard on
+ * `NODE_OPTIONS` keeps any Electron window transparent, click-through and
+ * unfocused even when the project does not honour the variable. An explicit
+ * `SPECRAILS_HEADLESS=0` in the host environment opts out.
+ */
+export function headlessEnvironment(env: NodeJS.ProcessEnv, guard: string = ELECTRON_HEADLESS_GUARD, exists: (file: string) => boolean = existsSync): NodeJS.ProcessEnv {
+  if (env.SPECRAILS_HEADLESS === '0') return env
+  const result: NodeJS.ProcessEnv = { ...env, SPECRAILS_HEADLESS: '1', BROWSER: 'none' }
+  const current = env.NODE_OPTIONS ?? ''
+  // The option quotes the path (JSON), which doubles Windows backslashes: match either spelling.
+  const quoted = JSON.stringify(guard)
+  if (!current.includes(quoted) && !current.includes(guard) && exists(guard)) result.NODE_OPTIONS = `${current} --require ${quoted}`.trim()
+  return result
 }
 /**
  * The environment for the project's own commands (dependency installs and
@@ -453,7 +475,7 @@ function fileFingerprint(file: string, ancestors = new Set<string>(), budget = {
   if (linkedTree && budget.bytes > 256 * 1024 * 1024) fail('Linked candidate inputs exceed fingerprint byte limit: ' + file)
   return (stat.mode & 0o111 ? 'executable:' : 'file:') + digest(readFileSync(file))
 }
-function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: boolean }> {
+function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: boolean; gitlink?: string }> {
   // A provider's temporary GIT_CONFIG_COUNT/excludesFile must not hide
   // candidate files from verification or change receipt validity at handoff.
   const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')))
@@ -465,7 +487,20 @@ function trackedFiles(repo: PipelineRepository): Array<{ file: string; tracked: 
     return result.stdout.split('\0').filter(Boolean)
   }
   const tracked = new Set(list(['--cached']))
-  return [...new Set([...tracked, ...list(['--others', '--exclude-standard'])])].sort().map(file => ({ file, tracked: tracked.has(file) }))
+  // A submodule is a gitlink (mode 160000): its path is a directory, or empty when the
+  // checkout did not initialize it. Its identity is the commit it points at, never its files.
+  const gitlinks = new Map<string, string>()
+  for (const entry of list(['--cached', '--stage'])) {
+    const match = /^160000 ([0-9a-f]{40,64}) \d\t(.+)$/.exec(entry)
+    if (match) gitlinks.set(match[2], match[1])
+  }
+  return [...new Set([...tracked, ...list(['--others', '--exclude-standard'])])].sort().map(file => ({ file, tracked: tracked.has(file), ...(gitlinks.has(file) ? { gitlink: gitlinks.get(file)! } : {}) }))
+}
+/** A submodule's fingerprint: the commit its checkout is on (the index pointer when it is not initialized). */
+function gitlinkFingerprint(directory: string, indexCommit: string): string {
+  const head = spawnSync('git', ['-C', directory, 'rev-parse', '--verify', '-q', 'HEAD'], { encoding: 'utf8', windowsHide: true, env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1' } })
+  const commit = head.status === 0 && existsSync(path.join(directory, '.git')) ? head.stdout.trim() : indexCommit
+  return 'gitlink:' + commit
 }
 function untrackedAgentMemory(relative: string): boolean {
   // Native project memory can be written automatically after a role finishes,
@@ -494,7 +529,7 @@ export function candidateManifest(state: CandidateScope): CandidateManifest {
     id: repo.id, path: repo.path,
     files: trackedFiles(repo)
       .filter(({ file, tracked }) => !excluded(state, repo, relativeUnix(file)) && (tracked || (!untrackedAgentMemory(relativeUnix(file)) && !untrackedGeneratedOutput(relativeUnix(file)))))
-      .map(({ file }): [string, string] => [relativeUnix(file), fileFingerprint(path.join(repo.path, file))]),
+      .map(({ file, gitlink }): [string, string] => [relativeUnix(file), gitlink ? gitlinkFingerprint(path.join(repo.path, file), gitlink) : fileFingerprint(path.join(repo.path, file))]),
   }))
   return { schemaVersion: 1, scopeHash: state.scopeHash, repositories: entries }
 }
@@ -926,6 +961,18 @@ function validateCommand(context: PipelineContext, raw: unknown): VerificationCo
  * than importing a helper absent from installed projects. Like runCommand, it
  * handles Windows shims; unlike a shell string it refuses ambiguous arguments.
  */
+/**
+ * The reason a verification command never started. A missing executable is the
+ * common case (a toolchain the repository needs is not installed), so it is
+ * named as such with what to do next instead of a bare `spawn x ENOENT`.
+ */
+export function describeStartFailure(command: string, error: Error & { code?: string }): string {
+  const name = path.basename(command)
+  if (error.code === 'ENOENT') return `Verification command could not start: \`${name}\` is not installed or not on PATH (${error.message}). Install it or change the project's verification command, then retry verification.`
+  if (error.code === 'EACCES') return `Verification command could not start: \`${name}\` is not executable (${error.message}). Fix its permissions, then retry verification.`
+  return `Verification command could not start: ${error.message}`
+}
+
 export function verificationInvocation(command: string, args: string[], cwd: string, platform: NodeJS.Platform = process.platform, env: NodeJS.ProcessEnv = process.env): { command: string; args: string[]; windowsVerbatimArguments?: boolean } {
   if (platform !== 'win32') return { command, args }
   // An explicit shell line (`cmd /d /s /c <line>`) is already cmd syntax. Node's
@@ -961,8 +1008,94 @@ export function redactRuntimeText(text: string, env: NodeJS.ProcessEnv = process
     .replace(/https?:\/\/[^\s"'<>]+/gi, value => { try { const url = new URL(value); return url.origin + url.pathname } catch { return '[url]' } })
 }
 
+/**
+ * A project virtual environment at `<cwd>/.venv` (the one environment preparation
+ * creates instead of installing into the system Python) is active for the
+ * project's commands, exactly as `source .venv/bin/activate` would make it, so
+ * `python3 -m pytest` resolves the project's own packages. An explicit
+ * VIRTUAL_ENV from the command's overrides wins.
+ */
+/** PATH list separator of the platform a command runs on (a `platform` argument may name another host's). */
+const pathDelimiter = (platform: NodeJS.Platform): string => platform === 'win32' ? ';' : ':'
+
+export function activateProjectVirtualEnv(env: NodeJS.ProcessEnv, cwd: string, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  const venv = path.join(cwd, '.venv'), bin = path.join(venv, platform === 'win32' ? 'Scripts' : 'bin')
+  if (env.VIRTUAL_ENV && env.VIRTUAL_ENV !== venv) return env
+  if (!existsSync(path.join(bin, platform === 'win32' ? 'python.exe' : 'python'))) return env
+  const key = platform === 'win32' ? Object.keys(env).find(name => name.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
+  const current = env[key] ?? ''
+  const delimiter = pathDelimiter(platform)
+  if (current.split(delimiter)[0] === bin) return env
+  return { ...env, VIRTUAL_ENV: venv, [key]: current ? `${bin}${delimiter}${current}` : bin }
+}
+
+/**
+ * Arguments that make a package script which starts a test watcher (`jest --watchAll`,
+ * `jest --watch`, `vitest --watch`) run once, as verification needs. Only the
+ * runners' own documented switches are added (`--watchAll=false --watch=false`,
+ * `--run`); anything else is left alone and the watch-prompt and silence bounds apply.
+ */
+export function runOnceArguments(command: string, args: readonly string[], cwd: string): string[] {
+  const manager = path.basename(command).replace(/\.(cmd|exe)$/i, '')
+  if (!['npm', 'pnpm', 'yarn', 'bun'].includes(manager)) return []
+  const script = args[0] === 'run' || args[0] === 'run-script' ? args[1] : args[0]
+  if (!script || args.includes('--')) return []
+  let body: unknown
+  try { body = (JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as { scripts?: Record<string, unknown> }).scripts?.[script] } catch { return [] }
+  if (typeof body !== 'string') return []
+  const separator = manager === 'npm' || manager === 'pnpm' ? ['--'] : []
+  if (/\bjest\b/.test(body) && /(^|\s)--watch(All)?(?=\s|$)/.test(body)) return [...separator, '--watchAll=false', '--watch=false']
+  if (/\bvitest\b/.test(body) && (/(^|\s)(--watch|-w)(?=\s|$)/.test(body) || /\bvitest\s+watch\b/.test(body))) return [...separator, '--run']
+  return []
+}
+
+/**
+ * A yarn, pnpm or bun command whose executable is not on the command's PATH (no
+ * global install, no corepack on Node 25) runs through `npx --yes <manager>@<version>`
+ * at the version the repository's `packageManager` pins. Nothing is installed globally.
+ * Returns the npx prefix, or null when the command runs as written.
+ */
+export function packageManagerFallback(command: string, cwd: string, env: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): string[] | null {
+  const manager = path.basename(command).replace(/\.(cmd|exe)$/i, '')
+  if (!['yarn', 'pnpm', 'bun'].includes(manager) || command !== manager) return null
+  const pathKey = platform === 'win32' ? Object.keys(env).find(key => key.toUpperCase() === 'PATH') ?? 'Path' : 'PATH'
+  const names = platform === 'win32' ? [`${manager}.cmd`, `${manager}.exe`] : [manager]
+  for (const dir of (env[pathKey] ?? '').split(pathDelimiter(platform))) if (dir && names.some(name => existsSync(path.join(dir, name)))) return null
+  let pinned: string | undefined
+  try { pinned = (JSON.parse(readFileSync(path.join(cwd, 'package.json'), 'utf8')) as { packageManager?: unknown }).packageManager as string | undefined } catch { /* no manifest */ }
+  const match = typeof pinned === 'string' ? /^(yarn|pnpm|bun)@([0-9][^+\s]*)/.exec(pinned.trim()) : null
+  const version = match && match[1] === manager ? match[2] : manager === 'yarn' ? '1' : 'latest'
+  return ['--yes', `${manager}@${version}`]
+}
+
+/** Whether a command printed anything beyond a package manager's `> script` banner. */
+export function producedOwnOutput(output: string): boolean {
+  return stripVTControlCharacters(output).split(/\r?\n/).some(line => line.trim() !== '' && !/^\s*>\s/.test(line))
+}
+
+/** Prompts test runners and compilers print when they wait for file changes instead of exiting. */
+const WATCH_PROMPT = /Watch Usage|Press w to show more|Waiting for file changes|press h to show help, press q to quit|Watching for file changes|\[nodemon\] (?:clean exit - )?waiting for changes/i
+export function watchModeReason(command: { command: string; args: string[] }, prompt: string): string {
+  const line = [command.command, ...command.args].join(' ')
+  return `Verification command \`${line}\` started in watch mode ("${prompt.trim()}") and waits for file changes instead of exiting, so it was stopped. Verify with a command that runs once (for example \`jest --watchAll=false\`, \`vitest run\` or the script's CI variant) or change the project's test script, then retry verification.`
+}
+
 /** Silence a verification command may keep before it counts as hung (env `SPECRAILS_VERIFY_IDLE_TIMEOUT_MS`, default 5 min). */
 function verificationIdleTimeoutMs(): number { const raw = Number(process.env.SPECRAILS_VERIFY_IDLE_TIMEOUT_MS); return Number.isFinite(raw) && raw >= 100 ? raw : 5 * 60_000 }
+const minutes = (ms: number): string => ms >= 60_000 ? `${Math.round(ms / 60_000)} min` : `${Math.max(1, Math.round(ms / 1000))} s`
+/**
+ * Why a verification command was stopped at its wall-clock limit. It names the command, the
+ * limit and where the limit came from, because a suite slower than its limit fails the same way
+ * every time it runs again: the person raises the command's `timeoutMs` or speeds the suite up.
+ * Starts with "Verification command timed out" (the failure classifier's key). Pure.
+ */
+export function timeLimitReason(command: { command: string; args: string[] }, appliedMs: number, configuredMs: number, lastOutputLine = ''): string {
+  const shown = `\`${[command.command, ...command.args].join(' ')}\``
+  const last = lastOutputLine.trim() ? ` Last output: ${lastOutputLine.trim().slice(0, 300)}` : ''
+  if (appliedMs < configuredMs) return `Verification command timed out: ${shown} was still running when the run's remaining time budget (${minutes(appliedMs)}) ran out; its own limit is ${minutes(configuredMs)}.${last}`
+  return `Verification command timed out: ${shown} was still running when it reached its ${minutes(configuredMs)} limit and was stopped. Running it again will stop the same way: if the suite is just slow, give this verification command a longer timeout (timeoutMs) in the project's verification settings, or make the suite faster.${last}`
+}
+
 /** Structured shell execution with the same scope, environment and tree-kill rules, without a receipt or journal. */
 export async function executeVerificationCommand(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; idleTimeoutMs?: number } = {}): Promise<CommandReceipt> {
   return executeCheck(validateCommand(validatePipelineContext(contextInput), raw), log, signal, options.deadline, undefined, options.idleTimeoutMs)
@@ -974,7 +1107,7 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   const keys = verificationEnvironmentKeys(process.env, overrideKeys)
   const hash = environmentHash(keys)
   const overridesHash = digest(canonical(overrides))
-  const env = verificationEnvironment(projectCommandEnvironment(process.env), overrides)
+  const env = activateProjectVirtualEnv(verificationEnvironment(headlessEnvironment(projectCommandEnvironment(process.env)), overrides), command.cwd)
   const configuredTimeoutMs = command.timeoutMs ?? DEFAULT_VERIFICATION_TIMEOUT_MS
   const appliedTimeoutMs = Math.max(0, Math.min(configuredTimeoutMs, deadline === undefined ? Infinity : deadline - Date.now()))
   // A test that never returns (a `while` that cannot exit) keeps a runner at
@@ -1022,7 +1155,13 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
     if (signal?.aborted) { abort(); return }
     if (appliedTimeoutMs <= 0) { outcome = 'timed-out'; stop('Workflow verification deadline exhausted'); return }
     try {
-      const invocation = verificationInvocation(command.command, command.args, command.cwd, process.platform, env)
+      const once = runOnceArguments(command.command, command.args, command.cwd)
+      if (once.length) { try { log(`[specrails] the test script starts a watcher; running it once with ${once.filter(arg => arg !== '--').join(' ')}\n`) } catch { /* observer */ } }
+      const manager = packageManagerFallback(command.command, command.cwd, env)
+      if (manager) { try { log(`[specrails] ${command.command} is not installed; running it through npx as ${manager.join(' ')}\n`) } catch { /* observer */ } }
+      const invocation = manager
+        ? verificationInvocation('npx', [...manager, ...command.args, ...once], command.cwd, process.platform, env)
+        : verificationInvocation(command.command, [...command.args, ...once], command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
     } catch (error) { terminate(`Verification command could not start: ${String(error)}`); finish(-1); return }
     for (const stream of ['stdout', 'stderr'] as const) {
@@ -1038,8 +1177,13 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
         }
         output = (output + text).slice(-32_000)
         lastOutputAt = Date.now()
-        const lastLine = stripVTControlCharacters(text).trim().split('\n').pop()?.trim()
+        const plain = stripVTControlCharacters(text)
+        const lastLine = plain.trim().split('\n').pop()?.trim()
         if (lastLine) lastOutputLine = lastLine.slice(0, 200)
+        // A watcher never exits: stop it at its prompt instead of holding the machine-wide
+        // verification slot until the silence bound, and say how to run the check once.
+        const watch = WATCH_PROMPT.exec(plain)
+        if (watch && !stopping && !done) { outcome = 'failed'; stop(watchModeReason(command, watch[0])) }
         // Redact whole bounded lines, so chunk boundaries cannot split credentials.
         for (const part of text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
           if (!droppingLine) liveLine += part
@@ -1053,17 +1197,22 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       child[stream]?.on('data', (chunk: Buffer) => receive(decoder.write(chunk)))
       child[stream]?.on('end', () => { receive(decoder.end()); if (liveLine) { try { log(redact(liveLine)) } catch { /* observer */ } } })
     }
-    child.on('error', (error) => { if (child.pid) output = (output + error.message).slice(-32_000); else { terminate(`Verification command could not start: ${error.message}`); finish(-1) } })
+    child.on('error', (error) => { if (child.pid) output = (output + error.message).slice(-32_000); else { terminate(describeStartFailure(command.command, error)); finish(-1) } })
     child.on('close', (code, killedBy) => {
       if (code === null && killedBy && !stopping && !done) terminate(`Verification command was killed by ${killedBy} from outside the runner (for example out of memory).`)
       finish(code ?? -1)
     })
     signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(() => { outcome = 'timed-out'; stop('Verification command timed out') }, appliedTimeoutMs)
+    timer = setTimeout(() => { outcome = 'timed-out'; stop(timeLimitReason(command, appliedTimeoutMs, configuredTimeoutMs, lastOutputLine)) }, appliedTimeoutMs)
     if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
       if (Date.now() - lastOutputAt < idleTimeoutMs) return
       outcome = 'timed-out'
-      stop(`Verification command produced no output for ${idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`} and was stopped: a test is probably hanging (infinite loop or an open handle).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`)
+      const silence = idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`
+      // Only a package manager's script banner ("> name", "> playwright test") means the tool
+      // itself never started working: that is a stuck tool or runtime, not a hanging test.
+      stop(producedOwnOutput(output)
+        ? `Verification command produced no output for ${silence} and was stopped: a test is probably hanging (infinite loop or an open handle).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`
+        : `Verification command \`${[command.command, ...command.args].join(' ')}\` printed nothing of its own for ${silence} and was stopped: the tool hung before running any test (for example a test runner version incompatible with Node ${process.versions.node}, or a prompt waiting for input).${lastOutputLine ? ` Last output: ${lastOutputLine}` : ''}`)
     }, Math.max(50, Math.min(5_000, Math.floor(idleTimeoutMs / 4))))
     if (signal?.aborted) abort()
   })

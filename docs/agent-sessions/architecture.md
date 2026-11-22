@@ -45,7 +45,7 @@ domain ← application ← { drivers | journal | host } ← index.ts ← cli.ts 
 | --- | --- |
 | Single responsibility | Translators interpret provider frames; transports move bytes; the session service applies use cases; the supervisor owns timers; the journal persists; handlers map protocol to use cases. |
 | Open/closed | A new provider is a new `drivers/<id>/` folder, a registry entry and a passing conformance run. A new policy field is a domain value plus per-driver mapping. Existing code does not change. |
-| Liskov substitution | Every driver passes the same [conformance kit](drivers.md#conformance). Capabilities are declared in the descriptor and never faked. The application adapts to declarations, not to provider ids. |
+| Liskov substitution | Every driver passes the same [conformance kit](drivers.md#tests-and-fixtures). Capabilities are declared in the descriptor and never faked. The application adapts to declarations, not to provider ids. |
 | Interface segregation | `DriverSession` exposes send, interrupt, stop sub-agents and close; the journal port exposes append, read and baseline operations. Batch `AgentExecutor` is not widened. An adapter connects it instead. |
 | Dependency inversion | Application code depends on `ports.ts`. Processes, SQLite, clocks and ids are injected at the composition root. |
 

@@ -68,6 +68,35 @@ describe('SessionService — resident turns', () => {
     expect(ctx.published.map((envelope) => envelope.seq)).toEqual(ctx.journal.events(sessionId).map((envelope) => envelope.seq))
   })
 
+  it('journals the driver-reported context snapshot with the completed turn', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    const context = { usedTokens: 42_000, windowTokens: 200_000, model: 'm' }
+    driver.emit(
+      { kind: 'input.receipt', inputId: 'u1', state: 'started' },
+      { kind: 'turn.started', trigger: 'input', inputIds: ['u1'] },
+      { kind: 'turn.completed', status: 'completed', text: 'ok', usage: { outputTokens: 5 }, context },
+    )
+    await ctx.service.send(sessionId, { inputId: 'u2', text: 'again', delivery: 'queue' })
+    userTurn(driver, 'u2', 'two')
+    const completed = of(ctx.events(sessionId), 'turn.completed')
+    expect(completed[0]!.context).toEqual(context)
+    expect(completed[1]).not.toHaveProperty('context')
+    expect(ctx.service.snapshot(sessionId).turns.map((turn) => turn.context)).toEqual([context, undefined])
+  })
+
+  it('journals the account usage-limit state only when it changes and keeps the latest on the snapshot', async () => {
+    const ctx = setup()
+    const { sessionId, driver } = await openAndSend(ctx)
+    const report = (utilization: number, status: 'allowed' | 'rejected' = 'allowed') => ({ kind: 'rate-limit' as const, rateLimit: {
+      status, rateLimitType: 'five_hour', resetsAt: '2026-11-18T14:00:00.000Z', utilization, windows: { five_hour: { utilization, resetsAt: '2026-11-18T14:00:00.000Z' } }, overage: null,
+    } })
+    driver.emit(report(0.5), report(0.5), report(0.51), report(1, 'rejected'))
+    const reported = of(ctx.events(sessionId), 'provider.rate-limit')
+    expect(reported.map((event) => [event.rateLimit.status, event.rateLimit.utilization])).toEqual([['allowed', 0.5], ['allowed', 0.51], ['rejected', 1]])
+    expect(ctx.service.snapshot(sessionId).rateLimit).toMatchObject({ status: 'rejected', utilization: 1 })
+  })
+
   it('treats a retried input id as idempotent and rejects different content', async () => {
     const ctx = setup()
     const { sessionId, driver } = await openAndSend(ctx)

@@ -1,7 +1,8 @@
-import type { SubagentPhase } from '../../domain/types.js'
+import type { ContextUsage, SubagentPhase } from '../../domain/types.js'
 import type { ToolActivity } from '../../domain/events.js'
 import type { DriverEvent } from '../../ports.js'
 import type { ReportedUsage } from '../../domain/usage.js'
+import { codexRateLimit } from '../../../provider-rate-limits.js'
 
 /**
  * Anti-corruption layer for `codex app-server` notifications (codex-cli 0.153.4
@@ -75,6 +76,8 @@ export class CodexTranslator {
   private readonly childPhase = new Map<string, SubagentPhase>()
   private readonly childLastText = new Map<string, string>()
   private rootUsage: Json | null = null
+  /** Root thread's last request size and window, from this turn's `tokenUsage` (`last`, not cumulative `total`). */
+  private rootContext: { usedTokens: number | null; windowTokens: number | null } | null = null
   private model: string | null = null
   private interruptRequested = false
 
@@ -98,6 +101,11 @@ export class CodexTranslator {
       const message = str(obj(params.error).message) ?? 'Codex reported an error'
       return [{ kind: 'diagnostic', level: 'warning', code: params.willRetry === true ? 'provider.retrying' : 'provider.error', message: message.slice(0, 2_000) }]
     }
+    // Account-wide, not per thread: the plan's usage windows.
+    if (method === 'account/rateLimits/updated') {
+      const rateLimit = codexRateLimit(params.rateLimits)
+      return rateLimit ? [{ kind: 'rate-limit', rateLimit }] : []
+    }
     if (!threadId) return []
     if (threadId === this.rootThread) return this.root(method, params)
     if (this.children.has(threadId)) return this.child(threadId, method, params)
@@ -114,6 +122,7 @@ export class CodexTranslator {
         this.rootTurn = turnId
         this.rootText = ''
         this.rootFinal = null
+        this.rootContext = null
         const inputIds = this.pendingInputs
         this.pendingInputs = []
         return [{ kind: 'turn.started', trigger: inputIds.length > 0 ? 'input' : 'continuation', inputIds }]
@@ -128,9 +137,14 @@ export class CodexTranslator {
       case 'item/started':
       case 'item/completed':
         return this.item(null, obj(params.item), method === 'item/completed')
-      case 'thread/tokenUsage/updated':
-        this.rootUsage = obj(obj(params.tokenUsage).total)
+      case 'thread/tokenUsage/updated': {
+        const tokenUsage = obj(params.tokenUsage)
+        this.rootUsage = obj(tokenUsage.total)
+        const usedTokens = num(obj(tokenUsage.last).totalTokens)
+        const windowTokens = num(tokenUsage.modelContextWindow)
+        if (usedTokens !== null || windowTokens !== null) this.rootContext = { usedTokens, windowTokens }
         return []
+      }
       case 'turn/completed': {
         const turn = obj(params.turn)
         if (!this.rootTurn || str(turn.id) !== this.rootTurn) return []
@@ -140,6 +154,8 @@ export class CodexTranslator {
         const interrupted = this.interruptRequested || status === 'interrupted'
         this.interruptRequested = false
         this.rootTurn = null
+        const context: ContextUsage | undefined = this.rootContext ? { ...this.rootContext, model: this.model } : undefined
+        this.rootContext = null
         const error = str(obj(turn.error).message)
         events.push({
           kind: 'turn.completed',
@@ -147,6 +163,7 @@ export class CodexTranslator {
           text: this.rootFinal ?? this.rootText,
           ...(status === 'failed' && !interrupted ? { error: error ?? 'Codex turn failed' } : {}),
           usage: { ...(this.rootUsage ? tokens(this.rootUsage) : {}), model: this.model },
+          ...(context ? { context } : {}),
         })
         return events
       }

@@ -102,6 +102,27 @@ describe.each(implementations)('SessionJournal contract (%s)', (_name, make) => 
     expect(journal.snapshot('ghost')).toBeNull()
     expect(journal.getSession('ghost')).toBeNull()
   })
+  it('round-trips the turn context snapshot and folds turns journaled without one', async () => {
+    const journal = await withSession()
+    const context = { usedTokens: 31_914, windowTokens: 1_000_000, model: 'claude-sonnet-4-5[1m]', compacted: false }
+    const returned = journal.append('s1', [
+      opened,
+      { type: 'session.phase', phase: 'turn', at },
+      { type: 'turn.started', turnId: 't1', origin: 'user', inputIds: [], at },
+      // An event written before the field existed.
+      { type: 'turn.completed', turnId: 't1', status: 'completed', text: 'old', usage: EMPTY_USAGE, at },
+      { type: 'turn.started', turnId: 't2', origin: 'user', inputIds: [], at },
+      { type: 'turn.completed', turnId: 't2', status: 'completed', text: 'new', usage: EMPTY_USAGE, context, at },
+    ])
+    const replayed = journal.read('s1', 0, 100).events
+    expect(replayed).toEqual(returned)
+    expect(replayed[3]!.event).not.toHaveProperty('context')
+    expect(replayed[5]!.event).toMatchObject({ context })
+    const turns = journal.snapshot('s1')!.turns
+    expect(turns[0]).not.toHaveProperty('context')
+    expect(turns[1]!.context).toEqual(context)
+  })
+
   it('persists, returns and replays tool I/O with secrets redacted', async () => {
     const journal = await withSession()
     const secret = 'ghp_' + 'Q1w2E3r4T5'.repeat(4)

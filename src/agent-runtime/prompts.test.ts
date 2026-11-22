@@ -25,6 +25,49 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('failed-check')
     expect(prompt.length).toBeLessThan(30_000)
   })
+  it('tells the developer to tag requirement tests, so the first review does not reject only for missing tags', () => {
+    // Delivered library and Java runs each spent a fixer round (~20% of the cost, ~40 s) adding `[spec:…]` tags.
+    const prompt = roleInstructions('developer', context, 'change')
+    expect(prompt).toContain('[spec:<capability>/<requirement-slug>]')
+    expect(prompt).toContain('// spec: <capability>/<requirement-slug>')
+  })
+  it('treats a criterion the person withdrew in an answer as their accepted exception', () => {
+    // An impossible spec: the person answered "drop O(1) and uniqueness", yet the frozen criterion
+    // kept the reviewer rejecting until the correction limit.
+    const prompt = roleInstructions('reviewer', { ...context, specs: [{ ...context.specs[0]!, acceptanceCriteria: ['O(1)'] }] } as PipelineContext, 'change', { criteria: [{ specId: '1', criterionIndex: 0, requirement: 'O(1)' }] } as never)
+    expect(prompt).toContain('Never reject the change for a criterion the person withdrew')
+    expect(prompt).toContain('acceptedBy: "user"')
+  })
+  it('plans and checks canvas output by screenshots and exposed state, never page text', () => {
+    // A canvas game's plan required "page text contains Score", which can never pass: the score is drawn.
+    for (const role of ['architect', 'developer'] as const) {
+      const prompt = roleInstructions(role, context, 'change')
+      expect(prompt).toContain('page text never contains what it draws')
+      expect(prompt).toContain('`--eval` of state the code exposes for tests')
+    }
+  })
+  it('makes the architect check every task against the non-goals before returning', () => {
+    // A WebGL plan required touch controls in a task while design.md listed them as a non-goal: the developer stopped.
+    const prompt = roleInstructions('architect', context, 'change')
+    expect(prompt).toContain('compare every task with the Non-Goals: no task may require what a non-goal excludes')
+    expect(prompt).toContain('that conflict is a question for the person with confidence `low`')
+  })
+  it('never lets the reviewer reject for a host check the developer cannot add', () => {
+    // A Swift package's iOS Simulator build and a Tauri app's cargo tests stalled runs: the reviewer
+    // listed "no host verification covers X" as an issue, the fixer had nothing to change.
+    const prompt = roleInstructions('reviewer', context, 'change')
+    expect(prompt).toContain('The developer cannot add host checks')
+    expect(prompt).toContain('Reject with `issues` only for what a change to the files can fix')
+    expect(prompt).toContain('mark it `blocked` and name, in its evidence, the exact command the host would have to run')
+    expect(prompt).toContain('.specrails/browser-evidence/<capture>/')
+    // A Tauri run hit the correction limit: the reviewer kept asking to delete the Cargo.lock that `cargo test` regenerates.
+    expect(prompt).toContain('never ask for it to be reverted or deleted')
+    // Packets quoted "Bash is disabled in this session, so I could not run git diff" to the person.
+    expect(prompt).toContain('never mention missing shell access')
+    // Packets asked the person to run `git status` on a submodule and to confirm the untracked openspec/ directory.
+    expect(prompt).toContain('Never ask the person to run git because your tools are read-only.')
+    expect(prompt).toContain('the untracked `openspec/` change artifacts')
+  })
   it.each<BuiltinAgentRole>(['architect', 'developer', 'reviewer'])('replaces the %s task definition while preserving dynamic contracts', role => {
     const defaults = rolePromptDefaults()
     expect(roleInstructions(role, context, 'change')).toContain(defaults[role])
@@ -37,6 +80,22 @@ describe('editable role definitions', () => {
     expect(prompt).toContain('Implement the requested feature')
     if (role === 'reviewer') expect(prompt).toContain('spec `ticket`, criterion 0: Works')
     else expect(prompt).toContain('npm test')
+  })
+  it('waives test tags for documentation-only requirements so a docs-only change cannot deadlock in review', () => {
+    const reviewer = roleInstructions('reviewer', context, 'change')
+    expect(reviewer).toContain('claimed by at least one test tag')
+    expect(reviewer).toContain('only governs documentation')
+    expect(reviewer).toContain('never demand a test or a tag for it')
+  })
+  it('tells the developer that a check starts and stops the services it needs, inside the change', () => {
+    const developer = roleInstructions('developer', context, 'change')
+    expect(developer).toContain('starts it itself on this run\'s ports and stops it when it ends')
+    expect(developer).toContain('never make a failing check pass by starting a service outside the change')
+  })
+  it('tells the developer to serve and test on the leased $PORT, never a hard-coded port', () => {
+    const developer = roleInstructions('developer', context, 'change')
+    expect(developer).toContain('this run owns `$PORT`')
+    expect(developer).toContain('never hard-code a port number')
   })
   it('the fixer stance is a fourth editable definition on the developer role: own task text, developer contract and verification tail', () => {
     const defaults = rolePromptDefaults()
@@ -97,13 +156,24 @@ describe('editable role definitions', () => {
   it('states the host blocker contract for the fixer, the toolchain and bypass rules for the developer, and the host plan for custom write roles', () => {
     const verification = [{ repositoryId: 'app', command: 'npm', args: ['run', 'test:e2e'] }]
     // Desktop keeps a parity test against these exact sentences.
-    const DEV_BYPASS = 'Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. When a required tool is missing, install it through the project\'s documented command or report it as a blocker.'
-    const TOOLCHAIN_ALLOW = 'Installing a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv) is allowed and must be reported under verification; editing package-manager, registry, credential, CI or environment configuration remains forbidden.'
+    const DEV_BYPASS = 'Never validate with a temporary configuration, alternate runner or local browser the host verification plan does not use, and never delete such a file to hide it: the host runs the plan as-is. The host browser tool `$SPECRAILS_BROWSE` is not such a bypass: use it to perform the UI or visual check a task asks for. When a required tool is missing, install it (the project\'s documented command, `npx --yes`, or a temporary directory outside the repository) rather than leaving the task undone.'
+    const TOOLCHAIN_ALLOW = 'A missing tool is yours to install: a documented, idempotent toolchain artifact inside the admitted workspace (for example a Playwright browser with `npx playwright install <browser>`, or a Python virtualenv), or a tool run through `npx --yes` or installed in a temporary directory outside the repository, never added to its manifests; report what you installed under verification. Editing package-manager, registry, credential, CI or environment configuration remains forbidden. Never leave a task undone because a tool is missing.'
     const FIXER_BLOCKER = 'When the diagnosed cause is a host precondition or environment blocker (missing network, credentials, environment variable, toolchain, setup command or an out-of-scope repository), make no speculative edits, state in summary that the candidate was intentionally left unchanged, and return `blocker` as {"kind":"network|credential|environment-variable|toolchain|setup|environment|scope","command":"…","cwd":"…","evidence":"exact error","requiredAction":"one imperative sentence the host can act on"}.'
     const BLOCKER_BULLET = '- `blocker`: only when the cause lies outside the change; omit otherwise. The host ends the run with your `requiredAction` instead of starting another correction round.'
     const developer = roleInstructions('developer', context, 'change', { verification })
     expect(developer).toContain(DEV_BYPASS)
     expect(developer).toContain('report it under `incomplete` with the exact error. ' + TOOLCHAIN_ALLOW)
+    // A machine-wide install (rustup target add ran during a wasm run) is the person's: a toolchain blocker instead.
+    expect(developer).toContain('never install or change anything outside the workspace and temporary directories')
+    expect(developer).toContain('`rustup target|toolchain|component add`')
+    // The host asks the person once and installs it: the developer names the exact command in `install`.
+    expect(developer).toContain('never install it yourself: keep the work done, leave that task unticked and return the structured blocker (kind `toolchain`, the failing command, the exact install command as `install`')
+    // triage-rs: cargo rewrote Cargo.lock and the developer left "only src/lib.rs changes" unticked: a stall and a second attempt.
+    expect(developer).toContain('never revert them to satisfy a "only these files change" task, and never leave such a task unticked because of them')
+    // The run checks UI behaviour itself with the host browser tool, and never ticks a person's check.
+    expect(developer).toContain('use the host browser tool when `$SPECRAILS_BROWSE` is set')
+    expect(developer).toContain('A `[human]` task is the person\'s check: never tick it.')
+    expect(roleInstructions('architect', context, 'change', {})).toContain('`- [ ] N.M [human] <the check>`')
     expect(developer).toContain(BLOCKER_BULLET)
     expect(developer).toContain('"blocker":{"kind":"toolchain"')
     expect(developer).not.toContain(FIXER_BLOCKER)

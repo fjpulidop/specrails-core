@@ -1,6 +1,9 @@
 import { codexOutputSchema, restoreOptionalFields } from './codex-schema.js'
 import { assertEffortSupported, cliCapabilities } from './capabilities.js'
 import { providerDiagnostic } from './provider-diagnostic.js'
+import { isProviderUnavailableError } from './failure-classification.js'
+import { claudeRateLimit, describeRateLimit, isRejected } from './provider-rate-limits.js'
+import type { RateLimitInfo } from './session/domain/types.js'
 import { toolEvent } from './tool-event.js'
 import { openSpecPrompt, openSpecPolicy, writeOpenSpecBridge } from './openspec.js'
 import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,7 +24,27 @@ const CLAUDE_SESSION_MISSING = /No conversation found with session ID/i
 
 /** An invocation without `timeoutMs` has no total time limit; the idle timeout still stops one that goes silent. */
 const NO_TOTAL_TIME_LIMIT = 0
-export interface CliExecutorOptions { runProcess?: CliProcessRunner; env?: NodeJS.ProcessEnv }
+export interface CliExecutorOptions {
+  runProcess?: CliProcessRunner
+  env?: NodeJS.ProcessEnv
+  /** Waits before re-running an invocation the provider's service refused before any work (tests shorten them). */
+  transientRetryDelaysMs?: readonly number[]
+}
+/**
+ * A provider outage that refuses a turn before it does anything (Codex's account routing
+ * discovery, a dropped connection, a 5xx) usually clears within a minute. The same
+ * invocation is re-run after these waits; a turn that already did work is never re-run here.
+ */
+export const TRANSIENT_RETRY_DELAYS_MS: readonly number[] = [15_000, 45_000]
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new AgentExecutionError('Execution cancelled', 'aborted')); return }
+    const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve() }, ms)
+    const onAbort = (): void => { clearTimeout(timer); reject(new AgentExecutionError('Execution cancelled', 'aborted')) }
+    signal?.addEventListener('abort', onAbort, { once: true })
+  })
+}
 interface CliInvocationOptions { kimiAgentFile?: string; geminiPolicyFile?: string; codexSchemaFile?: string; openspecBridge?: { command: string; args: string[] }; mcpConfigFile?: string }
 /** Tools a Claude developer may not use: nested agents and platform skills would start a second, unobserved workflow. */
 const CLAUDE_DEVELOPER_DISALLOWED = 'Agent,Task,Skill'
@@ -140,12 +163,17 @@ function inclusiveCacheUsage(reported: Record<string, unknown>): CacheTokenUsage
   return { cacheReadInputTokens: cached !== null && input !== null && cached <= input ? cached : null, uncachedInputTokens: cached !== null && input !== null && cached <= input ? input - cached : null, cacheWriteInputTokens: null }
 }
 interface ParsedCliResult extends AgentResult { terminal: boolean; failed: boolean; turns: number; failureKind?: 'max_turns' | 'cost_budget' | 'structured_output_retries' }
+/** The tool Claude's --json-schema mode submits a structured result through. */
+const CLAUDE_STRUCTURED_TOOL = 'StructuredOutput'
 export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCliResult {
   let text = '', terminal = false, failed = false, sessionId: string | undefined, turns = 0
   let usage = unknownUsage()
   let failureKind: ParsedCliResult['failureKind']
   let structured: Record<string, unknown> | undefined
   const claudeMessages = new Map<string, AgentUsage>()
+  // A model can submit several structured results in one turn (seen: a placeholder next to the real one,
+  // in parallel); the CLI keeps one of them, so the caller must know the result is ambiguous.
+  const submitted = new Map<string, string>()
   for (const line of stdout.split(/\r?\n/)) {
     let event: Record<string, unknown>
     try { event = object(JSON.parse(line)) } catch { continue }
@@ -157,10 +185,16 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
         const message = object(event.message), reported = object(message.usage)
         const messageText = textBlocks(message.content)
         if (messageText) text = messageText
+        if (Array.isArray(message.content)) for (const block of message.content.map(object)) if (block.type === 'tool_use' && block.name === CLAUDE_STRUCTURED_TOOL) submitted.set(String(block.id ?? submitted.size), JSON.stringify(block.input ?? null))
         const id = typeof message.id === 'string' ? message.id : `anonymous-${claudeMessages.size}`
         const input = number(reported.input_tokens)
         claudeMessages.set(id, { inputTokens: input === null ? null : input + (number(reported.cache_read_input_tokens) ?? 0) + (number(reported.cache_creation_input_tokens) ?? 0), outputTokens: number(reported.output_tokens), costUsd: null, ...claudeCacheUsage(reported) })
         turns = claudeMessages.size
+      }
+      // A submission the CLI refused (schema validation) is a retry, not a second result.
+      if (event.type === 'user') {
+        const content = object(event.message).content
+        if (Array.isArray(content)) for (const block of content.map(object)) if (block.type === 'tool_result' && block.is_error === true) submitted.delete(String(block.tool_use_id))
       }
       if (event.type === 'result' && object(event.origin).kind !== 'task-notification') {
         terminal = true
@@ -201,7 +235,7 @@ export function parseCliOutput(provider: CliProvider, stdout: string): ParsedCli
     usage = { inputTokens: messages.some(message => message.inputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.inputTokens ?? 0), 0), outputTokens: messages.some(message => message.outputTokens === null) ? null : messages.reduce((sum, message) => sum + (message.outputTokens ?? 0), 0), costUsd: null, ...sumCacheUsage(messages) }
   }
   if (structured && !text.trim()) text = JSON.stringify(structured)
-  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text), ...(failureKind ? { failureKind } : {}) }
+  return { text, terminal, failed, turns, usage, sessionId, structured: structured ?? parseStructuredText(text), ...(submitted.size ? { structuredResults: new Set(submitted.values()).size } : {}), ...(failureKind ? { failureKind } : {}) }
 }
 /** Live tool activity for one streamed JSON line, or undefined when the line carries none. */
 export function cliToolEvents(provider: CliProvider, event: Record<string, unknown>): AgentEvent[] {
@@ -252,6 +286,8 @@ export class CliExecutor implements AgentExecutor {
     if (this.provider === 'kimi' && request.nativeCommand) request = await renderKimiRequest(request, this.options)
     const normalized = { ...request, prompt: (request.openspec ? openSpecPrompt(request.openspec, 'mcp') : '') + request.prompt, cwd: scope.cwd, allowedRoots: scope.roots }
     const runner = this.options.runProcess ?? runCliProcess
+    // The account's last reported usage-limit state: a refusal explains a failed invocation.
+    let rateLimit: RateLimitInfo | undefined
     let temporary: string | undefined, kimiAgentFile: string | undefined, geminiPolicyFile: string | undefined, codexSchemaFile: string | undefined, stream = '', turns = 0, observedSession: string | undefined
     const assistantIds = new Set<string>()
     const scratch = (): string => temporary ??= mkdtempSync(path.join(tmpdir(), 'specrails-' + this.provider + '-role-'))
@@ -290,7 +326,11 @@ export class CliExecutor implements AgentExecutor {
         codexSchemaFile = path.join(scratch(), 'output-schema.json')
         writeFileSync(codexSchemaFile, JSON.stringify(codexOutputSchema(request.outputSchema)), { mode: 0o600 })
       }
-      const result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
+      const delays = this.options.transientRetryDelaysMs ?? TRANSIENT_RETRY_DELAYS_MS
+      let result: Awaited<ReturnType<typeof runner>>
+      for (let retry = 0; ; retry++) {
+      stream = ''; turns = 0; rateLimit = undefined
+      result = await runner(buildCliInvocation(this.provider, normalized, { kimiAgentFile, geminiPolicyFile, codexSchemaFile, openspecBridge, mcpConfigFile }), {
         cwd: scope.cwd, signal: request.signal, timeoutMs: request.timeoutMs ?? NO_TOTAL_TIME_LIMIT, idleTimeoutMs: request.idleTimeoutMs ?? 15 * 60_000, env: executionEnv,
         onLine: line => {
           stream += line + '\n'
@@ -300,6 +340,11 @@ export class CliExecutor implements AgentExecutor {
           if (typeof sessionId === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(sessionId) && sessionId !== observedSession) {
             observedSession = sessionId
             request.onEvent?.({ kind: 'session', sessionId })
+          }
+          if (this.provider === 'claude' && event.type === 'rate_limit_event') {
+            const reported = claudeRateLimit(event.rate_limit_info)
+            if (reported) { rateLimit = reported; request.onEvent?.({ kind: 'rate-limit', provider: this.provider, rateLimit: reported }) }
+            return
           }
           let delta = ''
           if (this.provider === 'claude' && event.type === 'assistant') {
@@ -320,6 +365,17 @@ export class CliExecutor implements AgentExecutor {
           if (delta) request.onEvent?.({ kind: 'text', text: delta })
         },
       })
+      // The provider's service refused the turn before it did any work: wait and run it again.
+      if (result.exitCode !== 0 && turns === 0 && retry < delays.length && !(rateLimit && isRejected(rateLimit))) {
+        const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
+        if (isProviderUnavailableError('provider_execution_error', `${this.provider} execution failed. ${diagnostic}`)) {
+          request.onEvent?.({ kind: 'text', text: `\n${this.provider} service unavailable (${diagnostic.slice(0, 200)}); retrying in ${Math.round(delays[retry]! / 1000)} s.\n` })
+          await abortableDelay(delays[retry]!, request.signal)
+          continue
+        }
+      }
+      break
+      }
       const parsed = parseCliOutput(this.provider, result.stdout)
       request.onEvent?.({ kind: 'usage', usage: parsed.usage })
       if (parsed.failureKind) {
@@ -335,7 +391,13 @@ export class CliExecutor implements AgentExecutor {
           throw new AgentExecutionError('claude has no stored conversation for the resumed session', 'session_not_found', parsed.usage)
         }
         const diagnostic = providerDiagnostic(result.stdout, result.stderr, { ...process.env, ...this.options.env })
-        throw new AgentExecutionError(`${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`, 'provider_execution_error', parsed.usage)
+        // The provider refused the request on the account's usage limit: a typed, schedulable cause.
+        if (rateLimit && isRejected(rateLimit)) {
+          throw new AgentExecutionError(`${this.provider} usage limit reached (${describeRateLimit(rateLimit)}).${diagnostic ? ' ' + diagnostic : ''}`, 'provider_limit', parsed.usage)
+        }
+        const failure = `${this.provider} execution failed${result.exitCode !== 0 ? ` (exit ${result.exitCode})` : ''}.${diagnostic ? ' ' + diagnostic : ' The provider did not report a diagnostic.'}`
+        // A transient outage is typed so the run is classified provider_unavailable, not a crash.
+        throw new AgentExecutionError(failure, isProviderUnavailableError('provider_execution_error', failure) ? 'provider_unavailable' : 'provider_execution_error', parsed.usage)
       }
       if (!parsed.terminal || !parsed.text.trim()) throw new AgentExecutionError(`${this.provider} exited without a successful final result`, 'incomplete_response', parsed.usage)
       if (request.maxTokens !== undefined) {
@@ -348,7 +410,7 @@ export class CliExecutor implements AgentExecutor {
         parsed.structured = restoreOptionalFields(parsed.structured, request.outputSchema) as Record<string, unknown>
         parsed.text = JSON.stringify(parsed.structured)
       }
-      return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured }
+      return { text: parsed.text, usage: parsed.usage, sessionId: parsed.sessionId, structured: parsed.structured, ...(parsed.structuredResults ? { structuredResults: parsed.structuredResults } : {}) }
     } catch (error) {
       if (error instanceof AgentExecutionError) {
         const partial = parseCliOutput(this.provider, stream)

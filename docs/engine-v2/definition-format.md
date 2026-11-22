@@ -255,7 +255,7 @@ An invalid first preparation gets exactly one repair: `init` sets `artifactRepai
 
 ## Intent Spec
 
-An Intent session's hand-off: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. A reviewer rejection or a failing `check` is not a dead end: it records its findings in `latestFindings` and starts a bounded correction round (`correctionLimit: 2`). `fix` is a `role-turn` of the built-in `developer` with `stance: "fixer"` (write access, the FIXER instructions and the configured fixer engine) that fixes the named defects and adds the tests the findings ask for, tagged `[spec:<capability>/<requirement-slug>]`, without editing `openspec/`. `fix-progress` continues only when the fixer changed the candidate (`$outputs.fix.candidateHash` differs from the hash `check` last verified); `derive` then runs again with `feedback: "{{run.latestFindings}}"` and updates the existing change in place, followed by `check` and a new review. When the fixer changes nothing or the budget is spent, the run ends at `changes-requested`, a failure whose reason names the number of correction rounds and the latest findings. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
+An Intent session's hand-off: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. A reviewer rejection or a failing `check` is not a dead end: it records its findings in `latestFindings` and starts a bounded correction round (`correctionLimit: 2`). `fix` is a `role-turn` of the built-in `developer` with `stance: "fixer"` (write access, the FIXER instructions and the configured fixer engine) that fixes the named defects and adds the tests the findings ask for, tagged `[spec:<capability>/<requirement-slug>]`, without editing `openspec/`. `fix-progress` continues only when the fixer changed the candidate (`$outputs.fix.candidateHash` differs from the hash `check` last verified); `derive` then runs again with `feedback: "{{run.latestFindings}}"` and updates the existing change in place, followed by `check` and a new review. When the fixer changes nothing or the budget is spent, the run ends at `changes-requested`, a failure whose reason names the number of correction rounds and the latest findings. What the person asked for or decided during the Intent session is requested scope: the reviewer never asks to revert it. A change no request or decision supports goes to the reviewer's `unrequested` list; `review-policy` approves only with that list empty, and `scope-gate` ends the run at `scope-decision` (a failure, no correction round) so the person decides whether to keep the change as a requirement or revert it. The fixer never reverts behaviour. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
 
 ```json
 {
@@ -349,18 +349,25 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "kind": "role-turn",
       "params": {
         "roleId": "reviewer",
-        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report.",
+        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report. What the person asked for or decided during the Intent session is requested scope: never ask to revert it. List each change no request or decision supports under unrequested, for the person to decide.",
         "structuredOutput": {
           "type": "object",
           "required": [
             "approved",
-            "issues"
+            "issues",
+            "unrequested"
           ],
           "properties": {
             "approved": {
               "type": "boolean"
             },
             "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unrequested": {
               "type": "array",
               "items": {
                 "type": "string"
@@ -378,7 +385,7 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
     "review-policy": {
       "kind": "condition",
       "params": {
-        "expr": "$outputs.review.structured.approved == true"
+        "expr": "$outputs.review.structured.approved == true && !exists($outputs.review.structured.unrequested.0)"
       },
       "ends": {
         "true": "archive",
@@ -393,8 +400,18 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
         }
       },
       "ends": {
-        "next": "correction-budget",
+        "next": "scope-gate",
         "failed": "failed"
+      }
+    },
+    "scope-gate": {
+      "kind": "condition",
+      "params": {
+        "expr": "exists($outputs.review.structured.unrequested.0)"
+      },
+      "ends": {
+        "true": "scope-decision",
+        "false": "correction-budget"
       }
     },
     "correction-budget": {
@@ -427,7 +444,7 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Correct the code the Intent session built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
+        "prompt": "Correct the code the Intent session built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Never revert behaviour: what the person asked for in the Intent session is in scope, and whether to keep a change nobody asked for is the person's decision; list such a finding under incomplete. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -509,9 +526,17 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
         "reason": "Intent → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
       },
       "ends": {}
+    },
+    "scope-decision": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "Intent → Spec: the review found changes that no request or decision of the Intent session supports; the person decides whether to keep them as requirements or revert them. Latest findings: {{run.latestFindings}}"
+      },
+      "ends": {}
     }
   },
-  "version": "c4808c58c9929da165d9156e9cc02e06f45134e06de26cf57930b11d0812ea04"
+  "version": "f96abb1434ea64295d351994d527048c2f2473843750f2298efd8451615056ed"
 }
 ```
 

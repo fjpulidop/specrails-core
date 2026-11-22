@@ -9,11 +9,11 @@
 // installs once per ecosystem, and only then hands a real failure to the model.
 import type { SpawnSyncOptionsWithStringEncoding, SpawnSyncReturns } from 'node:child_process'
 import crossSpawn from 'cross-spawn'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import semver from 'semver'
-import { projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
+import { headlessEnvironment, packageManagerFallback, projectCommandEnvironment } from '../../pipeline/pipeline-state.js'
 
 // npm/pnpm/yarn are `.cmd` shims on Windows: a bare `spawnSync('npm')` is
 // ENOENT there, which read as an environment failure of its own and sent the
@@ -88,7 +88,12 @@ export interface InstallOutcome extends EnvironmentInstall { ok: boolean; detail
 export interface DriftedDependency { name: string; declared: string; installed: string }
 
 export type HostPreconditionKind = 'network' | 'credential' | 'environment-variable' | 'toolchain' | 'setup' | 'environment'
-export interface HostPrecondition { kind: HostPreconditionKind; reason: string; requiredAction: string }
+export interface HostPrecondition {
+  kind: HostPreconditionKind; reason: string; requiredAction: string
+  /** The exact machine-wide install the person may approve (`rustup target add …`); never run by Core. */
+  install?: string
+  tool?: string
+}
 
 // A Playwright test run on a host whose browser cache was never populated (a
 // fresh machine, a new Playwright version): the package is installed, the
@@ -177,6 +182,20 @@ export function hostPrecondition(output: string): HostPrecondition | undefined {
   // PEP 668: Homebrew/Debian Pythons refuse system-wide installs; the fix is a project venv, not a code edit.
   if (/error: externally-managed-environment\b/.test(text)) return { kind: 'toolchain', reason: 'the system Python refuses package installs (PEP 668 externally managed environment), so verification needs a project virtual environment',
     requiredAction: 'Add setup commands that create a project virtual environment with the Python version the project targets (for example `python3.11 -m venv .venv` and `.venv/bin/pip install -r requirements.txt`), run the checks with `.venv/bin/python`, then retry the run.' }
+  // A full disk fails every install, build and test the same way; no code change frees space.
+  if (/\bENOSPC\b|[Nn]o space left on device|There is not enough space on the disk/.test(text)) return { kind: 'environment', reason: 'the disk that holds the run checkout is full (no space left on device)',
+    requiredAction: 'Free disk space on the volume that holds the Specrails run checkouts (at least a few GB), then retry the run.' }
+  // A toolchain component the machine lacks: installing it changes every project on the
+  // machine, so it is the person's step, never a correction round's.
+  const rustTarget = /the `([\w.-]+)` target may not be installed/.exec(text)
+  if (rustTarget) return { kind: 'toolchain', reason: `the Rust target ${rustTarget[1]} is not installed on this machine`,
+    requiredAction: `Install the target once with \`rustup target add ${rustTarget[1]}\` (it is shared by every project on this machine), then retry the run.`,
+    install: `rustup target add ${rustTarget[1]}`, tool: `the Rust target ${rustTarget[1]}` }
+  const rustComponent = /'([\w-]+)' is not installed for the toolchain '([^']+)'|error: component '([\w-]+)' (?:for target '[^']+' )?is unavailable/.exec(text)
+  if (rustComponent) { const component = (rustComponent[1] ?? rustComponent[3])!.replace(/^cargo-/, ''); return { kind: 'toolchain', reason: `the Rust component ${component} is not installed for the active toolchain`,
+    requiredAction: `Install it once with \`rustup component add ${component}\`, then retry the run.`, install: `rustup component add ${component}`, tool: `the Rust component ${component}` } }
+  if (/SDK location not found\. Define (?:a valid SDK location|location) with an ANDROID_HOME/.test(text)) return { kind: 'toolchain', reason: 'the Android SDK is not installed or not configured (no ANDROID_HOME or sdk.dir) for verification commands',
+    requiredAction: 'Install the Android SDK (for example with Android Studio) and make ANDROID_HOME available to Specrails in the login shell profile it loads, then retry the run.' }
   if (/(?:permission denied|operation not permitted)[^\n]{0,240}docker\.sock|Cannot connect to the Docker daemon at\b/i.test(text)) return { kind: 'environment', reason: 'the Docker daemon is not reachable from the verification process',
     requiredAction: 'Start Docker (Docker Desktop or the daemon) and make its socket available to the user Specrails runs as, then retry the run.' }
   if (/fatal: could not read (?:Username|Password) for/.test(text) || /Permission denied \(publickey\)/.test(text)) return { kind: 'credential', reason: 'git credentials needed to fetch a dependency are not available to verification commands',
@@ -248,15 +267,40 @@ function declaresPlaywright(root: string): boolean {
     return !!block && typeof block === 'object' && ['@playwright/test', 'playwright'].some(name => Object.hasOwn(block as object, name))
   })
 }
+/** Adds a pattern to the checkout's own `.git/info/exclude` (never committed); best effort. */
+function excludeLocally(root: string, pattern: string): void {
+  try {
+    const git = path.join(root, '.git')
+    let gitDir = git
+    if (existsSync(git) && !statSync(git).isDirectory()) {
+      const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(git, 'utf8'))?.[1]?.trim()
+      if (!pointer) return
+      gitDir = path.resolve(root, pointer)
+      const common = path.join(gitDir, 'commondir')
+      if (existsSync(common)) gitDir = path.resolve(gitDir, readFileSync(common, 'utf8').trim())
+    }
+    if (!existsSync(gitDir)) return
+    const file = path.join(gitDir, 'info', 'exclude')
+    const current = existsSync(file) ? readFileSync(file, 'utf8') : ''
+    if (current.split(/\r?\n/).includes(pattern)) return
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file, `${current}${current && !current.endsWith('\n') ? '\n' : ''}${pattern}\n`)
+  } catch { /* the delivery's own hygiene still refuses untracked environment output */ }
+}
+
 /** The installs a repository root needs, judged from its manifests and the absence of their install output. */
 export function plannedInstalls(root: string, failureOutput = ''): EnvironmentInstall[] {
   const plans: EnvironmentInstall[] = []
   const suggested = suggestedPackages(failureOutput)
-  if (suggested.length && existsSync(path.join(root, 'package.json'))) {
-    const runner = existsSync(path.join(root, 'pnpm-lock.yaml')) ? 'pnpm' : existsSync(path.join(root, 'yarn.lock')) ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', ...suggested] : runner === 'yarn' ? ['add', '--dev', ...suggested] : ['add', '-D', ...suggested] })
-  }
   const has = (file: string): boolean => existsSync(path.join(root, file))
+  // Preparing the environment is not authorship: a repository that keeps no
+  // npm lockfile must not get one from the host's install, or the delivery
+  // commits a package-lock.json nobody asked for.
+  const npmLock = has('package-lock.json') || has('npm-shrinkwrap.json') ? [] : ['--no-package-lock']
+  if (suggested.length && has('package.json')) {
+    const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
+    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--save-dev', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock, ...suggested] : runner === 'yarn' ? ['add', '--dev', ...suggested] : ['add', '-D', ...suggested] })
+  }
   // A manifest edited after the first install (a later task group adds
   // jest-extended) leaves node_modules present but incomplete; verify then
   // fails on the environment, not the code. Declared-but-absent ⇒ reinstall.
@@ -265,7 +309,9 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
   const drift = has('package.json') && has('node_modules') ? driftedNodeDependencies(root) : []
   if (has('package.json') && (!has('node_modules') || missingNodeDependencies(root).length || drift.length)) {
     const runner = has('pnpm-lock.yaml') ? 'pnpm' : has('yarn.lock') ? 'yarn' : 'npm'
-    plans.push({ ecosystem: 'node', root, command: runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error'] : ['install'], ...(drift.length ? { drift } : {}) })
+    // A yarn/pnpm the host lacks installs through npx at the pinned version, like verification does.
+    const viaNpx = runner === 'npm' ? null : packageManagerFallback(runner, root, projectCommandEnvironment(process.env))
+    plans.push({ ecosystem: 'node', root, command: viaNpx ? 'npx' : runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock] : [...(viaNpx ?? []), 'install'], ...(drift.length ? { drift } : {}) })
   }
   // After the dependency plan: a fresh worktree needs node_modules before
   // `playwright install` can run at all.
@@ -276,8 +322,16 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
       timeoutMs: PLAYWRIGHT_INSTALL_TIMEOUT_MS, installs: `Playwright ${browser ?? 'browsers'}` })
   }
   if ((has('requirements.txt') || has('pyproject.toml')) && !has('.venv') && !has('venv')) {
-    const python = process.platform === 'win32' ? 'python' : 'python3'
-    plans.push({ ecosystem: 'python', root, command: python, args: has('requirements.txt') ? ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] : ['-m', 'pip', 'install', '-q', '-e', '.'] })
+    // Never install into the system Python (PEP 668 refuses it on Homebrew/Debian, and it
+    // would leak packages across projects): create the project's own .venv, kept out of
+    // the delivery by the worktree's local exclude, and install into it. Verification
+    // commands run with that .venv activated (see activateProjectVirtualEnv).
+    const windows = process.platform === 'win32'
+    const python = windows ? 'python' : 'python3'
+    const venvPython = path.join(root, '.venv', windows ? 'Scripts' : 'bin', windows ? 'python.exe' : 'python')
+    excludeLocally(root, '/.venv/')
+    plans.push({ ecosystem: 'python', root, command: python, args: ['-m', 'venv', '.venv'], installs: 'a project virtual environment (.venv)' })
+    plans.push({ ecosystem: 'python', root, command: venvPython, args: has('requirements.txt') ? ['-m', 'pip', 'install', '-q', '-r', 'requirements.txt'] : ['-m', 'pip', 'install', '-q', '-e', '.'] })
   }
   if (has('go.mod')) plans.push({ ecosystem: 'go', root, command: 'go', args: ['mod', 'download'] })
   if (has('Cargo.toml') && !has('target')) plans.push({ ecosystem: 'rust', root, command: 'cargo', args: ['fetch'] })
@@ -476,7 +530,7 @@ export async function runGroupCheck(roots: readonly string[], io: { spawn?: Host
     if (!check) continue
     const label = `${check.command} ${check.args.join(' ')}`
     io.onEvent?.({ kind: 'tool-start', tool: check.command, detail: `${check.args.join(' ')} (${path.basename(root)}, group check)` })
-    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...projectCommandEnvironment(process.env), CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
+    const result = await runHost(spawn, check.command, check.args, { cwd: root, encoding: 'utf8', timeout: io.timeoutMs ?? 3 * 60_000, killSignal: 'SIGKILL', windowsHide: true, env: { ...headlessEnvironment(projectCommandEnvironment(process.env)), CI: '1', FORCE_COLOR: '0' }, maxBuffer: 8 * 1024 * 1024 })
     io.onEvent?.({ kind: 'tool-end', tool: check.command })
     const timedOut = result.error?.message?.includes('ETIMEDOUT') || result.signal === 'SIGKILL'
     const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.replace(/\u001b\[[0-9;]*m/g, '').trim().slice(-6000)

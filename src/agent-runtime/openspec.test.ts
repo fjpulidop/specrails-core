@@ -3,7 +3,7 @@ import { ExecutorRegistry } from './executors.js'
 import { unknownUsage, type RuntimeConfig } from './executor-types.js'
 import type { WorkflowStepContext } from './workflow-types.js'
 import type { PipelineContext } from '../pipeline/pipeline-state.js'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -101,6 +101,45 @@ describe('official OpenSpec CLI and confined role tools', () => {
       expect(ledger).toContain('"artifact":"apply","via":"load_skill"')
     } finally { await client.close() }
   }, 60000)
+  it('creates a fresh change and executes status and every artifact instruction inside the architect load_skill', async () => {
+    const loaded = await architect.execute({ action: 'load_skill' }) as { planning: { status: { artifacts: { id: string; status: string }[] }; instructions: Record<string, { artifactId: string; instruction: string; template: string }> }; next: string }
+    expect(readFileSync(path.join(root, 'openspec/changes/medical-alert/.openspec.yaml'), 'utf8')).toContain('spec-driven')
+    expect(Object.keys(loaded.planning.instructions).sort()).toEqual(['design', 'proposal', 'specs', 'tasks'])
+    expect(loaded.planning.instructions.proposal.artifactId).toBe('proposal')
+    expect(JSON.stringify(loaded.planning.instructions.proposal)).toContain('Keep alerts informational')
+    expect(loaded.next).toContain('Do not repeat these queries')
+    // The architect writes directly; the dependency order is still enforced.
+    await expect(architect.execute({ action: 'write_artifact', path: 'tasks.md', content: '- [ ] task' })).rejects.toThrow('dependencies')
+    await architect.execute({ action: 'write_artifact', path: 'proposal.md', content: '## Why\nAlerts.\n## What Changes\n- Display alerts.\n## Capabilities\n### New Capabilities\n- `alerts`: alerts.\n### Modified Capabilities\nNone.\n## Impact\nBooking.\n' })
+    await architect.execute({ action: 'write_artifact', path: 'design.md', content: '## Context\nRender alerts.' })
+    await architect.execute({ action: 'write_artifact', path: 'specs/alerts/spec.md', content: delta })
+    await architect.execute({ action: 'write_artifact', path: 'tasks.md', content: '## 1. Alerts\n- [ ] 1.1 Display alerts\n' })
+    expect(() => architect.assertParticipation()).not.toThrow()
+    expect((await architect.assertReady()).progress.total).toBe(1)
+    const ledger = readFileSync(path.join(architect.context.stateDirectory, 'openspec-architect.jsonl'), 'utf8')
+    for (const artifact of ['proposal', 'design', 'specs', 'tasks']) expect(ledger).toContain(`"artifact":"${artifact}","via":"load_skill"`)
+    expect(ledger).toContain('"action":"new","via":"load_skill"')
+    // A role that may not create changes never creates one through load_skill.
+    rmSync(path.join(root, 'openspec/changes/medical-alert'), { recursive: true, force: true })
+    await developer.execute({ action: 'load_skill' }).catch(() => null)
+    expect(existsSync(path.join(root, 'openspec/changes/medical-alert'))).toBe(false)
+  }, 60000)
+  it('reads the apply context files of the change, within a total bound and never outside the change', async () => {
+    await author()
+    const apply = await developer.apply()
+    const texts = developer.contextFileTexts(apply)
+    expect(Object.keys(texts).sort()).toEqual(['design.md', 'proposal.md', 'specs/alerts/spec.md', 'tasks.md'])
+    expect(texts['specs/alerts/spec.md']).toBe(delta)
+    expect(developer.contextFileTexts({ contextFiles: { stray: [path.join(root, 'openspec/config.yaml')] } })).toEqual({})
+    // The CLI may spell the change through another route than realpathSync (macOS /var vs /private/var,
+    // Windows short names): the same file is still read, keyed by its change-relative path.
+    const spelled = path.join(root, 'openspec', 'changes', 'medical-alert', 'specs', 'alerts', 'spec.md')
+    expect(developer.contextFileTexts({ contextFiles: { specs: [spelled] } })).toEqual({ 'specs/alerts/spec.md': delta })
+    expect(developer.contextFileTexts(undefined)).toEqual({})
+    const bounded = developer.contextFileTexts(apply, Buffer.byteLength(texts['proposal.md']!) + 10)
+    expect(Object.values(bounded).every(text => Object.values(texts).includes(text))).toBe(true)
+    expect(Object.keys(bounded).length).toBeLessThan(4)
+  }, 60000)
   it('returns real task instructions when the architect reuses complete artifacts', async () => {
     await author()
     const cursor = architect.participationCursor()
@@ -124,6 +163,9 @@ describe('official OpenSpec CLI and confined role tools', () => {
       expect(request.prompt).toContain('Host-loaded official ' + (skill === 'openspec-verify-change' ? 'verify' : 'apply') + ' workflow')
       expect(request.prompt).toContain(skill)
       expect(request.prompt).toContain('contextFiles')
+      // The current artifact texts travel with the context, so the role does not reopen them.
+      expect(request.prompt).toContain('artifactTexts')
+      expect(request.prompt).toContain(JSON.stringify('## 1. Alerts\n- [ ] 1.1 Display alerts and cover booking behavior\n'))
       if (skill === 'openspec-verify-change') {
         expect(request.access).toBe('read')
         expect(request.artifacts).toBe('none')
@@ -236,5 +278,106 @@ describe('declared OpenSpec artifact permissions', () => {
     const progress = { action: 'write_progress' as const, progress: { summary: 'Reviewed files', completedTasks: [], nextTasks: [], checks: [], blockers: [] } }
     if (artifacts === 'none') await expect(tools.execute(progress)).rejects.toThrow()
     else await expect(tools.execute(progress)).resolves.toHaveProperty('record')
+  }, 60000)
+})
+
+describe('skipped OpenSpec workflow steps (contract 5.16)', () => {
+  const proposal = '## Why\nMedical alerts must be visible during booking.\n## What Changes\n- Display alerts.\n## Capabilities\n### New Capabilities\n- `alerts`: informational alerts.\n### Modified Capabilities\nNone.\n## Impact\nVisit booking.\n'
+  const agent = { provider: 'fixture', model: 'small' }
+  const planRole = { ...agent, access: 'write' as const, artifacts: 'all' as const, openspecSkill: 'openspec-ff-change' as const }
+  const config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], agents: { architect: agent, developer: agent, reviewer: agent }, verification: [], roles: { plan: planRole } }
+  const pipeline = () => ({ schemaVersion: 1, runId: 'plan-protocol', backlogRoot: root, artifactRoot: root, artifactRepositoryId: 'repo', repositories: [{ id: 'repo', name: 'Repo', path: root }],
+    ownership: { git: 'host', backlog: 'host', worktrees: 'host' }, specs: [{ id: 1, title: 'Medical alert', description: 'Display alerts', acceptanceCriteria: ['Display alerts'] }] } as PipelineContext)
+  const step = () => ({ runId: 'plan-protocol', stepId: 'architect', attemptId: 'attempt', signal: new AbortController().signal,
+    checkpoint: { history: [], events: [], steps: {} }, remainingBudget: () => ({}), reportUsage: () => {} } as unknown as WorkflowStepContext)
+  const json = (value: unknown) => ({ text: JSON.stringify(value), usage: unknownUsage() })
+  const plan = { confidence: 'high', question: '', verification: [] }
+  /** A definition's `plan` role on the fast-forward skill, as Desktop's Implement recipe binds it. */
+  function planner(turns: Array<(tools: OpenSpecTools, prompt: string) => Promise<{ text: string; usage: ReturnType<typeof unknownUsage> }>>) {
+    const prompts: string[] = []
+    const context = { ...architect.context, role: 'plan', openspecSkill: 'openspec-ff-change' as const, access: 'write' as const, artifacts: 'all' as const }
+    const registry = new ExecutorRegistry().register('fixture', { execute: async request => {
+      prompts.push(request.prompt)
+      const turn = turns[prompts.length - 1]
+      if (!turn) throw new Error('Unexpected extra turn')
+      return turn(new OpenSpecTools(request.openspec!), request.prompt)
+    } })
+    const invoke = createRoleInvoker({ context: pipeline(), config, registry, openspec: { plan: context } })
+    return { prompts, run: () => invoke('plan', step(), { prompt: 'Plan the change', structured: true }, output => output) }
+  }
+  it('lets a planner of any role id ask its question before any artifact exists', async () => {
+    const { prompts, run } = planner([async () => json({ confidence: 'low', question: 'Must add return a + b or a * b?', verification: [] })])
+    expect(await run()).toMatchObject({ ok: true, value: { confidence: 'low' } })
+    expect(prompts).toHaveLength(1)
+  })
+
+  it('lets a planner decline the ticket without creating artifacts', async () => {
+    const { prompts, run } = planner([async () => json({ confidence: 'declined', question: 'The person said this ticket belongs to another repository.', verification: [] })])
+    expect(await run()).toMatchObject({ ok: true, value: { confidence: 'declined' } })
+    expect(prompts).toHaveLength(1)
+  })
+
+  /** A planner turn after load_skill: write every artifact (load_skill already ran new, status and the instructions), then validate. */
+  async function writeAll(tools: OpenSpecTools): Promise<void> {
+    await tools.execute({ action: 'load_skill' })
+    for (const [file, content] of [['proposal.md', proposal], ['design.md', '## Context\nRender alerts.'], ['specs/alerts/spec.md', delta], ['tasks.md', '## 1. Alerts\n- [ ] 1.1 Display alerts\n']]) await tools.execute({ action: 'write_artifact', path: file, content })
+    await tools.execute({ action: 'validate' })
+  }
+
+  it('gives one corrective turn that names each missing step and the exact calls from the current state', async () => {
+    const { prompts, run } = planner([async () => json(plan), async tools => { await writeAll(tools); return json(plan) }])
+    expect(await run()).toMatchObject({ ok: true })
+    expect(prompts).toHaveLength(2)
+    const reminder = prompts[1]!
+    expect(reminder).toContain('Your turn ended without these required steps: load_skill, instructions tasks.')
+    // load_skill creates the change and runs every instructions query, so the reminder names only the writes after it.
+    expect(reminder).toContain('1. {"action":"load_skill"}')
+    expect(reminder).toContain('{"action":"write_artifact","path":"proposal.md"}')
+    expect(reminder).toContain('{"action":"write_artifact","path":"specs/<capability>/spec.md"}')
+    expect(reminder).toContain('{"action":"write_artifact","path":"tasks.md"}')
+    expect(reminder).toContain('{"action":"validate"}')
+    expect(reminder).not.toContain('{"action":"new"}')
+    expect(reminder).not.toContain('"action":"instructions"')
+    expect(reminder).toContain('confidence low')
+  }, 60000)
+
+  it('needs no corrective turn once load_skill has run: it executes the instructions the skill requires', async () => {
+    const { prompts, run } = planner([async tools => { await writeAll(tools); return json(plan) }])
+    expect(await run()).toMatchObject({ ok: true })
+    expect(prompts).toHaveLength(1)
+  }, 60000)
+
+  it('fails with the typed omission and the model that skipped the steps when the corrective turn skips them too', async () => {
+    const { prompts, run } = planner([async () => json(plan), async () => json(plan)])
+    const outcome = await run()
+    expect(outcome).toEqual({ ok: false, failure: 'openspec_workflow_omitted',
+      error: 'Required OpenSpec role workflow was not executed: plan must execute openspec-ff-change (missing load_skill, instructions tasks); the plan model (fixture/small) skipped the required OpenSpec steps again after one corrective reminder' })
+    expect(prompts).toHaveLength(2)
+  }, 60000)
+
+  it('keeps the workflow reminder and the malformed-reply repair as separate single budgets', async () => {
+    const { prompts, run } = planner([
+      async () => ({ text: 'not json', usage: unknownUsage() }),
+      async tools => { await writeAll(tools); return { text: 'still not json', usage: unknownUsage() } },
+      async () => json(plan),
+    ])
+    expect(await run()).toMatchObject({ ok: true })
+    expect(prompts).toHaveLength(3)
+    expect(prompts[1]).toContain('1. {"action":"load_skill"}')
+    expect(prompts[2]).not.toContain('Your turn ended without these required steps')
+  }, 60000)
+
+  it('accepts the repository-relative and absolute spelling of an artifact of this change and says what a refused call needs', async () => {
+    await architect.execute({ action: 'load_skill' })
+    await architect.execute({ action: 'new' })
+    await expect(architect.execute({ action: 'write_artifact', path: 'proposal.md' })).rejects.toThrow('write_artifact needs content')
+    await expect(architect.execute({ action: 'write_artifact', path: 'openspec/changes/other-change/proposal.md', content: proposal })).rejects.toThrow('one of proposal.md, design.md, specs/<capability>/spec.md or tasks.md (got "openspec/changes/other-change/proposal.md")')
+    await expect(architect.execute({ action: 'write_artifact', path: path.join(root, 'proposal.md'), content: proposal })).rejects.toThrow('Not a spec-driven artifact')
+    expect(await architect.execute({ action: 'write_artifact', path: 'openspec/changes/medical-alert/proposal.md', content: proposal })).toMatchObject({ written: expect.stringMatching(/medical-alert[\\/]proposal\.md$/) })
+    await architect.execute({ action: 'instructions', artifact: 'design' })
+    await architect.execute({ action: 'write_artifact', path: path.join(root, 'openspec/changes/medical-alert/design.md'), content: '## Context\nRender alerts.' })
+    expect(readFileSync(path.join(root, 'openspec/changes/medical-alert/design.md'), 'utf8')).toContain('Render alerts')
+    const log = readFileSync(path.join(architect.context.stateDirectory, 'openspec-architect.jsonl'), 'utf8')
+    expect(log).toContain('"path":"design.md"')
   }, 60000)
 })

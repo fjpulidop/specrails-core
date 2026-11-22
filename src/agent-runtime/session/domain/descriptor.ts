@@ -22,6 +22,8 @@ export function validateDescriptor(descriptor: DriverDescriptor): void {
   if (caps.subagents === 'unsupported' && (caps.subagentDisable || caps.autonomousContinuation)) fail('sub-agent capabilities require subagents=supported')
   if (!caps.resident && caps.nativeInputQueue) fail('a native input queue requires a resident process')
   if (!caps.resident && caps.autonomousContinuation) fail('autonomous continuation requires a resident process')
+  if (caps.deferredMcpTools !== undefined && typeof caps.deferredMcpTools !== 'boolean') fail('capabilities.deferredMcpTools must be a boolean when present')
+  if (caps.reportsRateLimits !== undefined && typeof caps.reportsRateLimits !== 'boolean') fail('capabilities.reportsRateLimits must be a boolean when present')
   if (caps.interrupt !== undefined && caps.interrupt !== 'native' && caps.interrupt !== 'emulated') fail('capabilities.interrupt must be native|emulated when present')
   // A native interrupt without a turn-level stop that keeps the session is meaningless for one-shot drivers.
   if (caps.interrupt === 'native' && !caps.resident) fail('a native interrupt requires a resident process')

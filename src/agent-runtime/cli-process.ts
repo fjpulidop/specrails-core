@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
+import { headlessEnvironment } from '../pipeline/pipeline-state.js'
 import { AgentExecutionError } from './executor-types.js'
 
 export interface CliInvocation { command: string; args: string[]; stdin?: string }
@@ -59,12 +60,16 @@ export function cliProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.
   }
   return env
 }
+/** The environment of a process an agent run starts: transport-clean and headless (see `headlessEnvironment`). */
+export function agentProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
+  return cliProcessEnvironment(headlessEnvironment(base), platform)
+}
 export const runCliProcess: CliProcessRunner = async (raw, options) => {
   if (options.signal?.aborted) throw new AgentExecutionError('Agent cancelled', 'aborted')
   for (const value of [options.timeoutMs, options.idleTimeoutMs]) {
     if (value !== undefined && (!Number.isSafeInteger(value) || value < 0 || value > 2_147_483_647)) throw new AgentExecutionError('Invalid process timeout', 'invalid_limit')
   }
-  const env = cliProcessEnvironment(options.env ?? process.env)
+  const env = agentProcessEnvironment(options.env ?? process.env)
   const invocation = process.platform === 'win32' && raw.command === 'kimi' ? windowsKimiInvocation(raw, { env }) : raw
   return new Promise<CliProcessResult>((resolve, reject) => {
     const child = crossSpawn(invocation.command, invocation.args, { cwd: options.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], shell: false, windowsHide: true, detached: process.platform !== 'win32' })

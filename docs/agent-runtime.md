@@ -25,7 +25,7 @@ This page describes the current source implementation, **runtime API 1**, workfl
 ## Requirements and ownership
 
 - Node.js **22.22.3+** and Git on macOS, Linux or Windows. Individual provider CLIs may require a newer Node release.
-- Installed and authenticated Claude or Codex CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
+- Installed and authenticated Claude Code, Codex, Gemini or Kimi CLIs for whichever roles use them; alternatively, a reachable OpenAI-compatible endpoint with tool support.
 - A frozen execution context and a new change name. Verification commands are optional: configured commands run as given, the architect proposes the project's own checks for repositories that have none, and a repository with no automated check is admitted and recorded as unverified in the receipt.
 - `ownership.git: "host"`. The runtime implements and archives; its caller owns worktrees, commits, pushes, pull requests and backlog delivery. It rejects Core-owned Git delivery rather than reporting success while shipping remains pending.
 
@@ -79,7 +79,7 @@ For an authenticated endpoint, add `"apiKeyEnv":"MY_MODEL_API_KEY"` to its provi
 
 The configuration schema is [agent-runtime.schema.json](../schemas/agent-runtime.schema.json). `validateRuntimeConfig()` also checks relationships such as role-to-provider references and the review floors. Runtime configuration is separate from Desktop-owned profiles; it does not translate legacy profile routing into programmatic phases.
 
-The [integration contract](../integration-contract.json) is schema 5.8, API 1, legacy workflow 7 and role instructions 17. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
+The [integration contract](../integration-contract.json) is schema 5.14, API 1, legacy workflow 7 and role instructions 18. Its CLI operation catalog includes every machine operation, including offline `evaluate`; `help` is a presentation operation. This source also advertises engine 2, JSON definitions and the implemented piece catalog. Hosts must inspect the selected runtime's capabilities: older retained runtimes still report engine 1 and an empty piece catalog. Source capability support does not establish publication or rollout acceptance.
 
 Legacy resume identity is protected by `definitionFingerprint()` and `implementationWorkflowDefinition()`. The fingerprint fixture covers both normal and compact-developer transition budgets against the actual node descriptors, preserving declaration order, effects, retries and exits. Keep that fixture unchanged during additive engine work; existing runs must continue through their retained original runtime package.
 
@@ -158,20 +158,30 @@ specrails-core runtime resume --context .specrails/context.json --approve archiv
 
 The commands work in macOS shells and PowerShell; quote paths and answers containing spaces. Verification uses `command` plus an `args` array, not a shell command string. Prefer portable Node/npm commands over Bash scripts when the project supports Windows.
 
-Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a step that ends with the `fail` outcome, such as `openspec-validate` sending the plan back, carries a bounded `reason` taken from its history note so hosts can show why under the step), `agent-event` (role narration and tool activity), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
+Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a step that ends with the `fail` outcome, such as `openspec-validate` sending the plan back, carries a bounded `reason` taken from its history note so hosts can show why under the step), `agent-event` (role narration, tool activity and, since contract 5.14, `rate-limit` events whose `event.provider` names the CLI and whose `event.rateLimit` is the provider account's usage-limit state in the session protocol's [`RateLimitInfo`](agent-sessions/protocol.md#usage-limits) shape; the Claude CLI executor reports each `rate_limit_event`), `verification-output`, `span` (one per finished role attempt, with `traceId`, `spanId`, timing, status and usage, ready for an OpenTelemetry bridge) and a final `runtime-result`. The direct runtime entry point is `dist/agent-runtime/cli.js`; it also emits JSON errors. The main package CLI can report command-validation errors on stderr. Exit codes are `0` for success, `2` for a pause (approval or question pending), and `1` for failure, blocking or cancellation. A successful Core result means implementation, verification, review, acceptance evidence and archive completed; host delivery remains separate.
 
-`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the seventeen piece kinds registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `component`, `map`, `implementation`, `join`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
+`runtime api` returns `{type:"runtime-api",apiVersion:1,coreVersion,runtimeIdentity,workflowVersions:["7"],engineVersion:2,engines:[1,2],nodeKindsVersion,nodeKinds,capabilities,guardrails}` without invoking providers. `nodeKinds` lists the 21 piece kinds of catalog `nodeKindsVersion` 9 registered by the validation registry (`prompt`, `role-turn`, `decider`, `verify`, `shell`, `artifact-contract`, `openspec-validate`, `openspec-archive`, `condition`, `end`, `approval`, `question`, `gate`, `assign`, `implementation-step`, `component`, `map`, `implementation`, `join`, `derive-change`, `host-task`); `runtime workflows list` returns their full descriptors and `integration-contract.json` (`agentRuntime.engine`, `agentRuntime.nodeKinds`) mirrors the same catalog and `nodeKindsVersion`. Every capability value is a positive integer:
 
 | Capability | Meaning |
 | --- | --- |
 | `engineV2: 1` | `runtime run --definition` executes published workflow definitions on the SQLite-backed engine; `status`, `resume`, `fork`, `signal`, `cancel` and `pause` operate on those runs |
+| `workflowAgentSteps: 1` | Definitions compose arbitrary configured `role-turn` agents and `artifact-contract` checks (see [workflow-defined agents](engine-v2/pieces.md#workflow-defined-agents-catalog-7)) |
+| `implementationSteps: 1` | Legacy `implementation-step` piece, retained for saved definitions and frozen runs |
 | `workflowDefinitions: 1` | `runtime workflows list` and `runtime workflows validate --stdin` expose the piece catalog, definition schema and Core-computed definition hash |
 | `openRoles: 1` | Declared roles with explicit access, artifact and instruction policies |
 | `fanOut: 1` | `map`/`join` fan-out with bounded concurrency and deferred joins |
 | `fork: 1` | `runtime fork` and `resume --invalidate` create a new run from a selected historical visit without modifying the original |
+| `forkIdempotency: 1` | `runtime fork --request-id` retries an interrupted fork safely (see [recovery](engine-v2/recovery.md)) |
+| `forkRouteOverrides: 1` | `runtime fork --route-overrides <file>` starts the next attempt of a settled run with roles moved to another provider (see [route overrides](#route-overrides)) |
 | `steeringInbox: 1` | `runtime signal --stdin` queues bounded operator messages claimed at the next AI attempt; `runtime cancel` is the idempotent cancellation inbox |
 | `pauseRuns: 1` | `runtime pause` asks a running workflow to stop cooperatively after its admitted attempts settle; the run is `paused` with a reason and resumable with `runtime resume` (see [Pausing a run](#pausing-a-run)) |
 | `hostTasks: 1` | The `host-task` piece pauses a definition on a machine interrupt for a host-owned effect; the host resumes it with `runtime resume --interrupt-id <id> --host-result <file>` (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#host-task), contract 5.11) |
+| `humanTasks: 1` | `tasks.md` accepts `- [ ] N.M [human] <check>` for a check only a person can make; `artifact-contract` never requires it ticked, reports `incompleteTasks` and `humanChecks`, and refuses to freeze an untagged manual check (see [Human checks](#human-checks), contract 5.15) |
+| `roleDecisions: 1` | `role-turn` accepts `decisions: 'ask'`: a role that hits a decision only the person can make (contradicting artifacts or requirements) returns `decisionNeeded`, the node pauses on an ordinary `question` interrupt and reruns with the answer; `artifact-contract` freeze refuses once a task that contradicts a declared non-goal (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#role-turn), contract 5.17) |
+| `questionOptions: 1` | Question interrupts may carry structured choices (`text`, `asker`, `why`, `options [{id,label,meaning?,detail?}]`, `recommended`, `endsRun`, `detail`) beside the self-contained `prompt`; `role-turn` decisions and the `question` piece (`options`, `optionsFrom`) fill them; `runtime resume --answer <text> --option <id>` answers by choice and `--reject <node|id> --reason <text>` rejects an approval (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#question), contract 5.17) |
+| `reviewTriage: 2` | A review `role-turn` (read role with `approved` and `issues`) moves issues the run cannot act on (host-only checks, regenerated lockfiles, frozen artifacts, criteria the person withdrew, and since version 2 findings the reviewer marked `[advice]` or `[out-of-scope]`) to the person's notes (`output.reviewNotes`) and re-judges a rejection made only of them once (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#role-turn), contract 5.17) |
+| `environmentRepairSignal: 1` | A failed `verify` output carries `environmentFailure: true` when the failure that survives the host's own repair is still environmental, so a host recipe can verify again after a correction role repaired the environment without changing the candidate (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#verify)) |
+| `machineInstalls: 1` | A blocker may name the exact machine-wide install (`install`, `tool`); with `machineInstalls: 'ask'` a write `role-turn` or `verify` asks the person once through an ordinary question interrupt (structured `options` and `data.kind: 'machine-install'`), the host runs the approved install outside the run and answers `installed`, and the node runs again (see [docs/engine-v2/pieces.md](engine-v2/pieces.md#role-turn), contract 5.17) |
 | `unlimitedTurns: 1` | A role or engine without `maxTurns` runs with no turn limit (Claude gets no `--max-turns`; Codex, Gemini, Kimi and OpenAI-compatible loops stop counting). Older Cores applied a default of 100. Timeouts and cost budgets still bound the run |
 | `scopedRecovery: 1` | `runtime recovery --context <json> --stdin` (see [Scoped recovery API](#scoped-recovery-api)) |
 | `hostBlockers: 1` | The `verify` piece classifies host preconditions and environment failures before a correction round, repairs the environment once, and exposes a structured `blocker` (`kind`, `reason`, `command`, `args`, `cwd`, `requiredAction`) in its output; `hostBlockers: true` adds the `blocked` outcome and `end.blockerFrom` copies the blocker into `completion.blocker` |
@@ -180,6 +190,8 @@ Run and resume emit JSON lines: `workflow-event` (the durable ledger events; a s
 | `sessions: 1` | `runtime host --stdio --scope <projectKey\|global>` serves long-lived agent sessions (Claude, Codex, executor-backed providers) with sub-agents, durable journals under `~/.specrails/sessions/<scope>/` and the [session protocol](agent-sessions/protocol.md). Batch operations are unaffected. |
 | `flowSessions: 1` | `session.send` accepts `delivery: 'interrupt'`: the running turn ends `interrupted` and the input runs next, ahead of queued inputs; drivers declare `capabilities.interrupt` (`native` or `emulated`). See [deliveries](agent-sessions/protocol.md#deliveries). |
 | `reviewBrief: 1` | The reviewer returns an optional advisory risk brief, recorded at every verdict and exposed in `runtime-result.reviewBrief` (see [Reviewer risk brief](#reviewer-risk-brief)) |
+| `environmentFacts: 1`, `verificationSummary: 1` | See [Environment facts](#environment-facts) |
+| `architectClarifications: 1`, `specTrace: 1`, `baselineOnTouch: 1`, `rulesInventory: 1`, `failureClassification: 1`, `findingLocations: 1` | Described in their own sections below |
 | `efficientRoleExecution: 1`, `reproducibleVerification: 1`, `implementationEfficiencyMetrics: 1`, `compactAgentLoop: 1`, `configurableGuardrails: 1`, `compactOutputBudget: 1`, `roleThinkingControl: 1`, `repositoryScope: 1` | Existing built-in workflow capabilities; unchanged |
 
 `engines` lists the engines this package can launch: `1` is the legacy built-in pipeline (`runtime run` without `--definition`) and `2` is workflow definitions. `integration-contract.json` mirrors it as `agentRuntime.engines`. A Core without engine 1 (planned for Core 7) advertises `[2]`; hosts then refuse a legacy launch before admission with `legacy_engine_unavailable`. Hosts that meet a Core predating the field treat it as `[1, 2]` when `engineV2: 1` is advertised, otherwise `[1]`.
@@ -217,6 +229,18 @@ Every role's repository reference starts with environment facts the host measure
 Roles are told to trust these facts over older notes. Verification also classifies two host preconditions: a system Python that refuses installs (PEP 668, `externally-managed-environment`, kind `toolchain`, with a venv action) and an unreachable Docker daemon (kind `environment`).
 
 Each `verify` output carries a bounded `summary` (one line per command with its exit code and first failure facts; capability `verificationSummary: 1`), small enough for a host to template into a role prompt, for example a baseline run before the developer.
+
+## Headless commands
+
+The person keeps using the machine while a run works, so nothing a run starts may open a window over theirs or take focus. Every agent process (`agentProcessEnvironment` in `cli-process.ts`) and every verification or group check (`headlessEnvironment` in `pipeline-state.ts`) gets:
+
+| Variable | Why |
+| --- | --- |
+| `SPECRAILS_HEADLESS=1` | The contract: a project's launcher and UI tests keep their windows hidden when it is set (Electron `showInactive()` at opacity 0 with mouse events ignored and macOS `app.setActivationPolicy('accessory')`; Tauri `visible(false)` and `ActivationPolicy::Accessory`). |
+| `BROWSER=none` | Dev servers that open a browser tab on start (Vite, Create React App, Python `webbrowser`) stop doing so. |
+| `NODE_OPTIONS=… --require <core>/dist/pipeline/electron-headless-guard.cjs` | A defensive layer for projects that do not honour the variable yet. Plain Node passes it on to asynchronously spawned children that still carry `SPECRAILS_HEADLESS=1` (Playwright's Electron launcher drops `NODE_OPTIONS`); in an Electron main process it creates windows hidden, then shows them without activation, transparent and click-through, makes `show`/`focus`/`moveTop`/`app.focus` non-activating and hides the Dock icon. Rendering, input, `capturePage` and Playwright keep working, and `isVisible()` stays true, so UI tests still run for real. |
+
+`CI` is deliberately not set: it changes test runners' retries, reporters and watch modes. An explicit `SPECRAILS_HEADLESS=0` in the host environment opts out. Not covered: apps started through LaunchServices (`open`), native toolkits other than Electron (Tauri, Qt, SwiftUI) unless the project honours the variable, Linux window opacity, and a test that launches Electron with an environment that drops `SPECRAILS_HEADLESS`. Roles are told the same rules in their boundaries.
 
 ## Questions and approvals
 
@@ -422,17 +446,80 @@ A run that ends `failed` or `blocked` reports why in one typed record, so a host
 | `kind` | Meaning |
 | --- | --- |
 | `tests_failed` | Verification kept failing, or the correction loop stopped on the same failing change |
-| `provider_limit` | The provider reported a session, usage, rate or quota limit. `resetAt` is the provider's own wording of when it resets, never reformatted |
+| `provider_limit` | The provider reported a session, usage, rate or quota limit. `provider` names the refusing CLI when the typed refusal names it. `resetAt` is the provider's own wording of when it resets, never reformatted. `resetsAt` (contract 5.14) is the ISO-8601 reset of the refusing window when the provider refused the invocation with a typed usage-limit report (the CLI executor then fails with error code `provider_limit` and the message `<provider> usage limit reached (<window> window, resets <ISO>)`) |
+| `provider_unavailable` | The provider's service, or the network to it, failed for a moment and kept failing through the CLI executor's retries (contract 5.17): Codex's `workspace routing discovery failed` or `timed out`, `stream disconnected before completion`, `exceeded retry limit, last status: 5xx`, an overloaded API, a reset connection. Nothing about the work is wrong. `detail` names the provider's words; `resumablePhase` reruns the same step. A host continues the run after a short wait |
 | `environment` | The host environment cannot run verification: credentials, toolchain, a failing setup command, non-deterministic generated output, edits outside the scope |
 | `blocked` | A configured limit stopped the run: baseline characterization, attempt or budget limits, a reviewer rejecting the same change |
 | `timeout` | The total execution or active-duration limit elapsed, or a verification command hit its total or silence limit (`detail` names which) |
 | `tool_inactivity` | The agent produced no tool call, reply or usage within the idle limit |
 | `crash` | The provider process, endpoint, lease or storage failed under the run |
+| `incomplete_tasks` | The run ended with approved tasks still unticked (a stall or an exhausted implementation budget). `incompleteTasks` (contract 5.15) names them, at most 20 |
+| `spec_invalid` | OpenSpec or the plan contract rejected the change's artifacts (validation, freeze or archive) and planning could not repair them |
+| `workflow_protocol` | A role ended its turn without the required OpenSpec workflow steps (`load_skill`, `instructions tasks` or `instructions apply`) and its one corrective turn did not execute them either: the model did not follow the tool protocol (contract 5.16). `role` names the role, `provider` and `model` what it ran on, `missingSteps` the skipped steps; `resumablePhase` reruns the role. A host offers to continue from that step, ideally with a stronger model for that role |
 | `unknown` | No documented signal matched; always `confidence: "low"` |
 
 The classification is derived only from signals the run already produced (status, the failing step or node, error codes and messages). It never guesses: an unmatched failure is `unknown`, and a host must present it as an unknown cause next to the raw log tail. `phase` is the failing step id (engine 1) or node path (engine 2), `rounds` counts visits of correction steps, `detail` is one bounded sentence from the run's own error, and `resumablePhase` names the step `runtime resume` continues from when resuming can help (blocked runs and the transient kinds). It is absent for a plain failed verification, which needs a change rather than a resume.
 
-A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 1` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
+A workflow definition that stops at a failure `end` node has no run error. Since contract 5.15 its completion is classified instead: `completion.blocker` or a host-blocker reason is `environment`, a reason naming approved tasks still incomplete is `incomplete_tasks` (the list comes from the reason's `Incomplete: [...]` JSON array), an OpenSpec validation, plan contract or archive rejection is `spec_invalid`, an exhausted implementation budget or an unchanged correction is `blocked`, and `phase` is the end node id. An end reason the classifier does not know stays `unknown`.
+
+A role turn that ends without its required OpenSpec steps is never failed at once. A planner that asks (confidence `low`, or a high-impact clarification without a default) is exempt, whatever the role is called, because a question precedes the artifacts. Otherwise Core gives the role one corrective turn that names each missing step and lists the exact scoped-tool calls that complete the workflow from the change's current state (for a planner: `new` when the change does not exist, then `instructions` and `write_artifact` for each artifact OpenSpec reports as not done, then `validate`). Like any protocol repair, a configured role (and the built-in reviewer) takes that turn on its declared `escalation` model. It is separate from the single repair of a malformed reply, so a role gets at most two extra turns. Only when the corrective turn also skips the steps does the turn fail: engine 2 reports error code `openspec_workflow_omitted`, and both engines report the message `Required OpenSpec role workflow was not executed: <role> must execute <skill> (missing <steps>); the <role> model (<provider>/<model>) skipped the required OpenSpec steps again after one corrective reminder`, classified as `workflow_protocol`.
+
+`write_artifact` takes the change-relative path (`proposal.md`, `design.md`, `specs/<capability>/spec.md`, `tasks.md`). It also accepts the repository-relative (`openspec/changes/<change>/proposal.md`) or absolute spelling of the same file of this change. A refused call says what to send instead: missing content, an artifact over 256 KB, or the accepted paths.
+
+A provider CLI that fails on a transient outage of its own service before its turn did any work (no tool call or reply was streamed) is re-run by the CLI executor after 15 s and again after 45 s, and the role's live output says so (`codex service unavailable (…); retrying in 15 s`). A turn that already did work is never re-run by the executor. When the outage outlasts the waits, the executor fails with error code `provider_unavailable` and the run is classified `provider_unavailable`, not `crash`. A usage limit (`provider_limit`) or a signed-out CLI (`environment`, including Codex's `workspace routing discovery unauthorized`) is never treated as an outage.
+
+A fatal argument or configuration error (a run that never started) carries no classification. The capability is announced as `failureClassification: 4` by `runtime api` and as `agentRuntime.failureClassification` in `integration-contract.json` (since schema 5.8; version 2 in 5.15, version 3 with `workflow_protocol` in 5.16, version 4 with `provider_unavailable` in 5.17). The change is additive: a host that does not know the field ignores it, and an older Core never emits it.
+
+## Route overrides
+
+A definition (engine 2) run can move some of its roles to another provider for the rest of that run, for example after its provider refused on a usage limit. `runtime api` advertises `routeOverrides: 1` (and `agentRuntime.routeOverrides` in `integration-contract.json`, schema 5.17, additive).
+
+```sh
+specrails-core runtime resume --context <json> --route-overrides moves.json
+```
+
+```json
+{ "schemaVersion": 1, "requestId": "desktop-switch:run-1:1", "reason": "provider-limit", "fromProvider": "codex",
+  "routes": { "developer": { "provider": "claude", "model": "haiku", "effort": "low" }, "fixer": { "provider": "claude", "model": "haiku" } } }
+```
+
+- `routes` names roles (`architect`, `developer`, `reviewer`, `fixer` or a configured custom role) and their new `provider`, optional `model` and `effort`. The moved selection keeps only the role's `maxTurns`; `escalation` and `thinking` belong to the old engine. An unknown role is `invalid_route_override`.
+- `providers` may add CLI connections (`{ id, kind: "cli", cli }`) the frozen configuration lacks. API connections cannot be added.
+- The frozen request (`agent-runtime-request.json`, the ledger's `request_json`) is never rewritten. The accepted request is a durable `routes_overridden` ledger event, also streamed as a `workflow-event`; every later admission of the run applies the recorded overrides in order on top of the frozen configuration and validates the result as a new run would (configured provider, confirmed effort).
+- The resumed run re-runs the stopped step on the new route; later steps of those roles use it too. Worktree, candidate and evidence are kept. A role session never carries across providers: the session identity includes the selection, so the moved role starts a fresh session with its full context.
+- Invocations keep the provider and model they ran on, so spend stays attributed per provider.
+- The same `requestId` with the same body applies once (a repeated resume is idempotent); a different body under that id is `control_conflict`. The flag cannot be combined with `--answer`, `--approve`, `--reject`, `--option`, `--host-result`, `--invalidate` or `--interrupt-id`; `--recover` is allowed. A finished run refuses it; an engine 1 run answers `engine_unsupported`.
+- A fork inherits the overrides recorded before its cut.
+
+A run that already settled (it failed on the limit, or stopped) is never resumed: its next attempt is a fork. With `forkRouteOverrides: 1` (`agentRuntime.forkRouteOverrides`, schema 5.17, additive) the fork itself carries the move:
+
+```sh
+specrails-core runtime fork --context <json> --from fixer --run-id <newRunId> --request-id <id> --route-overrides moves.json
+```
+
+- The request is the same file as on resume. Core applies the overrides inherited before the cut and then this one to the frozen configuration and admits the result as a new run would (known role, configured provider, confirmed effort) before it publishes anything; a refused request leaves no fork behind.
+- The accepted request is the new run's own `routes_overridden` event, so every later resume of the fork (the host's, a restart's, the one after a later limit) replays it, and a fork of the fork inherits it. The source run, its ledger and its frozen request are untouched.
+- The `runtime-forked` result echoes the accepted request as `routesOverridden`, so the host can record it without resuming first.
+- The override is part of the fork's request identity: a retry with the same `--request-id` and the same file returns the published child; other routes under that id are `run_exists`.
+- The flag cannot be combined with `--answer`, `--approve`, `--reject`, `--option`, `--host-result`, `--invalidate`, `--interrupt-id` or `--recover`, which belong to `runtime resume`.
+
+## Human checks
+
+Every task in `tasks.md` must be completable and checkable by the run: with commands, or with the host's headless browser tool when it exports `$SPECRAILS_BROWSE`. A check only a person can make (taste, a real device, real credentials) is written with the `[human]` tag after the task number:
+
+```markdown
+- [x] 3.2 Add the TETRIS title and its fade-out
+- [ ] 4.1 [human] Judge the push-in on a real phone
+```
+
+With `humanTasks: 1` (contract 5.15) the `artifact-contract` piece:
+
+- never counts an unticked `[human]` task as incomplete, so `requireCompletedTasks` passes without it;
+- reports `incompleteTasks` (unticked untagged tasks) and `humanChecks` (every `[human]` task without its tag) in its output, at most 20 entries of 300 characters each, so a host can hand them to the reviewer and to the person;
+- ignores the tag on unticked tasks when it compares the frozen fingerprint, so a later turn can turn a task the run truly cannot check into a visible human check; any other change to the task text is still `artifacts_changed`;
+- refuses to freeze (`tasks_need_manual_check`) a plan with an untagged task that asks for a manual or visual check without saying how the run performs it ("a manual check of the running game", "visually verify in a browser"). The history entry tells the planner to rewrite the task as a check the run performs, or to tag it.
+
+An older Core treats a `[human]` task as an ordinary task, so hosts only ask for the tag when `runtime api` advertises `humanTasks: 1`.
 
 ## Finding locations
 
@@ -560,7 +647,7 @@ The summary contains `total` and `phases` (architect, developer, verify, reviewe
 - The Core host persists each completed provider call and its reported usage on the current attempt before continuing. A process killed inside an opaque provider call can still lose unreported usage; completed calls are not a hard upper bound on that provider's bill. In engine v2, the next fenced owner closes abandoned calls as interrupted and emits their unknown usage exactly once, retaining unreported budget reservations. Older attempts without invocation metadata show incomplete measurements rather than fabricated zeros.
 - Total execution duration accumulates active workflow time, excluding time parked for human approval between invocations. Phase time includes phase overhead; do not add agent time to phase time. A phase without an end timestamp has unknown duration.
 
-Role instructions are version 17 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
+Role instructions are version 18 (`ROLE_INSTRUCTIONS_VERSION`). Frozen runs reject an incompatible instruction/runtime identity; finish them with their original Core version or start a new run. New metrics are additive and need no database migration.
 
 To evaluate the first efficiency changes, select a fixed set of representative tasks and reset each task to the same base revision. Keep provider/model settings and acceptance criteria fixed. Save status JSON for every run, including failures and manual recovery, and compare:
 
@@ -598,15 +685,23 @@ No global provider configuration is rewritten. Supported planning is currently *
 When fast-forward reuses an existing complete change, `load_skill` returns real
 `status` and `instructions tasks` results and records both prerequisites. The
 architect must still reconcile the artifacts with the current request; existing
-files never bypass completeness or validation. Fresh and incomplete changes keep
-the normal artifact dependency order. Missing workflow diagnostics name the
-specific omitted instructions in the correction message.
+files never bypass completeness or validation. For a fresh change (a role that may
+create one) `load_skill` also runs `new`; for a fresh or incomplete change it runs
+`status` and the `instructions` of every artifact still to write (in parallel) and
+returns them under `planning.instructions`, recording each as a `via: load_skill`
+prerequisite. This saves the model one round trip per query; writes still follow
+the artifact dependency order and need their instructions read. Missing workflow
+diagnostics name the specific omitted steps in the correction message (after an
+omitted `load_skill`, only the writes and `validate` that follow it).
 
 Apply-bound developer/correction and verify-bound reviewer turns receive the exact pinned official
 skill and real status/apply instructions from Core before provider invocation.
 The scoped trace marks these prerequisite queries with `origin: host`; provider
-calls retain their own origin. Agents still read the returned context files and
-perform the remaining skill procedure. Reviewer bootstrap retains read-only
+calls retain their own origin. The host-loaded context also carries the current text of
+the context files (`artifactTexts`, change-relative path → text, confined to the
+change and at most 96 KB in total; files past the bound are left out, never cut), so
+the role does not open them again; it still reads code, tests and evidence and
+performs the remaining skill procedure. Reviewer bootstrap retains read-only
 source access and no artifact writes, including for custom review roles.
 This bootstrap cannot certify tasks,
 verification, review or delivery, and an unrelated failed check remains a failure.
@@ -702,14 +797,6 @@ Verification checks use the frozen plan and existing scoped receipts with a
 not merely an exit code of zero. Neither operation grants acceptance or marks
 workflow phases complete. Resume remains responsible for the required gates.
 
-### Claude Opus selection
-
-For Claude CLI roles, `model: opus` resolves to `claude-opus-5-5` (Opus 5.5).
-Explicit model IDs pass through unchanged, including older generations, and other
-providers are unaffected. This applies to base and escalation invocations.
-Claude Code owns the native thinking and tool protocol; Core does not send
-Anthropic Messages API parameters.
-
 ## Efficiency policy
 
 Architect, developer and reviewer keep their official OpenSpec workflow: fast-forward, apply and verify. Verification remains deterministic Core execution, not a fourth AI agent. Custom role text does not replace the mandatory scope, response or OpenSpec protocol.
@@ -789,11 +876,11 @@ This source tree is a development package. Publishing Core and updating Desktop'
 
 ## Desktop-owned workflow composition
 
-Core exposes `workflowAgentSteps: 1` and catalog version 7 for workflow-defined
-agent steps. Desktop supplies arbitrary custom roles, task schemas and explicit
+Core exposes `workflowAgentSteps: 1` for workflow-defined agent steps
+(introduced with catalog 7; the current catalog is 9). Desktop supplies arbitrary custom roles, task schemas and explicit
 artifact/verification/review/approval nodes. Core executes generic primitives
 and durable evidence contracts. Legacy `implementationSteps: 1` remains available
 for saved definitions and retained runs. See the
 [generic agent contract](engine-v2/pieces.md#workflow-defined-agents-catalog-7).
 
-Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. Explicit model IDs remain unchanged for reproducible saved requests.
+Claude catalog aliases `sonnet`, `opus`, `haiku` and `fable` resolve to `claude-sonnet-5-5`, `claude-opus-5-5`, `claude-haiku-5-5` and `claude-fable-5-1` respectively. This applies to base and escalation invocations of Claude CLI roles; other providers are unaffected. Explicit model IDs, including older generations, pass through unchanged for reproducible saved requests. Claude Code owns the native thinking and tool protocol; Core sends no Messages API parameters.

@@ -4,7 +4,15 @@ import { nativeSubagentsAllowed } from '../../domain/policy.js'
 
 /** Tools that launch sub-agents in Claude Code; removed when policy disables sub-agents. */
 export const CLAUDE_SUBAGENT_TOOLS = ['Agent', 'Task'] as const
-export const CLAUDE_READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob'] as const
+/**
+ * Claude Code tool search: with `ToolSearch` available, MCP tools are deferred
+ * (only their names reach the prompt) and loaded on demand. A `--tools` list
+ * that omits it disables deferral, and `--allowedTools` or `ENABLE_TOOL_SEARCH`
+ * do not bring it back. Measured with a haiku replica of a Desktop session:
+ * deferred connectors cut the mid-turn cache rewrite from 14.8k to 2.5k tokens.
+ */
+export const CLAUDE_TOOL_SEARCH_TOOL = 'ToolSearch'
+export const CLAUDE_READ_ONLY_TOOLS = ['Read', 'Grep', 'Glob', CLAUDE_TOOL_SEARCH_TOOL] as const
 /**
  * Built-in tools that change files or run commands. A read-only session that
  * allows native sub-agents also denies them: deny rules bind every sub-agent of

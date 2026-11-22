@@ -1,8 +1,8 @@
 # Engine v2 decision spikes (C1)
 
-These experiments inform the proposed engine; they do not enable it. Production Core still supports Node 20.19.0 and uses the unchanged legacy runner. Prototypes live in `src/agent-runtime/engine/__spikes__/` as directly executable `.mjs` files, outside TypeScript build input, package files and production coverage. This makes the exact Node 22.22.3 experiment reproducible without introducing a production SQLite dependency.
+These experiments chose the storage, graph and event primitives of the definition engine. The decisions below were accepted and shipped: the engine uses `node:sqlite`, and Core's Node minimum is 22.22.3. The probes stay in CI as regression evidence for those primitives. Prototypes live in `src/agent-runtime/engine/__spikes__/` as directly executable `.mjs` files, outside TypeScript build input, package files and production coverage. This makes the exact Node 22.22.3 experiment reproducible without introducing a production SQLite dependency.
 
-Run `npm run test:engine-spikes -- --output <directory>` with Node 22.22.3. It rebuilds the legacy runtime before measuring its callback baseline, so stale `dist` output cannot qualify. The JSON evidence records OS, architecture, versions, timing and assertions. The existing `npm run ci` remains mandatory. CI also verifies the real npm package and paired Desktop assembly on each spike platform.
+Run `npm run test:engine-spikes -- --output <directory>` with Node 22.22.3. It rebuilds the legacy runtime before measuring its callback baseline, so stale `dist` output cannot qualify. The JSON evidence records OS, architecture, versions, timing and assertions. `npm run ci` remains the production gate. CI also verifies the real npm package and paired Desktop assembly on each spike platform.
 
 The same CI job checks out Desktop at `70c9e8a4a7fbc26b89ed5ac724aed97dfcc27d9f`, installs its locked production dependencies without lifecycle scripts and runs `scripts/check-engine-spike-assembly.mjs --desktop <checkout> --dest <outside Core source> --output <assembly-evidence.json>`. The wrapper verifies the exact assembler inputs, invokes Desktop's real source assembly and records Desktop/Core commits, source-bundle and lock hashes, and the staged runtime identity. This checks a locked development source assembly, not a fabricated registry release or v2 shipment.
 
@@ -26,7 +26,7 @@ The required platforms are macOS arm64, Linux x64 and Windows x64. A report file
 | Linux x64 | 200 | 0.721 ms | Directory 0700, SQLite 0600 | Passed / passed |
 | Windows x64 | 200 | 4.164 ms | Protected ACL; owner SID equals current user; only owner and SYSTEM have FullControl | Passed / passed |
 
-Select candidate A, `node:sqlite`, for C3 and set its minimum to **Node >=22.22.3**, the exact version exercised here. Do not infer acceptance of earlier Node 22 releases. Candidate B was unnecessary because A met every exit criterion; no unmeasured comparison is claimed. This experiment PR preserves production Node 20 support; the Node minimum changes with the production v2 implementation.
+Select candidate A, `node:sqlite`, for C3 and set its minimum to **Node >=22.22.3**, the exact version exercised here. Do not infer acceptance of earlier Node 22 releases. Candidate B was unnecessary because A met every exit criterion; no unmeasured comparison is claimed. The production engine adopted this minimum.
 
 Complete local `npm run ci` also passed: 66 files, 998 tests passed and one pre-existing skip; statements 86.60%, branches 78.78%, functions 91.02%, lines 92.29%. The actual tarball passed both CLI entries, four provider assemblies and four frozen runtime journals. Coverage thresholds were unchanged. C3 still owns production attempt identities, leases, fork history, receipts and concurrency acceptance.
 
