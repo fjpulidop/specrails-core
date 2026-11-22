@@ -1,7 +1,8 @@
-import { spawnSync } from 'node:child_process'
+import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { hostname } from 'node:os'
+import { closeSync, constants, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync } from 'node:fs'
+import { hostname, tmpdir } from 'node:os'
+import path from 'node:path'
 import { EngineError, type ExecutionLease } from '../contracts.js'
 import { appendRunEvent, RunDatabase } from './database.js'
 
@@ -25,42 +26,98 @@ const PROCESS_STARTED_AT = Math.floor(performance.timeOrigin)
  */
 const START_TOLERANCE_MS = 250
 
+/**
+ * Where a process with `token` keeps its liveness lock on Windows. The executor opens it exclusively
+ * (share mode 0) for as long as it lives; the OS closes that handle when the process dies however it
+ * dies (TerminateProcess, a crash), so "the lock can be opened" proves the owner is gone without
+ * asking anything about its pid, which Windows hands to the next process at once.
+ */
+export function ownerLockPath(token: string, directory: string = path.join(tmpdir(), 'specrails-core-executors')): string {
+  return path.join(directory, `${token}.lock`)
+}
+/** A lock this old belongs to a process whose leases expired long ago (a lease lasts a minute). */
+const STALE_LOCK_MS = 24 * 60 * 60_000
+let ownerLock: number | null | undefined
+/** Opens this process's liveness lock (Windows only; once). A lock that cannot be held only leaves checks to the pid. */
+function holdOwnerLock(): void {
+  const exclusive = (constants as Record<string, number | undefined>).UV_FS_O_EXLOCK
+  if (ownerLock !== undefined || process.platform !== 'win32' || !exclusive) return
+  ownerLock = null
+  const file = ownerLockPath(PROCESS_TOKEN), directory = path.dirname(file)
+  try {
+    mkdirSync(directory, { recursive: true })
+    // A killed executor leaves its (released) lock behind; a held one cannot be deleted.
+    for (const name of readdirSync(directory)) {
+      const stale = path.join(directory, name)
+      try { if (name.endsWith('.lock') && statSync(stale).mtimeMs < Date.now() - STALE_LOCK_MS) unlinkSync(stale) } catch {}
+    }
+    const fd = openSync(file, constants.O_CREAT | constants.O_RDWR | exclusive)
+    ownerLock = fd
+    process.once('exit', () => { try { closeSync(fd); unlinkSync(file) } catch {} })
+  } catch { ownerLock = null }
+}
+
+/** What the liveness lock of the process with `token` says: `missing` when there is none to ask. */
+export type OwnerLockState = 'held' | 'released' | 'missing'
+export function ownerLockState(token: string, platform: NodeJS.Platform = process.platform, file: string = ownerLockPath(token)): OwnerLockState {
+  if (platform !== 'win32') return 'missing'
+  let fd: number
+  // A shared open fails with a sharing violation (EBUSY) while the owner holds the file exclusively.
+  try { fd = openSync(file, 'r') }
+  catch (error) { return (error as NodeJS.ErrnoException)?.code === 'EBUSY' ? 'held' : 'missing' }
+  closeSync(fd)
+  return 'released'
+}
+
 /** A lease owner that names its process (pid, token and start), so a lease left by a process that died on this machine is not live. */
 export function leaseOwner(): string {
+  holdOwnerLock()
   return `pid:${process.pid}@${hostname()}:proc-${PROCESS_TOKEN}.${PROCESS_STARTED_AT}:${randomUUID()}`
 }
 
 /**
- * When the OS started process `pid` (ms since the epoch), or null when it cannot tell. Read only
- * when a lease owner's pid names a live process, to tell the owner from a newer process that was
- * given its pid; any failure keeps the owner live until its lease expires.
+ * When the OS started process `pid` (ms since the epoch), `'gone'` when no process has the pid, or
+ * null when it cannot tell. Read only when a lease owner's pid answers a signal, to tell the owner
+ * from a newer process that was given its pid; a reading that fails keeps the owner live until its
+ * lease expires.
  */
-export function processStartedAt(pid: number, platform: NodeJS.Platform = process.platform): number | null {
+export type ProcessStartReading = number | 'gone' | null
+type Run = (command: string, args: string[], options: { encoding: 'utf8'; timeout: number; windowsHide?: boolean; env?: NodeJS.ProcessEnv }) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout'>
+/**
+ * One query answers both whether a process has the pid and when it started. A process can hold a
+ * reused pid for less time than PowerShell takes to start (a git or shell child of a concurrent run),
+ * so a missing process must read as gone, not as a failed query.
+ */
+const WINDOWS_START_QUERY = (pid: number) => `$p = Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction Stop; ` +
+  `if ($null -eq $p) { 'gone' } elseif ($null -eq $p.CreationDate) { 'unknown' } else { $p.CreationDate.ToUniversalTime().ToString('o') }`
+export function processStartedAt(pid: number, platform: NodeJS.Platform = process.platform, run: Run = spawnSync): ProcessStartReading {
   try {
     if (platform === 'linux') {
       const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
       const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
       const ticks = Number(fields[19]), boot = /^btime (\d+)$/m.exec(readFileSync('/proc/stat', 'utf8'))
-      const hz = Number(spawnSync('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 5_000 }).stdout.trim()) || 100
+      const hz = Number(run('getconf', ['CLK_TCK'], { encoding: 'utf8', timeout: 5_000 }).stdout.trim()) || 100
       return Number.isFinite(ticks) && boot ? Number(boot[1]) * 1000 + Math.round(ticks * 1000 / hz) : null
     }
     const result = platform === 'win32'
       // Win32_Process reads the system's process list, so it has the creation time of any process,
       // also one this user cannot open (Get-Process StartTime is access-denied for system processes,
       // which is where Windows often puts a freed pid).
-      ? spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `(Get-CimInstance Win32_Process -Filter "ProcessId=${pid}" -ErrorAction Stop).CreationDate.ToUniversalTime().ToString('o')`], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
-      : spawnSync('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: 5_000, env: { ...process.env, LC_ALL: 'C' } })
-    const at = result.status === 0 ? Date.parse(String(result.stdout).trim()) : NaN
+      ? run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_START_QUERY(pid)], { encoding: 'utf8', timeout: 30_000, windowsHide: true })
+      : run('ps', ['-o', 'lstart=', '-p', String(pid)], { encoding: 'utf8', timeout: 5_000, env: { ...process.env, LC_ALL: 'C' } })
+    const output = result.status === 0 ? String(result.stdout ?? '').trim() : ''
+    if (platform === 'win32' && output === 'gone') return 'gone'
+    const at = output ? Date.parse(output) : NaN
     return Number.isFinite(at) ? at : null
   } catch { return null }
 }
 
 /** Why a lease owner is (or is not) taken to be live; `lease_held` reports it. */
 export type LeaseOwnerState =
-  | { alive: true; reason: 'unnamed' | 'other_machine' | 'this_process' | 'older_owner' | 'unverifiable' | 'same_process'; observedStart?: number | null }
-  | { alive: false; reason: 'process_gone' | 'pid_reused'; observedStart?: number | null }
+  | { alive: true; reason: 'unnamed' | 'other_machine' | 'this_process' | 'older_owner' | 'unverifiable' | 'same_process' | 'lock_held'; observedStart?: number | null }
+  | { alive: false; reason: 'process_gone' | 'pid_reused' | 'lock_released'; observedStart?: number | null }
 
-export function leaseOwnerState(owner: string, kill: (pid: number, signal: 0) => void = process.kill.bind(process), startedAt: (pid: number) => number | null = processStartedAt): LeaseOwnerState {
+export function leaseOwnerState(owner: string, kill: (pid: number, signal: 0) => void = process.kill.bind(process), startedAt: (pid: number) => ProcessStartReading = processStartedAt, lock: (token: string) => OwnerLockState = ownerLockState): LeaseOwnerState {
   const match = OWNER_PROCESS.exec(owner)
   if (!match) return { alive: true, reason: 'unnamed' }
   if (match[2] !== hostname()) return { alive: true, reason: 'other_machine' }
@@ -73,6 +130,12 @@ export function leaseOwnerState(owner: string, kill: (pid: number, signal: 0) =>
     if (match[3] === undefined) return { alive: true, reason: 'older_owner' }
     return match[3] === PROCESS_TOKEN ? { alive: true, reason: 'this_process' } : { alive: false, reason: 'pid_reused' }
   }
+  // The owner's liveness lock (Windows) answers for the process itself, whoever has its pid now.
+  if (match[3] !== undefined) {
+    const state = lock(match[3])
+    if (state === 'held') return { alive: true, reason: 'lock_held' }
+    if (state === 'released') return { alive: false, reason: 'lock_released' }
+  }
   try { kill(pid, 0) }
   catch (error) {
     // ESRCH: no such process. EPERM: a process this user cannot signal has the pid (on Windows, a
@@ -84,6 +147,8 @@ export function leaseOwnerState(owner: string, kill: (pid: number, signal: 0) =>
   const recorded = match[4] === undefined ? NaN : Number(match[4])
   if (!Number.isSafeInteger(recorded)) return { alive: true, reason: 'older_owner' }
   const observedStart = startedAt(pid)
+  // The process that answered the signal exited before its start could be read: the pid is free.
+  if (observedStart === 'gone') return { alive: false, reason: 'process_gone', observedStart: null }
   if (observedStart === null) return { alive: true, reason: 'unverifiable', observedStart }
   return observedStart > recorded + START_TOLERANCE_MS ? { alive: false, reason: 'pid_reused', observedStart } : { alive: true, reason: 'same_process', observedStart }
 }
@@ -95,8 +160,8 @@ export function leaseOwnerState(owner: string, kill: (pid: number, signal: 0) =>
  * machine, an older owner without a process, a start time that cannot be read) is assumed alive
  * until its lease expires.
  */
-export function leaseOwnerAlive(owner: string, kill?: (pid: number, signal: 0) => void, startedAt?: (pid: number) => number | null): boolean {
-  return leaseOwnerState(owner, kill, startedAt).alive
+export function leaseOwnerAlive(owner: string, kill?: (pid: number, signal: 0) => void, startedAt?: (pid: number) => ProcessStartReading, lock?: (token: string) => OwnerLockState): boolean {
+  return leaseOwnerState(owner, kill, startedAt, lock).alive
 }
 
 /** Whether a lease still fences the run: unexpired and held by an owner that can still act. */
