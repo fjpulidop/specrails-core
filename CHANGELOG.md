@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.12.0](https://github.com/fjpulidop/specrails-core/compare/v6.11.1...v6.12.0) (2026-11-22)
+
+
+### Features
+
+* **sessions:** report context usage per turn; docs refresh ([#481](https://github.com/fjpulidop/specrails-core/issues/481)) ([e1a9fe2](https://github.com/fjpulidop/specrails-core/commit/e1a9fe2cf53295b48761a2727a5f9dd1c9ca9098))
+
 ## [6.11.1](https://github.com/fjpulidop/specrails-core/compare/v6.11.0...v6.11.1) (2026-11-17)
 
 
