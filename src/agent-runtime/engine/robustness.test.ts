@@ -74,11 +74,13 @@ async function until(predicate: () => boolean, timeout = 30_000) {
   while (!predicate()) { if (Date.now() > deadline) throw new Error('Fixture process did not reach its boundary'); await sleep(50) }
 }
 afterAll(async () => {
+  // Wait for each killed child to exit (not a fixed delay) before removing the directories it had open.
+  const exited = [...children].map(child => new Promise(resolve => { child.once('close', resolve); if (child.exitCode !== null || child.signalCode !== null) resolve(undefined) }))
   for (const child of children) {
     if (process.platform === 'win32' && child.pid) spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { timeout: 5000, windowsHide: true })
     else child.kill('SIGKILL')
   }
-  await sleep(100)
+  await Promise.all(exited)
   for (const directory of directories) rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
 })
 

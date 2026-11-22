@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtemp, rm } from 'node:fs/promises'
-import { statSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { hostname, tmpdir } from 'node:os'
 import path from 'node:path'
 import { Annotation, Command, END, interrupt, Send, START, StateGraph, type LangGraphRunnableConfig } from '@langchain/langgraph'
@@ -8,7 +9,7 @@ import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
 import { appendRunEvent, RunDatabase } from './database.js'
-import { leaseLive, leaseOwner, leaseOwnerAlive, processStartedAt, RunLease } from './lease.js'
+import { leaseLive, leaseOwner, leaseOwnerAlive, leaseOwnerState, ownerLockPath, ownerLockState, processStartedAt, RunLease, WINDOWS_EXCLUSIVE_OPEN } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
 import { recordedRouteOverrides, ROUTE_OVERRIDE_EVENT } from '../route-overrides.js'
@@ -551,6 +552,78 @@ describe('a lease whose owner process died on this machine', () => {
     expect(next.epoch).toBe(held.epoch + 1)
     expect(() => lease.acquire('third-owner')).toThrow(/Another executor holds this run lease/)
     db.close()
+  })
+})
+
+describe('telling a dead executor on Windows from a live one', () => {
+  const at = 1_795_000_000_000, owner = `pid:6396@${hostname()}:proc-0040a0be9ac5.${at}:killed`
+  const alive = () => {}, missing = () => 'missing' as const
+  it('trusts the owner\'s liveness lock over whatever now holds its pid', () => {
+    // Held: the owner process still has its exclusive handle, even if the pid reads as a newer process.
+    expect(leaseOwnerState(owner, alive, () => at + 30_000, () => 'held')).toEqual({ alive: true, reason: 'lock_held' })
+    // Released: the OS closed the handle when the owner died, even if a process with the pid answers
+    // and its start time cannot be read (run 45066991212: ownerCheck "unverifiable", observedStart null).
+    expect(leaseOwnerState(owner, alive, () => null, () => 'released')).toEqual({ alive: false, reason: 'lock_released' })
+    // The lock is asked by the owner's process token, never for owners without one.
+    const asked: string[] = []
+    leaseOwnerState(owner, alive, () => at, token => { asked.push(token); return 'missing' })
+    leaseOwnerState(`pid:6396@${hostname()}:x`, alive, () => at, token => { asked.push(token); return 'released' })
+    expect(asked).toEqual(['0040a0be9ac5'])
+  })
+  it('falls back to the pid and its start time when the owner left no lock', () => {
+    // Pid reused: the process with the pid started after the owner.
+    expect(leaseOwnerState(owner, alive, () => at + 30_000, missing)).toMatchObject({ alive: false, reason: 'pid_reused' })
+    // Same process: the start matches the recorded one.
+    expect(leaseOwnerState(owner, alive, () => at - 100, missing)).toMatchObject({ alive: true, reason: 'same_process' })
+    // The process that answered the signal exited before the query: the pid is free.
+    expect(leaseOwnerState(owner, alive, () => 'gone', missing)).toEqual({ alive: false, reason: 'process_gone', observedStart: null })
+    // A start time that cannot be read (query error, timeout): live until the lease expires.
+    expect(leaseOwnerState(owner, alive, () => null, missing)).toEqual({ alive: true, reason: 'unverifiable', observedStart: null })
+  })
+  it('reads presence and start time from one Windows query', () => {
+    const calls: string[][] = []
+    const run = (stdout: string, status: number | null = 0) => (command: string, args: string[]) => { calls.push([command, ...args]); return { status, stdout } }
+    expect(processStartedAt(6396, 'win32', run('2026-11-22T20:30:00.0000000Z'))).toBe(Date.parse('2026-11-22T20:30:00Z'))
+    expect(calls[0]![0]).toBe('powershell.exe')
+    expect(calls[0]!.at(-1)).toContain('ProcessId=6396')
+    expect(calls[0]!.at(-1)).toContain("'gone'")
+    // No process has the pid by the time PowerShell asks.
+    expect(processStartedAt(6396, 'win32', run('gone\r\n'))).toBe('gone')
+    // The process exists but its creation date is not readable.
+    expect(processStartedAt(6396, 'win32', run('unknown'))).toBeNull()
+    // The query failed (CIM error, access denied) or timed out (status null).
+    expect(processStartedAt(6396, 'win32', run('', 1))).toBeNull()
+    expect(processStartedAt(6396, 'win32', run('', null))).toBeNull()
+    expect(processStartedAt(6396, 'win32', () => { throw new Error('spawn powershell.exe ENOENT') })).toBeNull()
+    // Only Windows reports a free pid this way; ps output stays a date or nothing.
+    expect(processStartedAt(6396, 'darwin', run('gone'))).toBeNull()
+  })
+  it('reads a lock that nobody holds as released and an absent one as missing', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'engine owner lock '))
+    try {
+      const file = ownerLockPath('0040a0be9ac5', dir)
+      expect(ownerLockState('0040a0be9ac5', 'win32', file)).toBe('missing')
+      writeFileSync(file, '')
+      expect(ownerLockState('0040a0be9ac5', 'win32', file)).toBe('released')
+      // POSIX has no OS-released lock to ask: the pid checks decide.
+      expect(ownerLockState('0040a0be9ac5', 'linux', file)).toBe('missing')
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+  it.runIf(process.platform === 'win32')('sees the lock released as soon as its holder is killed', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'engine owner lock ')), file = ownerLockPath('0123456789ab', dir)
+    try {
+      const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.openSync(${JSON.stringify(file)}, fs.constants.O_CREAT | fs.constants.O_RDWR | ${WINDOWS_EXCLUSIVE_OPEN}); process.stdout.write('ready'); setInterval(() => {}, 1000)`], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true })
+      const exited = new Promise(resolve => holder.once('exit', resolve))
+      await new Promise<void>((resolve, reject) => { holder.stdout!.once('data', () => resolve()); holder.once('error', reject); holder.once('exit', code => reject(new Error(`lock holder exited ${code}`))) })
+      expect(ownerLockState('0123456789ab', 'win32', file)).toBe('held')
+      holder.kill('SIGKILL')
+      await exited
+      expect(ownerLockState('0123456789ab', 'win32', file)).toBe('released')
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+  it.runIf(process.platform === 'win32')('holds this process\'s own lock while it mints lease owners', () => {
+    const token = /:proc-([0-9a-f]{12})\./.exec(leaseOwner())![1]!
+    expect(ownerLockState(token)).toBe('held')
   })
 })
 
