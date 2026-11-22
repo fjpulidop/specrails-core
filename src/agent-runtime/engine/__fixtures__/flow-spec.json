@@ -89,18 +89,25 @@
       "kind": "role-turn",
       "params": {
         "roleId": "reviewer",
-        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report.",
+        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report. What the person asked for or decided during the Intent session is requested scope: never ask to revert it. List each change no request or decision supports under unrequested, for the person to decide.",
         "structuredOutput": {
           "type": "object",
           "required": [
             "approved",
-            "issues"
+            "issues",
+            "unrequested"
           ],
           "properties": {
             "approved": {
               "type": "boolean"
             },
             "issues": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "unrequested": {
               "type": "array",
               "items": {
                 "type": "string"
@@ -118,7 +125,7 @@
     "review-policy": {
       "kind": "condition",
       "params": {
-        "expr": "$outputs.review.structured.approved == true"
+        "expr": "$outputs.review.structured.approved == true && !exists($outputs.review.structured.unrequested.0)"
       },
       "ends": {
         "true": "archive",
@@ -133,8 +140,18 @@
         }
       },
       "ends": {
-        "next": "correction-budget",
+        "next": "scope-gate",
         "failed": "failed"
+      }
+    },
+    "scope-gate": {
+      "kind": "condition",
+      "params": {
+        "expr": "exists($outputs.review.structured.unrequested.0)"
+      },
+      "ends": {
+        "true": "scope-decision",
+        "false": "correction-budget"
       }
     },
     "correction-budget": {
@@ -167,7 +184,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Correct the code the Intent session built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Revert code only when a finding says it is unrequested AND it contradicts a stated Non-Goal. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
+        "prompt": "Correct the code the Intent session built for change {{run.changeId}} so the findings below are resolved. Fix every defect they name. Add or extend the tests they ask for (new test files are allowed for that) and tag each test that demonstrates an ADDED or MODIFIED requirement with [spec:<capability>/<requirement-slug>]. Never expand the scope beyond the findings. Never edit openspec/: Core re-derives the OpenSpec change from the code after this turn. Never revert behaviour: what the person asked for in the Intent session is in scope, and whether to keep a change nobody asked for is the person's decision; list such a finding under incomplete. Return summary and incomplete.\n\nFindings:\n{{run.latestFindings}}",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -249,7 +266,15 @@
         "reason": "Intent → Spec: the reviewer requested changes that {{run.correctionRounds}} correction round(s) did not resolve. Latest findings: {{run.latestFindings}}"
       },
       "ends": {}
+    },
+    "scope-decision": {
+      "kind": "end",
+      "params": {
+        "outcome": "failure",
+        "reason": "Intent → Spec: the review found changes that no request or decision of the Intent session supports; the person decides whether to keep them as requirements or revert them. Latest findings: {{run.latestFindings}}"
+      },
+      "ends": {}
     }
   },
-  "version": "c4808c58c9929da165d9156e9cc02e06f45134e06de26cf57930b11d0812ea04"
+  "version": "f96abb1434ea64295d351994d527048c2f2473843750f2298efd8451615056ed"
 }

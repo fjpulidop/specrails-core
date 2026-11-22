@@ -630,6 +630,7 @@ const DERIVER_INSTRUCTIONS = [
   '3. proposal.md: why the change was made and what it changes, as the diff shows it.',
   '4. design.md must contain these sections: `## Blast radius` listing EVERY changed file path exactly as it appears in the change set (one bullet per file, the path in backticks, with the reason it changed; deleted files included); `## Rejected alternatives` (only alternatives the summary or code evidence shows were considered; otherwise state that none were recorded); `## Non-Goals`; `## Assumptions`. Core checks the Blast radius mechanically: a changed file missing from it is reported to the reviewer as unexplained.',
   '5. Spec deltas: ADDED requirements for new behaviour and MODIFIED requirements for changed behaviour, each with at least one scenario, preserving existing requirements through OpenSpec delta semantics. Only behaviour the code implements.',
+  '   What the person asked for or decided during the session (the summary\'s accepted scope, their messages, the `Decision:` lines) is requested scope: describe it as requirements, never as out-of-scope or incidental change. A constraint of the spec\'s intent that a later request superseded is not a Non-Goal: record it under `## Assumptions` as superseded, quoting the request and its time.',
   '6. tasks.md: the work that was done, as atomic tasks, ALL already checked (`- [x]`). Under each task add one indented evidence line naming the files and the test that proves it (`  - Evidence: src/a.ts, src/a.test.ts (asserts …)`). A task without test evidence says so explicitly in its evidence line.',
   '7. Propose verification for repositories without a configured check, exactly as the architect does: existing commands that exercise the changed code (`command` plus `args`, optional `cwd` inside the repository scope). Omit repositories where nothing automated applies.',
   '8. Score confidence honestly: `high` when the diff and tests fully explain the behaviour; `medium` when one non-obvious intention had to be assumed (name it under Assumptions); `low` when the purpose of part of the diff cannot be established from the evidence.',
@@ -671,6 +672,19 @@ function humanRulesSection(rules: ProjectRulesContext | undefined): string[] {
   ]
 }
 
+/**
+ * Scope of a derived change (Intent → Spec): the person built this code with an
+ * agent, so what they asked for during that session IS the scope, even where it
+ * departs from the spec's original intent. Rendered for every reviewer of a
+ * derived change, whatever role definition the host supplied.
+ */
+export const DERIVED_SCOPE_RULE: readonly string[] = [
+  '',
+  'Scope of a derived change: the person built this code with an agent in an interactive session. What they asked for and decided there (the accepted scope the task or spec carries, the conversation summary, the `Decision:` lines) IS the requested scope, and a later request supersedes an earlier constraint of the spec\'s intent it contradicts. This overrides the general rule that an unrequested change is an issue to revert:',
+  '- Never ask to revert, remove or restore behaviour the person asked for or decided in that session. Review its quality instead: correctness, tests, accessibility, and artifacts that describe it faithfully.',
+  '- A change no request or decision supports is an "unrequested change": report it as such (the task says where), with the file and the behaviour, for the PERSON to decide whether to keep it (recorded as a requirement) or revert it. Never ask the fixer or the deriver to revert it yourself.',
+]
+
 function derivationSection(derivation: DerivationReport | undefined): string[] {
   if (!derivation) return []
   const unexplained = derivation.unexplainedFiles.slice(0, 200)
@@ -678,8 +692,9 @@ function derivationSection(derivation: DerivationReport | undefined): string[] {
     '## Derivation coverage',
     '',
     `This change was derived from code that already existed. Core measured coverage mechanically from design.md's Blast radius: ${derivation.explained} of ${derivation.files} changed files are explained${derivation.confidence ? `; deriver confidence ${derivation.confidence}` : ''}.`,
+    ...DERIVED_SCOPE_RULE,
     ...(unexplained.length ? [
-      'Rule: every unexplained file below is an issue. Name it in `issues` with what must happen: the design must explain it, or the change must revert it. Do not approve while any remains.',
+      'Rule: every unexplained file below is an issue. Name it in `issues` with what must happen: the design must explain it. Never ask for it to be reverted: that is the person\'s decision (see the rule above).',
       ...unexplained.map(file => `- \`${file}\``),
       ...(derivation.unexplainedFiles.length > unexplained.length ? [`- … ${derivation.unexplainedFiles.length - unexplained.length} more in derivation.json`] : []),
     ] : ['Every changed file is explained; still check that each explanation matches the diff.']),

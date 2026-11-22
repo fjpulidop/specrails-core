@@ -61,7 +61,7 @@ const config: RuntimeConfig = { schemaVersion: 1, enabled: true, providers: [], 
 const proposal = { repositoryId: 'repo', command: process.execPath, args: ['src/value.test.cjs'] }
 
 interface DeriverScript { radius?: string[]; spec?: string; tasks?: string; confidence?: string }
-interface Review { approved: boolean; issues: string[] }
+interface Review { approved: boolean; issues: string[]; unrequested?: string[] }
 interface FixtureOptions {
   /** The reviewer's verdict on its nth turn (0-based); by default it rejects exactly while a changed file is unexplained. */
   review?: (prompt: string, turn: number) => Review
@@ -81,8 +81,8 @@ function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
     const tools = new OpenSpecTools(request.openspec!)
     if (request.role === 'reviewer') {
       const unexplained = /## Derivation coverage[\s\S]*?Rule: every unexplained file/.test(request.prompt)
-      const verdict = options.review?.(request.prompt, reviews++) ?? { approved: !unexplained, issues: unexplained ? ['Explain or revert the unexplained file'] : [] }
-      return { text: JSON.stringify(verdict), usage }
+      const verdict = options.review?.(request.prompt, reviews++) ?? { approved: !unexplained, issues: unexplained ? ['Explain the unexplained file'] : [] }
+      return { text: JSON.stringify({ ...verdict, unrequested: verdict.unrequested ?? [] }), usage }
     }
     if (request.role === 'developer') {
       expect(request).toMatchObject({ access: 'write', stance: 'fixer' })
@@ -169,7 +169,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     const review = requests.find(request => request.role === 'reviewer')!.prompt
     expect(review).toContain('Rule: every unexplained file below is an issue')
     expect(review).toContain('- `src/añadido.cjs`')
-    expect(requests.find(request => request.role === 'developer')!.prompt).toContain('Explain or revert the unexplained file')
+    expect(requests.find(request => request.role === 'developer')!.prompt).toContain('Explain the unexplained file')
     expect(existsSync(path.join(repository, 'openspec/changes', change))).toBe(true)
     const archive = path.join(repository, 'openspec/changes/archive')
     expect(existsSync(archive) ? readdirSync(archive).filter(name => name.endsWith('-' + change)) : []).toEqual([])
@@ -229,7 +229,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
     expect(result.completion).toMatchObject({ ok: false })
     expect(result.completion!.reasons).toContain('Intent → Spec: the reviewer requested changes that 2 correction round(s) did not resolve. Latest findings: '
-      + JSON.stringify({ approved: false, issues: ['Still missing the boundary test (review 3)'] }))
+      + JSON.stringify({ approved: false, issues: ['Still missing the boundary test (review 3)'], unrequested: [] }))
     expect(requests[5]!.prompt).toContain('Still missing the boundary test (review 2)')
     expect(requests[6]!.prompt).toContain('Still missing the boundary test (review 2)')
     expect(result.state.scopes).toEqual(expect.arrayContaining([expect.objectContaining({ nodePath: 'changes-requested', kind: 'end' })]))
@@ -242,8 +242,45 @@ describe('derive-change through the flow-spec reference definition', () => {
     const result = await createRun({ context, config, definition: definition(), registry, change })
     expect(result.state.status).toBe('failed')
     expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer'])
-    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 1 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"]}')
+    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 1 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"],"unrequested":[]}')
   }, integrationTimeout)
+
+  it('never sends an unrequested change to the fixer: the run stops for the person to decide, with no correction round', async () => {
+    const { repository, context } = workspace({ summary: '---\ntranscriptTurns: 2\n---\n## Accepted scope\n1. [2026-11-22 09:10:21 UTC] Person: "export two"\n' })
+    const unrequested = 'Unrequested change: README.md: the "Now two." line; no request or decision of the Intent supports it'
+    const { registry, requests } = fixture([{}], { review: () => ({ approved: false, issues: [unrequested], unrequested: [unrequested] }) })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result.state.status).toBe('failed')
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer'])
+    expect(result.state.scopes).toEqual(expect.arrayContaining([expect.objectContaining({ nodePath: 'scope-decision', kind: 'end' })]))
+    expect(result.completion!.reasons.join('\n')).toContain('the person decides whether to keep them as requirements or revert them. Latest findings: ' + JSON.stringify({ approved: false, issues: [unrequested], unrequested: [unrequested] }))
+    // Nothing was reverted: the code the person built is intact.
+    expect(readFileSync(path.join(repository, 'README.md'), 'utf8')).toBe('# Value\nNow two.\n')
+  }, integrationTimeout)
+
+  it('does not archive an approval that still lists an unrequested change', async () => {
+    const { context } = workspace()
+    const { registry, requests } = fixture([{}], { review: () => ({ approved: true, issues: [], unrequested: ['Unrequested change: README.md'] }) })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result.state.status).toBe('failed')
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer'])
+    expect(result.state.scopes).toEqual(expect.arrayContaining([expect.objectContaining({ nodePath: 'scope-decision', kind: 'end' })]))
+  }, integrationTimeout)
+
+  it('tells the reviewer and the deriver that what the person asked for in the session is requested scope, never something to revert', async () => {
+    const { context } = workspace({ summary: '---\ntranscriptTurns: 1\n---\n## Accepted scope\n1. Person: "change the rules"\n' })
+    const { registry, requests } = fixture([{ radius: CHANGED.filter(file => file !== 'README.md') }, {}], { review: (_prompt, turn) => ({ approved: turn > 0, issues: turn > 0 ? [] : ['README.md: explain it in the design'] }) })
+    await createRun({ context, config, definition: definition(), registry, change })
+    const reviewer = requests.find(request => request.role === 'reviewer')!.prompt
+    expect(reviewer).toContain('IS the requested scope, and a later request supersedes an earlier constraint')
+    expect(reviewer).toContain('Never ask to revert, remove or restore behaviour the person asked for or decided in that session')
+    expect(reviewer).toContain('"unrequested change"')
+    expect(reviewer).toContain('Rule: every unexplained file below is an issue. Name it in `issues` with what must happen: the design must explain it. Never ask for it to be reverted')
+    expect(reviewer).not.toContain('or the change must revert it')
+    const deriver = requests.find(request => request.role === 'deriver')!.prompt
+    expect(deriver).toContain('is requested scope: describe it as requirements, never as out-of-scope or incidental change')
+    expect(deriver).toContain('record it under `## Assumptions` as superseded')
+  }, integrationTimeout * 2)
 
   it('routes a failing check to the fixer with the host verification findings', async () => {
     const { repository, context } = workspace({ broken: true })
