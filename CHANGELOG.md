@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.12.1](https://github.com/fjpulidop/specrails-core/compare/v6.12.0...v6.12.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **engine:** verify a dead executor's lease reliably on Windows ([#482](https://github.com/fjpulidop/specrails-core/issues/482)) ([f178f34](https://github.com/fjpulidop/specrails-core/commit/f178f34918d6c7d9e083f276ae1c0112dc46199e))
+
 ## [6.12.0](https://github.com/fjpulidop/specrails-core/compare/v6.11.1...v6.12.0) (2026-11-22)
 
 
