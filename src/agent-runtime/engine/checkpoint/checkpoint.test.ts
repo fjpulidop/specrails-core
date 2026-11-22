@@ -9,7 +9,7 @@ import { EphemeralValue } from '@langchain/langgraph/channels'
 import { emptyCheckpoint } from '@langchain/langgraph-checkpoint'
 import type { JsonValue, NodeAdmission, TerminalCommit } from '../contracts.js'
 import { appendRunEvent, RunDatabase } from './database.js'
-import { leaseLive, leaseOwner, leaseOwnerAlive, leaseOwnerState, ownerLockPath, ownerLockState, processStartedAt, RunLease } from './lease.js'
+import { leaseLive, leaseOwner, leaseOwnerAlive, leaseOwnerState, ownerLockPath, ownerLockState, processStartedAt, RunLease, WINDOWS_EXCLUSIVE_OPEN } from './lease.js'
 import { failReason, RunLedger } from './ledger.js'
 import { SqliteRunSaver } from './saver.js'
 import { recordedRouteOverrides, ROUTE_OVERRIDE_EVENT } from '../route-overrides.js'
@@ -612,7 +612,7 @@ describe('telling a dead executor on Windows from a live one', () => {
   it.runIf(process.platform === 'win32')('sees the lock released as soon as its holder is killed', async () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'engine owner lock ')), file = ownerLockPath('0123456789ab', dir)
     try {
-      const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.openSync(${JSON.stringify(file)}, fs.constants.O_CREAT | fs.constants.O_RDWR | fs.constants.UV_FS_O_EXLOCK); process.stdout.write('ready'); setInterval(() => {}, 1000)`], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true })
+      const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.openSync(${JSON.stringify(file)}, fs.constants.O_CREAT | fs.constants.O_RDWR | ${WINDOWS_EXCLUSIVE_OPEN}); process.stdout.write('ready'); setInterval(() => {}, 1000)`], { stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true })
       const exited = new Promise(resolve => holder.once('exit', resolve))
       await new Promise<void>((resolve, reject) => { holder.stdout!.once('data', () => resolve()); holder.once('error', reject); holder.once('exit', code => reject(new Error(`lock holder exited ${code}`))) })
       expect(ownerLockState('0123456789ab', 'win32', file)).toBe('held')

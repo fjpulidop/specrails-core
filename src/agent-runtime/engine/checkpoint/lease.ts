@@ -37,11 +37,16 @@ export function ownerLockPath(token: string, directory: string = path.join(tmpdi
 }
 /** A lock this old belongs to a process whose leases expired long ago (a lease lasts a minute). */
 const STALE_LOCK_MS = 24 * 60 * 60_000
+/**
+ * libuv's UV_FS_O_EXLOCK on Windows: open with share mode 0. Node passes numeric open flags to libuv
+ * unchanged but does not export this constant (fs.constants has no UV_FS_O_EXLOCK), so it is spelled here.
+ */
+export const WINDOWS_EXCLUSIVE_OPEN = (constants as Record<string, number | undefined>).UV_FS_O_EXLOCK ?? 0x10000000
 let ownerLock: number | null | undefined
 /** Opens this process's liveness lock (Windows only; once). A lock that cannot be held only leaves checks to the pid. */
 function holdOwnerLock(): void {
-  const exclusive = (constants as Record<string, number | undefined>).UV_FS_O_EXLOCK
-  if (ownerLock !== undefined || process.platform !== 'win32' || !exclusive) return
+  const exclusive = WINDOWS_EXCLUSIVE_OPEN
+  if (ownerLock !== undefined || process.platform !== 'win32') return
   ownerLock = null
   const file = ownerLockPath(PROCESS_TOKEN), directory = path.dirname(file)
   try {
