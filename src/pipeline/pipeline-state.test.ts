@@ -830,8 +830,10 @@ it('records configured and remaining timeout separately and waits for terminatio
   expect(receipt.valid).toBe(false)
   expect(receipt.commands[0]).toMatchObject({ configuredTimeoutMs: 900000, exitCode: -1, outcome: 'timed-out' })
   expect(receipt.commands[0]!.appliedTimeoutMs).toBeLessThanOrEqual(200)
-  // Silent for its whole budget: the budget, not the silence bound capped to it, stopped it.
-  expect(receipt.commands[0]!.terminationReason).toContain("remaining time budget")
+  // Silent for its whole budget: the budget stopped it (before or after the spawn, depending on
+  // how fast the host prepares it), never the silence bound capped to that budget.
+  expect(receipt.commands[0]!.terminationReason).toMatch(/remaining time budget|deadline exhausted/)
+  expect(receipt.commands[0]!.terminationReason).not.toMatch(/printed nothing|produced no output/)
   const expired = await verifyPipeline(context, request('process.exit(0)'), () => {}, undefined, { deadline: Date.now() - 1 })
   expect(expired.commands[0]).toMatchObject({ exitCode: -1, appliedTimeoutMs: 0 })
 })
