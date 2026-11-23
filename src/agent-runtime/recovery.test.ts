@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Annotation } from '@langchain/langgraph'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as openspec from './openspec.js'
 import { EngineError } from './engine/contracts.js'
 import * as pipeline from '../pipeline/pipeline-state.js'
@@ -138,7 +138,19 @@ function deferredSignal(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve }
 }
 
+// `openspec init` (a real CLI spawn generating every provider's skills) is the costliest part of starting a
+// v2 implementation run and is identical for every test. Generate it once with the real pinned CLI and seed each
+// run's skill directory, so `prepareOpenSpec` takes its saved-skills path instead of re-running `init` per test.
+let openspecSkills: string | undefined
+beforeAll(() => {
+  const cache = realpathSync(mkdtempSync(path.join(tmpdir(), 'recovery-openspec-')))
+  openspec.prepareOpenSpec(cache, 'repair-fixture', cache)
+  openspecSkills = path.join(cache, 'openspec-skills')
+})
+afterAll(() => { if (openspecSkills) rmSync(path.dirname(openspecSkills), { recursive: true, force: true }) })
+
 async function v2Run(journal: 'implementation' | 'ledger-only' = 'implementation') {
+  if (journal === 'implementation') cpSync(openspecSkills!, path.join(pipelineStateDirectory(context), 'agent-workflow', 'openspec-skills'), { recursive: true })
   const validation = validateWorkflowDefinition({ schemaVersion: 1, id: 'recovery', title: 'Failed implementation recovery', journal, change: journal === 'implementation' ? 'new' : 'none', roles: [], entry: journal === 'implementation' ? 'verify' : 'fail', maxTransitions: 5, nodes: { ...(journal === 'implementation' ? { verify: { kind: 'implementation-step', params: { phase: 'verify' }, ends: { next: 'fail', incomplete: 'fail', rejected: 'fail', replan: 'fail', reverify: 'fail', rereview: 'fail', failed: 'fail' } } } : {}), fail: { kind: 'end', params: { outcome: 'failure' }, ends: {} } } }, validationPieceRegistry(), {})
   if (!validation.ok) throw new Error(JSON.stringify(validation.errors))
   await createRun({ context, config: { schemaVersion: 1, enabled: true, providers: [], agents: { architect: { provider: 'fixture' }, developer: { provider: 'fixture' }, reviewer: { provider: 'fixture' } }, verification: [] }, definition: validation.definition, change: 'repair-fixture', registry: new ExecutorRegistry().register('fixture', { async execute() { throw new Error('No provider calls allowed') } }) })
