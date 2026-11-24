@@ -198,13 +198,15 @@ export function headlessEnvironment(env: NodeJS.ProcessEnv, guard: string = ELEC
 }
 /**
  * The environment for the project's own commands (dependency installs and
- * verification). Agents run their commands through a login shell, which
- * re-reads the user's profile and usually puts the user's own Node first. A
- * host such as Desktop starts this process with its private runtime first
- * instead. Running installs and checks with a different Node than the agents
- * breaks native addons on one side (NODE_MODULE_VERSION mismatch), so project
- * commands use the login-shell PATH too. The inherited entries stay after it,
- * so a machine without its own Node still finds the host's.
+ * verification) and for the agents Core starts (`agentProcessEnvironment`).
+ * The login shell re-reads the user's profile and usually puts the user's own
+ * Node first; a host such as Desktop starts this process with its private
+ * runtime first instead. Agent shells do not reliably re-read the login
+ * profile (an interactive snapshot keeps the inherited PATH), so both sides
+ * take the login-shell PATH from here: running installs and checks with a
+ * different Node than the agents breaks native addons on one side
+ * (NODE_MODULE_VERSION mismatch). The inherited entries stay after it, so a
+ * machine without its own Node still finds the host's.
  */
 export function projectCommandEnvironment(env: NodeJS.ProcessEnv, options: { platform?: NodeJS.Platform; shell?: string; probe?: LoginShellPathProbe } = {}): NodeJS.ProcessEnv {
   const platform = options.platform ?? process.platform

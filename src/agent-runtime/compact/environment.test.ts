@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpath
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { describeDrift, driftedNodeDependencies, configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, hostSpawn, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
+import { describeDrift, driftedNodeDependencies, configuredPlaywrightBrowsers, detectCheckCommand, hostPreconditionFailure, hostSpawn, missingPlaywrightBrowsers, prepareEnvironment, hostPreconditionKind, installEnvironment, isEnvironmentFailure, isPlaywrightBrowserFailure, missingNodeDependencies, nativeAddonMismatch, plannedInstalls, playwrightBrowser, runGroupCheck, suggestedPackages } from './environment.js'
 
 const temporary: string[] = []
 function root(files: Record<string, string> = {}, dirs: string[] = []): string {
@@ -15,6 +15,35 @@ function root(files: Record<string, string> = {}, dirs: string[] = []): string {
   return dir
 }
 afterEach(() => { for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true }) })
+
+const ABI_ERROR = `Error: The module '/Users/me/app/node_modules/better-sqlite3/build/Release/better_sqlite3.node'
+was compiled against a different Node.js version using
+NODE_MODULE_VERSION 127. This version of Node.js requires
+NODE_MODULE_VERSION 141. Please try re-compiling or re-installing
+the module (for instance, using \`npm rebuild\` or \`npm install\`).`
+
+describe('native addon built for another Node', () => {
+  it('is an environment failure even when the summary tail does not show it', () => {
+    const output = ABI_ERROR + '\n' + 'x'.repeat(20_000) + '\n Test Files  20 failed (20)\n'
+    expect(isEnvironmentFailure(1, output)).toBe(true)
+    expect(isEnvironmentFailure(1, 'FAIL server/db.test.ts > expected 1 to be 2')).toBe(false)
+  })
+
+  it('names each stale package once, scoped ones included', () => {
+    const scoped = ABI_ERROR.replace('better-sqlite3/build/Release/better_sqlite3.node', '@scope/native/prebuilds/addon.node')
+    expect(nativeAddonMismatch([ABI_ERROR, ABI_ERROR, scoped].join('\n'))).toEqual(['@scope/native', 'better-sqlite3'])
+    expect(nativeAddonMismatch('was compiled against a different Node.js version using NODE_MODULE_VERSION 127')).toEqual([])
+    expect(nativeAddonMismatch('all good')).toBeUndefined()
+  })
+
+  it('plans a rebuild with the verifying Node for an installed tree', () => {
+    const app = root({ 'package.json': '{"name":"app"}', 'package-lock.json': '{}' }, ['node_modules'])
+    expect(plannedInstalls(app, ABI_ERROR)).toEqual([expect.objectContaining({ command: 'npm', args: ['rebuild', 'better-sqlite3'] })])
+    const pnpm = root({ 'package.json': '{"name":"app"}', 'pnpm-lock.yaml': '' }, ['node_modules'])
+    expect(plannedInstalls(pnpm, ABI_ERROR)).toEqual([expect.objectContaining({ command: 'pnpm', args: ['rebuild', 'better-sqlite3'] })])
+    expect(plannedInstalls(app, 'plain test failure')).toEqual([])
+  })
+})
 
 describe('isEnvironmentFailure', () => {
   it('recognises missing tools and modules, not ordinary test failures', () => {
