@@ -350,10 +350,15 @@ describe('portable child process transport', () => {
     expect(() => windowsKimiInvocation(buildCliInvocation('kimi', request()), { env: { PATH: 'C:\\bin' }, exists: file => file.endsWith('kimi.cmd'), read: () => '@echo off\nkimi %*' })).toThrow('Unsupported Kimi Windows shim')
   })
   it('starts every agent process headless and transport-clean', () => {
-    const env = agentProcessEnvironment({ PATH: '/bin', CLAUDECODE: '1' }, 'darwin')
+    const env = agentProcessEnvironment({ PATH: '/bin', CLAUDECODE: '1' }, 'darwin', () => null)
     expect(env).toMatchObject({ PATH: '/bin', SPECRAILS_HEADLESS: '1', BROWSER: 'none' })
     expect(env.CLAUDECODE).toBeUndefined()
-    expect(agentProcessEnvironment({ SPECRAILS_HEADLESS: '0' }, 'darwin')).toEqual({ SPECRAILS_HEADLESS: '0' })
+    expect(agentProcessEnvironment({ SPECRAILS_HEADLESS: '0' }, 'darwin', () => null)).toEqual({ SPECRAILS_HEADLESS: '0' })
+  })
+  it('gives agents the login-shell PATH verification uses, so both find the same Node', () => {
+    const env = agentProcessEnvironment({ PATH: '/bundle/node/bin:/usr/bin', SHELL: '/bin/zsh' }, 'darwin', () => '/opt/homebrew/bin:/usr/bin')
+    expect(env.PATH).toBe('/opt/homebrew/bin:/usr/bin:/bundle/node/bin')
+    expect(agentProcessEnvironment({ PATH: '/bundle/node/bin', SPECRAILS_PROJECT_LOGIN_PATH: '0' }, 'darwin', () => '/opt/homebrew/bin').PATH).toBe('/bundle/node/bin')
   })
   it('normalizes Windows env keys and preserves the actual system directory', () => {
     expect(cliProcessEnvironment({ SYSTEMROOT: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe', CLAUDECODE: '1' }, 'win32')).toEqual({ SystemRoot: 'D:\\Win', windir: 'D:\\Win', ComSpec: 'D:\\Win\\System32\\cmd.exe' })

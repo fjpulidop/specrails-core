@@ -135,11 +135,41 @@ const ENVIRONMENT_SIGNATURES: RegExp[] = [
   ...PLAYWRIGHT_SIGNATURES,
 ]
 
+// A native addon built by a different Node than the one running the check
+// ("was compiled against a different Node.js version using NODE_MODULE_VERSION
+// 127. This version of Node.js requires NODE_MODULE_VERSION 141"). Every test
+// that loads it fails at once, whatever the change: the install is stale for
+// this Node, and `npm rebuild` with the verifying Node is the fix.
+const NATIVE_ABI_MISMATCH = /compiled against a different Node\.js version using\s+NODE_MODULE_VERSION\s+\d+/i
+const NATIVE_ADDON_PATH = /The module '([^']+\.node)'\s*\n?\s*was compiled against a different Node\.js version/gi
+/** The output is scanned whole (bounded): the mismatch is reported once per failing file, often far from the summary tail. */
+const NATIVE_SCAN_LIMIT = 400_000
+/**
+ * Packages whose native addon was built for another Node, named from the
+ * addon paths the error reports (`…/node_modules/better-sqlite3/build/…` →
+ * `better-sqlite3`). An empty list means the mismatch was reported without a
+ * parsable path; undefined means the output shows no mismatch at all.
+ */
+export function nativeAddonMismatch(output: string): string[] | undefined {
+  const text = output.slice(-NATIVE_SCAN_LIMIT)
+  if (!NATIVE_ABI_MISMATCH.test(text)) return undefined
+  const packages = new Set<string>()
+  for (const match of text.matchAll(NATIVE_ADDON_PATH)) {
+    const parts = match[1]!.split(/[\\/]/)
+    const index = parts.lastIndexOf('node_modules')
+    const first = index >= 0 ? parts[index + 1] : undefined
+    if (!first) continue
+    const name = first.startsWith('@') && parts[index + 2] ? `${first}/${parts[index + 2]}` : first
+    if (/^(?:@[\w.-]+\/)?[\w.-]+$/.test(name)) packages.add(name)
+  }
+  return [...packages].sort()
+}
+
 /** True when a verification failure looks like a missing toolchain/dependency rather than a code defect. */
 export function isEnvironmentFailure(exitCode: number | null | undefined, output: string): boolean {
   if (exitCode === 127) return true
   const tail = output.slice(-6000)
-  return ENVIRONMENT_SIGNATURES.some(pattern => pattern.test(tail))
+  return ENVIRONMENT_SIGNATURES.some(pattern => pattern.test(tail)) || nativeAddonMismatch(output) !== undefined
 }
 
 const REGISTRY = String.raw`(?:registry|npmjs\.org|yarnpkg\.com|npm\.pkg\.github\.com|pkgs\.dev\.azure\.com|jfrog|artifactory|nexus|pypi\.org|crates\.io|proxy\.golang\.org)`
@@ -312,6 +342,16 @@ export function plannedInstalls(root: string, failureOutput = ''): EnvironmentIn
     // A yarn/pnpm the host lacks installs through npx at the pinned version, like verification does.
     const viaNpx = runner === 'npm' ? null : packageManagerFallback(runner, root, projectCommandEnvironment(process.env))
     plans.push({ ecosystem: 'node', root, command: viaNpx ? 'npx' : runner, args: runner === 'npm' ? ['install', '--no-audit', '--no-fund', '--loglevel=error', ...npmLock] : [...(viaNpx ?? []), 'install'], ...(drift.length ? { drift } : {}) })
+  }
+  // A native addon built for another Node (an agent or a person ran the
+  // install or `npm rebuild` with a different Node than the one verifying):
+  // rebuild it with the verifying Node. The install itself is complete, so the
+  // dependency plan above does not cover it.
+  const stale = has('package.json') && has('node_modules') ? nativeAddonMismatch(failureOutput) : undefined
+  if (stale) {
+    const runner = has('pnpm-lock.yaml') ? 'pnpm' : 'npm'
+    plans.push({ ecosystem: 'node', root, command: runner, args: ['rebuild', ...stale],
+      installs: `native addons for this Node (${stale.length ? stale.join(', ') : 'all packages'})` })
   }
   // After the dependency plan: a fresh worktree needs node_modules before
   // `playwright install` can run at all.

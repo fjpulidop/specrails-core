@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
-import { headlessEnvironment } from '../pipeline/pipeline-state.js'
+import { headlessEnvironment, projectCommandEnvironment, type LoginShellPathProbe } from '../pipeline/pipeline-state.js'
 import { AgentExecutionError } from './executor-types.js'
 
 export interface CliInvocation { command: string; args: string[]; stdin?: string }
@@ -60,9 +60,15 @@ export function cliProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.
   }
   return env
 }
-/** The environment of a process an agent run starts: transport-clean and headless (see `headlessEnvironment`). */
-export function agentProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform): NodeJS.ProcessEnv {
-  return cliProcessEnvironment(headlessEnvironment(base), platform)
+/**
+ * The environment of a process an agent run starts: transport-clean, headless
+ * (see `headlessEnvironment`) and with the same PATH as the project's own
+ * installs and verification (see `projectCommandEnvironment`). An agent whose
+ * shell finds another Node than verification rebuilds native addons for the
+ * wrong ABI, and every check that loads them then fails.
+ */
+export function agentProcessEnvironment(base: NodeJS.ProcessEnv, platform: NodeJS.Platform = process.platform, probe?: LoginShellPathProbe): NodeJS.ProcessEnv {
+  return cliProcessEnvironment(headlessEnvironment(projectCommandEnvironment(base, { platform, ...(probe ? { probe } : {}) })), platform)
 }
 export const runCliProcess: CliProcessRunner = async (raw, options) => {
   if (options.signal?.aborted) throw new AgentExecutionError('Agent cancelled', 'aborted')
