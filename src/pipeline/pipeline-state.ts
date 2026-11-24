@@ -1098,6 +1098,19 @@ export function timeLimitReason(command: { command: string; args: string[] }, ap
   return `Verification command timed out: ${shown} was still running when it reached its ${minutes(configuredMs)} limit and was stopped. Running it again will stop the same way: if the suite is just slow, give this verification command a longer timeout (timeoutMs) in the project's verification settings, or make the suite faster.${last}`
 }
 
+/**
+ * Which bound stops a running check at this moment, decided from the clock alone so the reason
+ * never depends on which timer callback the event loop ran first (a busy or slow host, such as a
+ * Windows CI runner, can run a late silence tick after the wall-clock limit has passed). The
+ * wall-clock limit wins once it is reached; silence only counts while it is a tighter bound than
+ * that limit, because a command can never be silent for longer than it has run. Pure.
+ */
+export function verificationLimitReached(elapsedMs: number, silentMs: number, appliedTimeoutMs: number, idleTimeoutMs: number): 'time-limit' | 'silence' | undefined {
+  if (elapsedMs >= appliedTimeoutMs) return 'time-limit'
+  if (idleTimeoutMs > 0 && idleTimeoutMs < appliedTimeoutMs && silentMs >= idleTimeoutMs) return 'silence'
+  return undefined
+}
+
 /** Structured shell execution with the same scope, environment and tree-kill rules, without a receipt or journal. */
 export async function executeVerificationCommand(contextInput: unknown, raw: unknown, log: (text: string) => void = () => {}, signal?: AbortSignal, options: { deadline?: number; idleTimeoutMs?: number } = {}): Promise<CommandReceipt> {
   return executeCheck(validateCommand(validatePipelineContext(contextInput), raw), log, signal, options.deadline, undefined, options.idleTimeoutMs)
@@ -1117,7 +1130,8 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
   // signal. Bounded per command, never longer than the total timeout.
   // 0 (a project that switched the `verify-idle-timeout` guardrail off) disables the silence bound; the wall-clock timeout still applies.
   const idleTimeoutMs = idleTimeoutOverrideMs === 0 ? 0 : Math.min(idleTimeoutOverrideMs ?? verificationIdleTimeoutMs(), appliedTimeoutMs)
-  let lastOutputAt = Date.now()
+  let spawnedAt = Date.now()
+  let lastOutputAt = spawnedAt
   let lastOutputLine = ''
   let outcome: CommandReceipt['outcome']
   let terminationReason: string | undefined
@@ -1165,6 +1179,8 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
         ? verificationInvocation('npx', [...manager, ...command.args, ...once], command.cwd, process.platform, env)
         : verificationInvocation(command.command, [...command.args, ...once], command.cwd, process.platform, env)
       child = spawn(invocation.command, invocation.args, { windowsVerbatimArguments: invocation.windowsVerbatimArguments, cwd: command.cwd, env, shell: false, detached: process.platform !== 'win32', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+      // Both bounds count from the spawn, not from environment preparation before it.
+      spawnedAt = lastOutputAt = Date.now()
     } catch (error) { terminate(`Verification command could not start: ${String(error)}`); finish(-1); return }
     for (const stream of ['stdout', 'stderr'] as const) {
       const decoder = new StringDecoder('utf8')
@@ -1205,11 +1221,17 @@ async function executeCheck(command: VerificationCommand & { cwd: string }, log:
       finish(code ?? -1)
     })
     signal?.addEventListener('abort', abort, { once: true })
-    timer = setTimeout(() => { outcome = 'timed-out'; stop(timeLimitReason(command, appliedTimeoutMs, configuredTimeoutMs, lastOutputLine)) }, appliedTimeoutMs)
-    if (idleTimeoutMs > 0) idleTimer = setInterval(() => {
-      if (Date.now() - lastOutputAt < idleTimeoutMs) return
+    const stopAtTimeLimit = (): void => { outcome = 'timed-out'; stop(timeLimitReason(command, appliedTimeoutMs, configuredTimeoutMs, lastOutputLine)) }
+    timer = setTimeout(stopAtTimeLimit, appliedTimeoutMs)
+    // A silence bound that is not shorter than the wall-clock limit can never be the one that
+    // stops the command (silence cannot outlast the run), so it gets no watchdog at all.
+    if (idleTimeoutMs > 0 && idleTimeoutMs < appliedTimeoutMs) idleTimer = setInterval(() => {
+      const now = Date.now()
+      const reached = verificationLimitReached(now - spawnedAt, now - lastOutputAt, appliedTimeoutMs, idleTimeoutMs)
+      if (!reached) return
+      if (reached === 'time-limit') { stopAtTimeLimit(); return }
       outcome = 'timed-out'
-      const silence = idleTimeoutMs >= 60_000 ? `${Math.round(idleTimeoutMs / 60_000)} min` : `${Math.round(idleTimeoutMs / 1000)} s`
+      const silence = minutes(idleTimeoutMs)
       // Only a package manager's script banner ("> name", "> playwright test") means the tool
       // itself never started working: that is a stuck tool or runtime, not a hanging test.
       stop(producedOwnOutput(output)

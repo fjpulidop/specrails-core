@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { candidateManifest, timeLimitReason, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
+import { candidateManifest, timeLimitReason, verificationLimitReached, requirementFromDescription, candidateChangedReceipt, diffCandidateManifests, describeModifiedFiles, type CandidateManifest, type VerificationReceipt, verificationWaves, verificationSnapshot, readVerificationEvidence, bindVerificationPlan, recordAcceptance, sanitizeFindingLocations, type AcceptanceReport, applyPreview, checkArchive, fingerprintCandidate, initializePipeline, inspectPipeline, pipelineStateDirectory, preparePreview, runPipelineCli, transitionPipeline, validatePipelineContext, projectCommandEnvironment, activateProjectVirtualEnv, runOnceArguments, producedOwnOutput, packageManagerFallback, verificationEnvironment, verificationInvocation, verifyPipeline, type PipelineContext, type VerificationRequest } from './pipeline-state.js'
 
 let root: string
 let context: PipelineContext
@@ -830,6 +830,10 @@ it('records configured and remaining timeout separately and waits for terminatio
   expect(receipt.valid).toBe(false)
   expect(receipt.commands[0]).toMatchObject({ configuredTimeoutMs: 900000, exitCode: -1, outcome: 'timed-out' })
   expect(receipt.commands[0]!.appliedTimeoutMs).toBeLessThanOrEqual(200)
+  // Silent for its whole budget: the budget stopped it (before or after the spawn, depending on
+  // how fast the host prepares it), never the silence bound capped to that budget.
+  expect(receipt.commands[0]!.terminationReason).toMatch(/remaining time budget|deadline exhausted/)
+  expect(receipt.commands[0]!.terminationReason).not.toMatch(/printed nothing|produced no output/)
   const expired = await verifyPipeline(context, request('process.exit(0)'), () => {}, undefined, { deadline: Date.now() - 1 })
   expect(expired.commands[0]).toMatchObject({ exitCode: -1, appliedTimeoutMs: 0 })
 })
@@ -880,6 +884,23 @@ it('reports the total timeout as the reason a command was stopped', async () => 
   // the limit and the setting to change (an overnight run spent a continuation re-running it).
   expect(receipt.reason).toMatch(/^A verification command failed: Verification command timed out: `.+ -e setInterval.+` was still running when it reached its 1 s limit and was stopped\. Running it again will stop the same way: .*longer timeout \(timeoutMs\)/)
   expect(receipt.commands[0]!.terminationReason).toContain('reached its 1 s limit')
+})
+
+it('decides which bound stopped a check from the clock, not from which timer callback ran first', () => {
+  // A slow host (a Windows CI runner) can run a late silence tick after the wall-clock limit
+  // passed, or start a command so slowly that it is silent for the whole limit: the limit wins.
+  expect(verificationLimitReached(200, 200, 200, 200)).toBe('time-limit')
+  expect(verificationLimitReached(260, 260, 200, 150)).toBe('time-limit')
+  // A silence bound that is not tighter than the limit never stops a command.
+  expect(verificationLimitReached(199, 199, 200, 200)).toBeUndefined()
+  expect(verificationLimitReached(199, 199, 200, 300)).toBeUndefined()
+  // Silence stops a command only before the limit, and only once it reaches its own bound.
+  expect(verificationLimitReached(160, 150, 200, 150)).toBe('silence')
+  expect(verificationLimitReached(160, 149, 200, 150)).toBeUndefined()
+  expect(verificationLimitReached(10 * 60_000, 6 * 60_000, 15 * 60_000, 5 * 60_000)).toBe('silence')
+  // 0 switches the silence bound off; the wall-clock limit still applies.
+  expect(verificationLimitReached(10 * 60_000, 10 * 60_000, 15 * 60_000, 0)).toBeUndefined()
+  expect(verificationLimitReached(15 * 60_000, 15 * 60_000, 15 * 60_000, 0)).toBe('time-limit')
 })
 
 it('names the run budget when the remaining run time, not the command limit, stopped a check', () => {
