@@ -1,5 +1,12 @@
 # Changelog
 
+## [6.12.2](https://github.com/fjpulidop/specrails-core/compare/v6.12.1...v6.12.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* **verify:** rebuild native addons for the verifying Node and give agents its PATH ([#487](https://github.com/fjpulidop/specrails-core/issues/487)) ([0c40491](https://github.com/fjpulidop/specrails-core/commit/0c404917116c0d37d085634fe58a952b8b6da226))
+
 ## [6.12.1](https://github.com/fjpulidop/specrails-core/compare/v6.12.0...v6.12.1) (2026-11-22)
 
 
