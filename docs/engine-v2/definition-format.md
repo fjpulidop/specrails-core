@@ -255,7 +255,7 @@ An invalid first preparation gets exactly one repair: `init` sets `artifactRepai
 
 ## Intent Spec
 
-An Intent session's hand-off: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. A reviewer rejection or a failing `check` is not a dead end: it records its findings in `latestFindings` and starts a bounded correction round (`correctionLimit: 2`). `fix` is a `role-turn` of the built-in `developer` with `stance: "fixer"` (write access, the FIXER instructions and the configured fixer engine) that fixes the named defects and adds the tests the findings ask for, tagged `[spec:<capability>/<requirement-slug>]`, without editing `openspec/`. `fix-progress` continues only when the fixer changed the candidate (`$outputs.fix.candidateHash` differs from the hash `check` last verified); `derive` then runs again with `feedback: "{{run.latestFindings}}"` and updates the existing change in place, followed by `check` and a new review. When the fixer changes nothing or the budget is spent, the run ends at `changes-requested`, a failure whose reason names the number of correction rounds and the latest findings. What the person asked for or decided during the Intent session is requested scope: the reviewer never asks to revert it. A change no request or decision supports goes to the reviewer's `unrequested` list; `review-policy` approves only with that list empty, and `scope-gate` ends the run at `scope-decision` (a failure, no correction round) so the person decides whether to keep the change as a requirement or revert it. The fixer never reverts behaviour. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
+An Intent session's hand-off: the code already exists in a worktree reserved at `repositories[].baseSha`. `derive-change` runs the `deriver` engine role to write the OpenSpec change for that diff, checks coverage, completed tasks, strict validation and the archive preflight, and loops back once with its repair note on `fail`. `tag`, a `role-turn` of the built-in `developer` with `stance: "fixer"`, then tags the existing tests with the ids of the requirements the delta specs add or modify (test titles and tag comments only): the ids only exist once derived, and without it every first review failed on missing tags alone. Both `verify` nodes run the configured `setup` first: the Intent worktree is a fresh checkout without git-ignored environments such as a Python venv. `verify` binds the deriver's verification proposals through `additionalCommandsFrom`, the built-in reviewer judges the change with the `derivation.json` coverage report (each unexplained file is an issue), and only an approved review reaches `openspec-archive` and the final verification. A reviewer rejection or a failing `check` is not a dead end: it records its findings in `latestFindings` and starts a bounded correction round (`correctionLimit: 2`). `fix` is a `role-turn` of the built-in `developer` with `stance: "fixer"` (write access, the FIXER instructions and the configured fixer engine) that fixes the named defects and adds the tests the findings ask for, tagged `[spec:<capability>/<requirement-slug>]`, without editing `openspec/`. `fix-progress` continues only when the fixer changed the candidate (`$outputs.fix.candidateHash` differs from the hash `check` last verified); `derive` then runs again with `feedback: "{{run.latestFindings}}"` and updates the existing change in place, followed by `check` and a new review. When the fixer changes nothing or the budget is spent, the run ends at `changes-requested`, a failure whose reason names the number of correction rounds and the latest findings. What the person asked for or decided during the Intent session is requested scope: the reviewer never asks to revert it. A change no request or decision supports goes to the reviewer's `unrequested` list; `review-policy` approves only with that list empty, and `scope-gate` ends the run at `scope-decision` (a failure, no correction round) so the person decides whether to keep the change as a requirement or revert it. The fixer never reverts behaviour. The host writes the bounded conversation summary to `.specrails/pipeline/<runId>/flow-summary.md`; without it the deriver works from the diff alone.
 
 ```json
 {
@@ -295,8 +295,40 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
         "feedback": "{{run.latestFindings}}"
       },
       "ends": {
-        "pass": "check",
+        "pass": "tag",
         "fail": "repair-guard"
+      }
+    },
+    "tag": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "developer",
+        "stance": "fixer",
+        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). Change test titles and tag comments only: no assertions, no new tests, no production code, nothing under openspec/, and only test files that already differ from the base. List a requirement no existing test demonstrates under incomplete. Return summary and incomplete.",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "summary",
+            "incomplete"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "incomplete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sessionContinuity": "none"
+      },
+      "ends": {
+        "next": "check",
+        "invalid": "check",
+        "failed": "failed"
       }
     },
     "repair-guard": {
@@ -538,7 +570,7 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "ends": {}
     }
   },
-  "version": "5f39f1bb74c7f4ffe02e2f580bb1c1de71c7c8bf4a4b343ff386fb77a388eaeb"
+  "version": "40753c7274ddeef5de419cb70567f0f7dd098f775592d39f0504c51dace14785"
 }
 ```
 

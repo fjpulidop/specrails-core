@@ -35,8 +35,40 @@
         "feedback": "{{run.latestFindings}}"
       },
       "ends": {
-        "pass": "check",
+        "pass": "tag",
         "fail": "repair-guard"
+      }
+    },
+    "tag": {
+      "kind": "role-turn",
+      "params": {
+        "roleId": "developer",
+        "stance": "fixer",
+        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). Change test titles and tag comments only: no assertions, no new tests, no production code, nothing under openspec/, and only test files that already differ from the base. List a requirement no existing test demonstrates under incomplete. Return summary and incomplete.",
+        "structuredOutput": {
+          "type": "object",
+          "required": [
+            "summary",
+            "incomplete"
+          ],
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "incomplete": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "sessionContinuity": "none"
+      },
+      "ends": {
+        "next": "check",
+        "invalid": "check",
+        "failed": "failed"
       }
     },
     "repair-guard": {
@@ -278,5 +310,5 @@
       "ends": {}
     }
   },
-  "version": "5f39f1bb74c7f4ffe02e2f580bb1c1de71c7c8bf4a4b343ff386fb77a388eaeb"
+  "version": "40753c7274ddeef5de419cb70567f0f7dd098f775592d39f0504c51dace14785"
 }

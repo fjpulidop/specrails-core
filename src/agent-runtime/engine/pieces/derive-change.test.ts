@@ -75,8 +75,15 @@ const extendTest = (repository: string, turn: number): void => {
 /** A provider that performs the deriver's OpenSpec workflow through the scoped tools, a reviewer that rejects unexplained files and a fixer that edits code. */
 function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
   const requests: AgentRequest[] = []
+  /** The developer's tag turns after each derivation, kept apart: the role sequences below stay deriver → reviewer → fixer. */
+  const tags: AgentRequest[] = []
   let derivations = 0, reviews = 0, fixes = 0
   const registry = new ExecutorRegistry().register('fixture', { async execute(request): Promise<AgentResult> {
+    if (request.role === 'developer' && request.prompt.includes('Tag the existing tests of change')) {
+      tags.push(request)
+      expect(request).toMatchObject({ access: 'write', stance: 'fixer' })
+      return { text: JSON.stringify({ summary: 'Every requirement is already tagged', incomplete: [] }), usage }
+    }
     requests.push(request)
     const tools = new OpenSpecTools(request.openspec!)
     if (request.role === 'reviewer') {
@@ -105,7 +112,7 @@ function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
     }
     return { text: JSON.stringify({ confidence: script.confidence ?? 'high', verification: [proposal] }), usage }
   } })
-  return { registry, requests }
+  return { registry, requests, tags }
 }
 
 function definition() { return JSON.parse(readFileSync(new URL('../__fixtures__/flow-spec.json', import.meta.url), 'utf8')) }
@@ -119,6 +126,21 @@ async function attempts(context: PipelineContext): Promise<Array<{ node: string;
 function derivationOf(output: unknown) { return (output as { derivation: Record<string, unknown>; derivationPath: string }) }
 
 describe('derive-change through the flow-spec reference definition', () => {
+  it('tags the existing tests with the derived requirement ids after every derivation, before the check', async () => {
+    const { context } = workspace({})
+    let rejected = false
+    const { registry, requests, tags } = fixture([{}], { review: () => rejected ? { approved: true, issues: [] } : (rejected = true, { approved: false, issues: ['Name the module in the README'] }) })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    // One tag turn per derivation (the first and the re-derivation after the correction round).
+    expect(requests.filter(request => request.role === 'deriver')).toHaveLength(2)
+    expect(tags).toHaveLength(2)
+    expect(tags[0]!.prompt).toContain('[spec:<capability>/<requirement-slug>]')
+    expect(tags[0]!.prompt).toContain('no production code, nothing under openspec/')
+    const order = (await attempts(context)).map(attempt => attempt.node)
+    expect(order.slice(order.indexOf('derive'), order.indexOf('derive') + 3)).toEqual(['derive', 'tag', 'check'])
+  })
+
   it('derives a fully explained diff (5 of 5), binds the deriver plan, reviews and archives with receipts', async () => {
     const { repository, context, base, head } = workspace({ summary: '---\ntranscriptTurns: 7\n---\nThe user asked for the module to export two.\n' })
     const { registry, requests } = fixture([{}])
@@ -155,7 +177,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'))
     try {
       expect(database.sqlite.prepare('SELECT count(*) count FROM receipts WHERE valid=1').get()?.count).toBeGreaterThanOrEqual(2)
-      expect(database.sqlite.prepare("SELECT role FROM invocations ORDER BY started_at").all().map(row => row.role)).toEqual(['deriver', 'reviewer'])
+      expect(database.sqlite.prepare("SELECT role FROM invocations ORDER BY started_at").all().map(row => row.role)).toEqual(['deriver', 'developer', 'reviewer'])
     } finally { database.close() }
   }, integrationTimeout)
 
@@ -217,7 +239,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'))
     try {
       expect(database.sqlite.prepare('SELECT count(*) count FROM receipts WHERE valid=1').get()?.count).toBeGreaterThanOrEqual(3)
-      expect(database.sqlite.prepare('SELECT role FROM invocations ORDER BY started_at').all().map(row => row.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+      expect(database.sqlite.prepare('SELECT role FROM invocations ORDER BY started_at').all().map(row => row.role)).toEqual(['deriver', 'developer', 'reviewer', 'developer', 'deriver', 'developer', 'reviewer'])
     } finally { database.close() }
   }, integrationTimeout * 2)
 
