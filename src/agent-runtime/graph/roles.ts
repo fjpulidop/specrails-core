@@ -33,6 +33,8 @@ export interface InvokeOptions {
   /** Run this invocation on another configured engine (the fixer) with the matching stance; sessions never carry across engines. */
   agentOverride?: RuntimeAgentConfig
   stance?: 'fixer'
+  /** Artifact access for this turn instead of the role's (a role-turn node's `artifacts`). */
+  artifacts?: 'test-evidence'
   /** Per-piece invocation bounds; explicit zero disables only that timer. */
   timeoutMs?: number
   idleTimeoutMs?: number
@@ -100,7 +102,9 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     const route = selectRoleRoute(role, extra.agentOverride ?? (isBuiltinRole(role) ? config.agents[role] : descriptor), kind, step.checkpoint, extra.agentOverride ? undefined : saved.routes[role])
     const selected = route.selection
     const capabilities = await registry.capabilities(selected.provider, selected.model)
-    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: (extra.agentOverride ? config.rolePrompts?.fixer : config.rolePrompts?.[role] ?? descriptor.prompt) ?? null, ...(isBuiltinRole(role) ? {} : { policy: descriptor }), openspec: deps.openspec?.[role] ?? null, context })
+    const artifacts = extra.artifacts ?? descriptor.artifacts
+    const openspec = deps.openspec?.[role] ? { ...deps.openspec[role], ...(extra.artifacts ? { artifacts: extra.artifacts } : {}) } : undefined
+    const identity = fingerprint({ role, selected, transport: capabilities.transport, instructionsVersion: ROLE_INSTRUCTIONS_VERSION, provider: config.providers.find(provider => provider.id === selected.provider) ?? selected.provider, definition: (extra.agentOverride ? config.rolePrompts?.fixer : config.rolePrompts?.[role] ?? descriptor.prompt) ?? null, ...(isBuiltinRole(role) ? {} : { policy: descriptor }), openspec: openspec ?? null, context })
     const previous = saved.sessions[role]
     const resumeSessionId = capabilities.continuation === 'supported' && previous?.identity === identity && previous.sessionId === extra.resumeSessionId ? extra.resumeSessionId : undefined
     const snapshot = repositoryContextSnapshot(context)
@@ -124,7 +128,7 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
     try {
       if (deps.openspec?.[role]) note(role, `OpenSpec ${OPENSPEC_VERSION}: ${openSpecSkill(deps.openspec![role]!)} (official skill document through scoped tools).`)
       const result = await registry.execute(selected.provider, {
-        role, access: descriptor.access, artifacts: descriptor.artifacts, instructions: 'role', prompt: fullPrompt, openspec: deps.openspec?.[role] ? { ...deps.openspec[role], ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
+        role, access: descriptor.access, artifacts, instructions: 'role', prompt: fullPrompt, openspec: openspec ? { ...openspec, ...(role === 'architect' ? {} : { evidenceScope: { backlogRoot: context.backlogRoot, runId: context.runId } }) } : undefined, cwd: context.artifactRoot, allowedRoots: context.repositories.map(repo => repo.path),
         model: selected.model, effort: selected.effort, ...(selected.thinking ? { thinking: selected.thinking } : {}), maxTurns: selected.maxTurns, signal: step.signal,
         timeoutMs: extra.timeoutMs ?? config.limits?.timeoutMs,
         idleTimeoutMs: extra.idleTimeoutMs ?? config.limits?.idleTimeoutMs,
@@ -197,14 +201,14 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
       if (options.resumeSessionId && options.fallbackPrompt) {
         // A correction pass continues the role's own session: the work it did and
         // the reasons behind it are already in context.
-        try { result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance }) }
+        try { result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance, artifacts: options.artifacts }) }
         catch (error) {
           if (!(error instanceof AgentExecutionError) || !SESSION_FALLBACK_CODES.has(error.code)) throw error
           note(role, `Previous ${role} session is unavailable; starting a fresh ${role} turn with the same instructions.`)
-          result = await execute(role, step, options.fallbackPrompt, structured, { ...timers, kind: 'session-fallback', outputSchema: options.outputSchema, agentOverride: options.agentOverride, stance: options.stance })
+          result = await execute(role, step, options.fallbackPrompt, structured, { ...timers, kind: 'session-fallback', outputSchema: options.outputSchema, agentOverride: options.agentOverride, stance: options.stance, artifacts: options.artifacts })
         }
       } else {
-        result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance })
+        result = await execute(role, step, options.prompt, structured, { ...timers, kind: options.kind, resumeSessionId: options.resumeSessionId, outputSchema: options.outputSchema, fallbackPrompt: options.fallbackPrompt, agentOverride: options.agentOverride, stance: options.stance, artifacts: options.artifacts })
       }
       // At most one corrective turn per problem class: a skipped workflow step and a
       // malformed reply each get one, so a format repair never spends the
@@ -234,6 +238,8 @@ export function createRoleInvoker(deps: RoleInvokerDeps): RoleInvoker {
           current.sessionId ? repair : (options.fallbackPrompt ?? options.prompt) + '\n' + repair,
           structured, { ...timers, kind: 'repair', resumeSessionId: current.sessionId, outputSchema: options.outputSchema,
             fallbackPrompt: (options.fallbackPrompt ?? options.prompt) + '\nPrevious response (bounded):\n' + current.text.slice(-32_000) + '\n' + repair,
+            // The repair turn keeps the turn's artifact access: it may need to finish the same writes.
+            artifacts: options.artifacts,
           })
       }
 

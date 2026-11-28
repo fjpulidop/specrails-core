@@ -9,7 +9,11 @@ export const BUILTIN_ROLES = ['architect', 'developer', 'reviewer'] as const
 export type BuiltinAgentRole = typeof BUILTIN_ROLES[number]
 export type AgentRole = string
 export type AgentAccess = 'read' | 'write'
-export type ArtifactAccess = 'none' | 'tasks-checkboxes' | 'all'
+/**
+ * `test-evidence` (granted per turn by a role-turn node, never by a role) writes only tasks.md and
+ * design.md, and never their task lines, checkboxes or headings: the evidence and file notes around them.
+ */
+export type ArtifactAccess = 'none' | 'tasks-checkboxes' | 'test-evidence' | 'all'
 export type OpenSpecSkill = 'openspec-ff-change' | 'openspec-apply-change' | 'openspec-verify-change'
 export const ROLE_ID = /^[a-z][a-z0-9-]{0,63}$/
 export function isBuiltinRole(role: string): role is BuiltinAgentRole { return (BUILTIN_ROLES as readonly string[]).includes(role) }
@@ -207,7 +211,7 @@ export function requestPolicy(request: Pick<AgentRequest, 'role' | 'access' | 'a
   const access = request.access ?? legacy?.access
   const artifacts = request.artifacts ?? legacy?.artifacts
   const instructions = request.instructions ?? (legacy ? 'role' : undefined)
-  if ((access !== 'read' && access !== 'write') || (artifacts !== 'none' && artifacts !== 'tasks-checkboxes' && artifacts !== 'all') || (instructions !== 'role' && instructions !== 'none')) throw new AgentExecutionError('Explicit access, artifacts and instructions are required', 'invalid_request')
+  if ((access !== 'read' && access !== 'write') || (artifacts !== 'none' && artifacts !== 'tasks-checkboxes' && artifacts !== 'test-evidence' && artifacts !== 'all') || (instructions !== 'role' && instructions !== 'none')) throw new AgentExecutionError('Explicit access, artifacts and instructions are required', 'invalid_request')
   return { access, artifacts, instructions }
 }
 export function normalizeAgentRequest(request: AgentRequest): AgentRequest & ReturnType<typeof requestPolicy> {

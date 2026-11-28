@@ -141,6 +141,11 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(tags[0]!.prompt).toContain("Then update the change's tasks.md and design.md")
     expect(tags[0]!.prompt).toContain('Change nothing else under openspec/, no production code, no existing assertion')
     expect(tags[0]!.prompt).toContain('add one focused test of its observable behaviour')
+    // The tag turn may record that evidence through the scoped OpenSpec tools (Codex writes through them);
+    // the fixer keeps the developer's checkbox-only access.
+    expect(tags[0]).toMatchObject({ artifacts: 'test-evidence', openspec: { artifacts: 'test-evidence' } })
+    expect(requests.find(request => request.role === 'developer')).toMatchObject({ artifacts: 'tasks-checkboxes' })
+    expect(requests.find(request => request.role === 'developer')!.openspec).not.toHaveProperty('artifacts')
     const order = (await attempts(context)).map(attempt => attempt.node)
     expect(order.slice(order.indexOf('derive'), order.indexOf('derive') + 4)).toEqual(['derive', 'tag', 'tag-report', 'check'])
   })

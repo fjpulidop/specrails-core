@@ -279,6 +279,27 @@ describe('declared OpenSpec artifact permissions', () => {
     if (artifacts === 'none') await expect(tools.execute(progress)).rejects.toThrow()
     else await expect(tools.execute(progress)).resolves.toHaveProperty('record')
   }, 60000)
+
+  it('lets a test-evidence turn annotate tasks.md and design.md, never their tasks, checkboxes or headings, nor another artifact', async () => {
+    await author()
+    // The developer's own binding, with this turn's access (what a role-turn with artifacts: test-evidence sends).
+    const tools = new OpenSpecTools({ ...developer.context, artifacts: 'test-evidence' })
+    await tools.execute({ action: 'load_skill' })
+    await tools.execute({ action: 'instructions', artifact: 'apply' })
+    const file = (name: string): string => readFileSync(path.join(root, 'openspec/changes/medical-alert', name), 'utf8')
+    const tasks = file('tasks.md'), design = file('design.md')
+    const write = (target: string, content: string) => tools.execute({ action: 'write_artifact', path: target, content })
+    await expect(write('tasks.md', tasks + '  - Evidence: tests/alerts.test.js "shows active alerts" [spec:alerts/medical-alert]\n')).resolves.toHaveProperty('written')
+    await expect(write('design.md', design + '\nTests: tests/alerts.test.js demonstrates the booking scenario.\n')).resolves.toHaveProperty('written')
+    await expect(write('tasks.md', file('tasks.md').replace('[ ]', '[x]'))).rejects.toThrow('keep every task line and checkbox')
+    await expect(write('tasks.md', file('tasks.md').replace('Display alerts', 'Display all alerts'))).rejects.toThrow('keep every task line and checkbox')
+    await expect(write('tasks.md', file('tasks.md') + '- [ ] 1.2 A task nobody derived\n')).rejects.toThrow('keep every task line and checkbox')
+    await expect(write('design.md', file('design.md').replace('## Context', '## Background'))).rejects.toThrow('keep every heading')
+    await expect(write('proposal.md', file('proposal.md') + '\nMore.\n')).rejects.toThrow('only the test evidence in tasks.md and design.md')
+    await expect(write('specs/alerts/spec.md', file('specs/alerts/spec.md'))).rejects.toThrow('only the test evidence in tasks.md and design.md')
+    expect(file('tasks.md')).toContain('Evidence: tests/alerts.test.js')
+    expect(file('tasks.md')).toContain('- [ ] 1.1 Display alerts')
+  }, 60000)
 })
 
 describe('skipped OpenSpec workflow steps (contract 5.16)', () => {

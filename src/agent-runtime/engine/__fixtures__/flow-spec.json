@@ -45,6 +45,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
+        "artifacts": "test-evidence",
         "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Then update the change's tasks.md and design.md: their test evidence cites the tests you tagged or added, and the files the change touches include every test file you changed. Change nothing else under openspec/, no production code, no existing assertion, and never expand scope. Run every test file you touched, in full. List under incomplete a requirement you could not demonstrate, and every test that fails, with the command you ran and its error. Return summary and incomplete.",
         "structuredOutput": {
           "type": "object",
@@ -324,5 +325,5 @@
       "ends": {}
     }
   },
-  "version": "9623d84efcf200fc010089624276356f80947dd6be4628e7c1f4126835837730"
+  "version": "26970f2c837941b81d36534b67cc1d85eca9355c7f65d02c6b89698dffd21f8b"
 }
