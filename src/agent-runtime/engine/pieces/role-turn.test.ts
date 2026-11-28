@@ -142,6 +142,21 @@ describe('role-turn fixer stance', () => {
   })
 })
 
+describe('role-turn test-evidence artifact access', () => {
+  // The positive path needs a real OpenSpec change: derive-change.test.ts covers the flow-spec tag step end to end.
+  it('accepts only test-evidence in the closed params schema', () => {
+    const f = fixture()
+    expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'Tag', artifacts: 'test-evidence' }, '/test')).toEqual([])
+    for (const artifacts of ['all', 'tasks-checkboxes', '', null]) expect(f.pieces.validateParams('role-turn', { roleId: 'writer', prompt: 'Tag', artifacts } as Record<string, JsonValue>, '/test')).toEqual([expect.objectContaining({ code: 'invalid_piece_params', path: '/test/params/artifacts' })])
+  })
+
+  it('rejects it on a read role or a write role without an OpenSpec binding, before any provider call', async () => {
+    const f = fixture()
+    for (const roleId of ['analyst', 'writer']) await expect(f.run({ roleId, prompt: 'Tag', artifacts: 'test-evidence' })).rejects.toMatchObject({ code: 'invalid_arguments', message: expect.stringContaining('OpenSpec binding') })
+    expect(f.requests).toHaveLength(0)
+  })
+})
+
 describe("role-turn: the person's earlier answers (bench5)", () => {
   const asked = (question: string, answer: string, ordinal: number) => ({ id: 'a:' + ordinal, transition: ordinal, attempt: 1, ordinal, nodePath: 'architect', value: { answer }, asked: { question, answer } })
 

@@ -67,6 +67,8 @@ interface FixtureOptions {
   review?: (prompt: string, turn: number) => Review
   /** What the developer does on its fixer turn; by default it extends the existing test file. */
   fix?: (repository: string, turn: number) => void
+  /** The developer's report on its nth tag turn; by default every requirement is already tagged. */
+  tag?: (turn: number) => { summary: string; incomplete: string[] }
 }
 const extendTest = (repository: string, turn: number): void => {
   const file = path.join(repository, 'src/value.test.cjs')
@@ -75,8 +77,15 @@ const extendTest = (repository: string, turn: number): void => {
 /** A provider that performs the deriver's OpenSpec workflow through the scoped tools, a reviewer that rejects unexplained files and a fixer that edits code. */
 function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
   const requests: AgentRequest[] = []
-  let derivations = 0, reviews = 0, fixes = 0
+  /** The developer's tag turns after each derivation, kept apart: the role sequences below stay deriver → reviewer → fixer. */
+  const tags: AgentRequest[] = []
+  let derivations = 0, reviews = 0, fixes = 0, tagTurns = 0
   const registry = new ExecutorRegistry().register('fixture', { async execute(request): Promise<AgentResult> {
+    if (request.role === 'developer' && request.prompt.includes('Tag the existing tests of change')) {
+      tags.push(request)
+      expect(request).toMatchObject({ access: 'write', stance: 'fixer' })
+      return { text: JSON.stringify(options.tag?.(tagTurns++) ?? { summary: 'Every requirement is already tagged', incomplete: [] }), usage }
+    }
     requests.push(request)
     const tools = new OpenSpecTools(request.openspec!)
     if (request.role === 'reviewer') {
@@ -105,7 +114,7 @@ function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
     }
     return { text: JSON.stringify({ confidence: script.confidence ?? 'high', verification: [proposal] }), usage }
   } })
-  return { registry, requests }
+  return { registry, requests, tags }
 }
 
 function definition() { return JSON.parse(readFileSync(new URL('../__fixtures__/flow-spec.json', import.meta.url), 'utf8')) }
@@ -119,6 +128,53 @@ async function attempts(context: PipelineContext): Promise<Array<{ node: string;
 function derivationOf(output: unknown) { return (output as { derivation: Record<string, unknown>; derivationPath: string }) }
 
 describe('derive-change through the flow-spec reference definition', () => {
+  it('tags the existing tests with the derived requirement ids after every derivation, before the check', async () => {
+    const { context } = workspace({})
+    let rejected = false
+    const { registry, requests, tags } = fixture([{}], { review: () => rejected ? { approved: true, issues: [] } : (rejected = true, { approved: false, issues: ['Name the module in the README'] }) })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    // One tag turn per derivation (the first and the re-derivation after the correction round).
+    expect(requests.filter(request => request.role === 'deriver')).toHaveLength(2)
+    expect(tags).toHaveLength(2)
+    expect(tags[0]!.prompt).toContain('[spec:<capability>/<requirement-slug>]')
+    expect(tags[0]!.prompt).toContain("Then update the change's tasks.md and design.md")
+    expect(tags[0]!.prompt).toContain('Change nothing else under openspec/, no production code, no existing assertion')
+    expect(tags[0]!.prompt).toContain('add one focused test of its observable behaviour')
+    // The tag turn may record that evidence through the scoped OpenSpec tools (Codex writes through them);
+    // the fixer keeps the developer's checkbox-only access.
+    expect(tags[0]).toMatchObject({ artifacts: 'test-evidence', openspec: { artifacts: 'test-evidence' } })
+    expect(requests.find(request => request.role === 'developer')).toMatchObject({ artifacts: 'tasks-checkboxes' })
+    expect(requests.find(request => request.role === 'developer')!.openspec).not.toHaveProperty('artifacts')
+    const order = (await attempts(context)).map(attempt => attempt.node)
+    expect(order.slice(order.indexOf('derive'), order.indexOf('derive') + 4)).toEqual(['derive', 'tag', 'tag-report', 'check'])
+  })
+
+  it('hands the failing tests the tag step saw to the reviewer, reset every round', async () => {
+    const { context } = workspace({})
+    const failing = 'smoke.spec.ts starts a run fails: npm run test:e2e, the Play button is not found'
+    const { registry, requests, tags } = fixture([{}], {
+      tag: turn => turn === 0 ? { summary: 'Tagged the tests', incomplete: [failing] } : { summary: 'Tagged the tests', incomplete: [] },
+      review: (prompt, turn) => turn === 0 ? { approved: false, issues: [prompt.includes(failing) ? 'Fix the failing smoke test' : 'missing report'] } : { approved: true, issues: [] },
+    })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    expect(tags[0]!.prompt).toContain('Run every test file you touched, in full')
+    const reviews = requests.filter(request => request.role === 'reviewer').map(request => request.prompt)
+    expect(reviews[0]).toContain(`reported: {"summary":"Tagged the tests","incomplete":[${JSON.stringify(failing)}]}. A failing test it lists is a failing check.`)
+    // The fixer received the reviewer's finding; the next review sees only the fresh report.
+    expect(requests.find(request => request.role === 'developer')!.prompt).toContain('Fix the failing smoke test')
+    expect(reviews[1]).not.toContain(failing)
+  })
+
+  it('reviews without a tag report when the tag turn answers outside its schema', async () => {
+    const { context } = workspace({})
+    const { registry, requests } = fixture([{}], { tag: () => ({ wrong: true }) as never })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    expect(requests.find(request => request.role === 'reviewer')!.prompt).toContain('reported: . A failing test')
+  })
+
   it('derives a fully explained diff (5 of 5), binds the deriver plan, reviews and archives with receipts', async () => {
     const { repository, context, base, head } = workspace({ summary: '---\ntranscriptTurns: 7\n---\nThe user asked for the module to export two.\n' })
     const { registry, requests } = fixture([{}])
@@ -155,7 +211,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'))
     try {
       expect(database.sqlite.prepare('SELECT count(*) count FROM receipts WHERE valid=1').get()?.count).toBeGreaterThanOrEqual(2)
-      expect(database.sqlite.prepare("SELECT role FROM invocations ORDER BY started_at").all().map(row => row.role)).toEqual(['deriver', 'reviewer'])
+      expect(database.sqlite.prepare("SELECT role FROM invocations ORDER BY started_at").all().map(row => row.role)).toEqual(['deriver', 'developer', 'reviewer'])
     } finally { database.close() }
   }, integrationTimeout)
 
@@ -217,7 +273,7 @@ describe('derive-change through the flow-spec reference definition', () => {
     const database = await RunDatabase.open(path.join(definitionRunDirectory(context), 'run.sqlite'))
     try {
       expect(database.sqlite.prepare('SELECT count(*) count FROM receipts WHERE valid=1').get()?.count).toBeGreaterThanOrEqual(3)
-      expect(database.sqlite.prepare('SELECT role FROM invocations ORDER BY started_at').all().map(row => row.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+      expect(database.sqlite.prepare('SELECT role FROM invocations ORDER BY started_at').all().map(row => row.role)).toEqual(['deriver', 'developer', 'reviewer', 'developer', 'deriver', 'developer', 'reviewer'])
     } finally { database.close() }
   }, integrationTimeout * 2)
 
@@ -236,14 +292,24 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(existsSync(path.join(repository, 'openspec/changes', change))).toBe(true)
   }, integrationTimeout * 3)
 
-  it('ends with changes requested after one fixer turn that changes nothing', async () => {
+  it('re-derives when the fixer changes nothing (a finding for the artifacts), and ends with changes requested once the budget is spent', async () => {
     const { context } = workspace()
     const { registry, requests } = fixture([{}], { review: () => ({ approved: false, issues: ['Revert the unrequested README edit'] }), fix: () => {} })
     const result = await createRun({ context, config, definition: definition(), registry, change })
     expect(result.state.status).toBe('failed')
-    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer'])
-    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 1 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"],"unrequested":[]}')
-  }, integrationTimeout)
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 2 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"],"unrequested":[]}')
+  }, integrationTimeout * 2)
+
+  it('resolves a finding about the artifacts through the re-derivation when the fixer rightly changes no code', async () => {
+    const { context } = workspace()
+    const finding = 'specs/value/spec.md (deriver): the requirement must say the module returns two'
+    const { registry, requests } = fixture([{}], { review: (_prompt, turn) => turn === 0 ? { approved: false, issues: [finding] } : { approved: true, issues: [] }, fix: () => {} })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+    expect(requests[3]!.prompt).toContain(finding)
+  }, integrationTimeout * 2)
 
   it('never sends an unrequested change to the fixer: the run stops for the person to decide, with no correction round', async () => {
     const { repository, context } = workspace({ summary: '---\ntranscriptTurns: 2\n---\n## Accepted scope\n1. [2026-11-22 09:10:21 UTC] Person: "export two"\n' })

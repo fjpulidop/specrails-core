@@ -269,15 +269,23 @@ export class OpenSpecTools {
       if (!relative) throw new Error(`Not a spec-driven artifact: write_artifact path is change-relative, one of ${ARTIFACT_PATHS} (got ${JSON.stringify(String(input.path ?? '')).slice(0, 200)})`)
       const content = input.content
       input = { ...input, path: relative }
-      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' && relative !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
+      const policy = openSpecPolicy(this.context).artifacts
+      if (policy === 'tasks-checkboxes' && relative !== 'tasks.md') throw new Error('Developer may update only OpenSpec tasks')
+      if (policy === 'test-evidence' && relative !== 'tasks.md' && relative !== 'design.md') throw new Error('This turn may update only the test evidence in tasks.md and design.md')
       const artifact = relative.startsWith('specs/') ? 'specs' : relative.replace('.md', '')
       if (!['ready', 'done'].includes(status.artifacts.find(item => item.id === artifact)?.status ?? '')) throw new Error('OpenSpec dependencies are incomplete for this artifact')
-      const required = openSpecPolicy(this.context).artifacts === 'tasks-checkboxes' ? 'apply' : artifact
+      const required = policy === 'tasks-checkboxes' || policy === 'test-evidence' ? 'apply' : artifact
       if (!history.some(item => item.action === 'instructions' && item.artifact === required)) throw new Error(`Read OpenSpec instructions before writing this artifact: call ${JSON.stringify({ action: 'instructions', artifact: required })} first`)
       const target = artifactPath(status.changeRoot, relative)
-      if (openSpecPolicy(this.context).artifacts === 'tasks-checkboxes') {
+      if (policy === 'tasks-checkboxes') {
         const normalize = (text: string): string => text.replace(/^(\s*-\s+)\[[ x]\]/gm, '$1[ ]')
         if (normalize(readFileSync(target, 'utf8')) !== normalize(content)) throw new Error('Developer may change only task checkboxes')
+      }
+      if (policy === 'test-evidence') {
+        // Evidence and file notes only: the tasks (text and state) and the design's sections stay as derived.
+        const frame = relative === 'tasks.md' ? /^\s*-\s+\[[ xX]\].*$/gm : /^#{1,6}\s.*$/gm
+        const lines = (text: string): string[] => (text.match(frame) ?? []).map(line => line.trimEnd())
+        if (JSON.stringify(lines(readFileSync(target, 'utf8'))) !== JSON.stringify(lines(content))) throw new Error(relative === 'tasks.md' ? 'This turn may add or change evidence lines only: keep every task line and checkbox as it is' : 'This turn may change design.md text only within its sections: keep every heading as it is')
       }
       this.signal?.throwIfAborted()
       mkdirSync(path.dirname(target), { recursive: true })

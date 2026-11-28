@@ -22,7 +22,7 @@ const ajv = new Ajv2020({ allErrors: true, strict: true, validateFormats: false,
 
 export function roleTurnPiece(bindings: PieceDependencyProvider): Piece {
   return {
-    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] }, machineInstalls: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
+    descriptor: { kind: 'role-turn', paramsSchema: paramsSchema({ ...invocationTimers, roleId: idSchema, prompt: { ...stringSchema, minLength: 1 }, structuredOutput: { type: 'object' }, sessionContinuity: { enum: ['run', 'none'] }, stance: { enum: ['fixer'] }, artifacts: { enum: ['test-evidence'] }, verificationProposalsFrom: { type: 'string', minLength: 1, maxLength: 128 }, decisions: { enum: ['ask'] }, machineInstalls: { enum: ['ask'] } }, ['roleId', 'prompt']), outcomes: ['next', 'invalid', 'failed'], effect: 'derived', requiresAI: true, storeAccess: 'write' },
     getOutcomes: params => params.structuredOutput ? ['next', 'invalid', 'failed'] : ['next', 'failed'],
     getEffect: (params, roles) => {
       const role = roles[text(params.roleId)]
@@ -214,6 +214,9 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const stance = params.stance === 'fixer' ? 'fixer' as const : undefined
   if (stance && descriptor.access !== 'write') throw new EngineError('invalid_arguments', `The fixer stance requires a role with write access; ${roleId} is ${descriptor.access}`)
   const fixerEngine = stance && roleId === 'developer' ? deps.config.fixer : undefined
+  // Per-turn artifact access: the flow's tag step records the tests it tagged or added as evidence.
+  const artifacts = params.artifacts === 'test-evidence' ? 'test-evidence' as const : undefined
+  if (artifacts && (descriptor.access !== 'write' || !descriptor.openspecSkill)) throw new EngineError('invalid_arguments', `artifacts: test-evidence requires a write role with an OpenSpec binding; ${roleId} is not`)
   // Agents run sandboxed and cannot install what the repository needs (Codex
   // cannot even write the Playwright browser cache): the host prepares it
   // before any writer turn and says so in the task.
@@ -249,7 +252,7 @@ export async function executeRoleTurn(deps: PieceDependencies, params: JsonObjec
   const projectRules = roleId === 'architect' || roleId === 'reviewer' ? projectRulesContext(deps.context) : undefined
   const full = roleInstructions(descriptor, deps.context, openspec?.[roleId]?.change, { definition: stance && roleId === 'developer' ? deps.config.rolePrompts?.fixer : descriptor.prompt, ...(stance && roleId === 'developer' ? { stance } : {}), verification, ...(adopted.length ? { adoptedOutputs: adopted } : {}), ...(derivation ? { derivation } : {}), ...(projectRules ? { projectRules } : {}) }) + '\n## Current workflow task\n' + task
   const result = await invoke(roleId, deps.stepContext(context), { prompt: previous ? task : full, ...(previous ? { resumeSessionId: previous, fallbackPrompt: full } : {}),
-    ...(stance ? { stance } : {}), ...(fixerEngine ? { agentOverride: fixerEngine } : {}),
+    ...(stance ? { stance } : {}), ...(fixerEngine ? { agentOverride: fixerEngine } : {}), ...(artifacts ? { artifacts } : {}),
     structured: schema !== undefined, lenient: options.normalizeStructuredOutput !== undefined, outputSchema: schema, timeoutMs: params.timeoutMs as number | undefined, idleTimeoutMs: params.idleTimeoutMs as number | undefined }, (output, responseText) => {
     const normalized = options.normalizeStructuredOutput ? options.normalizeStructuredOutput(output, responseText) : output
     if (validate && !validate(normalized)) throw new Error('Invalid structured role response: ' + ajv.errorsText(validate.errors))
