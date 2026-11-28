@@ -325,7 +325,8 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "kind": "verify",
       "params": {
         "commands": "configured",
-        "additionalCommandsFrom": "derive"
+        "additionalCommandsFrom": "derive",
+        "setup": "configured"
       },
       "ends": {
         "pass": "review",
@@ -496,7 +497,8 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "kind": "verify",
       "params": {
         "commands": "configured",
-        "additionalCommandsFrom": "derive"
+        "additionalCommandsFrom": "derive",
+        "setup": "configured"
       },
       "ends": {
         "pass": "done",
@@ -536,7 +538,7 @@ An Intent session's hand-off: the code already exists in a worktree reserved at 
       "ends": {}
     }
   },
-  "version": "f96abb1434ea64295d351994d527048c2f2473843750f2298efd8451615056ed"
+  "version": "5f39f1bb74c7f4ffe02e2f580bb1c1de71c7c8bf4a4b343ff386fb77a388eaeb"
 }
 ```
 
