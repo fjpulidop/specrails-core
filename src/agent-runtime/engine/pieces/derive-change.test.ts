@@ -67,6 +67,8 @@ interface FixtureOptions {
   review?: (prompt: string, turn: number) => Review
   /** What the developer does on its fixer turn; by default it extends the existing test file. */
   fix?: (repository: string, turn: number) => void
+  /** The developer's report on its nth tag turn; by default every requirement is already tagged. */
+  tag?: (turn: number) => { summary: string; incomplete: string[] }
 }
 const extendTest = (repository: string, turn: number): void => {
   const file = path.join(repository, 'src/value.test.cjs')
@@ -77,12 +79,12 @@ function fixture(scripts: DeriverScript[], options: FixtureOptions = {}) {
   const requests: AgentRequest[] = []
   /** The developer's tag turns after each derivation, kept apart: the role sequences below stay deriver → reviewer → fixer. */
   const tags: AgentRequest[] = []
-  let derivations = 0, reviews = 0, fixes = 0
+  let derivations = 0, reviews = 0, fixes = 0, tagTurns = 0
   const registry = new ExecutorRegistry().register('fixture', { async execute(request): Promise<AgentResult> {
     if (request.role === 'developer' && request.prompt.includes('Tag the existing tests of change')) {
       tags.push(request)
       expect(request).toMatchObject({ access: 'write', stance: 'fixer' })
-      return { text: JSON.stringify({ summary: 'Every requirement is already tagged', incomplete: [] }), usage }
+      return { text: JSON.stringify(options.tag?.(tagTurns++) ?? { summary: 'Every requirement is already tagged', incomplete: [] }), usage }
     }
     requests.push(request)
     const tools = new OpenSpecTools(request.openspec!)
@@ -140,7 +142,32 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(tags[0]!.prompt).toContain('Change nothing else under openspec/, no production code, no existing assertion')
     expect(tags[0]!.prompt).toContain('add one focused test of its observable behaviour')
     const order = (await attempts(context)).map(attempt => attempt.node)
-    expect(order.slice(order.indexOf('derive'), order.indexOf('derive') + 3)).toEqual(['derive', 'tag', 'check'])
+    expect(order.slice(order.indexOf('derive'), order.indexOf('derive') + 4)).toEqual(['derive', 'tag', 'tag-report', 'check'])
+  })
+
+  it('hands the failing tests the tag step saw to the reviewer, reset every round', async () => {
+    const { context } = workspace({})
+    const failing = 'smoke.spec.ts starts a run fails: npm run test:e2e, the Play button is not found'
+    const { registry, requests, tags } = fixture([{}], {
+      tag: turn => turn === 0 ? { summary: 'Tagged the tests', incomplete: [failing] } : { summary: 'Tagged the tests', incomplete: [] },
+      review: (prompt, turn) => turn === 0 ? { approved: false, issues: [prompt.includes(failing) ? 'Fix the failing smoke test' : 'missing report'] } : { approved: true, issues: [] },
+    })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    expect(tags[0]!.prompt).toContain('Run every test file you touched, in full')
+    const reviews = requests.filter(request => request.role === 'reviewer').map(request => request.prompt)
+    expect(reviews[0]).toContain(`reported: {"summary":"Tagged the tests","incomplete":[${JSON.stringify(failing)}]}. A failing test it lists is a failing check.`)
+    // The fixer received the reviewer's finding; the next review sees only the fresh report.
+    expect(requests.find(request => request.role === 'developer')!.prompt).toContain('Fix the failing smoke test')
+    expect(reviews[1]).not.toContain(failing)
+  })
+
+  it('reviews without a tag report when the tag turn answers outside its schema', async () => {
+    const { context } = workspace({})
+    const { registry, requests } = fixture([{}], { tag: () => ({ wrong: true }) as never })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' } })
+    expect(requests.find(request => request.role === 'reviewer')!.prompt).toContain('reported: . A failing test')
   })
 
   it('derives a fully explained diff (5 of 5), binds the deriver plan, reviews and archives with receipts', async () => {

@@ -19,7 +19,8 @@
           "derivationRepairs": 0,
           "correctionRounds": 0,
           "correctionLimit": 2,
-          "latestFindings": ""
+          "latestFindings": "",
+          "tagReport": ""
         }
       },
       "ends": {
@@ -44,7 +45,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Then update the change's tasks.md and design.md: their test evidence cites the tests you tagged or added, and the files the change touches include every test file you changed. Change nothing else under openspec/, no production code, no existing assertion, and never expand scope. List a requirement you could not demonstrate under incomplete. Return summary and incomplete.",
+        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Then update the change's tasks.md and design.md: their test evidence cites the tests you tagged or added, and the files the change touches include every test file you changed. Change nothing else under openspec/, no production code, no existing assertion, and never expand scope. Run every test file you touched, in full. List under incomplete a requirement you could not demonstrate, and every test that fails, with the command you ran and its error. Return summary and incomplete.",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -66,8 +67,20 @@
         "sessionContinuity": "none"
       },
       "ends": {
-        "next": "check",
+        "next": "tag-report",
         "invalid": "check",
+        "failed": "failed"
+      }
+    },
+    "tag-report": {
+      "kind": "assign",
+      "params": {
+        "set": {
+          "tagReport": "{{outputs.tag.structured}}"
+        }
+      },
+      "ends": {
+        "next": "check",
         "failed": "failed"
       }
     },
@@ -122,7 +135,7 @@
       "kind": "role-turn",
       "params": {
         "roleId": "reviewer",
-        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report. What the person asked for or decided during the Intent session is requested scope: never ask to revert it. List each change no request or decision supports under unrequested, for the person to decide.",
+        "prompt": "Review the derived OpenSpec change against the code that already exists, the verification evidence and the derivation coverage report. The tag step ran the change's tests and reported: {{run.tagReport}}. A failing test it lists is a failing check. What the person asked for or decided during the Intent session is requested scope: never ask to revert it. List each change no request or decision supports under unrequested, for the person to decide.",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -204,7 +217,8 @@
           "correctionRounds": 1
         },
         "set": {
-          "derivationRepairs": 0
+          "derivationRepairs": 0,
+          "tagReport": ""
         }
       },
       "ends": {
@@ -310,5 +324,5 @@
       "ends": {}
     }
   },
-  "version": "5844253188d9e82aa7b646254054cfc01929d64dff47502124334a283fc3b6b5"
+  "version": "9623d84efcf200fc010089624276356f80947dd6be4628e7c1f4126835837730"
 }
