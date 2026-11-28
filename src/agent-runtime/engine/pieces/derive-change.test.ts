@@ -258,14 +258,24 @@ describe('derive-change through the flow-spec reference definition', () => {
     expect(existsSync(path.join(repository, 'openspec/changes', change))).toBe(true)
   }, integrationTimeout * 3)
 
-  it('ends with changes requested after one fixer turn that changes nothing', async () => {
+  it('re-derives when the fixer changes nothing (a finding for the artifacts), and ends with changes requested once the budget is spent', async () => {
     const { context } = workspace()
     const { registry, requests } = fixture([{}], { review: () => ({ approved: false, issues: ['Revert the unrequested README edit'] }), fix: () => {} })
     const result = await createRun({ context, config, definition: definition(), registry, change })
     expect(result.state.status).toBe('failed')
-    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer'])
-    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 1 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"],"unrequested":[]}')
-  }, integrationTimeout)
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+    expect(result.completion!.reasons.join('\n')).toContain('the reviewer requested changes that 2 correction round(s) did not resolve. Latest findings: {"approved":false,"issues":["Revert the unrequested README edit"],"unrequested":[]}')
+  }, integrationTimeout * 2)
+
+  it('resolves a finding about the artifacts through the re-derivation when the fixer rightly changes no code', async () => {
+    const { context } = workspace()
+    const finding = 'specs/value/spec.md (deriver): the requirement must say the module returns two'
+    const { registry, requests } = fixture([{}], { review: (_prompt, turn) => turn === 0 ? { approved: false, issues: [finding] } : { approved: true, issues: [] }, fix: () => {} })
+    const result = await createRun({ context, config, definition: definition(), registry, change })
+    expect(result, JSON.stringify(result)).toMatchObject({ state: { status: 'succeeded' }, completion: { ok: true, verified: true } })
+    expect(requests.map(request => request.role)).toEqual(['deriver', 'reviewer', 'developer', 'deriver', 'reviewer'])
+    expect(requests[3]!.prompt).toContain(finding)
+  }, integrationTimeout * 2)
 
   it('never sends an unrequested change to the fixer: the run stops for the person to decide, with no correction round', async () => {
     const { repository, context } = workspace({ summary: '---\ntranscriptTurns: 2\n---\n## Accepted scope\n1. [2026-11-22 09:10:21 UTC] Person: "export two"\n' })
