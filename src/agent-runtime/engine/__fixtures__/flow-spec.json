@@ -44,7 +44,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Change no production code, no existing assertion, nothing under openspec/, and never expand scope. List a requirement you could not demonstrate under incomplete. Return summary and incomplete.",
+        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Then update the change's tasks.md and design.md: their test evidence cites the tests you tagged or added, and the files the change touches include every test file you changed. Change nothing else under openspec/, no production code, no existing assertion, and never expand scope. List a requirement you could not demonstrate under incomplete. Return summary and incomplete.",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -310,5 +310,5 @@
       "ends": {}
     }
   },
-  "version": "d60ffa51f477ce9442489480a58829bd02def90c3e56e3f32e96c26d87ff1444"
+  "version": "5844253188d9e82aa7b646254054cfc01929d64dff47502124334a283fc3b6b5"
 }
