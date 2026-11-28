@@ -44,7 +44,7 @@
       "params": {
         "roleId": "developer",
         "stance": "fixer",
-        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). Change test titles and tag comments only: no assertions, no new tests, no production code, nothing under openspec/, and only test files that already differ from the base. List a requirement no existing test demonstrates under incomplete. Return summary and incomplete.",
+        "prompt": "Tag the existing tests of change {{run.changeId}} with the requirements they demonstrate: for every ADDED or MODIFIED requirement of its delta specs, add [spec:<capability>/<requirement-slug>] to the titles of the tests that demonstrate it (or a spec: comment on the line before the test). For a requirement no existing test demonstrates, add one focused test of its observable behaviour, tagged with its id, in a test file that already differs from the base. Change no production code, no existing assertion, nothing under openspec/, and never expand scope. List a requirement you could not demonstrate under incomplete. Return summary and incomplete.",
         "structuredOutput": {
           "type": "object",
           "required": [
@@ -310,5 +310,5 @@
       "ends": {}
     }
   },
-  "version": "dea57af3fb4bb45ca7028f87d603403f7535dcf28625491b64e86bae3fdd8da6"
+  "version": "d60ffa51f477ce9442489480a58829bd02def90c3e56e3f32e96c26d87ff1444"
 }
